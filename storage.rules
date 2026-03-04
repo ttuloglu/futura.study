@@ -1,0 +1,34 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /podcasts/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // New private package layout: smartbooks/{uid}/{courseId}/...
+    match /smartbooks/{userId}/{courseId}/{allPaths=**} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Legacy layout compatibility: smartbooks/{courseId}/...
+    // Read access is kept for signed-in users so old books remain exportable while
+    // legacy assets are phased out.
+    match /smartbooks/{courseId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,183 @@
+import { Capacitor } from '@capacitor/core';
+import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  'application/epub+zip': 'epub',
+  'application/pdf': 'pdf',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/webm': 'webm',
+  'audio/x-wav': 'wav',
+  'image/gif': 'gif',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/svg+xml': 'svg',
+  'image/webp': 'webp',
+  'text/plain': 'txt'
+};
+
+function isCapacitorNativeRuntime(): boolean {
+  try {
+    const viaCore = typeof Capacitor.isNativePlatform === 'function'
+      ? Capacitor.isNativePlatform()
+      : false;
+    if (viaCore) return true;
+    const viaWindow = (window as any)?.Capacitor;
+    if (viaWindow && typeof viaWindow.getPlatform === 'function') {
+      const platform = String(viaWindow.getPlatform() || '').toLowerCase();
+      return platform === 'ios' || platform === 'android';
+    }
+    const platform = typeof Capacitor.getPlatform === 'function'
+      ? String(Capacitor.getPlatform() || '').toLowerCase()
+      : '';
+    return platform === 'ios' || platform === 'android';
+  } catch {
+    return false;
+  }
+}
+
+function triggerBrowserDownload(url: string, fileName: string): void {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function sanitizeFileName(fileName: string): string {
+  const normalized = String(fileName || '')
+    .trim()
+    .replace(/ğ/gi, 'g')
+    .replace(/ü/gi, 'u')
+    .replace(/ş/gi, 's')
+    .replace(/ı/gi, 'i')
+    .replace(/ö/gi, 'o')
+    .replace(/ç/gi, 'c')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const extensionMatch = normalized.match(/\.([a-z0-9]{1,8})$/i);
+  const extension = extensionMatch ? `.${extensionMatch[1].toLowerCase()}` : '';
+  const baseName = (extension ? normalized.slice(0, -extension.length) : normalized)
+    .replace(/[^a-zA-Z0-9._ -]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, 96);
+
+  return `${baseName || 'dosya'}${extension}`;
+}
+
+function inferExtensionFromBlob(blob: Blob): string | null {
+  const mimeType = String(blob.type || '').split(';')[0].trim().toLowerCase();
+  return MIME_EXTENSION_MAP[mimeType] || null;
+}
+
+function normalizeFileNameForBlob(fileName: string, blob: Blob): string {
+  const sanitized = sanitizeFileName(fileName);
+  const blobExtension = inferExtensionFromBlob(blob);
+  if (!blobExtension) return sanitized;
+
+  const extensionMatch = sanitized.match(/\.([a-z0-9]{1,8})$/i);
+  const currentExtension = extensionMatch?.[1]?.toLowerCase() || '';
+  if (currentExtension === blobExtension) return sanitized;
+
+  const baseName = extensionMatch
+    ? sanitized.slice(0, -(currentExtension.length + 1))
+    : sanitized;
+
+  return `${baseName || 'dosya'}.${blobExtension}`;
+}
+
+function blobToBase64Content(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const commaIndex = result.indexOf(',');
+      if (commaIndex < 0) {
+        reject(new Error('Dosya encode edilemedi.'));
+        return;
+      }
+      resolve(result.slice(commaIndex + 1));
+    };
+    reader.onerror = () => reject(reader.error || new Error('Dosya encode edilemedi.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function saveBlobAsFile({
+  blob,
+  fileName
+}: {
+  blob: Blob;
+  fileName: string;
+}): Promise<void> {
+  if (!blob) throw new Error('Kaydedilecek dosya bulunamadı.');
+  if (!fileName) throw new Error('Dosya adı bulunamadı.');
+
+  const finalFileName = normalizeFileNameForBlob(fileName, blob);
+  const isNative = isCapacitorNativeRuntime();
+
+  if (!isNative) {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      triggerBrowserDownload(objectUrl, finalFileName);
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    }
+    return;
+  }
+
+  const encodedData = await blobToBase64Content(blob);
+  const fileWriteResult = await Filesystem.writeFile({
+    path: `share/${Date.now()}-${finalFileName}`,
+    data: encodedData,
+    directory: Directory.Temporary,
+    recursive: true
+  });
+
+  const canShare = await Share.canShare().catch(() => ({ value: false }));
+  if (!canShare.value) return;
+
+  await Share.share({
+    files: [fileWriteResult.uri]
+  });
+}
+
+export async function downloadFile({
+  url,
+  fileName
+}: {
+  url: string;
+  fileName: string;
+}): Promise<void> {
+  if (!url) throw new Error('İndirilecek dosya bulunamadı.');
+  if (!fileName) throw new Error('Dosya adı bulunamadı.');
+
+  const isNative = isCapacitorNativeRuntime();
+  if (!isNative) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Dosya indirilemedi (${response.status}).`);
+      const blob = await response.blob();
+      await saveBlobAsFile({ blob, fileName });
+    } catch {
+      triggerBrowserDownload(url, fileName);
+    }
+    return;
+  }
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Dosya indirilemedi (${response.status}).`);
+  }
+  const blob = await response.blob();
+  await saveBlobAsFile({ blob, fileName });
+}

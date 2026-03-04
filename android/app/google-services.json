@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "650999489018",
+    "project_id": "f-study-53ef9",
+    "storage_bucket": "f-study-53ef9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:650999489018:android:0e8e4d1fb9938e516a4443",
+        "android_client_info": {
+          "package_name": "com.company.fstudy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC60YrCAw_PUZ-cGrvvYwzeo750Nlc4WzY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

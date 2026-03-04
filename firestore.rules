@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function userCreateWithoutCreditFields() {
+      return !('creditWallet' in request.resource.data)
+        && !('creditWalletUpdatedAt' in request.resource.data);
+    }
+
+    function userUpdateWithoutCreditFieldChanges() {
+      return !request.resource.data
+        .diff(resource.data)
+        .changedKeys()
+        .hasAny(['creditWallet', 'creditWalletUpdatedAt']);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && userCreateWithoutCreditFields();
+      allow update: if isOwner(userId) && userUpdateWithoutCreditFieldChanges();
+      allow delete: if isOwner(userId);
+
+      match /courses/{courseId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /stickyNotes/{noteId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    match /courses/{courseId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if resource.data.isPublic == true
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // OTP login state is server-only (Cloud Functions with Admin SDK).
+    match /emailLoginCodes/{docId} {
+      allow read, write: if false;
+    }
+
+    // OTP rate-limit state is server-only (Cloud Functions with Admin SDK).
+    match /emailLoginRateLimits/{docId} {
+      allow read, write: if false;
+    }
+
+    // Daily usage tracking is server-only (Cloud Functions with Admin SDK).
+    match /usageDaily/{docId} {
+      allow read, write: if false;
+    }
+
+    // Credit wallet is server-only. Client reads/writes go through creditGateway.
+    match /creditWallets/{userId} {
+      allow read, write: if false;
+    }
+
+    // Credit refund receipts are server-only.
+    match /creditRefundReceipts/{receiptId} {
+      allow read, write: if false;
+    }
+  }
+}

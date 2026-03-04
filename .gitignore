@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+.env.*
+functions/node_modules/
+functions/lib/

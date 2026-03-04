@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Fortale</string>
+    <string name="title_activity_main">Fortale</string>
+    <string name="package_name">com.company.fstudy</string>
+    <string name="custom_url_scheme">com.company.fstudy</string>
+</resources>
