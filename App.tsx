@@ -1,4 +1,4 @@
-import React, { startTransition, useEffect, useRef, useState } from 'react';
+import React, { lazy, startTransition, Suspense, useEffect, useRef, useState } from 'react';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import {
   ViewState,
@@ -10,21 +10,11 @@ import {
   CreditWallet
 } from './types';
 import { normalizeSmartBookAgeGroup } from './utils/smartbookAgeGroup';
-import HomeView from './views/HomeView';
-import CourseFlowView from './views/CourseFlowView';
-import PersonalGrowthView from './views/PersonalGrowthView';
-import ExploreView from './views/ExploreView';
-import ProfileView from './views/ProfileView';
-import PrivacyView from './views/PrivacyView';
-import TermsView from './views/TermsView';
-import LoginView from './views/LoginView';
 import BottomNav from './components/BottomNav';
 import GlobalHeader from './components/GlobalHeader';
-import SettingsModal from './components/SettingsModal';
-import LegalConsentModal from './components/LegalConsentModal';
 import AppLanguageSetupModal from './components/AppLanguageSetupModal';
 import FaviconSpinner from './components/FaviconSpinner';
-import CreditPaywallModal, { CreditPackOption } from './components/CreditPaywallModal';
+import type { CreditPackOption } from './components/CreditPaywallModal';
 import { UiI18nProvider } from './i18n/uiI18n';
 import {
   DEFAULT_APP_LANGUAGE,
@@ -52,6 +42,19 @@ import {
   purchaseRevenueCatCreditPack
 } from './utils/revenueCat';
 
+const HomeView = lazy(() => import('./views/HomeView'));
+const CourseFlowView = lazy(() => import('./views/CourseFlowView'));
+const PersonalGrowthView = lazy(() => import('./views/PersonalGrowthView'));
+const ExploreView = lazy(() => import('./views/ExploreView'));
+const ProfileView = lazy(() => import('./views/ProfileView'));
+const PrivacyView = lazy(() => import('./views/PrivacyView'));
+const TermsView = lazy(() => import('./views/TermsView'));
+const LoginView = lazy(() => import('./views/LoginView'));
+const OnboardingView = lazy(() => import('./views/OnboardingView'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const LegalConsentModal = lazy(() => import('./components/LegalConsentModal'));
+const CreditPaywallModal = lazy(() => import('./components/CreditPaywallModal'));
+
 const LOCAL_COURSE_KEY_PREFIX = 'f-study-courses';
 const LOCAL_FULL_COURSE_CACHE_KEY_PREFIX = 'f-study-full-courses';
 const LOCAL_COURSE_COVER_CACHE_KEY_PREFIX = 'f-study-course-cover-cache';
@@ -62,6 +65,7 @@ const LOCAL_CREDIT_WALLET_KEY_PREFIX = 'f-study-credit-wallet';
 const LOCAL_APP_LANGUAGE_KEY = 'f-study-app-language';
 const LOCAL_APP_LANGUAGE_SOURCE_KEY = 'f-study-app-language-source';
 const GUEST_SESSION_KEY = 'f-study-guest-session';
+const LAST_AUTH_UID_KEY = 'f-study-last-auth-uid';
 const GUEST_LOCAL_UID = 'guest';
 const COURSE_CLOUD_SYNC_DEBOUNCE_MS = 1300;
 const COURSE_LOCAL_CACHE_DEBOUNCE_MS = 180;
@@ -90,6 +94,17 @@ const CREDIT_PACKS: CreditPackOption[] = [
   { id: 'pack-15', createCredits: 15, priceUsd: 12.99 },
   { id: 'pack-30', createCredits: 30, priceUsd: 19.99 }
 ];
+
+function FullScreenFallback({ message }: { message: string }) {
+  return (
+    <div className="fixed inset-0 bg-background flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3 px-6 text-center">
+        <FaviconSpinner size={44} />
+        <p className="text-[12px] font-semibold text-white/78">{message}</p>
+      </div>
+    </div>
+  );
+}
 
 type StoredCourse = Omit<CourseData, 'createdAt' | 'lastActivity'> & {
   createdAt: string;
@@ -560,7 +575,9 @@ function buildStickyTitle(title: string | undefined, text: string): string {
 
 function readGuestSessionFromLocal(): boolean {
   try {
-    return window.localStorage.getItem(GUEST_SESSION_KEY) === '1';
+    // Guest access is session-only; always restart unauthenticated users from onboarding on refresh/reopen.
+    window.localStorage.removeItem(GUEST_SESSION_KEY);
+    return false;
   } catch (error) {
     console.warn('Failed to read guest session state:', error);
     return false;
@@ -577,6 +594,28 @@ function writeGuestSessionToLocal(enabled: boolean): void {
     window.localStorage.removeItem(GUEST_SESSION_KEY);
   } catch (error) {
     console.warn('Failed to persist guest session state:', error);
+  }
+}
+
+function readLastAuthenticatedUidFromLocal(): string | null {
+  try {
+    const raw = String(window.localStorage.getItem(LAST_AUTH_UID_KEY) || '').trim();
+    return raw || null;
+  } catch (error) {
+    console.warn('Failed to read last authenticated uid:', error);
+    return null;
+  }
+}
+
+function writeLastAuthenticatedUidToLocal(uid: string | null): void {
+  try {
+    if (uid && uid.trim()) {
+      window.localStorage.setItem(LAST_AUTH_UID_KEY, uid.trim());
+      return;
+    }
+    window.localStorage.removeItem(LAST_AUTH_UID_KEY);
+  } catch (error) {
+    console.warn('Failed to persist last authenticated uid:', error);
   }
 }
 
@@ -681,6 +720,22 @@ function hasPersistableCourseContent(course: CourseData | null | undefined): boo
 function courseNeedsFullContentRepair(course: CourseData | null | undefined): boolean {
   if (!course || !Array.isArray(course.nodes) || course.nodes.length === 0) return true;
   return !hasPersistableCourseContent(course);
+}
+
+function hasMissingPrimaryNodeContent(course: CourseData | null | undefined): boolean {
+  if (!course || !Array.isArray(course.nodes) || course.nodes.length === 0) return true;
+  const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
+  if (lectureNodes.length === 0) return false;
+  return lectureNodes.some((node) => !(typeof node.content === 'string' && node.content.trim().length > 0));
+}
+
+function courseNeedsHydration(course: CourseData | null | undefined): boolean {
+  return (
+    isCourseProgressOnly(course) ||
+    !course?.coverImageUrl ||
+    courseNeedsFullContentRepair(course) ||
+    hasMissingPrimaryNodeContent(course)
+  );
 }
 
 function toCompactStoredNode(node: TimelineNode): TimelineNode {
@@ -1506,7 +1561,7 @@ function readCoursesFromLocal(uid: string): CourseData[] {
         }
 
         const fullCachedCourse = fullCourseCache.get(nextCourse.id);
-        if (fullCachedCourse && courseNeedsFullContentRepair(nextCourse)) {
+        if (fullCachedCourse && courseNeedsHydration(nextCourse)) {
           return mergeSharedCourseWithUserProgress(fullCachedCourse, toProgressDocFromCourseSnapshot(nextCourse));
         }
 
@@ -1665,8 +1720,13 @@ export default function App() {
   const [hasCompletedLocalBootstrap, setHasCompletedLocalBootstrap] = useState(false);
   const [isAuthLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [bootstrapAuthUid, setBootstrapAuthUid] = useState<string | null>(() => {
+    const currentUid = String(auth.currentUser?.uid || '').trim();
+    return currentUid || readLastAuthenticatedUidFromLocal();
+  });
   const [profileNameOverride, setProfileNameOverride] = useState<string | null>(null);
   const [isGuestSession, setGuestSession] = useState<boolean>(() => readGuestSessionFromLocal());
+  const [isOnboardingVisible, setOnboardingVisible] = useState<boolean>(true);
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [isReaderFullscreen, setIsReaderFullscreen] = useState(false);
   const [likedCourseIds, setLikedCourseIds] = useState<string[]>([]);
@@ -2022,7 +2082,7 @@ export default function App() {
     packagePath?: string
   ): Promise<CourseData | null> => {
     const cached = coursePackageByIdRef.current.get(courseId);
-    if (cached) return cached;
+    if (cached && !courseNeedsHydration(cached)) return cached;
 
     const existingPromise = coursePackagePromiseByIdRef.current.get(courseId);
     if (existingPromise) return existingPromise;
@@ -2158,28 +2218,68 @@ export default function App() {
     }
   };
 
-  const fetchCourseListFromBackend = async (): Promise<CourseData[]> => {
-    await appCheckReady;
-    const response = await listMySmartBookCourses({});
-    const payload = Array.isArray(response.data?.courses) ? response.data?.courses : [];
-    const courses = payload
-      .map(fromStoredCourse)
-      .filter((course): course is CourseData => course !== null);
+  const waitMs = (ms: number) =>
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, Math.max(0, ms));
+    });
 
-    const coursesWithFreshCovers = await Promise.all(
-      courses.map(async (course) => ({
-        ...course,
-        coverImageUrl: await resolveFreshCoverUrlForCourse(course) || course.coverImageUrl
-      }))
+  const isTransientCourseBootstrapError = (error: unknown): boolean => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : (typeof error === 'string' ? error : '');
+    const normalizedMessage = message.toLowerCase();
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      typeof (error as { code?: unknown }).code === 'string'
+        ? String((error as { code?: string }).code).toLowerCase()
+        : '';
+
+    return (
+      normalizedMessage.includes('response is not valid json object') ||
+      normalizedMessage.includes('failed to fetch') ||
+      code.includes('internal') ||
+      code.includes('unavailable') ||
+      code.includes('deadline-exceeded')
     );
+  };
 
-    for (const course of coursesWithFreshCovers) {
-      if (hasPersistableCourseContent(course)) {
-        coursePackageByIdRef.current.set(course.id, course);
+  const fetchCourseListFromBackend = async (): Promise<CourseData[]> => {
+    let lastError: unknown;
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await appCheckReady;
+        const response = await listMySmartBookCourses({});
+        const payload = Array.isArray(response.data?.courses) ? response.data?.courses : [];
+        const courses = payload
+          .map(fromStoredCourse)
+          .filter((course): course is CourseData => course !== null);
+
+        for (const course of courses) {
+          if (hasPersistableCourseContent(course)) {
+            coursePackageByIdRef.current.set(course.id, course);
+          }
+        }
+
+        return sortCoursesByLastActivity(courses);
+      } catch (error) {
+        lastError = error;
+        if (attempt >= maxAttempts || !isTransientCourseBootstrapError(error)) {
+          throw error;
+        }
+        try {
+          await auth.currentUser?.getIdToken(true);
+        } catch {
+          // Ignore token refresh errors; next retry still may recover.
+        }
+        await waitMs(300 * attempt);
       }
     }
 
-    return sortCoursesByLastActivity(coursesWithFreshCovers);
+    throw lastError instanceof Error ? lastError : new Error('SmartBook course bootstrap failed.');
   };
 
   const disableCloudSyncForPermission = () => {
@@ -2227,11 +2327,7 @@ export default function App() {
     const snapshot = savedCoursesRef.current.find((course) => course.id === courseId);
     if (!snapshot) return false;
 
-    const needsHydration = (
-      isCourseProgressOnly(snapshot) ||
-      !snapshot.coverImageUrl ||
-      courseNeedsFullContentRepair(snapshot)
-    );
+    const needsHydration = courseNeedsHydration(snapshot);
     if (!needsHydration) return true;
 
     courseHydrationInFlightRef.current.add(inFlightKey);
@@ -2347,7 +2443,8 @@ export default function App() {
   };
 
   const consumeCreditForAction = async (action: CreditActionType, costOverride?: number): Promise<boolean> => {
-    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    const localUserId = authUser?.uid
+      ?? (isGuestSession ? GUEST_LOCAL_UID : (isAuthLoading ? bootstrapAuthUid : null));
     if (!localUserId) {
       openCreditPaywall(action);
       return false;
@@ -2624,7 +2721,7 @@ export default function App() {
       window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [authUser, cloudSyncEnabled, isGuestSession]);
+  }, [authUser, bootstrapAuthUid, cloudSyncEnabled, isAuthLoading, isGuestSession]);
 
   useEffect(() => {
     savedCoursesRef.current = savedCourses;
@@ -2747,11 +2844,7 @@ export default function App() {
     const activeCourse = savedCourses.find((course) => course.id === activeCourseId);
     if (!activeCourse) return;
 
-    const needsHydration = (
-      isCourseProgressOnly(activeCourse) ||
-      !activeCourse.coverImageUrl ||
-      courseNeedsFullContentRepair(activeCourse)
-    );
+    const needsHydration = courseNeedsHydration(activeCourse);
     if (!needsHydration) return;
 
     const repairKey = `${authUser.uid}:${activeCourse.id}:${activeCourse.contentPackagePath || ''}:${activeCourse.contentPackageUrl || ''}`;
@@ -2807,11 +2900,7 @@ export default function App() {
     if (!authUser?.uid) return;
     if (!savedCourses.length) return;
 
-    const repairCandidates = savedCourses.filter((course) => (
-      isCourseProgressOnly(course) ||
-      !course.coverImageUrl ||
-      courseNeedsFullContentRepair(course)
-    ));
+    const repairCandidates = savedCourses.filter((course) => courseNeedsHydration(course));
     if (repairCandidates.length === 0) return;
 
     let cancelled = false;
@@ -2907,12 +2996,17 @@ export default function App() {
 
   const handleContinueWithoutLogin = () => {
     setGuestSession(true);
-    writeGuestSessionToLocal(true);
+    setOnboardingVisible(false);
     setCurrentView('HOME');
+  };
+
+  const handleOnboardingFinish = () => {
+    setOnboardingVisible(false);
   };
 
   const handleOpenLoginScreen = () => {
     clearGuestSession();
+    setOnboardingVisible(false);
     setCurrentView('HOME');
     setSettingsOpen(false);
   };
@@ -2923,7 +3017,8 @@ export default function App() {
 
   const handleContactSupport = () => {
     const subject = encodeURIComponent('Fortale Destek');
-    window.open(`mailto:admin@futurumapps.online?subject=${subject}`, '_blank', 'noopener,noreferrer');
+    const mailtoUrl = `mailto:admin@futurumapps.online?subject=${subject}`;
+    window.location.href = mailtoUrl;
   };
 
   useEffect(() => {
@@ -2938,6 +3033,9 @@ export default function App() {
       didResolveInitialAuthState = true;
       window.clearTimeout(authBootstrapTimeout);
       setAuthUser(user);
+      const nextUid = typeof user?.uid === 'string' ? user.uid : null;
+      setBootstrapAuthUid(nextUid);
+      writeLastAuthenticatedUidToLocal(nextUid);
       setProfileNameOverride(null);
       if (user) {
         clearGuestSession();
@@ -3143,28 +3241,78 @@ export default function App() {
       setLoadingMessage('Kitaplar yükleniyor...');
       setIsLoading(true);
       setHasCompletedLocalBootstrap(false);
-      let localCourses = readCoursesFromLocal(localUserId);
-      if (localCourses.length > 0) {
+      const mergeNativeFullCoursesIntoState = async (courseIds: string[]) => {
+        if (courseIds.length === 0) return;
         try {
-          const nativeFullCourseCache = await readFullCoursesFromNativeCache(
-            localUserId,
-            localCourses.map((course) => course.id)
-          );
-          if (nativeFullCourseCache.size > 0) {
-            localCourses = sortCoursesByLastActivity(
-              localCourses.map((course) => {
+          const nativeFullCourseCache = await readFullCoursesFromNativeCache(localUserId, courseIds);
+          if (nativeFullCourseCache.size === 0) return;
+
+          setSavedCourses((prev) => {
+            let changed = false;
+            const nextCourses = sortCoursesByLastActivity(
+              prev.map((course) => {
                 const fullCachedCourse = nativeFullCourseCache.get(course.id);
                 if (!fullCachedCourse) return course;
-                return courseNeedsFullContentRepair(course)
-                  ? mergeSharedCourseWithUserProgress(fullCachedCourse, toProgressDocFromCourseSnapshot(course))
-                  : course;
+                if (!courseNeedsHydration(course)) return course;
+
+                changed = true;
+                const mergedCourse = mergeSharedCourseWithUserProgress(
+                  fullCachedCourse,
+                  toProgressDocFromCourseSnapshot(course)
+                );
+                coursePackageByIdRef.current.set(course.id, mergedCourse);
+                return mergedCourse;
               })
             );
-          }
+
+            if (!changed) return prev;
+            writeCoursesToLocal(localUserId, nextCourses);
+            writeFullCoursesToLocal(localUserId, nextCourses);
+            return nextCourses;
+          });
         } catch {
           // Ignore native cache read failures during bootstrap.
         }
-      }
+      };
+
+      const stickyNotesBootstrapPromise = (async () => {
+        if (!authUser || !cloudSyncEnabled) return;
+
+        const userStickyCollection = collection(db, 'users', authUser.uid, 'stickyNotes');
+        let stickySnapshot;
+        try {
+          stickySnapshot = await getDocs(query(userStickyCollection, orderBy('lastActivity', 'desc')));
+        } catch {
+          stickySnapshot = await getDocs(userStickyCollection);
+        }
+
+        const fetchedStickyNotes: StickyNoteData[] = [];
+        stickySnapshot.forEach((stickyDoc) => {
+          const data = stickyDoc.data();
+          const text = String(data.text ?? data.stickyText ?? '').trim();
+          fetchedStickyNotes.push({
+            id: stickyDoc.id,
+            title: buildStickyTitle(String(data.title || ''), text),
+            text,
+            noteType: 'sticky',
+            reminderAt: resolveOptionalIsoDate(data.reminderAt ?? data.stickyReminderAt),
+            createdAt: resolveDate(data.createdAt),
+            lastActivity: resolveDate(data.lastActivity ?? data.updatedAt ?? data.createdAt)
+          });
+        });
+
+        const sortedStickyNotes = sortStickyNotesByLastActivity(fetchedStickyNotes);
+        if (sortedStickyNotes.length > 0) {
+          setStickyNotes(sortedStickyNotes);
+          writeStickyNotesToLocal(localUserId, sortedStickyNotes);
+        } else if (localStickyNotes.length === 0) {
+          setStickyNotes([]);
+        }
+      })().catch((error) => {
+        console.warn('Sticky notes bootstrap skipped:', error);
+      });
+
+      const localCourses = readCoursesFromLocal(localUserId);
       const localCourseById = new Map(localCourses.map((course) => [course.id, course] as const));
       const localStickyNotes = readStickyNotesFromLocal(localUserId);
       const localLikedCourseIds = readLikedCourseIdsFromLocal(localUserId);
@@ -3180,6 +3328,7 @@ export default function App() {
       setHasCompletedLocalBootstrap(true);
       if (localCourses.length > 0) {
         setIsLoading(false);
+        void mergeNativeFullCoursesIntoState(localCourses.map((course) => course.id));
       } else {
         setLoadingMessage('Kitaplar senkronize ediliyor...');
       }
@@ -3187,6 +3336,7 @@ export default function App() {
       if (!authUser || !cloudSyncEnabled) {
         progressOnlyFallbackCourseIdsRef.current.clear();
         setIsLoading(false);
+        void stickyNotesBootstrapPromise;
         return;
       }
 
@@ -3242,10 +3392,10 @@ export default function App() {
             const localPackageUpdatedAtMs = localFallbackCourse?.contentPackageUpdatedAt?.getTime() ?? 0;
             const memoryPackageUpdatedAtMs = memoryFallbackCourse?.contentPackageUpdatedAt?.getTime() ?? 0;
             const canUseLocalFullCourse = localFallbackCourse
-              && !isCourseProgressOnly(localFallbackCourse)
+              && !courseNeedsHydration(localFallbackCourse)
               && localPackageUpdatedAtMs >= packageUpdatedAtMs;
             const canUseMemoryFullCourse = memoryFallbackCourse
-              && !isCourseProgressOnly(memoryFallbackCourse)
+              && !courseNeedsHydration(memoryFallbackCourse)
               && memoryPackageUpdatedAtMs >= packageUpdatedAtMs;
             const bestFallbackCourse = (
               canUseLocalFullCourse
@@ -3258,11 +3408,7 @@ export default function App() {
               bestFallbackCourse || localFallbackCourse || memoryFallbackCourse || ownerById.get(sharedCourseId) || null
             );
 
-            const shouldHydrateFromPackage = (
-              isCourseProgressOnly(courseFromPrivateDoc) ||
-              !courseFromPrivateDoc.coverImageUrl ||
-              courseNeedsFullContentRepair(courseFromPrivateDoc)
-            );
+            const shouldHydrateFromPackage = courseNeedsHydration(courseFromPrivateDoc);
 
             if (shouldHydrateFromPackage) {
               try {
@@ -3304,7 +3450,7 @@ export default function App() {
               ownerById.set(courseDoc.id, fullCourse);
               return;
             }
-            if (isCourseProgressOnly(existing) || courseNeedsFullContentRepair(existing)) {
+            if (courseNeedsHydration(existing)) {
               ownerById.set(courseDoc.id, mergeSharedCourseWithUserProgress(
                 fullCourse,
                 toProgressDocFromCourseSnapshot(existing)
@@ -3329,7 +3475,7 @@ export default function App() {
         if (backendBootstrapCourses.length > 0) {
           backendBootstrapCourses.forEach((course) => {
             byId.set(course.id, course);
-            if (isCourseProgressOnly(course) || courseNeedsFullContentRepair(course)) {
+            if (courseNeedsHydration(course)) {
               progressOnlyFallbackCourseIds.add(course.id);
             }
           });
@@ -3367,7 +3513,7 @@ export default function App() {
               if (backendBootstrapCourses.length > 0) {
                 backendBootstrapCourses.forEach((course) => {
                   byId.set(course.id, course);
-                  if (isCourseProgressOnly(course) || courseNeedsFullContentRepair(course)) {
+                  if (courseNeedsHydration(course)) {
                     progressOnlyFallbackCourseIds.add(course.id);
                   }
                 });
@@ -3406,32 +3552,10 @@ export default function App() {
           }
         });
 
-        try {
-          const nativeFullCourseCache = await readFullCoursesFromNativeCache(
-            localUserId,
-            Array.from(byId.keys())
-          );
-          nativeFullCourseCache.forEach((fullCachedCourse, courseId) => {
-            const existing = byId.get(courseId);
-            if (!existing) {
-              byId.set(courseId, fullCachedCourse);
-              return;
-            }
-            if (isCourseProgressOnly(existing) || courseNeedsFullContentRepair(existing)) {
-              byId.set(courseId, mergeSharedCourseWithUserProgress(
-                fullCachedCourse,
-                toProgressDocFromCourseSnapshot(existing)
-              ));
-            }
-          });
-        } catch {
-          // Ignore native cache read failures during cloud merge.
-        }
-
         progressOnlyFallbackCourseIdsRef.current = new Set(
           Array.from(progressOnlyFallbackCourseIds).filter((courseId) => {
             const snapshot = byId.get(courseId);
-            return Boolean(snapshot && snapshot.nodes.every((node) => isNodeProgressOnlyShape(node)));
+            return Boolean(snapshot && courseNeedsHydration(snapshot));
           })
         );
 
@@ -3451,41 +3575,13 @@ export default function App() {
               .filter((course) => hasPersistableCourseContent(course))
               .map((course) => writeFullCourseToNativeCache(localUserId, course))
           );
+          setIsLoading(false);
+          void mergeNativeFullCoursesIntoState(sortedCourses.map((course) => course.id));
         } else if (localCourses.length === 0) {
           setSavedCourses([]);
           setActiveCourseId(null);
         }
-
-        const userStickyCollection = collection(db, 'users', authUser.uid, 'stickyNotes');
-        let stickySnapshot;
-        try {
-          stickySnapshot = await getDocs(query(userStickyCollection, orderBy('lastActivity', 'desc')));
-        } catch {
-          stickySnapshot = await getDocs(userStickyCollection);
-        }
-
-        const fetchedStickyNotes: StickyNoteData[] = [];
-        stickySnapshot.forEach((stickyDoc) => {
-          const data = stickyDoc.data();
-          const text = String(data.text ?? data.stickyText ?? '').trim();
-          fetchedStickyNotes.push({
-            id: stickyDoc.id,
-            title: buildStickyTitle(String(data.title || ''), text),
-            text,
-            noteType: 'sticky',
-            reminderAt: resolveOptionalIsoDate(data.reminderAt ?? data.stickyReminderAt),
-            createdAt: resolveDate(data.createdAt),
-            lastActivity: resolveDate(data.lastActivity ?? data.updatedAt ?? data.createdAt)
-          });
-        });
-
-        const sortedStickyNotes = sortStickyNotesByLastActivity(fetchedStickyNotes);
-        if (sortedStickyNotes.length > 0) {
-          setStickyNotes(sortedStickyNotes);
-          writeStickyNotesToLocal(localUserId, sortedStickyNotes);
-        } else if (localStickyNotes.length === 0) {
-          setStickyNotes([]);
-        }
+        await stickyNotesBootstrapPromise;
       } catch (error) {
         progressOnlyFallbackCourseIdsRef.current.clear();
         if (isPermissionDeniedError(error)) {
@@ -3493,6 +3589,7 @@ export default function App() {
         } else {
           console.error("Error fetching courses from Firebase:", error);
         }
+        await stickyNotesBootstrapPromise;
       } finally {
         setLoadingMessage('Kitaplar yükleniyor...');
         setHasCompletedLocalBootstrap(true);
@@ -4044,6 +4141,36 @@ export default function App() {
     void ensureCourseHydrated(courseId);
   };
 
+  const purgeCourseRuntimeState = (courseId: string) => {
+    if (!courseId) return;
+    coursePackageByIdRef.current.delete(courseId);
+    coursePackagePromiseByIdRef.current.delete(courseId);
+    sessionCreatedCourseIdsRef.current.delete(courseId);
+    progressOnlyFallbackCourseIdsRef.current.delete(courseId);
+    backgroundPackagingCourseIdsRef.current.delete(courseId);
+
+    for (const key of Array.from(backgroundNodeGenerationInFlightRef.current)) {
+      if (key.startsWith(`${courseId}:`)) {
+        backgroundNodeGenerationInFlightRef.current.delete(key);
+      }
+    }
+    for (const key of Array.from(packageSyncAttemptedByCourseRef.current)) {
+      if (key.startsWith(`${courseId}:`)) {
+        packageSyncAttemptedByCourseRef.current.delete(key);
+      }
+    }
+    for (const key of Array.from(courseHydrationRepairAttemptedRef.current)) {
+      if (key.includes(`:${courseId}:`)) {
+        courseHydrationRepairAttemptedRef.current.delete(key);
+      }
+    }
+    for (const key of Array.from(courseHydrationInFlightRef.current)) {
+      if (key.includes(`:${courseId}:`)) {
+        courseHydrationInFlightRef.current.delete(key);
+      }
+    }
+  };
+
   const handleCourseCreate = async (data: CourseData) => {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId) return;
@@ -4127,6 +4254,74 @@ export default function App() {
         console.error("Error saving SmartBook to Firebase:", error);
       }
     }
+  };
+
+  const handleCourseDelete = async (courseId: string): Promise<void> => {
+    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    if (!localUserId) return;
+
+    const targetCourse = savedCourses.find((course) => course.id === courseId);
+    if (!targetCourse) return;
+
+    purgeCourseRuntimeState(courseId);
+
+    setSavedCourses((prev) => {
+      const nextCourses = prev.filter((course) => course.id !== courseId);
+      flushCoursesToLocalNow(localUserId, nextCourses);
+      return nextCourses;
+    });
+    setLikedCourseIds((prev) => {
+      const nextIds = prev.filter((id) => id !== courseId);
+      if (nextIds.length !== prev.length) {
+        writeLikedCourseIdsToLocal(localUserId, nextIds);
+      }
+      return nextIds;
+    });
+
+    if (activeCourseId === courseId) {
+      setActiveCourseId(null);
+      if (currentView === 'COURSE_FLOW') {
+        setCurrentView('HOME');
+      }
+    }
+
+    if (!authUser || !cloudSyncEnabled) return;
+
+    let privateDeleteError: unknown = null;
+    try {
+      await deleteDoc(doc(db, 'users', authUser.uid, 'courses', courseId));
+    } catch (error) {
+      if (isPermissionDeniedError(error)) {
+        disableCloudSyncForPermission();
+      } else {
+        privateDeleteError = error;
+      }
+    }
+
+    const ownsCourse = targetCourse.userId === authUser.uid;
+    let publicDeleteError: unknown = null;
+    if (ownsCourse) {
+      try {
+        await deleteDoc(doc(db, 'courses', courseId));
+      } catch (error) {
+        if (isPermissionDeniedError(error)) {
+          // Keep local deletion successful even if public mirror delete is blocked.
+          console.warn('Public SmartBook delete was denied:', error);
+        } else {
+          publicDeleteError = error;
+        }
+      }
+    }
+
+    if (privateDeleteError || publicDeleteError) {
+      throw privateDeleteError || publicDeleteError;
+    }
+  };
+
+  const canDeleteCourse = (course: CourseData): boolean => {
+    if (isGuestSession) return true;
+    if (!authUser) return true;
+    return !course.userId || course.userId === authUser.uid;
   };
 
   const handleCourseSelect = (courseId: string) => {
@@ -4630,15 +4825,19 @@ export default function App() {
           <HomeView
             onNavigate={setCurrentView}
             onCourseCreate={handleCourseCreate}
+            onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
             publicCourses={publicCourses}
             onCourseSelect={handleCourseSelect}
+            canDeleteCourse={canDeleteCourse}
             stickyNotes={stickyNotes}
             onCreateStickyNote={handleStickyNoteCreate}
             onUpdateStickyNote={handleStickyNoteUpdate}
             onDeleteStickyNote={handleStickyNoteDelete}
             onRequireCredit={requireCreditForAction}
             onConsumeCredit={consumeCreditForAction}
+            isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
+            bootstrapMessage={loadingMessage}
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
           />
         );
@@ -4662,6 +4861,7 @@ export default function App() {
           <PersonalGrowthView
             savedCourses={savedCourses}
             onCourseSelect={handleCourseSelect}
+            onDeleteCourse={handleCourseDelete}
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
             bootstrapMessage={loadingMessage}
           />
@@ -4698,9 +4898,11 @@ export default function App() {
           <HomeView
             onNavigate={setCurrentView}
             onCourseCreate={handleCourseCreate}
+            onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
             publicCourses={publicCourses}
             onCourseSelect={handleCourseSelect}
+            canDeleteCourse={canDeleteCourse}
             stickyNotes={stickyNotes}
             onCreateStickyNote={handleStickyNoteCreate}
             onUpdateStickyNote={handleStickyNoteUpdate}
@@ -4715,34 +4917,48 @@ export default function App() {
     }
   };
 
-  if (isAuthLoading) {
+  const canRenderHomeWhileAuthBootstraps = Boolean(
+    isAuthLoading &&
+    currentView === 'HOME' &&
+    (isGuestSession || bootstrapAuthUid || savedCourses.length > 0)
+  );
+
+  if (isAuthLoading && !canRenderHomeWhileAuthBootstraps) {
     return (
       <UiI18nProvider key={appLanguage} language={appLanguage}>
-        <div className="fixed inset-0 bg-background flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3 px-6 text-center">
-            <FaviconSpinner size={44} />
-            <p className="text-[12px] font-semibold text-white/78">{loadingMessage}</p>
-          </div>
-        </div>
+        <FullScreenFallback message={loadingMessage} />
       </UiI18nProvider>
     );
   }
 
-  if (!authUser && !isGuestSession && currentView !== 'PRIVACY' && currentView !== 'TERMS') {
+  if (!isAuthLoading && !authUser && !isGuestSession && currentView !== 'PRIVACY' && currentView !== 'TERMS') {
+    if (isOnboardingVisible) {
+      return (
+        <UiI18nProvider key={appLanguage} language={appLanguage}>
+          <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
+            <OnboardingView onFinish={handleOnboardingFinish} />
+          </Suspense>
+        </UiI18nProvider>
+      );
+    }
+
     return (
       <UiI18nProvider key={appLanguage} language={appLanguage}>
-        <LoginView
-          onContinueWithoutLogin={handleContinueWithoutLogin}
-          onNavigate={setCurrentView}
-        />
+        <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
+          <LoginView
+            onContinueWithoutLogin={handleContinueWithoutLogin}
+            onNavigate={setCurrentView}
+          />
+        </Suspense>
       </UiI18nProvider>
     );
   }
 
   return (
     <UiI18nProvider key={appLanguage} language={appLanguage}>
-      <div className="fixed inset-0 bg-[#1A1F26] text-text-primary font-sans antialiased flex justify-center">
-        <div className="app-shell-width relative h-full overflow-hidden bg-transparent flex flex-col md:border-x md:border-white/5">
+      <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
+        <div className="fixed inset-0 bg-[#1A1F26] text-text-primary font-sans antialiased flex justify-center">
+          <div className="app-shell-width relative h-full overflow-hidden bg-transparent flex flex-col md:border-x md:border-white/5">
         <CreditPaywallModal
           isOpen={isCreditPaywallOpen}
           onClose={() => {
@@ -4811,8 +5027,9 @@ export default function App() {
             onViewChange={setCurrentView}
           />
         )}
+          </div>
         </div>
-      </div>
+      </Suspense>
     </UiI18nProvider>
   );
 }

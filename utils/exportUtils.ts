@@ -1,15 +1,35 @@
 import JSZip from 'jszip';
 import katex from 'katex';
 import { getBlob, getStorage, ref as storageRef } from 'firebase/storage';
-import pdfMake from './pdfMakeLoader';
+import { Capacitor } from '@capacitor/core';
+import { Directory, Filesystem } from '@capacitor/filesystem';
+import loadPdfMake from './pdfMakeLoader';
 import { app as firebaseApp } from '../firebaseConfig';
 import { CourseData, TimelineNode } from '../types';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
 import { saveBlobAsFile } from './fileDownload';
 
-const EXPORT_ASSET_TIMEOUT_MS = 2500;
+const EXPORT_ASSET_TIMEOUT_MS = 7000;
+const EXPORT_NATIVE_ASSET_TIMEOUT_MS = 15000;
 const MAX_PDF_INLINE_IMAGES = 8;
 const MAX_EPUB_IMAGE_ASSETS = 10;
+const DEFAULT_PDF_PAGE_BACKGROUND_COLOR = '#d9f2ff';
+const PDF_PAGE_WIDTH_PT = 595.28;
+const PDF_PAGE_HORIZONTAL_MARGIN_PT = 40;
+const PDF_TEXT_BLOCK_WIDTH_PT = PDF_PAGE_WIDTH_PT - PDF_PAGE_HORIZONTAL_MARGIN_PT * 2;
+const MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE = 2;
+
+const buildReadableBookDownloadFileName = (
+    title: string,
+    extension: 'pdf' | 'epub',
+    fallback = 'kitap'
+): string => {
+    const normalizedTitle = String(title || '')
+        .normalize('NFC')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return `${normalizedTitle || fallback}.${extension}`;
+};
 
 const FORTALE_PDF_LOGO_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4F9B43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -320,6 +340,31 @@ const getDashedLineCompact = () => ({
         dash: { length: 4, space: 3 }
     }],
     margin: [0, 4, 0, 8]
+});
+
+const getSectionTransitionSeparator = () => ({
+    stack: [
+        {
+            canvas: [{
+                type: 'line',
+                x1: 0, y1: 0, x2: 510, y2: 0,
+                lineWidth: 1,
+                lineColor: '#5B7A99'
+            }],
+            margin: [0, 0, 0, 3]
+        },
+        {
+            canvas: [{
+                type: 'line',
+                x1: 0, y1: 0, x2: 510, y2: 0,
+                lineWidth: 0.7,
+                lineColor: '#7F9AB6',
+                dash: { length: 2, space: 4 }
+            }],
+            margin: [0, 0, 0, 0]
+        }
+    ],
+    margin: [0, 0, 0, 10]
 });
 
 const PDF_FOOTER_LEFT_TEXT = 'Fortale | Build Your Epic';
@@ -647,12 +692,30 @@ const isDuplicateHeadingText = (text: string, duplicateKeys: Set<string>): boole
     return Boolean(key) && duplicateKeys.has(key);
 };
 
+const EXPORT_SYSTEM_IMAGE_LINE_RE = /^\s*[*_~`]*\s*g[öo]rsel\s+\d+\s*\/\s*\d+\s*(?:-\s*.+)?\s*[*_~`]*\s*$/iu;
+const EXPORT_SYSTEM_META_LINE_RE =
+    /^\s*[*_~`]*\s*(?:global sequence index|scene excerpt for this specific image|previous scene cue|narrative timeline lock|visual structure requirement|panel-to-grid mapping)\b/iu;
+
+const stripExportSystemLines = (rawText: string): string => {
+    const cleanedLines = String(rawText || '')
+        .split('\n')
+        .filter((line) => {
+            const plain = stripStrayMarkdown(stripLatex(line)).trim();
+            if (!plain) return true;
+            if (EXPORT_SYSTEM_IMAGE_LINE_RE.test(plain)) return false;
+            if (EXPORT_SYSTEM_META_LINE_RE.test(plain)) return false;
+            return true;
+        });
+
+    return cleanedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+};
+
 const sanitizeNodeBodyLeadingDuplicates = (rawText: string, context: ExportNodeSanitizeContext): string => {
-    const lines = String(rawText || '').split('\n');
+    const lines = stripExportSystemLines(rawText).split('\n');
     if (!lines.length) return '';
 
     const duplicateKeys = buildDuplicateHeadingKeySet(context);
-    if (duplicateKeys.size === 0) return rawText;
+    if (duplicateKeys.size === 0) return lines.join('\n');
 
     let nonEmptyScanned = 0;
     let idx = 0;
@@ -686,15 +749,21 @@ const sanitizeNodeBodyLeadingDuplicates = (rawText: string, context: ExportNodeS
     return lines.join('\n');
 };
 
-export const exportCourseToPdf = async (course: CourseData) => {
+export const exportCourseToPdf = async (
+    course: CourseData,
+    options?: {
+        backgroundColor?: string;
+    }
+) => {
     const preparedCourse = await prepareCourseForRichExport(course);
     const isNarrativeBook =
         preparedCourse.bookType === 'fairy_tale' ||
         preparedCourse.bookType === 'story' ||
         preparedCourse.bookType === 'novel';
     const pdfContent: any[] = [];
-    const PDF_FONT_BUMP = 1;
-    const PDF_FONT_BUMP_MAX = 14;
+    const pdfPageBackgroundColor = options?.backgroundColor?.trim() || DEFAULT_PDF_PAGE_BACKGROUND_COLOR;
+    const PDF_FONT_BUMP = preparedCourse.bookType === 'fairy_tale' ? 2 : 1;
+    const PDF_FONT_BUMP_MAX = preparedCourse.bookType === 'fairy_tale' ? 64 : 14;
     const bumpPdfFontSizes = (value: any): any => {
         if (Array.isArray(value)) {
             return value.map((item) => bumpPdfFontSizes(item));
@@ -750,7 +819,7 @@ export const exportCourseToPdf = async (course: CourseData) => {
                 width: '*',
                 stack: [
                     { text: preparedCourse.topic, fontSize: 18, bold: true, color: '#1F2937', margin: [0, 2, 0, 8] },
-                    { text: `Tür: ${typeLabel} • Alt Tür: ${subGenreLabel} • Yaş: ${ageLabel} • Kategori: ${categoryLabel}`, fontSize: 10.5, color: '#4B5563', margin: [0, 0, 0, 3] },
+                    { text: `Tür: ${typeLabel} • Alt Tür: ${subGenreLabel} • ${ageLabel} • Kategori: ${categoryLabel}`, fontSize: 10.5, color: '#4B5563', margin: [0, 0, 0, 6] },
                     {
                         columns: [
                             {
@@ -764,7 +833,7 @@ export const exportCourseToPdf = async (course: CourseData) => {
                                 svg: FORTALE_PDF_LOGO_SVG,
                                 margin: [0, 0.6, 0, 0]
                             },
-                            { width: 'auto', text: 'Fortale', fontSize: 10.2, bold: true, color: '#1F4D7A' }
+                            { width: 'auto', text: 'Fortale I Build Your Epic', fontSize: 10.2, bold: true, color: '#1F4D7A' }
                         ],
                         columnGap: 2
                     }
@@ -805,16 +874,19 @@ export const exportCourseToPdf = async (course: CourseData) => {
         }
         else if (node.type === 'retention') nodeHeader = isNarrativeBook ? `SONUÇ` : `ÖZET`;
 
-        // Each tab/section starts on a new page, with the tab header at the top.
+        // Keep sections in continuous flow; use a simple dashed line before the new heading.
+        if (nodeIndex > 0) {
+            pdfContent.push(getDashedLineCompact());
+        }
         pdfContent.push({
             text: nodeHeader,
             fontSize: 14,
             bold: true,
-            margin: [0, 0, 0, 6],
-            color: '#1F2937',
-            pageBreak: nodeIndex === 0 ? undefined : 'before'
+            margin: [0, nodeIndex === 0 ? 0 : 6, 0, 6],
+            color: '#1F2937'
         });
-        pdfContent.push(getDashedLine());
+        // Under heading: render the emphasized (solid + dashed) separator pair.
+        pdfContent.push(getSectionTransitionSeparator());
 
         let rawText = '';
         const isQuiz = node.type === 'quiz' || node.type === 'exam' || node.type === 'retention';
@@ -855,6 +927,35 @@ export const exportCourseToPdf = async (course: CourseData) => {
             const wordCount = body.split(/\s+/).filter(Boolean).length;
             return wordCount <= 6;
         };
+        let paragraphBlocksSinceLastHeading = 0;
+        let pendingImageBlocks: any[] = [];
+        const flushPendingImageBlocks = (force = false) => {
+            if (!pendingImageBlocks.length) return;
+            if (force || paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
+                pdfContent.push(...pendingImageBlocks);
+                pendingImageBlocks = [];
+            }
+        };
+        const registerParagraphBlock = () => {
+            paragraphBlocksSinceLastHeading += 1;
+            flushPendingImageBlocks();
+        };
+        const queueOrRenderImageBlock = (block: any) => {
+            if (paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
+                pdfContent.push(block);
+                return;
+            }
+            pendingImageBlocks.push(block);
+        };
+        // Push accumulated list before switching context.
+        const flushList = () => {
+            if (inList) {
+                pdfContent.push({ ul: listItems, margin: [0, 2, 0, 6], fontSize: 11 });
+                listItems = [];
+                inList = false;
+                registerParagraphBlock();
+            }
+        };
 
         // Image Regex ![alt](url)
         const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -869,15 +970,6 @@ export const exportCourseToPdf = async (course: CourseData) => {
                     return candidate;
                 }
                 return null;
-            };
-
-            // Push accumulated list before switching context
-            const flushList = () => {
-                if (inList) {
-                    pdfContent.push({ ul: listItems, margin: [0, 2, 0, 6], fontSize: 11 });
-                    listItems = [];
-                    inList = false;
-                }
             };
 
             const trimmed = lineContent.trim();
@@ -922,15 +1014,24 @@ export const exportCourseToPdf = async (course: CourseData) => {
                         );
                         embeddedPdfImageCount += imageDataList.filter((item) => Boolean(item.base64Data)).length;
 
-                        pdfContent.push({
-                            columns: imageDataList.map((item) => ({
-                                width: '*',
-                                stack: item.base64Data
-                                    ? [{ image: item.base64Data, fit: [240, 240], alignment: 'center', margin: [0, 6, 0, 4] }]
-                                    : [{ text: `[Görsel İndirilemedi]`, color: '#999999', italics: true, alignment: 'center', margin: [0, 20, 0, 8] }]
-                            })),
-                            columnGap: 10,
-                            margin: [0, 6, 0, 0]
+                        imageDataList.forEach((item) => {
+                            if (item.base64Data) {
+                                queueOrRenderImageBlock({
+                                    image: item.base64Data,
+                                    width: PDF_TEXT_BLOCK_WIDTH_PT,
+                                    margin: [0, 8, 0, 8],
+                                    alignment: 'center'
+                                });
+                                return;
+                            }
+
+                            queueOrRenderImageBlock({
+                                text: `[Görsel İndirilemedi]`,
+                                color: '#999999',
+                                italics: true,
+                                alignment: 'center',
+                                margin: [0, 20, 0, 8]
+                            });
                         });
 
                         lineIndex += 2;
@@ -982,6 +1083,7 @@ export const exportCourseToPdf = async (course: CourseData) => {
                         },
                         margin: [0, 8, 0, 10]
                     });
+                    registerParagraphBlock();
                     lineIndex = genericTable.endIndex;
                     continue;
                 }
@@ -1002,10 +1104,19 @@ export const exportCourseToPdf = async (course: CourseData) => {
                 if (base64Data) {
                     lastRenderedNoticeQuote = false;
                     embeddedPdfImageCount += 1;
-                    pdfContent.push({ image: base64Data, fit: [500, 300], margin: [0, 10, 0, 10], alignment: 'center' });
+                    queueOrRenderImageBlock({
+                        image: base64Data,
+                        width: PDF_TEXT_BLOCK_WIDTH_PT,
+                        margin: [0, 10, 0, 10],
+                        alignment: 'center'
+                    });
                 } else {
                     lastRenderedNoticeQuote = false;
-                    pdfContent.push({ text: `[Görsel İndirilemedi: ${cleanUrl}]`, color: '#999999', italics: true });
+                    queueOrRenderImageBlock({
+                        text: `[Görsel İndirilemedi: ${cleanUrl}]`,
+                        color: '#999999',
+                        italics: true
+                    });
                 }
                 continue;
             }
@@ -1032,6 +1143,8 @@ export const exportCourseToPdf = async (course: CourseData) => {
                 if (isDuplicateHeadingText(text, duplicateHeadingKeys)) {
                     continue;
                 }
+                flushPendingImageBlocks(true);
+                paragraphBlocksSinceLastHeading = 0;
                 const headingPlain = stripStrayMarkdown(stripLatex(text));
                 const headingKey = headingPlain.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
                 const isDidYouKnowHeading = headingKey.includes('bunlarıbiliyormuydunuz') || headingKey.includes('didyouknow');
@@ -1089,6 +1202,7 @@ export const exportCourseToPdf = async (course: CourseData) => {
                 flushList();
                 lastRenderedNoticeQuote = false;
                 pdfContent.push({ text: cleanMarkdownToSpans(trimmed), margin: [15, 2, 0, 6], fontSize: 11, lineHeight: 1.4 });
+                registerParagraphBlock();
                 continue;
             }
 
@@ -1122,6 +1236,7 @@ export const exportCourseToPdf = async (course: CourseData) => {
                         color: isImportant ? '#0F3C72' : '#14532D',
                         margin: [12, lastRenderedNoticeQuote ? 14 : 8, 12, 10]
                     });
+                    registerParagraphBlock();
                     lastRenderedNoticeQuote = true;
                     continue;
                 }
@@ -1144,6 +1259,7 @@ export const exportCourseToPdf = async (course: CourseData) => {
                     },
                     margin: [0, 6, 0, 9]
                 });
+                registerParagraphBlock();
                 lastRenderedNoticeQuote = false;
                 continue;
             }
@@ -1159,18 +1275,19 @@ export const exportCourseToPdf = async (course: CourseData) => {
                     alignment: 'center',
                     color: '#334155'
                 });
+                registerParagraphBlock();
                 firstLectureParagraphRendered = true;
                 continue;
             }
 
             lastRenderedNoticeQuote = false;
             pdfContent.push({ text: cleanMarkdownToSpans(trimmed), fontSize: 11, lineHeight: 1.4, margin: [0, 2, 0, 6], alignment: 'justify' });
+            registerParagraphBlock();
         }
 
-        // Final flush if list ended stream
-        if (inList && listItems.length > 0) {
-            pdfContent.push({ ul: listItems, margin: [0, 2, 0, 6], fontSize: 11 });
-        }
+        // Final flush if list ended stream.
+        flushList();
+        flushPendingImageBlocks(true);
 
         // Add Answer Key at the end of quiz sections
         if (isQuiz && node.questions && node.questions.length > 0) {
@@ -1229,21 +1346,21 @@ export const exportCourseToPdf = async (course: CourseData) => {
 
     const docDefinition: any = {
         content: bumpPdfFontSizes(pdfContent),
-        pageMargins: [40, 50, 40, 72],
+        pageMargins: [PDF_PAGE_HORIZONTAL_MARGIN_PT, 50, PDF_PAGE_HORIZONTAL_MARGIN_PT, 72],
         background: () => ({
             canvas: [
                 {
                     type: 'rect',
                     x: 0,
                     y: 0,
-                    w: 595.28,
+                    w: PDF_PAGE_WIDTH_PT,
                     h: 841.89,
-                    color: '#f5f0e3'
+                    color: pdfPageBackgroundColor
                 }
             ]
         }),
         footer: (currentPage: number, pageCount: number) => ({
-            margin: [40, 6, 40, 10],
+            margin: [PDF_PAGE_HORIZONTAL_MARGIN_PT, 6, PDF_PAGE_HORIZONTAL_MARGIN_PT, 10],
             stack: [
                 {
                     text: `${currentPage} / ${pageCount}`,
@@ -1257,11 +1374,12 @@ export const exportCourseToPdf = async (course: CourseData) => {
     };
 
     try {
+        const pdfMake = await loadPdfMake();
         const pdfDoc = pdfMake.createPdf(docDefinition);
         const pdfBlob = await pdfDoc.getBlob();
         await saveBlobAsFile({
             blob: pdfBlob,
-            fileName: `${preparedCourse.topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`
+            fileName: buildReadableBookDownloadFileName(preparedCourse.topic, 'pdf')
         });
     } catch (e) {
         console.error("PDF Export error:", e);
@@ -1318,10 +1436,130 @@ const slugifyFileName = (value: string, fallback = 'smartbook'): string => {
     return normalized || fallback;
 };
 
+const detectMediaTypeFromBytes = (bytes: Uint8Array): string | null => {
+    if (!bytes.length) return null;
+
+    if (
+        bytes.length >= 8 &&
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+    ) {
+        return 'image/png';
+    }
+
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+        return 'image/jpeg';
+    }
+
+    if (
+        bytes.length >= 6 &&
+        bytes[0] === 0x47 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x38 &&
+        (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+        bytes[5] === 0x61
+    ) {
+        return 'image/gif';
+    }
+
+    if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 &&
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x45 &&
+        bytes[10] === 0x42 &&
+        bytes[11] === 0x50
+    ) {
+        return 'image/webp';
+    }
+
+    if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 &&
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x41 &&
+        bytes[10] === 0x56 &&
+        bytes[11] === 0x45
+    ) {
+        return 'audio/wav';
+    }
+
+    if (bytes.length >= 4 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+        return 'audio/ogg';
+    }
+
+    if (
+        bytes.length >= 4 &&
+        ((bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) || (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33))
+    ) {
+        return 'audio/mpeg';
+    }
+
+    if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+        return 'audio/webm';
+    }
+
+    if (
+        bytes.length >= 12 &&
+        bytes[4] === 0x66 &&
+        bytes[5] === 0x74 &&
+        bytes[6] === 0x79 &&
+        bytes[7] === 0x70
+    ) {
+        return 'audio/mp4';
+    }
+
+    try {
+        const snippet = new TextDecoder('utf-8').decode(bytes.slice(0, 512)).trimStart().toLowerCase();
+        if (snippet.startsWith('<svg') || (snippet.startsWith('<?xml') && snippet.includes('<svg'))) {
+            return 'image/svg+xml';
+        }
+    } catch {
+        // Ignore text decode errors; binary sniffing already handled.
+    }
+
+    return null;
+};
+
+const parseDataUrlMimeType = (value: string): string | null => {
+    const match = String(value || '').match(/^data:([^;,]+)(?:;|,)/i);
+    if (!match?.[1]) return null;
+    return match[1].trim().toLowerCase();
+};
+
 const inferMediaType = (blob: Blob, url?: string): string => {
     const explicit = (blob.type || '').split(';')[0].trim().toLowerCase();
-    if (explicit) return explicit;
+    if (explicit && explicit !== 'application/octet-stream') return explicit;
     const path = (url || '').split('?')[0].toLowerCase();
+    if (path.endsWith('.png')) return 'image/png';
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+    if (path.endsWith('.webp')) return 'image/webp';
+    if (path.endsWith('.gif')) return 'image/gif';
+    if (path.endsWith('.svg')) return 'image/svg+xml';
+    if (path.endsWith('.wav')) return 'audio/wav';
+    if (path.endsWith('.mp3')) return 'audio/mpeg';
+    if (path.endsWith('.m4a')) return 'audio/mp4';
+    if (path.endsWith('.ogg')) return 'audio/ogg';
+    if (path.endsWith('.webm')) return 'audio/webm';
+    if (explicit) return explicit;
+    return 'application/octet-stream';
+};
+
+const inferMediaTypeFromUrl = (url: string): string => {
+    const path = String(url || '').split('?')[0].toLowerCase();
     if (path.endsWith('.png')) return 'image/png';
     if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
     if (path.endsWith('.webp')) return 'image/webp';
@@ -1377,9 +1615,109 @@ const withTimeout = async <T>(task: Promise<T>, timeoutMs: number, fallback: T):
     }
 };
 
+const isNativeExportRuntime = (): boolean => {
+    try {
+        if (typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform()) return true;
+        const platform = typeof Capacitor.getPlatform === 'function'
+            ? String(Capacitor.getPlatform() || '').toLowerCase()
+            : '';
+        return platform === 'ios' || platform === 'android';
+    } catch {
+        return false;
+    }
+};
+
+const base64ToBlob = (rawData: string, mimeType: string): Blob | null => {
+    const data = String(rawData || '').trim();
+    if (!data) return null;
+    const declaredMimeType = parseDataUrlMimeType(data) || String(mimeType || '').trim().toLowerCase();
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    try {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        const sniffedMimeType = detectMediaTypeFromBytes(bytes);
+        const resolvedMimeType =
+            declaredMimeType && declaredMimeType !== 'application/octet-stream'
+                ? declaredMimeType
+                : sniffedMimeType || declaredMimeType || 'application/octet-stream';
+        return new Blob([bytes], { type: resolvedMimeType });
+    } catch {
+        return null;
+    }
+};
+
+const ensureBlobMediaType = async (blob: Blob, url?: string): Promise<Blob> => {
+    const explicit = (blob.type || '').split(';')[0].trim().toLowerCase();
+    if (explicit && explicit !== 'application/octet-stream') return blob;
+
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const sniffedMimeType = detectMediaTypeFromBytes(bytes);
+    if (sniffedMimeType) {
+        return new Blob([bytes], { type: sniffedMimeType });
+    }
+
+    const urlMimeType = inferMediaTypeFromUrl(String(url || ''));
+    if (urlMimeType !== 'application/octet-stream') {
+        return new Blob([bytes], { type: urlMimeType });
+    }
+
+    return blob;
+};
+
+const fetchAssetBlobViaNativeFilesystem = async (url: string): Promise<Blob | null> => {
+    if (!isNativeExportRuntime()) return null;
+    if (!/^https?:\/\//i.test(String(url || '').trim())) return null;
+    if (typeof Filesystem.downloadFile !== 'function') return null;
+
+    const ext = extensionForMediaType(inferMediaTypeFromUrl(url), 'bin');
+    const tempPath = `export-assets/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    try {
+        await Filesystem.downloadFile({
+            url,
+            path: tempPath,
+            directory: Directory.Temporary,
+            recursive: true
+        });
+
+        const readResult = await Filesystem.readFile({
+            path: tempPath,
+            directory: Directory.Temporary
+        });
+
+        if (readResult.data instanceof Blob) {
+            return await ensureBlobMediaType(readResult.data, url);
+        }
+        if (typeof readResult.data === 'string') {
+            const blob = base64ToBlob(readResult.data, inferMediaTypeFromUrl(url));
+            if (!blob) return null;
+            return await ensureBlobMediaType(blob, url);
+        }
+        return null;
+    } catch (error) {
+        console.warn('Native filesystem asset fetch failed:', url, error);
+        return null;
+    } finally {
+        await Filesystem.deleteFile({
+            path: tempPath,
+            directory: Directory.Temporary
+        }).catch(() => undefined);
+    }
+};
+
 const fetchAssetBlob = async (url: string): Promise<Blob | null> => {
     const firebaseBlob = await withTimeout(getFirebaseStorageBlobFromUrl(url), EXPORT_ASSET_TIMEOUT_MS, null);
-    if (firebaseBlob) return firebaseBlob;
+    if (firebaseBlob) return await ensureBlobMediaType(firebaseBlob, url);
+
+    const nativeBlob = await withTimeout(
+        fetchAssetBlobViaNativeFilesystem(url),
+        EXPORT_NATIVE_ASSET_TIMEOUT_MS,
+        null
+    );
+    if (nativeBlob) return await ensureBlobMediaType(nativeBlob, url);
 
     try {
         const controller = new AbortController();
@@ -1387,7 +1725,8 @@ const fetchAssetBlob = async (url: string): Promise<Blob | null> => {
         const response = await fetch(url, { signal: controller.signal });
         window.clearTimeout(timer);
         if (!response.ok) return null;
-        return await response.blob();
+        const blob = await response.blob();
+        return await ensureBlobMediaType(blob, url);
     } catch (error) {
         console.warn('Failed to load asset for EPUB:', url, error);
         return null;
@@ -1401,20 +1740,37 @@ const isFirebaseStorageDownloadUrlForSdk = (url: string): boolean => (
 );
 
 const tryParseFirebaseStorageObjectPath = (url: string): string | null => {
+    const safeDecode = (value: string): string => {
+        try {
+            return decodeURIComponent(value);
+        } catch {
+            return value;
+        }
+    };
+
     try {
         const parsed = new URL(url);
+        const pathname = parsed.pathname || '';
+
+        // New download endpoint styles:
+        // /v0/b/<bucket>/o/<encodedPath>
+        // /download/storage/v1/b/<bucket>/o/<encodedPath>
+        const v0Match = pathname.match(/\/(?:v0|download\/storage\/v1)\/b\/[^/]+\/o\/(.+)$/i);
+        if (v0Match?.[1]) {
+            return safeDecode(v0Match[1]);
+        }
 
         // v0 API style: .../o/<encodedPath>?alt=media...
-        const objectMatch = parsed.pathname.match(/\/o\/([^/]+)$/);
+        const objectMatch = pathname.match(/\/o\/(.+)$/);
         if (objectMatch?.[1]) {
-            return decodeURIComponent(objectMatch[1]);
+            return safeDecode(objectMatch[1]);
         }
 
         // storage.googleapis.com/<bucket>/<path>
         if (/^storage\.googleapis\.com$/i.test(parsed.hostname)) {
-            const parts = parsed.pathname.split('/').filter(Boolean);
+            const parts = pathname.split('/').filter(Boolean);
             if (parts.length >= 2) {
-                return decodeURIComponent(parts.slice(1).join('/'));
+                return safeDecode(parts.slice(1).join('/'));
             }
         }
 
@@ -1425,8 +1781,24 @@ const tryParseFirebaseStorageObjectPath = (url: string): string | null => {
 };
 
 const getFirebaseStorageBlobFromUrl = async (url: string): Promise<Blob | null> => {
-    if (!isFirebaseStorageDownloadUrlForSdk(url)) return null;
-    const objectPath = tryParseFirebaseStorageObjectPath(url);
+    const normalized = String(url || '').trim();
+    if (!normalized) return null;
+
+    const gsMatch = normalized.match(/^gs:\/\/([^/]+)\/(.+)$/i);
+    if (gsMatch?.[1] && gsMatch?.[2]) {
+        try {
+            const bucketStorage = getStorage(firebaseApp, `gs://${gsMatch[1]}`);
+            const ref = storageRef(bucketStorage, gsMatch[2]);
+            return await getBlob(ref);
+        } catch (error) {
+            console.warn('Firebase Storage SDK blob fetch failed for gs:// reference:', normalized, error);
+            return null;
+        }
+    }
+
+    const objectPath = /^https?:\/\//i.test(normalized)
+        ? (isFirebaseStorageDownloadUrlForSdk(normalized) ? tryParseFirebaseStorageObjectPath(normalized) : null)
+        : normalized.replace(/^\/+/, '');
     if (!objectPath) return null;
 
     try {
@@ -1434,8 +1806,8 @@ const getFirebaseStorageBlobFromUrl = async (url: string): Promise<Blob | null> 
         const ref = storageRef(storage, objectPath);
         return await getBlob(ref);
     } catch (error) {
-        // Fall back to regular fetch below; some URLs may still require public token access.
-        console.warn('Firebase Storage SDK blob fetch failed for EPUB asset, falling back to fetch:', objectPath, error);
+        // Fall back to native/browser fetch below; some URLs may still require public token access.
+        console.warn('Firebase Storage SDK blob fetch failed for export asset, falling back to URL fetch:', objectPath, error);
         return null;
     }
 };
@@ -1695,12 +2067,33 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
     let codeFenceLines: string[] = [];
     let currentListType: 'ul' | 'ol' | null = null;
     let currentListItems: string[] = [];
+    let paragraphBlocksSinceLastHeading = 0;
+    let pendingImageHtmlBlocks: string[] = [];
+    const flushPendingImageHtmlBlocks = (force = false) => {
+        if (!pendingImageHtmlBlocks.length) return;
+        if (force || paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
+            htmlParts.push(...pendingImageHtmlBlocks);
+            pendingImageHtmlBlocks = [];
+        }
+    };
+    const registerParagraphBlock = () => {
+        paragraphBlocksSinceLastHeading += 1;
+        flushPendingImageHtmlBlocks();
+    };
+    const queueOrRenderImageHtml = (html: string) => {
+        if (paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
+            htmlParts.push(html);
+            return;
+        }
+        pendingImageHtmlBlocks.push(html);
+    };
 
     const flushList = () => {
         if (!currentListType || !currentListItems.length) return;
         htmlParts.push(`<${currentListType} class="content-list">${currentListItems.join('')}</${currentListType}>`);
         currentListType = null;
         currentListItems = [];
+        registerParagraphBlock();
     };
 
     const flushCodeFence = () => {
@@ -1765,7 +2158,7 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
                           </figure>
                         `);
                     }
-                    htmlParts.push(`<section class="image-grid">${figures.join('')}</section>`);
+                    queueOrRenderImageHtml(`<section class="image-grid">${figures.join('')}</section>`);
                     i += 2;
                     continue;
                 }
@@ -1794,6 +2187,7 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
                     </table>
                   </div>
                 `);
+                registerParagraphBlock();
                 i = genericTable.endIndex;
                 continue;
             }
@@ -1808,13 +2202,13 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
             const cleanUrl = extractMarkdownImageUrl(imageOnlyMatch[2] || '');
             const assetRef = await options.collector.addRemoteAsset(cleanUrl, 'image', `${options.sectionBaseName}_img`);
             if (assetRef) {
-                htmlParts.push(`
+                queueOrRenderImageHtml(`
                   <figure class="hero-image">
                     <img src="${escapeXml(toTextSectionRelativeHref(assetRef.href))}" alt="${escapeXml(normalizedAlt || 'Görsel')}" loading="lazy" />
                   </figure>
                 `);
             } else {
-                htmlParts.push('<p class="body-text muted">[Görsel yüklenemedi]</p>');
+                queueOrRenderImageHtml('<p class="body-text muted">[Görsel yüklenemedi]</p>');
             }
             continue;
         }
@@ -1831,6 +2225,8 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
             if (isGenericSectionHeadingForType(rawHeading, options.nodeType) || isDuplicateHeadingText(rawHeading, duplicateHeadingKeys)) {
                 continue;
             }
+            flushPendingImageHtmlBlocks(true);
+            paragraphBlocksSinceLastHeading = 0;
             htmlParts.push(`<h${level} class="content-heading level-${level}">${renderInlineMarkdownToEpubHtml(rawHeading)}</h${level}>`);
             continue;
         }
@@ -1866,15 +2262,18 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
                     ? 'content-quote content-quote-warning'
                     : 'content-quote';
             htmlParts.push(`<blockquote class="${quoteClass}">${renderInlineMarkdownToEpubHtml(quoteText)}</blockquote>`);
+            registerParagraphBlock();
             continue;
         }
 
         flushList();
         htmlParts.push(`<p class="body-text">${renderInlineMarkdownToEpubHtml(trimmed)}</p>`);
+        registerParagraphBlock();
     }
 
     flushCodeFence();
     flushList();
+    flushPendingImageHtmlBlocks(true);
     return htmlParts.join('\n');
 };
 
@@ -2323,8 +2722,8 @@ const buildCoverSectionHtml = async (course: CourseData, collector: EpubAssetCol
           <div class="cover-image-wrap">${coverImageHtml}</div>
           <div class="cover-meta">
             <h1>${escapeHtml(course.topic)}</h1>
-            <div class="meta-line">Tür: ${escapeHtml(typeLabel)} • Alt Tür: ${escapeHtml(subGenreLabel)} • Yaş: ${escapeHtml(ageLabel)} • Kategori: ${escapeHtml(categoryLabel)}</div>
-            <div class="brand-line">Kurgulayan: ${escapeHtml(creatorLabel)} | Fortale | ${escapeHtml(headerDate)}</div>
+            <div class="meta-line">Tür: ${escapeHtml(typeLabel)} • Alt Tür: ${escapeHtml(subGenreLabel)} • ${escapeHtml(ageLabel)} • Kategori: ${escapeHtml(categoryLabel)}</div>
+            <div class="brand-line">Kurgulayan: ${escapeHtml(creatorLabel)} | ${escapeHtml(headerDate)} | Fortale I Build Your Epic</div>
           </div>
         </div>
         <hr class="cover-divider" />
@@ -2459,8 +2858,7 @@ const buildEpub = async (course: CourseData, fileNameBase?: string) => {
         compressionOptions: { level: 6 }
     });
 
-    const fileBase = slugifyFileName(fileNameBase || preparedCourse.topic || 'smartbook');
-    await createDownload(blob, `${fileBase}.epub`);
+    await createDownload(blob, buildReadableBookDownloadFileName(fileNameBase || preparedCourse.topic, 'epub'));
 };
 
 export const exportCourseToEpub = async (course: CourseData) => {

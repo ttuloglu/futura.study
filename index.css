@@ -5,7 +5,7 @@
 :root {
   /* Matte sticky-notes theme */
   --app-safe-top: max(env(safe-area-inset-top, 0px), 28px);
-  --app-header-row-top: calc(var(--app-safe-top) + 10px);
+  --app-header-row-top: calc(var(--app-safe-top) + 1px);
   --color-background: #232a31;
   --color-surface-card: rgba(34, 37, 42, 0.46);
   --color-surface-glass: rgba(39, 42, 47, 0.58);
@@ -205,7 +205,7 @@ body,
 /* Compact Overrides */
 .view-container {
   @apply h-full overflow-y-auto px-4 pb-28 scroll-smooth;
-  padding-top: calc(var(--app-header-row-top) + 82px);
+  padding-top: calc(var(--app-header-row-top) + 72px);
 }
 
 .app-shell-width {
@@ -220,12 +220,23 @@ body,
   margin-right: auto;
 }
 
+.app-chrome-width {
+  width: min(calc(100% - 20px), 410px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @media (min-width: 768px) {
   .app-shell-width {
     max-width: 920px;
   }
 
   .app-content-width {
+    max-width: 840px;
+  }
+
+  .app-chrome-width {
+    width: 100%;
     max-width: 840px;
   }
 
@@ -242,6 +253,10 @@ body,
   }
 
   .app-content-width {
+    max-width: 1080px;
+  }
+
+  .app-chrome-width {
     max-width: 1080px;
   }
 
@@ -565,8 +580,6 @@ div {
     radial-gradient(circle at 12% 7%, rgba(154, 172, 191, 0.11), transparent 44%),
     radial-gradient(circle at 88% 11%, rgba(118, 132, 148, 0.1), transparent 42%),
     linear-gradient(180deg, #2d353d 0%, #232a31 100%);
-  border-left: 1px dashed rgba(122, 154, 188, 0.12);
-  border-right: 1px dashed rgba(122, 154, 188, 0.12);
 }
 
 button,

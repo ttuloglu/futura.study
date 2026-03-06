@@ -22,7 +22,6 @@ import {
   Maximize2,
   Minimize2
 } from 'lucide-react';
-import { exportCourseToEpub, exportCourseToPdf, exportNodeToPdf } from '../utils/exportUtils';
 import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState } from '../types';
 import FLogo from '../components/FLogo';
 import FaviconSpinner from '../components/FaviconSpinner';
@@ -75,6 +74,46 @@ const QUIZ_PASS_PERCENT = 70;
 const QUIZ_TIME_LIMIT_SECONDS = 300;
 const READING_WORDS_PER_MINUTE = 180;
 const QUIZ_FEEDBACK_DELAY_MS = 2000;
+const PODCAST_CREATING_LOOP_VIDEO_SRC = '/animations/podcast-creating-loop.mp4';
+const PDF_BACKGROUND_PRESETS = [
+  { id: 'candy-blue', label: 'Şeker mavi', color: '#d9f2ff' },
+  { id: 'candy-pink', label: 'Şeker pembe', color: '#ffd9ec' },
+  { id: 'candy-green', label: 'Şeker yeşil', color: '#ddf7d8' },
+  { id: 'candy-yellow', label: 'Şeker sarı', color: '#fff2b8' },
+  { id: 'candy-brown', label: 'Şeker kahverengi', color: '#e9d4be' },
+  { id: 'candy-lilac', label: 'Şeker lila', color: '#eadcff' },
+  { id: 'candy-coral', label: 'Şeker mercan', color: '#ffd1c7' },
+  { id: 'candy-cloud', label: 'Şeker bulut', color: '#edf2f7' }
+] as const;
+let exportUtilsPromise: Promise<typeof import('../utils/exportUtils')> | null = null;
+
+function resolveBookTypeLabel(bookType: CourseData['bookType'] | undefined, t: (value: string) => string): string {
+  if (bookType === 'fairy_tale') return t('Masal');
+  if (bookType === 'story') return t('Hikaye');
+  if (bookType === 'novel') return t('Roman');
+  return t('Roman');
+}
+
+function isFairyTaleBookType(bookType: CourseData['bookType'] | undefined): boolean {
+  const normalized = String(bookType || '').trim().toLowerCase();
+  return normalized === 'fairy_tale' || normalized === 'fairy-tale';
+}
+
+function buildBookTypeSubGenreLabel(courseData: CourseData, t: (value: string) => string): string {
+  const bookTypeLabel = resolveBookTypeLabel(courseData.bookType, t);
+  const subGenre = String(courseData.subGenre || '').trim();
+  const ageLabel = getSmartBookAgeGroupLabel(courseData.ageGroup);
+  const ageGroupLabel = ageLabel === 'Genel' ? `${ageLabel} ${t('Yaş Grubu')}` : `${ageLabel} ${t('Grubu')}`;
+  if (!subGenre) return `${bookTypeLabel} I ${ageGroupLabel}`;
+  return `${bookTypeLabel}- ${t(subGenre)} I ${ageGroupLabel}`;
+}
+
+function loadExportUtils() {
+  if (!exportUtilsPromise) {
+    exportUtilsPromise = import('../utils/exportUtils');
+  }
+  return exportUtilsPromise;
+}
 
 type MilestoneTone = 'neutral' | 'success' | 'focus' | 'completion';
 
@@ -93,6 +132,8 @@ type BackgroundReadyToast = {
   message: string;
   nodeId?: string;
 };
+
+type PdfBackgroundPresetId = (typeof PDF_BACKGROUND_PRESETS)[number]['id'];
 
 type MilestoneParticle = {
   x: number;
@@ -500,32 +541,43 @@ function InlineQuizMarkdown({ content }: { content: string }) {
 }
 
 function DownloadCircleSpinner({ size = 14 }: { size?: number }) {
+  const normalizedSize = Math.max(12, Math.round(size));
+  const ringBorder = Math.max(2, Math.round(normalizedSize * 0.18));
+  const innerSize = Math.max(8, normalizedSize - 4);
+
   return (
     <span
       aria-hidden="true"
-      className="inline-block animate-spin rounded-full border-2 border-white/20 border-t-white/90"
-      style={{ width: size, height: size }}
-    />
+      className="relative inline-flex items-center justify-center"
+      style={{ width: normalizedSize, height: normalizedSize }}
+    >
+      <span
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(103,214,255,0.32) 0%, rgba(103,214,255,0) 70%)',
+          filter: 'blur(0.8px)'
+        }}
+      />
+      <span
+        className="absolute animate-spin rounded-full"
+        style={{
+          width: normalizedSize,
+          height: normalizedSize,
+          border: `${ringBorder}px solid rgba(157,214,255,0.38)`,
+          borderTopColor: 'rgba(255,255,255,0.98)',
+          boxShadow: '0 0 10px rgba(103,214,255,0.46)'
+        }}
+      />
+      <span
+        className="absolute rounded-full"
+        style={{
+          width: innerSize,
+          height: innerSize,
+          border: '1px solid rgba(255,255,255,0.18)'
+        }}
+      />
+    </span>
   );
-}
-
-function formatPodcastUsd(value: number | undefined): string {
-  const amount = Math.max(0, Number(value) || 0);
-  if (amount === 0) return '$0';
-  if (amount < 0.01) return `$${amount.toFixed(4)}`;
-  if (amount < 1) return `$${amount.toFixed(3)}`;
-  return `$${amount.toFixed(2)}`;
-}
-
-function formatPodcastTokenCount(value: number | undefined, locale: string): string {
-  return Math.max(0, Math.floor(Number(value) || 0)).toLocaleString(locale);
-}
-
-function formatPodcastFileSize(bytes: number | undefined): string {
-  const normalized = Math.max(0, Number(bytes) || 0);
-  if (!normalized) return '0 MB';
-  const megabytes = normalized / (1024 * 1024);
-  return `${megabytes >= 100 ? megabytes.toFixed(0) : megabytes.toFixed(1)} MB`;
 }
 
 export default function CourseFlowView({
@@ -545,7 +597,6 @@ export default function CourseFlowView({
   const [generatingNodeId, setGeneratingNodeId] = useState<string | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
   const genTimer = useRef<number | null>(null);
-  const [podcastTranscriptOpenByNodeId, setPodcastTranscriptOpenByNodeId] = useState<Record<string, boolean>>({});
   const [activeQuizNode, setActiveQuizNode] = useState<TimelineNode | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
@@ -563,6 +614,8 @@ export default function CourseFlowView({
   const [milestoneQueue, setMilestoneQueue] = useState<MilestonePayload[]>([]);
   const [activeMilestone, setActiveMilestone] = useState<MilestonePayload | null>(null);
   const [activeExportKey, setActiveExportKey] = useState<string | null>(null);
+  const [isPdfPaletteOpen, setIsPdfPaletteOpen] = useState(false);
+  const [selectedPdfBackgroundPresetId, setSelectedPdfBackgroundPresetId] = useState<PdfBackgroundPresetId>(PDF_BACKGROUND_PRESETS[0].id);
   const [backgroundReadyToasts, setBackgroundReadyToasts] = useState<BackgroundReadyToast[]>([]);
   const [pulseTabNodeId, setPulseTabNodeId] = useState<string | null>(null);
   const [progressPulse, setProgressPulse] = useState(false);
@@ -584,7 +637,13 @@ export default function CourseFlowView({
   const nodeReadySnapshotRef = useRef<Map<string, { primaryReady: boolean; summaryReady: boolean }>>(new Map());
   const nodeReadyInitCourseIdRef = useRef<string | null>(null);
   const podcastCompletionMilestoneShownRef = useRef<Set<string>>(new Set());
-  const isNodeVisibleInFlow = (node: TimelineNode) => node.type === 'lecture';
+  const isNodeVisibleInFlow = (node: TimelineNode) => {
+    if (node.type === 'lecture') return true;
+    if (node.type === 'reinforce' || node.type === 'retention') {
+      return Boolean(node.content?.trim());
+    }
+    return false;
+  };
   const isNarrativeBook =
     courseData?.bookType === 'fairy_tale' ||
     courseData?.bookType === 'story' ||
@@ -1098,13 +1157,6 @@ export default function CourseFlowView({
     return updated;
   };
 
-  const togglePodcastTranscript = (nodeId: string) => {
-    setPodcastTranscriptOpenByNodeId(prev => ({
-      ...prev,
-      [nodeId]: !prev[nodeId]
-    }));
-  };
-
   const markNodeCompleted = (node: TimelineNode, patch?: Partial<TimelineNode>) => {
     const updatedNodes = updateNodes(existingNodes => {
       const completedNodes = existingNodes.map(n => {
@@ -1380,7 +1432,13 @@ export default function CourseFlowView({
     return { canDownload: true, reason: '' };
   };
 
-  const handleFullSmartBookDownload = async (e: React.MouseEvent) => {
+  const handleFullSmartBookDownload = async (
+    e: React.MouseEvent,
+    options?: {
+      backgroundColor?: string;
+      closePalette?: boolean;
+    }
+  ) => {
     e.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
@@ -1392,17 +1450,42 @@ export default function CourseFlowView({
     }
 
     try {
+      if (options?.closePalette) {
+        setIsPdfPaletteOpen(false);
+      }
       await runExportWithSpinner('full-pdf', async () => {
         const exportCourse: CourseData = {
           ...courseData,
           nodes: orderedTabNodes
         };
-        await exportCourseToPdf(exportCourse);
+        const { exportCourseToPdf } = await loadExportUtils();
+        await exportCourseToPdf(exportCourse, {
+          backgroundColor: options?.backgroundColor
+        });
       });
     } catch (error) {
       console.error('PDF export failed:', error);
       showIosPopup('PDF indirilemedi.');
     }
+  };
+
+  const handlePdfPaletteToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isExportBusy) return;
+    if (!canDownloadFullSmartBook) {
+      showIosPopup(fullSmartBookDownloadState.reason || 'SmartBook indir şu an kilitli.');
+      return;
+    }
+    setIsPdfPaletteOpen((current) => !current);
+  };
+
+  const handlePdfPaletteDownload = async (e: React.MouseEvent) => {
+    const selectedPreset =
+      PDF_BACKGROUND_PRESETS.find((preset) => preset.id === selectedPdfBackgroundPresetId) || PDF_BACKGROUND_PRESETS[0];
+    await handleFullSmartBookDownload(e, {
+      backgroundColor: selectedPreset.color,
+      closePalette: true
+    });
   };
 
   const handleFullSmartBookEpubDownload = async (e: React.MouseEvent) => {
@@ -1422,6 +1505,7 @@ export default function CourseFlowView({
           ...courseData,
           nodes: orderedTabNodes
         };
+        const { exportCourseToEpub } = await loadExportUtils();
         await exportCourseToEpub(exportCourse);
       });
     } catch (error) {
@@ -1569,6 +1653,7 @@ export default function CourseFlowView({
     e.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
+    if (!isFairyTaleBookType(courseData.bookType)) return;
 
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
@@ -1585,6 +1670,10 @@ export default function CourseFlowView({
     e.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
+    if (!isFairyTaleBookType(courseData.bookType)) {
+      showIosPopup('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.');
+      return;
+    }
 
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
@@ -1621,6 +1710,8 @@ export default function CourseFlowView({
 
     try {
       let resolvedAudioUrl = '';
+      let resolvedUsage: PodcastUsageSummary | undefined;
+      let resolvedSegmentCount = 0;
       await runExportWithSpinner('podcast-generate', async () => {
         podcastGenerationProgressRef.current = {
           total: 0,
@@ -1653,7 +1744,10 @@ export default function CourseFlowView({
           setPodcastGenerationVisualProgress((prev) => Math.max(prev, 14));
           let jobState = await startPodcastAudioJob(
             courseData.topic || '',
-            fullBookScript
+            fullBookScript,
+            {
+              bookType: courseData.bookType
+            }
           );
           podcastGenerationProgressRef.current = {
             total: Math.max(1, jobState.totalChunks || 1),
@@ -1753,9 +1847,31 @@ export default function CourseFlowView({
           throw new Error('Podcast sesi üretilemedi.');
         }
         resolvedAudioUrl = audioUrl;
+        resolvedUsage = usage;
+        resolvedSegmentCount = segments.length;
       });
       if (!resolvedAudioUrl) {
         throw new Error('Podcast sesi üretilemedi.');
+      }
+      if (resolvedUsage) {
+        console.info('[podcast-summary]', {
+          topic: courseData.topic || '',
+          language: languageCode,
+          segments: resolvedSegmentCount,
+          totalTokens: resolvedUsage.totalTokens || 0,
+          inputTokens: resolvedUsage.inputTokens || 0,
+          outputTokens: resolvedUsage.outputTokens || 0,
+          estimatedCostUsd: resolvedUsage.estimatedCostUsd || 0,
+          audioFileBytes: resolvedUsage.audioFileBytes || 0,
+          audioFileMB: Number(((resolvedUsage.audioFileBytes || 0) / (1024 * 1024)).toFixed(2))
+        });
+      } else {
+        console.info('[podcast-summary]', {
+          topic: courseData.topic || '',
+          language: languageCode,
+          segments: resolvedSegmentCount,
+          message: 'usage unavailable'
+        });
       }
       setPodcastGenerationVisualProgress(100);
       setHeaderPodcastLanguageCode(languageCode);
@@ -1778,9 +1894,9 @@ export default function CourseFlowView({
     }
     const lang = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
     const audioUrl = podcastNode.podcastVariants?.[lang]?.audioUrl
+      || podcastNode.podcastAudioUrl
       || podcastNode.podcastVariants?.[lang]?.segments?.[0]?.audioUrl
       || podcastNode.podcastSegments?.[0]?.audioUrl
-      || podcastNode.podcastAudioUrl
       || '';
     if (!audioUrl) {
       showIosPopup('Önce podcast oluşturmalısınız.');
@@ -1813,6 +1929,7 @@ export default function CourseFlowView({
       }
       try {
         await runExportWithSpinner(`node-pdf:${node.id}`, async () => {
+          const { exportNodeToPdf } = await loadExportUtils();
           await exportNodeToPdf(courseData, node);
         });
       } catch (error) {
@@ -1825,6 +1942,7 @@ export default function CourseFlowView({
   };
 
   if (!courseData) return null;
+  const isFairyTaleBook = isFairyTaleBookType(courseData.bookType);
   const headerPodcastNode = getPodcastCarrierNode(courseData.nodes);
   const effectiveHeaderPodcastLanguage = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
   const effectiveHeaderPodcastLanguageLabel = getAppLanguageLabel(
@@ -1833,14 +1951,9 @@ export default function CourseFlowView({
   const headerPodcastVariant = headerPodcastNode?.podcastVariants?.[effectiveHeaderPodcastLanguage];
   const headerPodcastSegments = headerPodcastVariant?.segments || headerPodcastNode?.podcastSegments || [];
   const headerPodcastAudioUrl = headerPodcastVariant?.audioUrl
-    || headerPodcastSegments?.[0]?.audioUrl
     || headerPodcastNode?.podcastAudioUrl
+    || headerPodcastSegments?.[0]?.audioUrl
     || '';
-  const headerPodcastScript = headerPodcastVariant?.script
-    || headerPodcastSegments.map((segment) => segment.script || '').filter(Boolean).join('\n\n')
-    || headerPodcastNode?.podcastScript
-    || '';
-  const headerPodcastUsage = headerPodcastVariant?.usage || headerPodcastNode?.podcastUsage;
   const hasSegmentedPodcast = headerPodcastSegments.length > 0;
   if (!orderedTabNodes.length) {
     return (
@@ -2126,11 +2239,18 @@ export default function CourseFlowView({
                     style={courseData.coverImageUrl ? { background: 'transparent' } : { background: `linear-gradient(135deg, hsl(${hue},52%,24%), hsl(${hue},40%,13%))` }}
                   >
                     {courseData.coverImageUrl && (
-                      <img
-                        src={courseData.coverImageUrl}
-                        alt={`${courseData.topic} ${t('SmartBook kapağı')}`}
-                        className="absolute inset-0 w-full h-full object-contain object-center border-0"
-                      />
+                      <>
+                        <img
+                          src={courseData.coverImageUrl}
+                          alt={`${courseData.topic} ${t('SmartBook kapağı')}`}
+                          className="absolute inset-0 w-full h-full object-contain object-center border-0"
+                        />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/88 via-black/50 to-transparent px-1.5 pb-1.5 pt-6">
+                          <p className="line-clamp-3 text-[9px] font-black leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                            {courseData.topic}
+                          </p>
+                        </div>
+                      </>
                     )}
                     {!courseData.coverImageUrl && (
                       <>
@@ -2152,10 +2272,7 @@ export default function CourseFlowView({
                 <h1 className="text-base font-bold text-white leading-snug line-clamp-2 pr-1 mb-1">{courseData.topic}</h1>
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-white/45">{t(courseData.category || 'Akademik')}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-[#b9cde8]">{t(getSmartBookAgeGroupLabel(courseData.ageGroup))}</span>
+                    <span className="text-[11px] font-bold text-[#b9cde8]">{buildBookTypeSubGenreLabel(courseData, t)}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-bold text-accent-green">{calculateTotalDuration(orderedTabNodes)}</span>
@@ -2175,10 +2292,10 @@ export default function CourseFlowView({
                   const isPodcastDownloadExporting = isExportingKey('podcast-download');
                   const hasHeaderPodcastAudio = Boolean(headerPodcastAudioUrl);
                   return (
-                    <div className="mt-3 -ml-[88px] w-[calc(100%+88px)]">
-                      <div className="grid grid-cols-3 gap-2">
+                    <div className="mt-8 -ml-[88px] w-[calc(100%+88px)]">
+                      <div className={`grid gap-2 ${isFairyTaleBook ? 'grid-cols-3' : 'grid-cols-2'}`}>
                         <button
-                          onClick={handleFullSmartBookDownload}
+                          onClick={handlePdfPaletteToggle}
                           disabled={isExportBusy || !canDownloadFullSmartBook}
                           className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${canDownloadFullSmartBook
                             ? 'text-white hover:-translate-y-[1px] active:scale-95'
@@ -2235,32 +2352,85 @@ export default function CourseFlowView({
                           </span>
                         </button>
 
-                        <button
-                          onClick={handlePodcastDownload}
-                          disabled={isExportBusy}
-                          className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${isExportBusy ? 'opacity-85 cursor-wait' : 'hover:-translate-y-[1px] active:scale-95'
-                            }`}
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(31,64,102,0.98) 0%, rgba(24,46,72,0.96) 100%)',
-                            borderColor: 'rgba(171,214,255,0.5)',
-                            boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
-                          }}
-                          title={hasHeaderPodcastAudio ? t('Podcast aç') : t('Podcast')}
-                          aria-label={hasHeaderPodcastAudio ? t('Podcast aç') : t('Podcast')}
-                        >
-                          {isPodcastExporting ? (
-                            <DownloadCircleSpinner size={16} />
-                          ) : (
-                            <AudioLines size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
-                          )}
-                          <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
-                            {isPodcastExporting
-                              ? t('Oluşturuluyor')
-                              : t('Podcast')}
-                          </span>
-                        </button>
+                        {isFairyTaleBook && (
+                          <button
+                            onClick={handlePodcastDownload}
+                            disabled={isExportBusy}
+                            className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${isExportBusy ? 'opacity-85 cursor-wait' : 'hover:-translate-y-[1px] active:scale-95'
+                              }`}
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(31,64,102,0.98) 0%, rgba(24,46,72,0.96) 100%)',
+                              borderColor: 'rgba(171,214,255,0.5)',
+                              boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+                            }}
+                            title={hasHeaderPodcastAudio ? t('Masalı Seslendir') : t('Masalı Seslendir')}
+                            aria-label={hasHeaderPodcastAudio ? t('Masalı Seslendir') : t('Masalı Seslendir')}
+                          >
+                            {isPodcastExporting ? (
+                              <DownloadCircleSpinner size={16} />
+                            ) : (
+                              <AudioLines size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+                            )}
+                            <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+                              {isPodcastExporting
+                                ? t('Oluşturuluyor')
+                                : t('Masalı Seslendir')}
+                            </span>
+                          </button>
+                        )}
                       </div>
-                      {isPodcastExporting && (
+                      {isPdfPaletteOpen && canDownloadFullSmartBook && !isFullPdfExporting && (
+                        <div
+                          className="mt-2 rounded-2xl border border-dashed px-3 py-2"
+                          style={{
+                            background: 'linear-gradient(160deg, rgba(24,38,57,0.92) 0%, rgba(17,22,29,0.94) 55%, rgba(14,24,38,0.95) 100%)',
+                            borderColor: 'rgba(120,171,226,0.34)',
+                            boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18)'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
+                            {t('Arka Plan Rengi Seçin')}
+                          </p>
+                          <div className="flex items-center gap-2 overflow-x-auto">
+                            <div className="flex min-w-0 flex-nowrap items-center gap-2">
+                              {PDF_BACKGROUND_PRESETS.map((preset) => {
+                                const isSelected = preset.id === selectedPdfBackgroundPresetId;
+                                return (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all"
+                                    style={{
+                                      background: preset.color,
+                                      borderColor: isSelected ? '#f04e5e' : 'rgba(210,231,255,0.42)',
+                                      borderWidth: isSelected ? 2.5 : 1,
+                                      boxShadow: isSelected ? '0 0 0 3px rgba(240,78,94,0.18)' : 'none'
+                                    }}
+                                    title={preset.label}
+                                    aria-label={preset.label}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handlePdfPaletteDownload}
+                              className="ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 text-[10px] font-bold text-[#e2f1ff] transition-all hover:-translate-y-[1px] active:scale-95"
+                              style={{
+                                background: 'linear-gradient(135deg, rgba(39,88,139,0.98) 0%, rgba(24,58,95,0.96) 100%)',
+                                borderColor: 'rgba(171,214,255,0.5)',
+                                boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+                              }}
+                            >
+                              <Download size={13} className="text-[#d9ecff]" />
+                              <span>{t('İndir')}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {isFairyTaleBook && isPodcastExporting && (
                         <div
                           className="mt-2 rounded-2xl border border-dashed p-3"
                           style={{
@@ -2270,30 +2440,16 @@ export default function CourseFlowView({
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="relative h-[116px] w-full">
-                            <div
-                              className="absolute inset-0 rounded-2xl border border-dashed overflow-hidden"
-                              style={{
-                                background: 'linear-gradient(135deg, rgba(32,61,95,0.98) 0%, rgba(20,38,60,0.98) 52%, rgba(14,28,44,0.98) 100%)',
-                                borderColor: 'rgba(181,218,255,0.42)',
-                                animation: 'fortale-book-glow 2.2s ease-in-out infinite'
-                              }}
-                            >
-                              <div className="absolute inset-0 flex items-center justify-between px-4">
-                                {Array.from({ length: 24 }).map((_, idx) => (
-                                  <span
-                                    key={`podcast-gen-${idx}`}
-                                    className="w-[4px] rounded-full"
-                                    style={{
-                                      height: `${14 + ((idx % 6) * 3)}px`,
-                                      background: ['#f3d156', '#82d96a', '#67d6ff', '#ff6b6b'][idx % 4],
-                                      animation: 'podcast-eq-bar 900ms ease-in-out infinite',
-                                      animationDelay: `${idx * 48}ms`
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            </div>
+                          <div className="mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border border-dashed border-[#7da3cf]/40 bg-[#0f1b2a]">
+                            <video
+                              className="h-auto w-full"
+                              src={PODCAST_CREATING_LOOP_VIDEO_SRC}
+                              autoPlay
+                              muted
+                              loop
+                              playsInline
+                              preload="auto"
+                            />
                           </div>
                           <p className="mt-2 text-center text-[11px] font-bold text-white">{t('Podcast oluşturuluyor...')}</p>
                           <div className="mt-2 h-2 rounded-full bg-[#102033] overflow-hidden">
@@ -2317,7 +2473,7 @@ export default function CourseFlowView({
                           </div>
                         </div>
                       )}
-                      {isHeaderPodcastPanelOpen && !isPodcastExporting && (
+                      {isFairyTaleBook && isHeaderPodcastPanelOpen && !isPodcastExporting && (
                         <div
                           className="mt-2 rounded-2xl border border-dashed p-2"
                           style={{
@@ -2330,69 +2486,24 @@ export default function CourseFlowView({
                           <div className="mb-2 px-1 text-[10px] font-bold text-[#cde4fb]">
                             {t('Podcast')} ({effectiveHeaderPodcastLanguageLabel})
                           </div>
-                          {!!headerPodcastUsage && (
-                            <div className="mb-2 grid grid-cols-2 gap-1.5 px-1 text-[10px] text-[#d9ecff] sm:grid-cols-4">
-                              <div className="rounded-xl border border-dashed px-2 py-1" style={{ borderColor: 'rgba(120,171,226,0.24)', background: 'rgba(13,24,38,0.45)' }}>
-                                <div className="text-[9px] tracking-[0.08em] text-[#8cb2d9]">{t('Maliyet')}</div>
-                                <div className="mt-0.5 font-bold text-white">{formatPodcastUsd(headerPodcastUsage.estimatedCostUsd)}</div>
-                              </div>
-                              <div className="rounded-xl border border-dashed px-2 py-1" style={{ borderColor: 'rgba(120,171,226,0.24)', background: 'rgba(13,24,38,0.45)' }}>
-                                <div className="text-[9px] tracking-[0.08em] text-[#8cb2d9]">{t('Toplam Token')}</div>
-                                <div className="mt-0.5 font-bold text-white">{formatPodcastTokenCount(headerPodcastUsage.totalTokens, locale)}</div>
-                              </div>
-                              <div className="rounded-xl border border-dashed px-2 py-1" style={{ borderColor: 'rgba(120,171,226,0.24)', background: 'rgba(13,24,38,0.45)' }}>
-                                <div className="text-[9px] tracking-[0.08em] text-[#8cb2d9]">{t('Girdi / Çıktı')}</div>
-                                <div className="mt-0.5 font-bold text-white">
-                                  {formatPodcastTokenCount(headerPodcastUsage.inputTokens, locale)} / {formatPodcastTokenCount(headerPodcastUsage.outputTokens, locale)}
-                                </div>
-                              </div>
-                              <div className="rounded-xl border border-dashed px-2 py-1" style={{ borderColor: 'rgba(120,171,226,0.24)', background: 'rgba(13,24,38,0.45)' }}>
-                                <div className="text-[9px] tracking-[0.08em] text-[#8cb2d9]">{t('Dosya')}</div>
-                                <div className="mt-0.5 font-bold text-white">{formatPodcastFileSize(headerPodcastUsage.audioFileBytes)}</div>
-                              </div>
-                            </div>
-                          )}
                           {(headerPodcastAudioUrl && hasSegmentedPodcast) ? (
-                            <div className="flex items-start gap-2">
-                              <div className="min-w-0 flex-1">
-                                <PodcastInlinePlayer
-                                  script={headerPodcastScript}
-                                  audio={{ audioUrl: headerPodcastAudioUrl, segments: headerPodcastSegments }}
-                                  transcriptOpen={headerPodcastNode ? !!podcastTranscriptOpenByNodeId[headerPodcastNode.id] : false}
-                                  onToggleTranscript={() => {
-                                    if (headerPodcastNode) togglePodcastTranscript(headerPodcastNode.id);
-                                  }}
-                                  onDurationResolved={(seconds) => {
-                                    if (!headerPodcastNode) return;
-                                    const formatted = formatPodcastDurationFromSeconds(seconds, t);
-                                    if (headerPodcastNode.duration === formatted) return;
-                                    updateNodes((nodes) =>
-                                      nodes.map((node) =>
-                                        node.id === headerPodcastNode.id && node.duration !== formatted
-                                          ? { ...node, duration: formatted }
-                                          : node
-                                      )
-                                    );
-                                  }}
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={handleHeaderPodcastAudioDownload}
-                                disabled={isExportBusy}
-                                className={`mt-1 h-10 w-10 rounded-xl border border-dashed inline-flex items-center justify-center active:scale-95 ${isExportBusy ? 'opacity-85 cursor-wait' : ''}`}
-                                style={{
-                                  borderColor: 'rgba(143,197,255,0.46)',
-                                  background: 'linear-gradient(135deg, rgba(31,64,102,0.98) 0%, rgba(24,46,72,0.96) 100%)',
-                                  color: 'rgba(225,240,255,0.95)',
-                                  boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.22), 0 4px 10px rgba(11,23,38,0.24)'
-                                }}
-                                aria-label={t('Podcast indir')}
-                                title={t('Podcast indir')}
-                              >
-                                {isPodcastDownloadExporting ? <DownloadCircleSpinner size={15} /> : <Download size={15} />}
-                              </button>
-                            </div>
+                            <PodcastInlinePlayer
+                              audio={{ audioUrl: headerPodcastAudioUrl, segments: headerPodcastSegments }}
+                              onDownload={handleHeaderPodcastAudioDownload}
+                              isDownloadBusy={isPodcastDownloadExporting || isExportBusy}
+                              onDurationResolved={(seconds) => {
+                                if (!headerPodcastNode) return;
+                                const formatted = formatPodcastDurationFromSeconds(seconds, t);
+                                if (headerPodcastNode.duration === formatted) return;
+                                updateNodes((nodes) =>
+                                  nodes.map((node) =>
+                                    node.id === headerPodcastNode.id && node.duration !== formatted
+                                      ? { ...node, duration: formatted }
+                                      : node
+                                  )
+                                );
+                              }}
+                            />
                           ) : (
                             <div
                               className="rounded-xl border border-dashed px-3 py-3"
@@ -2434,7 +2545,7 @@ export default function CourseFlowView({
                                   </span>
                                   <span className="min-w-0 text-left leading-tight">
                                     <span className="block text-[13px] font-black tracking-[0.01em] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.72)' }}>
-                                      {headerPodcastAudioUrl && !hasSegmentedPodcast ? t('Tam Kitap Podcast Oluştur') : t('Podcast Oluştur')}
+                                      {t('Masalı Seslendir')}
                                     </span>
                                     <span className="block mt-1 text-[11px] font-semibold text-[#eef6ff] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.62)' }}>
                                       {isExportBusy ? t('Hazırlanıyor...') : t('Tek parça sesli anlatım')}
@@ -2495,7 +2606,7 @@ export default function CourseFlowView({
                 const isLocked = (node.status === 'locked' || node.status === 'conditional') && !node.content;
                 const isGen = generatingNodeId === node.id;
                 const isBackgroundPreparing = Boolean(node.isLoading && !isGen);
-                const showNodeSubtitle = Boolean(node.title && !isSameSectionHeading(node.title, sectionTitle));
+                const showNodeSubtitle = !isNarrativeBook && Boolean(node.title && !isSameSectionHeading(node.title, sectionTitle));
                 const isContentHydrated = !node.content || hydratedContentNodeIds.includes(node.id);
                 const displayContent = isContentHydrated && node.content
                   ? stripLeadingDuplicateSectionHeadings(node.content, [sectionTitle, node.title])
@@ -2690,7 +2801,6 @@ export default function CourseFlowView({
 }
 
 interface PodcastInlinePlayerProps {
-  script: string;
   audio: {
     audioUrl?: string;
     segments?: Array<{
@@ -2701,17 +2811,16 @@ interface PodcastInlinePlayerProps {
       duration?: string;
     }>;
   };
-  transcriptOpen: boolean;
-  onToggleTranscript: () => void;
+  onDownload: (e: React.MouseEvent) => void;
+  isDownloadBusy?: boolean;
   onCompleted?: () => void;
   onDurationResolved?: (seconds: number) => void;
 }
 
 function PodcastInlinePlayer({
-  script,
   audio,
-  transcriptOpen,
-  onToggleTranscript,
+  onDownload,
+  isDownloadBusy = false,
   onCompleted,
   onDurationResolved
 }: PodcastInlinePlayerProps) {
@@ -2741,10 +2850,10 @@ function PodcastInlinePlayer({
     () => normalizedAudioSegments.map((segment) => segment.audioUrl).join('|'),
     [normalizedAudioSegments]
   );
-  const currentAudioSrc = normalizedAudioSegments.length > 0
-    ? (normalizedAudioSegments[activeAudioSegmentIndex]?.audioUrl || '')
-    : baseAudioSrc;
-  const canShowTranscript = Boolean(String(script || '').trim());
+  const hasSingleTrackAudio = Boolean(baseAudioSrc);
+  const currentAudioSrc = hasSingleTrackAudio
+    ? baseAudioSrc
+    : (normalizedAudioSegments[activeAudioSegmentIndex]?.audioUrl || '');
   const activeSegmentTitle = normalizedAudioSegments.length > 0
     ? (normalizedAudioSegments[activeAudioSegmentIndex]?.title || `${t('Parça')} ${activeAudioSegmentIndex + 1}`)
     : t('Tam Podcast');
@@ -2795,37 +2904,36 @@ function PodcastInlinePlayer({
       className="rounded-xl border border-dashed p-3 space-y-3"
       style={{ background: 'rgba(17,22,29,0.86)', borderColor: 'rgba(173,149,124,0.12)' }}
     >
-      <div className="relative flex items-center justify-between gap-2 pr-1">
-        <span className="flex items-center gap-2 text-[11px] font-bold text-white/72">
-          <AudioLines size={12} className="text-white/80" />
-          {t('Podcast Oynatıcı')}
-        </span>
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="flex items-center justify-center gap-[3px] h-3.5 min-w-[98px] opacity-90">
+      <div className="flex items-center justify-between gap-2">
+        <div className="pointer-events-none flex-1">
+          <div className="mx-auto flex h-4 min-w-[180px] max-w-full items-center justify-center gap-[3px] opacity-95">
             {[
-              '#b8d0eb', '#dbc28d', '#e1a698', '#bfd0e6',
-              '#cdb08c', '#a7bed8', '#e1a698', '#b8d0eb',
-              '#dbc28d', '#bfd0e6', '#e1a698', '#a7bed8',
-              '#cdb08c', '#b8d0eb', '#e1a698', '#bfd0e6'
+              '#34d399', '#fbbf24', '#60a5fa', '#fb7185',
+              '#a78bfa', '#22d3ee', '#f97316', '#38bdf8',
+              '#f43f5e', '#4ade80', '#facc15', '#818cf8',
+              '#06b6d4', '#fb7185', '#f59e0b', '#2dd4bf',
+              '#60a5fa', '#f43f5e', '#34d399', '#a78bfa'
             ].map((color, idx) => (
               <span
                 key={`eq-${idx}`}
-                className="w-[2px] rounded-full"
+                className="w-[3px] rounded-full"
                 style={{
-                  height: `${6 + (idx % 4)}px`,
+                  height: `${7 + (idx % 6)}px`,
                   backgroundColor: color,
                   transformOrigin: 'center',
-                  animation: 'podcast-eq-bar 780ms ease-in-out infinite',
-                  animationDelay: `${idx * 70}ms`,
+                  animation: 'podcast-eq-bar 760ms ease-in-out infinite',
+                  animationDelay: `${idx * 52}ms`,
                   animationPlayState: isAudioPlaying ? 'running' : 'paused',
-                  opacity: isAudioPlaying ? 1 : 0.45
+                  opacity: isAudioPlaying ? 1 : 0.58
                 }}
               />
             ))}
           </div>
         </div>
         <span className="text-[10px] font-bold text-white/55">
-          {normalizedAudioSegments.length > 0
+          {hasSingleTrackAudio
+            ? '1/1'
+            : normalizedAudioSegments.length > 0
             ? `${activeAudioSegmentIndex + 1}/${normalizedAudioSegments.length}`
             : '1/1'}
         </span>
@@ -2833,16 +2941,23 @@ function PodcastInlinePlayer({
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-bold text-white/70 truncate">{activeSegmentTitle}</p>
-        {canShowTranscript && (
-          <button
-            type="button"
-            onClick={onToggleTranscript}
-            className="h-7 rounded-lg border border-dashed px-2 text-[10px] font-bold inline-flex items-center justify-center"
-            style={{ borderColor: 'rgba(181,201,228,0.22)', color: 'rgba(215,229,247,0.96)', background: 'rgba(17,22,29,0.92)' }}
-          >
-            {transcriptOpen ? t('Metni Gizle') : t('Metni Göster')}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={isDownloadBusy || !currentAudioSrc}
+          className={`h-7 rounded-lg border border-dashed px-2 text-[10px] font-bold inline-flex items-center justify-center gap-1 whitespace-nowrap active:scale-95 ${isDownloadBusy ? 'opacity-80 cursor-wait' : ''}`}
+          style={{
+            borderColor: 'rgba(143,197,255,0.46)',
+            background: 'linear-gradient(135deg, rgba(31,64,102,0.98) 0%, rgba(24,46,72,0.96) 100%)',
+            color: 'rgba(225,240,255,0.95)',
+            boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.22), 0 4px 10px rgba(11,23,38,0.24)'
+          }}
+          aria-label={t('Podcast indir')}
+          title={t('Podcast indir')}
+        >
+          {isDownloadBusy ? <DownloadCircleSpinner size={13} /> : <Download size={13} />}
+          {t('Podcast indir')}
+        </button>
       </div>
 
       <audio
@@ -2879,7 +2994,7 @@ function PodcastInlinePlayer({
         className="w-full h-8 opacity-70 invert grayscale"
       />
 
-      {normalizedAudioSegments.length > 1 && (
+      {!hasSingleTrackAudio && normalizedAudioSegments.length > 1 && (
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -2905,14 +3020,6 @@ function PodcastInlinePlayer({
         </div>
       )}
 
-      {canShowTranscript && transcriptOpen && (
-        <div
-          className="max-h-[220px] overflow-auto rounded-lg border border-dashed px-3 py-2 text-[11px] leading-relaxed text-white/72"
-          style={{ borderColor: 'rgba(173,149,124,0.1)', background: 'rgba(17,22,29,0.66)' }}
-        >
-          {script}
-        </div>
-      )}
     </div>
   );
 }

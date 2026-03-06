@@ -50,26 +50,30 @@ function triggerBrowserDownload(url: string, fileName: string): void {
   document.body.removeChild(link);
 }
 
+function isHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(String(url || '').trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeFileName(fileName: string): string {
   const normalized = String(fileName || '')
-    .trim()
-    .replace(/ğ/gi, 'g')
-    .replace(/ü/gi, 'u')
-    .replace(/ş/gi, 's')
-    .replace(/ı/gi, 'i')
-    .replace(/ö/gi, 'o')
-    .replace(/ç/gi, 'c')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFC')
+    .replace(/[\u0000-\u001f]/g, ' ')
+    .trim();
 
   const extensionMatch = normalized.match(/\.([a-z0-9]{1,8})$/i);
   const extension = extensionMatch ? `.${extensionMatch[1].toLowerCase()}` : '';
   const baseName = (extension ? normalized.slice(0, -extension.length) : normalized)
-    .replace(/[^a-zA-Z0-9._ -]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^[-_.]+|[-_.]+$/g, '')
-    .slice(0, 96);
+    .replace(/[<>:"/\\|?*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .replace(/^[. ]+/g, '')
+    .slice(0, 120)
+    .trim();
 
   return `${baseName || 'dosya'}${extension}`;
 }
@@ -112,6 +116,44 @@ function blobToBase64Content(blob: Blob): Promise<string> {
   });
 }
 
+async function shareNativeFileUri(uri: string): Promise<void> {
+  const safeUri = String(uri || '').trim();
+  if (!safeUri) throw new Error('Paylaşılacak dosya yolu bulunamadı.');
+  const canShare = await Share.canShare().catch(() => ({ value: false }));
+  if (!canShare.value) return;
+  await Share.share({ files: [safeUri] });
+}
+
+async function tryNativeDownloadAndShareFromUrl(url: string, fileName: string): Promise<boolean> {
+  if (!isHttpUrl(url)) return false;
+  if (typeof Filesystem.downloadFile !== 'function') return false;
+
+  const finalFileName = sanitizeFileName(fileName);
+  const targetPath = `share/${Date.now()}-${finalFileName}`;
+
+  try {
+    const downloadResult = await Filesystem.downloadFile({
+      url,
+      path: targetPath,
+      directory: Directory.Temporary,
+      recursive: true
+    });
+
+    const resolvedUri = String(downloadResult.path || '').trim().startsWith('file://')
+      ? String(downloadResult.path || '').trim()
+      : (await Filesystem.getUri({
+        path: targetPath,
+        directory: Directory.Temporary
+      })).uri;
+
+    await shareNativeFileUri(resolvedUri);
+    return true;
+  } catch (error) {
+    console.warn('Native URL download fallback to fetch/blob path:', error);
+    return false;
+  }
+}
+
 export async function saveBlobAsFile({
   blob,
   fileName
@@ -142,13 +184,7 @@ export async function saveBlobAsFile({
     directory: Directory.Temporary,
     recursive: true
   });
-
-  const canShare = await Share.canShare().catch(() => ({ value: false }));
-  if (!canShare.value) return;
-
-  await Share.share({
-    files: [fileWriteResult.uri]
-  });
+  await shareNativeFileUri(fileWriteResult.uri);
 }
 
 export async function downloadFile({
@@ -160,6 +196,7 @@ export async function downloadFile({
 }): Promise<void> {
   if (!url) throw new Error('İndirilecek dosya bulunamadı.');
   if (!fileName) throw new Error('Dosya adı bulunamadı.');
+  const finalFileName = sanitizeFileName(fileName);
 
   const isNative = isCapacitorNativeRuntime();
   if (!isNative) {
@@ -167,17 +204,20 @@ export async function downloadFile({
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Dosya indirilemedi (${response.status}).`);
       const blob = await response.blob();
-      await saveBlobAsFile({ blob, fileName });
+      await saveBlobAsFile({ blob, fileName: finalFileName });
     } catch {
-      triggerBrowserDownload(url, fileName);
+      triggerBrowserDownload(url, finalFileName);
     }
     return;
   }
+
+  const handledViaNativeTransfer = await tryNativeDownloadAndShareFromUrl(url, finalFileName);
+  if (handledViaNativeTransfer) return;
 
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Dosya indirilemedi (${response.status}).`);
   }
   const blob = await response.blob();
-  await saveBlobAsFile({ blob, fileName });
+  await saveBlobAsFile({ blob, fileName: finalFileName });
 }

@@ -257,6 +257,14 @@ function logAiUsage(operation: AiOperation, usage?: UsageReport): void {
   console.info(`[AI COST] ${operationLabel} toplam: ${totalPriceUsd} usd`);
 }
 
+function extractErrorUsage(error: any): UsageReport | undefined {
+  const details = error?.details;
+  if (!details || typeof details !== "object") return undefined;
+  const usage = (details as Record<string, unknown>).usage;
+  if (!usage || typeof usage !== "object") return undefined;
+  return usage as UsageReport;
+}
+
 async function callAi(operation: AiOperation, payload: Record<string, unknown>): Promise<AiGatewayResponse> {
   assertPayloadBookSafety(operation, payload);
   await appCheckReady;
@@ -296,6 +304,7 @@ async function callAi(operation: AiOperation, payload: Record<string, unknown>):
       logAiUsage(operation, data.usage);
       return data;
     } catch (error: any) {
+      logAiUsage(operation, extractErrorUsage(error));
       const code = String(error?.code || '').toLowerCase();
       const message = String(error?.message || '').toLowerCase();
       const isCreditExhausted =
@@ -376,7 +385,7 @@ export async function generateCourseOutline(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
   if (generationPayload?.allowAiBookTitleGeneration === true) payload.allowAiBookTitleGeneration = true;
@@ -445,7 +454,7 @@ export async function generateLectureContent(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
   if (generationPayload?.narrativeContext) payload.narrativeContext = generationPayload.narrativeContext;
@@ -469,7 +478,7 @@ export async function generateLectureImages(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
   if (generationPayload?.narrativeContext) payload.narrativeContext = generationPayload.narrativeContext;
@@ -507,7 +516,7 @@ export async function generatePodcastScriptWithBrief(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
   const data = await callAi("generatePodcastScript", payload);
@@ -606,10 +615,15 @@ async function hydratePodcastAudioJob(data: PodcastAudioJobResponse): Promise<Po
 
 export async function startPodcastAudioJob(
   topic: string,
-  script: string
+  script: string,
+  options?: {
+    bookType?: SmartBookBookType;
+  }
 ): Promise<PodcastAudioJobResult> {
   await appCheckReady;
-  const response = await startPodcastAudioJobCallable({ topic, script });
+  const payload: Record<string, unknown> = { topic, script };
+  if (options?.bookType) payload.bookType = options.bookType;
+  const response = await startPodcastAudioJobCallable(payload);
   return await hydratePodcastAudioJob(response.data || {});
 }
 
@@ -633,7 +647,7 @@ export async function generatePodcastAudio(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
 
@@ -695,7 +709,7 @@ export async function generateRemedialContent(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
   const data = await callAi("generateRemedialContent", payload);
@@ -719,7 +733,7 @@ export async function generateSummaryCard(
   if (generationPayload?.bookType) payload.bookType = generationPayload.bookType;
   if (generationPayload?.subGenre) payload.subGenre = generationPayload.subGenre;
   if (Number.isFinite(generationPayload?.targetPageCount as number)) {
-    payload.targetPageCount = Math.max(8, Math.floor(generationPayload!.targetPageCount as number));
+    payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
 

@@ -36,10 +36,38 @@ const GEMINI_QUALITY_MODEL =
   ).trim();
 const GEMINI_FLASH_TTS_MODEL =
   (
+    process.env.GEMINI_FLASH_TTS_MODEL ||
+    readValueFromDotEnv("GEMINI_FLASH_TTS_MODEL") ||
     process.env.PODCAST_TTS_MODEL ||
     readValueFromDotEnv("PODCAST_TTS_MODEL") ||
     "gemini-2.5-flash-preview-tts"
   ).trim();
+const OPENAI_MINI_TTS_MODEL =
+  (
+    process.env.OPENAI_MINI_TTS_MODEL ||
+    readValueFromDotEnv("OPENAI_MINI_TTS_MODEL") ||
+    "gpt-4o-mini-tts"
+  ).trim();
+const OPENAI_MINI_TTS_VOICE =
+  (
+    process.env.OPENAI_MINI_TTS_VOICE ||
+    readValueFromDotEnv("OPENAI_MINI_TTS_VOICE") ||
+    "coral"
+  ).trim();
+const OPENAI_MINI_TTS_FAIRY_VOICE =
+  (
+    process.env.OPENAI_MINI_TTS_FAIRY_VOICE ||
+    readValueFromDotEnv("OPENAI_MINI_TTS_FAIRY_VOICE") ||
+    "shimmer"
+  ).trim();
+const OPENAI_MINI_TTS_FAIRY_INSTRUCTIONS =
+  (
+    process.env.OPENAI_MINI_TTS_FAIRY_INSTRUCTIONS ||
+    readValueFromDotEnv("OPENAI_MINI_TTS_FAIRY_INSTRUCTIONS") ||
+    "Speak as a gentle, soft, warm female fairy-tale storyteller for children. Keep a calm pace, affectionate tone, and expressive but soothing delivery."
+  ).trim();
+// Keep podcast narration on Gemini Flash TTS (2.5) while preserving the same chunking/merge backend flow.
+const PODCAST_TTS_PROVIDER: "google" = "google";
 const GEMINI_QUIZ_REVIEW_MODEL =
   (
     process.env.GEMINI_QUIZ_REVIEW_MODEL ||
@@ -58,6 +86,7 @@ const XAI_VISUAL_MODEL =
     "grok-imagine-image"
   ).trim();
 const OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_TTS_API_URL = "https://api.openai.com/v1/audio/speech";
 const XAI_IMAGE_API_URL = "https://api.x.ai/v1/images/generations";
 const CONTENT_COMPLETION_MARKER = "[[SMARTBOOK_END]]";
 const FAIRY_TALE_TOTAL_IMAGE_COUNT = 5;
@@ -151,6 +180,18 @@ const GOOGLE_FLASH_LITE_INPUT_USD_PER_1M =
   Number(process.env.GOOGLE_FLASH_LITE_INPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_FLASH_LITE_INPUT_USD_PER_1M") || "0.1");
 const GOOGLE_FLASH_LITE_OUTPUT_USD_PER_1M =
   Number(process.env.GOOGLE_FLASH_LITE_OUTPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_FLASH_LITE_OUTPUT_USD_PER_1M") || "0.4");
+const GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M =
+  Number(
+    process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M ||
+    readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M") ||
+    "0.25"
+  );
+const GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M =
+  Number(
+    process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M ||
+    readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M") ||
+    "1.5"
+  );
 const GOOGLE_FLASH_TTS_INPUT_USD_PER_1M =
   Number(process.env.GOOGLE_FLASH_TTS_INPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_FLASH_TTS_INPUT_USD_PER_1M") || "0.5");
 const GOOGLE_FLASH_TTS_OUTPUT_USD_PER_1M =
@@ -161,20 +202,44 @@ const GEMINI_FLASH_TTS_QUEUE_SAFETY_RATIO =
   Number(process.env.GEMINI_FLASH_TTS_QUEUE_SAFETY_RATIO || readValueFromDotEnv("GEMINI_FLASH_TTS_QUEUE_SAFETY_RATIO") || "0.85");
 const GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS =
   Number(process.env.GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS || readValueFromDotEnv("GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS") || "5000");
+const GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_INPUT_TOKENS =
+  Number(process.env.GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_INPUT_TOKENS || readValueFromDotEnv("GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_INPUT_TOKENS") || "3200");
+const GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_WORDS =
+  Number(process.env.GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_WORDS || readValueFromDotEnv("GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_WORDS") || "1500");
+const GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_CHARS =
+  Number(process.env.GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_CHARS || readValueFromDotEnv("GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_CHARS") || "4000");
+const GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS =
+  Number(process.env.GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS || readValueFromDotEnv("GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS") || "4000");
+const GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS =
+  Number(process.env.GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS || readValueFromDotEnv("GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS") || "1500");
+const OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS =
+  Number(process.env.OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS || readValueFromDotEnv("OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS") || "2000");
+const OPENAI_MINI_TTS_ESTIMATED_OUTPUT_TOKENS_PER_MINUTE =
+  Number(
+    process.env.OPENAI_MINI_TTS_ESTIMATED_OUTPUT_TOKENS_PER_MINUTE ||
+    readValueFromDotEnv("OPENAI_MINI_TTS_ESTIMATED_OUTPUT_TOKENS_PER_MINUTE") ||
+    "1250"
+  );
 const GEMINI_FLASH_TTS_MAX_CHUNKS =
   Number(process.env.GEMINI_FLASH_TTS_MAX_CHUNKS || readValueFromDotEnv("GEMINI_FLASH_TTS_MAX_CHUNKS") || "48");
 const PODCAST_JOB_STALE_AFTER_MS =
-  Number(process.env.PODCAST_JOB_STALE_AFTER_MS || readValueFromDotEnv("PODCAST_JOB_STALE_AFTER_MS") || "90000");
+  Number(process.env.PODCAST_JOB_STALE_AFTER_MS || readValueFromDotEnv("PODCAST_JOB_STALE_AFTER_MS") || "900000");
+const PODCAST_JOB_HARD_STUCK_MS =
+  Number(process.env.PODCAST_JOB_HARD_STUCK_MS || readValueFromDotEnv("PODCAST_JOB_HARD_STUCK_MS") || "720000");
 const PODCAST_JOB_CHUNK_CONCURRENCY =
   Number(process.env.PODCAST_JOB_CHUNK_CONCURRENCY || readValueFromDotEnv("PODCAST_JOB_CHUNK_CONCURRENCY") || "2");
 const GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS =
-  Number(process.env.GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS || readValueFromDotEnv("GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS") || "360");
+  Number(process.env.GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS || readValueFromDotEnv("GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS") || "1500");
 const GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS =
-  Number(process.env.GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS || readValueFromDotEnv("GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS") || "2600");
+  Number(process.env.GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS || readValueFromDotEnv("GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS") || "4000");
 const GEMINI_FLASH_TTS_QUEUE_MAX_WAIT_MS =
   Number(process.env.GEMINI_FLASH_TTS_QUEUE_MAX_WAIT_MS || readValueFromDotEnv("GEMINI_FLASH_TTS_QUEUE_MAX_WAIT_MS") || "420000");
 const GEMINI_FLASH_TTS_QUEUE_MIN_OVERHEAD_MS =
   Number(process.env.GEMINI_FLASH_TTS_QUEUE_MIN_OVERHEAD_MS || readValueFromDotEnv("GEMINI_FLASH_TTS_QUEUE_MIN_OVERHEAD_MS") || "4000");
+const PODCAST_CHUNK_ATTEMPT_TIMEOUT_MS =
+  Number(process.env.PODCAST_CHUNK_ATTEMPT_TIMEOUT_MS || readValueFromDotEnv("PODCAST_CHUNK_ATTEMPT_TIMEOUT_MS") || "420000");
+const PODCAST_REFUND_TIMEOUT_MS =
+  Number(process.env.PODCAST_REFUND_TIMEOUT_MS || readValueFromDotEnv("PODCAST_REFUND_TIMEOUT_MS") || "5000");
 const GOOGLE_GEMINI_3_FLASH_PREVIEW_INPUT_USD_PER_1M =
   Number(process.env.GOOGLE_GEMINI_3_FLASH_PREVIEW_INPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_GEMINI_3_FLASH_PREVIEW_INPUT_USD_PER_1M") || "0.5");
 const GOOGLE_GEMINI_3_FLASH_PREVIEW_OUTPUT_USD_PER_1M =
@@ -185,6 +250,10 @@ const OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE =
   Number(process.env.OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE || readValueFromDotEnv("OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE") || "0.013");
 const OPENAI_GPT_IMAGE_INPUT_USD_PER_1M =
   Number(process.env.OPENAI_GPT_IMAGE_INPUT_USD_PER_1M || readValueFromDotEnv("OPENAI_GPT_IMAGE_INPUT_USD_PER_1M") || "0");
+const OPENAI_MINI_TTS_INPUT_USD_PER_1M =
+  Number(process.env.OPENAI_MINI_TTS_INPUT_USD_PER_1M || readValueFromDotEnv("OPENAI_MINI_TTS_INPUT_USD_PER_1M") || "0.6");
+const OPENAI_MINI_TTS_OUTPUT_USD_PER_1M =
+  Number(process.env.OPENAI_MINI_TTS_OUTPUT_USD_PER_1M || readValueFromDotEnv("OPENAI_MINI_TTS_OUTPUT_USD_PER_1M") || "12");
 const XAI_GROK_IMAGE_USD_PER_IMAGE =
   Number(process.env.XAI_GROK_IMAGE_USD_PER_IMAGE || readValueFromDotEnv("XAI_GROK_IMAGE_USD_PER_IMAGE") || "0.02");
 const APP_CORS_ORIGINS = [
@@ -234,7 +303,7 @@ const SYSTEM_INSTRUCTION_BASE =
   "Sen profesyonel bir içerik üretim motorusun. Kullanıcının seçtiği tür, alt tür, yaş grubu, dil, karakter, mekan, zaman ve final tercihine birebir sadık kalmak zorundasın; bu alanları asla override etme. Yanıt dili kullanıcı ve içerik diliyle aynı olmalı; dil belirsizse Türkçe kullan. Güvenlik kuralı: cinsellik/sex/porno, savaş suçu, ırkçılık, zorbalık, terörizm, patlayıcı yapımı ve diğer hukuka aykırı eylem talimatları içeren içerikleri asla üretme; bu konulara değinme.";
 
 const SYSTEM_INSTRUCTION_BY_BOOK_TYPE: Partial<Record<SmartBookBookType, string>> = {
-  fairy_tale: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir MASAL metnidir. Zorunlu masal kuralları: hayali dünya, en az bir olağanüstü unsur (konuşan hayvan/büyü/zaman yolculuğu), net iyi-kötü ayrımı, mutlu son ve açık bir ders. Dil 4-9 yaş için basit ve somut olmalı; tek ana olay ve tek ana mesaj kullanılmalı; akış Döşeme->Giriş->Gelişme 1->Gelişme 2->Sonuç çizgisini izlemeli.",
+  fairy_tale: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir MASAL metnidir. Zorunlu masal kuralları: hayali dünya, en az bir olağanüstü unsur (konuşan hayvan/büyü/zaman yolculuğu), güçlü masalsı atmosfer, yaşa uygun açık duygusal yönelim ve umutlu/rahatlatıcı kapanış. Dil 1-9 yaş için basit ve somut olmalı; olay akışı dağılmamalı, masalsı neden-sonuç tutarlılığı korunmalı.",
   story: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir HİKAYE metnidir. Tüm metin edebi hikaye üslubuyla yazılmalıdır: güçlü olay örgüsü, karakter gelişimi, sahne geçişleri ve dramatik gerilimle ilerlemelidir. Kısa ve yoğun bir anlatı kur.",
   novel: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir ROMAN metnidir. Tüm metin edebi roman üslubuyla yazılmalıdır: katmanlı karakter dönüşümü, geniş anlatı derinliği, sürekli gerilim ve tema birliğiyle ilerlemelidir. Zengin ve derin bir anlatım kur."
 };
@@ -521,7 +590,7 @@ type PreferredLanguage =
   | "sv"
   | "th"
   | "tr";
-type SmartBookAudienceLevel = "4-6" | "7-9" | "7-11" | "12-18" | "general";
+type SmartBookAudienceLevel = "1-3" | "4-6" | "7-9" | "7-11" | "12-18" | "general";
 type SmartBookBookType = "academic" | "fairy_tale" | "story" | "novel";
 type SmartBookEndingStyle = "happy" | "bittersweet" | "twist";
 type ContentLanguageCode =
@@ -749,6 +818,92 @@ function resolveOpenAiApiKey(): string {
     });
   }
   return secretValue || envValue;
+}
+
+function resolveGeminiApiKey(): string {
+  const envValue =
+    (process.env.GEMINI_API_KEY || readValueFromDotEnv("GEMINI_API_KEY") || "").trim();
+  let secretValue = "";
+  try {
+    secretValue = (GEMINI_API_KEY.value() || "").trim();
+  } catch (error) {
+    logger.warn("GEMINI_API_KEY secret could not be resolved.", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+  return secretValue || envValue;
+}
+
+function isVertexAiEnabled(): boolean {
+  const raw = (process.env.GOOGLE_GENAI_USE_VERTEXAI || readValueFromDotEnv("GOOGLE_GENAI_USE_VERTEXAI") || "").trim();
+  return /^(1|true|yes|on)$/i.test(raw);
+}
+
+function resolveVertexProjectId(): string {
+  return (
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    readValueFromDotEnv("GOOGLE_CLOUD_PROJECT") ||
+    readValueFromDotEnv("GCLOUD_PROJECT") ||
+    readValueFromDotEnv("GCP_PROJECT") ||
+    ""
+  ).trim();
+}
+
+function requiresGlobalVertexLocation(model: string): boolean {
+  const normalized = String(model || "").trim().toLowerCase();
+  return normalized === "gemini-3.1-flash-lite-preview" || normalized === "gemini-3-flash-preview";
+}
+
+function resolveVertexLocation(): string {
+  const configuredLocation = (
+    process.env.GOOGLE_CLOUD_LOCATION ||
+    process.env.VERTEX_LOCATION ||
+    readValueFromDotEnv("GOOGLE_CLOUD_LOCATION") ||
+    readValueFromDotEnv("VERTEX_LOCATION") ||
+    "global"
+  ).trim();
+
+  const mustUseGlobalLocation =
+    requiresGlobalVertexLocation(GEMINI_CONTENT_MODEL) ||
+    requiresGlobalVertexLocation(GEMINI_PLANNER_MODEL) ||
+    requiresGlobalVertexLocation(GEMINI_QUALITY_MODEL);
+
+  if (mustUseGlobalLocation && configuredLocation.toLowerCase() !== "global") {
+    logger.warn("Vertex location overridden to global for Gemini 3 preview models.", {
+      configuredLocation,
+      forcedLocation: "global",
+      contentModel: GEMINI_CONTENT_MODEL
+    });
+    return "global";
+  }
+
+  return configuredLocation;
+}
+
+function createGoogleGenAiClient(): GoogleGenAI {
+  if (isVertexAiEnabled()) {
+    const project = resolveVertexProjectId();
+    if (!project) {
+      throw new HttpsError(
+        "failed-precondition",
+        "GOOGLE_GENAI_USE_VERTEXAI=true but GOOGLE_CLOUD_PROJECT is not configured."
+      );
+    }
+    const location = resolveVertexLocation();
+    return new GoogleGenAI({
+      vertexai: true,
+      project,
+      location
+    });
+  }
+
+  const apiKey = resolveGeminiApiKey();
+  if (!apiKey) {
+    throw new HttpsError("failed-precondition", "GEMINI_API_KEY is not configured.");
+  }
+  return new GoogleGenAI({ apiKey });
 }
 
 function resolveXaiApiKey(): string {
@@ -1234,7 +1389,8 @@ function languageInstruction(language: PreferredLanguage): string {
 }
 
 function normalizeSmartBookAudienceLevel(raw: unknown): SmartBookAudienceLevel {
-  const value = String(raw || "").trim().toLowerCase();
+  const value = String(raw || "").trim().toLowerCase().replace(/_/g, "-");
+  if (value === "1-3") return "1-3";
   if (value === "4-6") return "4-6";
   if (value === "7-9") return "7-9";
   if (value === "7-11") return "7-11";
@@ -1249,10 +1405,15 @@ function audiencePromptInstruction(
   language: PreferredLanguage
 ): string {
   const isEn = usesEnglishPromptScaffold(language);
+  if (audienceLevel === "1-3") {
+    return isEn
+      ? "Audience level: ages 1-3. Use extremely simple, concrete, and very short sentences (mostly 2-7 words). Keep one action at a time, avoid abstract wording, use safe and warm tone, and repeat key words gently."
+      : "Hedef yaş grubu: 1-3. Aşırı basit, somut ve çok kısa cümleler kullan (çoğunlukla 2-7 kelime). Her anda tek eylem ilerlet, soyut dil kullanma, sıcak ve güvenli ton kur, ana kelimeleri yumuşak tekrar et.";
+  }
   if (audienceLevel === "4-6") {
     return isEn
-      ? "Audience level: ages 4-6. Use very simple, concrete, and short sentences. Keep plot progression easy to follow and avoid abstract language."
-      : "Hedef yaş grubu: 4-6. Çok basit, somut ve kısa cümleler kullan. Olay akışını kolay takip edilir tut, soyut dil kullanma.";
+      ? "Audience level: ages 4-6. Use very simple and concrete language with short sentences. Keep scenes easy and linear, avoid abstract metaphors, and limit each paragraph to one clear action."
+      : "Hedef yaş grubu: 4-6. Çok basit ve somut dil kullan, cümleleri kısa tut. Sahneleri doğrusal ve kolay takip edilir kur; soyut mecazlardan kaçın, her paragrafta tek net eylem ilerlet.";
   }
   if (audienceLevel === "7-9") {
     return isEn
@@ -1285,15 +1446,20 @@ function fairyTaleAudienceInstruction(
   targetPageCount?: number
 ): string {
   const isEn = usesEnglishPromptScaffold(language);
+  if (audienceLevel === "1-3") {
+    return isEn
+      ? `Fairy-tale age path (1-3): keep it emotionally safe, very warm, and ultra-simple with roughly 6-7 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Use very short sentence units (mostly 2-7 words), one clear action at a time, repetitive rhythm, and familiar daily words; avoid all complex conflict layers, heavy metaphors, and abstract moral speeches.`
+      : `Masal yaş yolu (1-3): duygusal olarak güvenli, çok sıcak ve ultra basit bir tonda yaklaşık 6-7 sayfa${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} kurgula. Cümleleri çok kısa tut (çoğunlukla 2-7 kelime), her anda tek net eylem ilerlet, tekrar eden ritim ve gündelik kelimeler kullan; karmaşık çatışma katmanı, ağır metafor ve soyut ders anlatımı kullanma.`;
+  }
   if (audienceLevel === "4-6") {
     return isEn
-      ? `Fairy-tale age path (4-6): aim for a warm, loving, positive, gently instructive tale that fits roughly 10-12 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Use very short sentences, one clear action per paragraph, soft repetition when helpful, and zero explicit violence or fear-heavy imagery.`
-      : `Masal yaş yolu (4-6): yaklaşık 10-12 sayfalık${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} sıcak, sevgi dolu, olumlu ve öğretici bir ton kur. Çok kısa cümleler kullan, her paragrafta tek net eylem ilerlet, gerekiyorsa yumuşak tekrarlar kullan; açık şiddet ve korku yükü yüksek imgeler kullanma.`;
+      ? `Fairy-tale age path (4-6): aim for a warm, positive, and straightforward tale that fits about 10 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Keep conflict gentle and quickly resolvable, keep sentence length short, and use concrete scene language with simple cause-effect links.`
+      : `Masal yaş yolu (4-6): yaklaşık 10 sayfa${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} sıcak, olumlu ve doğrudan bir anlatım kur. Çatışmayı yumuşak ve hızlı çözülebilir tut; cümleleri kısa tut; sahneleri somut ve basit neden-sonuç bağlarıyla ilerlet.`;
   }
   if (audienceLevel === "7-9") {
     return isEn
-      ? `Fairy-tale age path (7-9): aim for a clear but slightly richer tale that fits roughly 13-15 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Keep the language child-friendly, add slightly fuller scene and feeling descriptions, preserve a hopeful tone, and avoid explicit violence or bleak despair.`
-      : `Masal yaş yolu (7-9): yaklaşık 13-15 sayfalık${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} açık ama biraz daha zengin betimlemeli bir ton kur. Dil çocuk dostu kalsın; sahne, çevre ve duygu betimlemelerini biraz artır; umutlu tonu koru, açık şiddet ve karanlık umutsuzluk kullanma.`;
+      ? `Fairy-tale age path (7-9): aim for a clear yet richer tale that fits roughly 12-14 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Keep language child-friendly but allow slightly deeper scene and feeling detail, while preserving hopeful tone and emotional safety.`
+      : `Masal yaş yolu (7-9): yaklaşık 12-14 sayfalık${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} açık ama daha zengin bir anlatım kur. Dil çocuk dostu kalsın; sahne ve duygu derinliğini bir miktar artır; umutlu ton ve duygusal güvenliği koru.`;
   }
   return isEn
     ? "Fairy-tale age path: keep the tone warm, clear, child-friendly, and emotionally safe."
@@ -1368,7 +1534,9 @@ function getBookPageRangeByType(
   audienceLevel: SmartBookAudienceLevel = "general"
 ): { min: number; max: number; suggested: number } {
   if (bookType === "fairy_tale") {
-    if (audienceLevel === "7-9") return { min: 13, max: 15, suggested: 14 };
+    if (audienceLevel === "1-3") return { min: 6, max: 7, suggested: 6 };
+    if (audienceLevel === "4-6") return { min: 10, max: 10, suggested: 10 };
+    if (audienceLevel === "7-9") return { min: 12, max: 14, suggested: 13 };
     return { min: 10, max: 12, suggested: 11 };
   }
   if (bookType === "story") return { min: 20, max: 25, suggested: 22 };
@@ -1389,6 +1557,32 @@ function getNarrativeInteriorVisualTargetForBookType(bookType: SmartBookBookType
   if (bookType === "fairy_tale") return FAIRY_TALE_TOTAL_IMAGE_COUNT;
   if (bookType === "story") return STORY_TOTAL_IMAGE_COUNT;
   return NOVEL_TOTAL_IMAGE_COUNT;
+}
+
+function getNarrativeLectureImageCount(
+  bookType: SmartBookBookType,
+  audienceLevel: SmartBookAudienceLevel,
+  narrativeContext?: { outlinePositions: { current: number; total: number } }
+): number {
+  if (!narrativeContext) return 1;
+  const sectionIndex = Math.max(1, Math.floor(Number(narrativeContext.outlinePositions.current) || 1));
+  const totalSections = Math.max(1, Math.floor(Number(narrativeContext.outlinePositions.total) || 1));
+
+  if (bookType === "fairy_tale") {
+    if (audienceLevel === "1-3" && sectionIndex >= totalSections) {
+      return 0;
+    }
+    return 1;
+  }
+
+  if (bookType === "story" || bookType === "novel") {
+    const middleLeft = Math.max(1, Math.floor(totalSections / 2));
+    const middleRight = Math.min(totalSections, middleLeft + 1);
+    const isMiddleBand = sectionIndex === middleLeft || sectionIndex === middleRight;
+    return isMiddleBand ? 2 : 1;
+  }
+
+  return 1;
 }
 
 function buildTargetPageCount(
@@ -1505,6 +1699,8 @@ function isNarrativeBookTitleTooGeneric(
   const normalizedTitle = normalizeStoryPathKey(title);
   if (!normalizedTitle || normalizedTitle.length < 3) return true;
   if (/\b(?:taslak|taslagi|draft)\b/u.test(normalizedTitle)) return true;
+  if (/^(?:[a-z0-9ğüşıöç]+)\s+(?:ve|ile)\s+(?:[a-z0-9ğüşıöç]+)(?:\s|$)/u.test(normalizedTitle)) return true;
+  if (/^(?:[a-z0-9ğüşıöç]+)(?:nin|nın|nun|nün|in|ın|un|ün)\s+/u.test(normalizedTitle)) return true;
 
   const tokens = normalizedTitle.split(" ").filter(Boolean);
   if (tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => GENERIC_NARRATIVE_TITLE_TOKENS.has(token))) {
@@ -1613,18 +1809,221 @@ function buildStorySinglePathDirective(
   return isEn
     ? [
       `Single-path lock: ${pathId}`,
-      "Story hard constraints: 20-25 pages (minimum 20), one main event, short time span, small cast.",
+      "Story hard constraints: 20-25 pages (minimum 20), one dominant conflict line, controlled cast size, and a focused time span.",
       ageLine,
       genreLine,
       "Do not drift into fairy tale or novel mode. Stay in STORY mode only."
     ].join(" ")
     : [
       `Tek-yol kilidi: ${pathId}`,
-      "Hikaye sabit kuralları: 20-25 sayfa (alt sınır 20), tek ana olay, kısa zaman aralığı, az karakter.",
+      "Hikaye sabit kuralları: 20-25 sayfa (alt sınır 20), tek baskın çatışma hattı, kontrollü karakter sayısı ve odaklı zaman aralığı.",
       ageLine,
       genreLine,
       "Masal veya roman moduna kayma. Sadece HİKAYE modunda kal."
     ].join(" ");
+}
+
+function buildFairyTaleSubGenrePathDirective(subGenre: string | undefined, isEn: boolean): string {
+  const key = normalizeStoryPathKey(subGenre);
+
+  if (key.includes("klasik")) {
+    return isEn
+      ? "Subgenre path lock (Classic Fairy Tale): timeless tone, archetypal conflict, memorable wonder, clear good-vs-evil structure, and symbolic simplicity."
+      : "Alt tür yolu kilidi (Klasik Masal): zamansız ton, arketipsel çatışma, güçlü hayret duygusu, net iyi-kötü yapısı ve sembolik sadelik.";
+  }
+  if (key.includes("modern")) {
+    return isEn
+      ? "Subgenre path lock (Modern Fairy Tale): fairy-tale wonder preserved, but with fresher emotional nuance, cleaner causality, and less formulaic moralizing."
+      : "Alt tür yolu kilidi (Modern Masal): masal büyüsü korunur ama daha taze duygusal nüans, daha temiz neden-sonuç ve daha az formül ahlak dersi kullanılır.";
+  }
+  if (key.includes("macer")) {
+    return isEn
+      ? "Subgenre path lock (Adventure Fairy Tale): journey momentum, sequential trials, brave action, and escalating child-safe obstacles."
+      : "Alt tür yolu kilidi (Macera Masalı): yolculuk ivmesi, aşamalı sınavlar, cesur eylem ve artan ama çocuk güvenli engeller.";
+  }
+  if (key.includes("mitolojik")) {
+    return isEn
+      ? "Subgenre path lock (Mythic Fairy Tale): ancient symbolic atmosphere, ceremonial weight, larger-than-life imagery, and fate/quest undertones."
+      : "Alt tür yolu kilidi (Mitolojik Esintili): kadim sembolik atmosfer, törensel ağırlık, büyük ölçekli imgeler ve kader/görev alt tonu.";
+  }
+  if (key.includes("eğitici") || key.includes("egitici")) {
+    return isEn
+      ? "Subgenre path lock (Educational Fairy Tale): story-first pedagogy, gentle clarity, emotionally safe lesson delivery, and zero preachy textbook tone."
+      : "Alt tür yolu kilidi (Eğitici Masal): önce hikaye, sonra pedagojik etki; yumuşak açıklık, duygusal güvenlik ve sıfır didaktik ders kitabı tonu.";
+  }
+
+  return isEn
+    ? "Subgenre path lock: keep the fairy-tale voice strictly aligned with the selected subgenre only."
+    : "Alt tür yolu kilidi: masal sesini sadece seçilen alt türle birebir hizalı tut.";
+}
+
+function buildFairyTaleSinglePathDirective(
+  brief: SmartBookCreativeBrief,
+  audienceLevel: SmartBookAudienceLevel,
+  isEn: boolean
+): string {
+  const subGenre = brief.subGenre || (isEn ? "Fairy Tale" : "Masal");
+  const pathId = `fairy_tale/${audienceLevel}/${normalizeStoryPathKey(subGenre).replace(/\s+/g, "_") || "default"}`;
+  const genreLine = buildFairyTaleSubGenrePathDirective(subGenre, isEn);
+
+  return isEn
+    ? [
+      `Single-path lock: ${pathId}`,
+      "Fairy-tale hard constraints: one magical narrative line, emotionally clear stakes, child-readable progression, and focused symbolic imagery.",
+      genreLine,
+      "Do not drift into short-story realism or novel density. Stay in FAIRY TALE mode only."
+    ].join(" ")
+    : [
+      `Tek-yol kilidi: ${pathId}`,
+      "Masal sabit kuralları: tek büyülü anlatı hattı, duygusal olarak net riskler, çocuk tarafından izlenebilir ilerleme ve odaklı sembolik imgeler.",
+      genreLine,
+      "Gerçekçi kısa hikaye veya roman yoğunluğuna kayma. Sadece MASAL modunda kal."
+    ].join(" ");
+}
+
+function buildNarrativeTitleDirection(
+  bookType: SmartBookBookType,
+  subGenre: string | undefined,
+  isEn: boolean
+): string {
+  const key = normalizeStoryPathKey(subGenre);
+  const base = isEn
+    ? "Title direction: generate a literary, memorable, professional book title and chapter titles that express image, tension, theme, or emotional promise; never use mechanical stock formulas or simply repeat character names/topic."
+    : "Baslik yonu: gorsel imgeyi, gerilimi, temayi veya duygusal vaadi tasiyan edebi, akilda kalici ve profesyonel kitap/bölüm başlıkları üret; mekanik stok formüller veya karakter adlarını tekrarlama.";
+
+  if (bookType === "story") {
+    if (key.includes("komedi")) return `${base} ${isEn ? "Comedy titles should feel witty, agile, and specific rather than childish." : "Komedi basliklari kıvrak, zeki ve spesifik his vermeli; cocuksu slogan gibi durmamali."}`;
+    if (key.includes("distopik")) return `${base} ${isEn ? "Dystopian titles should suggest system pressure, fracture, or resistance." : "Distopik basliklar sistem baskisi, kirilma veya direnis hissi vermeli."}`;
+    if (key.includes("gizem")) return `${base} ${isEn ? "Mystery titles should imply absence, clue, silence, trace, or concealed truth." : "Gizem basliklari eksiklik, ipucu, sessizlik, iz veya sakli gercek hissi vermeli."}`;
+    if (key.includes("romantik")) return `${base} ${isEn ? "Romantic titles should imply relational tension, longing, or emotional magnetism without cliche sweetness." : "Romantik basliklar klişe şirinliğe kaçmadan ilişki gerilimi, özlem veya duygusal çekim taşımalı."}`;
+  }
+  if (bookType === "novel") {
+    if (key.includes("tarihsel")) return `${base} ${isEn ? "Historical titles should carry era texture and social atmosphere." : "Tarihsel başlıklar dönem dokusu ve toplumsal atmosfer taşımalı."}`;
+    if (key.includes("psikolojik")) return `${base} ${isEn ? "Psychological titles should imply fracture, memory, perception, guilt, obsession, or identity pressure." : "Psikolojik başlıklar çatlak, hafıza, algı, suçluluk, saplantı veya kimlik baskısı ima etmeli."}`;
+    if (key.includes("fantastik")) return `${base} ${isEn ? "Fantasy titles should suggest world-myth, power, relic, prophecy, or impossible geography." : "Fantastik başlıklar dünya miti, güç, kadim nesne, kehanet veya imkansiz cografya hissi vermeli."}`;
+  }
+  return base;
+}
+
+function buildNarrativeAutomaticTopicDirective(
+  bookType: SmartBookBookType,
+  subGenre: string | undefined,
+  isEn: boolean
+): string {
+  return isEn
+    ? `Automatic-topic rule: if the user did not provide a concrete topic, invent an ORIGINAL topic premise strictly from the selected ${bookType} and subgenre path. Do not fall back to generic forest/house/friendship placeholders. Selected subgenre only: ${subGenre || "default"}.`
+    : `Otomatik konu kuralı: kullanıcı somut konu vermediyse, konuyu sadece seçilen ${bookType} ve alt tür yolundan OZGUN biçimde türet. Jenerik orman/ev/arkadaslik placeholderlarına düşme. Sadece seçilen alt türü kullan: ${subGenre || "varsayilan"}.`;
+}
+
+function buildNarrativeSubGenreLiteraryDirective(
+  bookType: SmartBookBookType,
+  subGenre: string | undefined,
+  isEn: boolean
+): string {
+  const key = normalizeStoryPathKey(subGenre);
+
+  if (bookType === "fairy_tale") {
+    if (key.includes("klasik")) return isEn
+      ? "Literary craft: use timeless fairy-tale cadence, archetypal desire/fear, memorable symbolic objects, and emotionally legible repetition."
+      : "Edebi iscilik: zamansız masal ritmi, arketipsel arzu/korku, akılda kalan sembolik nesneler ve duygusal olarak okunur tekrar kullan.";
+    if (key.includes("modern")) return isEn
+      ? "Literary craft: preserve wonder but refresh causality, motivation, and emotional nuance; avoid dusty formula writing."
+      : "Edebi işçilik: büyüyü koru ama neden-sonuç, motivasyon ve duygu nüansını tazele; tozlu formül yazımdan kaçın.";
+    if (key.includes("macer")) return isEn
+      ? "Literary craft: each block should feel like one more step on a quest; obstacles escalate cleanly and visually."
+      : "Edebi işçilik: her blok bir görevin yeni adımı gibi hissedilmeli; engeller temiz ve görsel biçimde yükselmeli.";
+    if (key.includes("mitolojik")) return isEn
+      ? "Literary craft: use elevated symbolic imagery, ritual atmosphere, and ancient-feeling stakes without becoming opaque."
+      : "Edebi işçilik: opaklaşmadan yükseltilmiş sembolik imgeler, törensel atmosfer ve kadim hisli riskler kullan.";
+    if (key.includes("eğitici") || key.includes("egitici")) return isEn
+      ? "Literary craft: lesson must emerge through scene consequence, not preachy explanation; emotional safety remains primary."
+      : "Edebi işçilik: mesaj sahne sonuçlarından doğmalı, vaaz gibi açıklanmamalı; duygusal güvenlik birinci öncelik kalmalı.";
+  }
+
+  if (bookType === "story") {
+    if (key.includes("dram")) return isEn
+      ? "Literary craft: emphasize emotional causality, choice under pressure, and the cost of intimacy, loyalty, or loss."
+      : "Edebi işçilik: duygusal neden-sonuç, baskı altındaki seçim ve yakınlık/sadakat/kayıp bedelini öne çıkar.";
+    if (key.includes("komedi")) return isEn
+      ? "Literary craft: build wit through timing, contrast, awkwardness, and human flaw; do not reduce the text to joke delivery."
+      : "Edebi işçilik: zekâyı zamanlama, karşıtlık, uyumsuzluk ve insan kusuru üzerinden kur; metni şaka dağıtımına çevirme.";
+    if (key.includes("korku")) return isEn
+      ? "Literary craft: fear should grow through atmosphere, delay, implication, and sensory unease rather than constant explicit threat."
+      : "Edebi işçilik: korku sürekli açık tehditten değil; atmosfer, gecikme, ima ve duyusal huzursuzluktan büyümeli.";
+    if (key.includes("bilim kurgu")) return isEn
+      ? "Literary craft: center one strong speculative idea and show its human consequences scene by scene."
+      : "Edebi işçilik: tek güçlü spekülatif fikri merkeze al ve onun insani sonuçlarını sahne sahne göster.";
+    if (key.includes("distopik")) return isEn
+      ? "Literary craft: foreground system pressure in daily life; resistance, compliance, and fear must shape character behavior."
+      : "Edebi işçilik: sistem baskısını gündelik hayat içinde görünür kıl; direniş, uyum ve korku karakter davranışını belirlemeli.";
+    if (key.includes("utopik")) return isEn
+      ? "Literary craft: stress-test ideal order through subtle cracks, moral tension, or hidden structural cost; pure harmony alone is not enough."
+      : "Edebi işçilik: ideal düzeni ince çatlaklar, etik gerilim veya gizli yapısal bedellerle sınamadan bırakma; saf uyum tek başına yetmez.";
+    if (key.includes("gizem")) return isEn
+      ? "Literary craft: distribute clues fairly, preserve uncertainty, and make every reveal feel earned rather than random."
+      : "Edebi işçilik: ipuçlarını adil dağıt, belirsizliği koru ve her açığa çıkışı rastgele değil kazanılmış hissettir.";
+    if (key.includes("psikolojik")) return isEn
+      ? "Literary craft: inner tension, perception drift, self-contradiction, and emotional pressure should carry as much weight as external plot."
+      : "Edebi işçilik: iç gerilim, algı kayması, öz-çelişki ve duygusal baskı dış olay kadar ağırlık taşımalı.";
+    if (key.includes("macera")) return isEn
+      ? "Literary craft: momentum matters, but each obstacle should also reveal courage, fear, or changing trust."
+      : "Edebi işçilik: ivme önemli ama her engel cesaret, korku veya değişen güven ilişkisini de açığa çıkarmalı.";
+    if (key.includes("romantik")) return isEn
+      ? "Literary craft: relationship tension must evolve through gesture, silence, misreading, and emotional risk, not instant declarations."
+      : "Edebi işçilik: ilişki gerilimi ani ilanlarla değil; jest, sessizlik, yanlış okuma ve duygusal riskle ilerlemeli.";
+    if (key.includes("aile")) return isEn
+      ? "Literary craft: family stories need emotional history, unsaid expectations, and repair or fracture through intimate scenes."
+      : "Edebi işçilik: aile anlatısında duygusal geçmiş, söylenmemiş beklentiler ve onarım/kırılma samimi sahnelerle kurulmalı.";
+    if (key.includes("gerilim")) return isEn
+      ? "Literary craft: keep pressure active; chapters should close on sharpened risk, exposed vulnerability, or urgent forward motion."
+      : "Edebi işçilik: baskıyı aktif tut; bölümler yükselmiş risk, açığa çıkmış zayıflık veya acil ileri hareket hissiyle kapanmalı.";
+  }
+
+  if (bookType === "novel") {
+    if (key.includes("dram")) return isEn
+      ? "Literary craft: let emotional conflicts accumulate across chapters; consequences should linger and reshape relationships."
+      : "Edebi işçilik: duygusal çatışmalar bölümler boyunca birikmeli; sonuçlar ilişkileri yeniden biçimlendirmeli.";
+    if (key.includes("komedi") || key.includes("mizah")) return isEn
+      ? "Literary craft: sustain humor through observation, recurring friction, and social contrast; preserve real character stakes."
+      : "Edebi işçilik: mizahı gözlem, tekrar eden sürtünme ve toplumsal karşıtlıkla sürdür; gerçek karakter risklerini koru.";
+    if (key.includes("korku")) return isEn
+      ? "Literary craft: novel-horror should corrode certainty over time; dread deepens before terror peaks."
+      : "Edebi işçilik: roman korkusunda kesinlik zamanla aşınmalı; dehşet yükselmeden önce tedirginlik derinleşmeli.";
+    if (key.includes("bilim kurgu")) return isEn
+      ? "Literary craft: speculative systems need social, ethical, and personal consequences layered over long-form character arcs."
+      : "Edebi işçilik: spekülatif sistemler toplumsal, etik ve kişisel sonuçlarla uzun anlatı karakter yayına bağlanmalı.";
+    if (key.includes("distopik")) return isEn
+      ? "Literary craft: show how the system occupies space, language, routine, fear, and desire; private life must bear public pressure."
+      : "Edebi işçilik: sistemin mekanı, dili, rutini, korkuyu ve arzuyu nasıl işgal ettiğini göster; kamusal baskı özel hayatı ezmeli.";
+    if (key.includes("utopik")) return isEn
+      ? "Literary craft: utopian fiction needs tension in perfection itself; expose hidden cost, exclusion, or moral fragility."
+      : "Edebi işçilik: ütopik anlatı kusursuzluğun iç gerilimini göstermeli; gizli bedel, dışlama veya ahlaki kırılganlığı açığa çıkarmalı.";
+    if (key.includes("tarihsel")) return isEn
+      ? "Literary craft: period texture must appear in gesture, material life, institutions, and social expectation, not costume alone."
+      : "Edebi işçilik: dönem dokusu sadece kostümde değil; jestte, maddi yaşamda, kurumlarda ve toplumsal beklentide görünmeli.";
+    if (key.includes("polisiye")) return isEn
+      ? "Literary craft: clues, misdirection, and procedural logic must feel fair; resolution should clarify rather than magically solve."
+      : "Edebi işçilik: ipuçları, şaşırtmaca ve soruşturma mantığı adil hissettirmeli; çözüm sihirli değil açıklayıcı olmalı.";
+    if (key.includes("fantastik")) return isEn
+      ? "Literary craft: myth, power, place, and rule systems must feel lived-in; wonder and coherence should coexist."
+      : "Edebi işçilik: mit, güç, mekan ve kural sistemleri yaşanmış hissettirmeli; hayret ile tutarlılık birlikte yürümeli.";
+    if (key.includes("macera")) return isEn
+      ? "Literary craft: scale and motion matter, but every stage of the journey should alter trust, fear, or identity."
+      : "Edebi işçilik: ölçek ve hareket önemli ama yolculuğun her aşaması güveni, korkuyu veya kimliği değiştirmeli.";
+    if (key.includes("romantik")) return isEn
+      ? "Literary craft: long-form romance grows through gradual vulnerability, misalignment, repair, and earned emotional convergence."
+      : "Edebi işçilik: uzun soluklu romantik anlatı yavaş açılan kırılganlık, uyumsuzluk, onarım ve kazanılmış duygusal yakınlaşmayla büyür.";
+    if (key.includes("psikolojik")) return isEn
+      ? "Literary craft: subtext, obsession, guilt, memory, and self-deception should shape scene rhythm and perception."
+      : "Edebi işçilik: alt metin, saplantı, suçluluk, hafıza ve öz-aldatma sahne ritmini ve algıyı belirlemeli.";
+    if (key.includes("gerilim")) return isEn
+      ? "Literary craft: maintain tactical pressure, narrowing options, and chapter-end propulsion without collapsing into empty speed."
+      : "Edebi işçilik: boş hıza düşmeden taktik baskıyı, daralan seçenekleri ve bölüm sonu itişini koru.";
+  }
+
+  return isEn
+    ? "Literary craft: stay strictly within the chosen path; deepen theme, causality, image, and voice without bleeding into neighboring subgenres."
+    : "Edebi işçilik: sadece seçilen yol içinde kal; tema, neden-sonuç, imge ve sesi komşu alt türlere taşmadan derinleştir.";
 }
 
 function buildNovelAgePathDirective(audienceLevel: SmartBookAudienceLevel, isEn: boolean): string {
@@ -1716,6 +2115,78 @@ function buildNarrativeSubGenreVisualCue(subGenre: string | undefined): string {
   return "subgenre-faithful scene language with clear narrative readability";
 }
 
+function buildNarrativePedagogyDirective(
+  bookType: SmartBookBookType,
+  audienceLevel: SmartBookAudienceLevel,
+  language: PreferredLanguage
+): string {
+  const isEn = usesEnglishPromptScaffold(language);
+  if (bookType === "fairy_tale") {
+    if (audienceLevel === "1-3") {
+      return isEn
+        ? "Pedagogy lock: write for ages 1-3 with emotional safety, warm repetition, highly concrete vocabulary, tiny action units, zero cognitive overload, and instantly understandable cause-effect."
+        : "Pedagoji kilidi: 1-3 yaş için yaz; duygusal güvenlik, sıcak tekrar, çok somut kelime seçimi, minicik eylem birimleri, sıfır bilişsel yük ve anında anlaşılır neden-sonuç kur.";
+    }
+    if (audienceLevel === "4-6") {
+      return isEn
+        ? "Pedagogy lock: write for ages 4-6 with simple emotional stakes, gentle conflict, clear sequencing, concrete imagery, and satisfying reassurance."
+        : "Pedagoji kilidi: 4-6 yaş için yaz; basit duygusal risk, yumuşak çatışma, net sıralama, somut imgeler ve güven verici çözülme kullan.";
+    }
+    if (audienceLevel === "7-9") {
+      return isEn
+        ? "Pedagogy lock: write for ages 7-9 with curiosity, hopeful tension, concrete scene logic, and age-appropriate wonder without abstract moral lectures."
+        : "Pedagoji kilidi: 7-9 yaş için yaz; merak, umutlu gerilim, somut sahne mantığı ve soyut ders nutku olmadan yaşa uygun hayranlık hissi kur.";
+    }
+  }
+  if (bookType === "story") {
+    if (audienceLevel === "7-11") {
+      return isEn
+        ? "Pedagogy lock: write for ages 7-11 with strong readability, concrete motivations, limited subplots, understandable emotional turns, and memorable scene progression."
+        : "Pedagoji kilidi: 7-11 yaş için yaz; yüksek okunabilirlik, somut motivasyonlar, sınırlı yan olaylar, anlaşılır duygu dönüşleri ve akılda kalan sahne ilerleyişi kur.";
+    }
+    if (audienceLevel === "12-18") {
+      return isEn
+        ? "Pedagogy lock: write for ages 12-18 with richer psychology, stronger conflict, sharper dialogue, and layered but still readable dramatic progression."
+        : "Pedagoji kilidi: 12-18 yaş için yaz; daha zengin psikoloji, daha güçlü çatışma, daha keskin diyalog ve katmanlı ama okunur dramatik ilerleyiş kur.";
+    }
+  }
+  if (bookType === "novel") {
+    if (audienceLevel === "7-11") {
+      return isEn
+        ? "Pedagogy lock: write for ages 7-11 with accessible literary depth, clear stakes, visible character growth, and age-safe emotional intensity."
+        : "Pedagoji kilidi: 7-11 yaş için yaz; erişilebilir edebi derinlik, net riskler, görünür karakter büyümesi ve yaşa güvenli duygusal yoğunluk kur.";
+    }
+    if (audienceLevel === "12-18") {
+      return isEn
+        ? "Pedagogy lock: write for ages 12-18 with mature but age-appropriate interiority, layered motivations, complex consequences, and sustained readability."
+        : "Pedagoji kilidi: 12-18 yaş için yaz; olgun ama yaşa uygun iç dünya, katmanlı motivasyonlar, karmaşık sonuçlar ve sürdürülen okunabilirlik kur.";
+    }
+  }
+  return isEn
+    ? "Pedagogy lock: selected age group must clearly understand, enjoy, and emotionally process the narrative."
+    : "Pedagoji kilidi: seçilen yaş grubu anlatıyı açıkça anlayabilmeli, sevebilmeli ve duygusal olarak işleyebilmelidir.";
+}
+
+function inferNarrativeMissingFieldInstruction(
+  field: "characters" | "settingPlace" | "settingTime",
+  language: PreferredLanguage
+): string {
+  const isEn = usesEnglishPromptScaffold(language);
+  if (field === "characters") {
+    return isEn
+      ? "Characters: if not specified, invent ORIGINAL and path-faithful characters from the selected type/subgenre/topic/details; avoid generic stock duos, random princes/princesses, or default child stereotypes."
+      : "Karakterler: verilmediyse seçilen tür/alt tür/konu/detaydan yola çıkarak OZGUN ve path'e sadık karakterler kur; jenerik çocuk ikilisi, rastgele prens/prenses ya da stok karakter klişelerine düşme.";
+  }
+  if (field === "settingPlace") {
+    return isEn
+      ? "Setting place: if not specified, infer an ORIGINAL setting from the selected path and topic details; avoid default forest/castle/classroom fallback worlds unless the topic truly needs them."
+      : "Mekan: verilmediyse seçilen yol ve konu detaylarından OZGUN bir mekan türet; konu gerçekten gerektirmedikçe varsayılan orman/sato/sinif dünyalarina düşme.";
+  }
+  return isEn
+    ? "Setting time: if not specified, infer the most fitting time period or temporal mood from the selected path and topic details; avoid vague generic timelessness unless stylistically necessary."
+    : "Zaman: verilmediyse seçilen yol ve konu detaylarından en uygun dönem/zaman hissini türet; stil gerektirmedikçe belirsiz jenerik zamansızlığa kaçma.";
+}
+
 function buildNarrativeVisualStyleDirective(
   bookType: SmartBookBookType,
   audienceLevel: SmartBookAudienceLevel,
@@ -1723,7 +2194,38 @@ function buildNarrativeVisualStyleDirective(
   isCover = false
 ): string {
   const cue = buildNarrativeSubGenreVisualCue(subGenre);
+  const key = normalizeStoryPathKey(subGenre);
   if (bookType === "story") {
+    if (key.includes("komedi")) {
+      return isCover
+        ? `Style: bold comedic illustrated cover language with elastic posing, upbeat rhythm, bright controlled palette, and expressive character acting. No dystopian heaviness. Visual cue: ${cue}.`
+        : `Style: lively comedic illustration with expressive poses, playful timing, clean silhouettes, bright controlled palette, and motion-forward scene rhythm. Visual cue: ${cue}.`;
+    }
+    if (key.includes("distopik")) {
+      return isCover
+        ? `Style: dystopian illustrated cover language with oppressive geometry, systemic pressure, low-saturation palette, and controlled dramatic contrast. No comedy energy. Visual cue: ${cue}.`
+        : `Style: dystopian scene illustration with constrained palette, oppressive composition, architectural pressure, and survival-focused framing. Visual cue: ${cue}.`;
+    }
+    if (key.includes("gerilim")) {
+      return isCover
+        ? `Style: thriller cover language with sharp tension, compressed space, directional lighting, and high-pressure cinematic framing. Visual cue: ${cue}.`
+        : `Style: thriller illustration with sharp contrast, directional light, compressed framing, and continuous momentum. Visual cue: ${cue}.`;
+    }
+    if (key.includes("romantik")) {
+      return isCover
+        ? `Style: romantic illustrated cover language with emotion-first composition, elegant color harmony, intimate spacing, and soft focal lighting. Visual cue: ${cue}.`
+        : `Style: romantic scene illustration with emotion-first framing, soft focal lighting, warm palette control, and relational visual tension. Visual cue: ${cue}.`;
+    }
+    if (key.includes("macera")) {
+      return isCover
+        ? `Style: adventure cover language with bold scale, forward movement, sweeping environment design, and high-clarity heroic composition. Visual cue: ${cue}.`
+        : `Style: adventure illustration with kinetic composition, environmental scale, travel momentum, and decisive action staging. Visual cue: ${cue}.`;
+    }
+    if (key.includes("psikolojik")) {
+      return isCover
+        ? `Style: psychological illustrated cover language with restrained palette, symbolic framing, subtle visual distortion, and interior tension. Visual cue: ${cue}.`
+        : `Style: psychological scene illustration with restrained palette, internal tension cues, controlled surreal touches, and intimate visual unease. Visual cue: ${cue}.`;
+    }
     if (audienceLevel === "7-11") {
       return `Style: STRICTLY non-photorealistic. 2D animated/cartoon storybook look, colorful and family-safe. Photorealism is forbidden. Visual cue: ${cue}.`;
     }
@@ -1736,6 +2238,31 @@ function buildNarrativeVisualStyleDirective(
   }
 
   if (bookType === "novel") {
+    if (key.includes("komedi") || key.includes("mizah")) {
+      return isCover
+        ? `Style: literary-comedic cover language with smart visual wit, memorable character silhouette, elegant color contrast, and long-form narrative personality. Visual cue: ${cue}.`
+        : `Style: literary-comedic illustration with smart visual wit, expressive acting, refined palette control, and sustained character-driven humor. Visual cue: ${cue}.`;
+    }
+    if (key.includes("distopik")) {
+      return isCover
+        ? `Style: dystopian novel cover language with civic scale, authoritarian structure, bleak elegance, and atmosphere of system pressure. Visual cue: ${cue}.`
+        : `Style: dystopian novel illustration with civic scale, authoritarian geometry, bleak elegance, and layered social pressure. Visual cue: ${cue}.`;
+    }
+    if (key.includes("psikolojik")) {
+      return isCover
+        ? `Style: psychological novel cover language with introspective symbolism, muted palette, subtle fractures, and emotionally loaded negative space. Visual cue: ${cue}.`
+        : `Style: psychological novel illustration with muted palette, introspective symbolism, emotional fracture, and controlled visual unease. Visual cue: ${cue}.`;
+    }
+    if (key.includes("tarihsel")) {
+      return isCover
+        ? `Style: historical novel cover language with period-authentic costume, tactile material detail, elegant composition, and era-specific atmosphere. Visual cue: ${cue}.`
+        : `Style: historical illustration with period-authentic costume, tactile props, era-correct architecture, and textured atmosphere. Visual cue: ${cue}.`;
+    }
+    if (key.includes("fantastik")) {
+      return isCover
+        ? `Style: fantasy novel cover language with deep world-building, mythic scale, magical system coherence, and premium illustrated atmosphere. Visual cue: ${cue}.`
+        : `Style: fantasy novel illustration with deep world-building, magical-system coherence, mythic scale, and premium illustrated atmosphere. Visual cue: ${cue}.`;
+    }
     if (audienceLevel === "7-11") {
       return `Style: STRICTLY non-photorealistic. Filmlike illustrated graphic-novel look, clear silhouettes, family-safe intensity. Photorealism is forbidden. Visual cue: ${cue}.`;
     }
@@ -1748,10 +2275,51 @@ function buildNarrativeVisualStyleDirective(
   }
 
   if (bookType === "fairy_tale") {
+    if (key.includes("eğitici") || key.includes("egitici")) {
+      return "Style: STRICTLY non-photorealistic vivid colorful storybook illustration with magical warmth, clean shapes, reassuring expressions, and pedagogy-first visual clarity. Photorealism is forbidden.";
+    }
+    if (key.includes("macer")) {
+      return "Style: STRICTLY non-photorealistic magical adventure storybook illustration with bright wonder, readable motion, bold scenic rhythm, and warm fantasy charm. Photorealism is forbidden.";
+    }
+    if (key.includes("gizem")) {
+      return "Style: STRICTLY non-photorealistic fairy-tale illustration with luminous mystery, readable silhouettes, soft suspense, and child-safe magical atmosphere. Photorealism is forbidden.";
+    }
     return "Style: STRICTLY non-photorealistic vivid colorful storybook/cartoon illustration with magical warmth. Photorealism is forbidden.";
   }
 
   return "Style: colorized charcoal / fine-art illustration, rich texture, realistic and cinematic.";
+}
+
+function buildCoverCompositionAntiClicheDirective(
+  bookType: SmartBookBookType,
+  subGenre?: string
+): string {
+  const key = normalizeStoryPathKey(subGenre);
+  if (bookType === "fairy_tale") {
+    if (key.includes("klasik")) return "Kapak klişe yasağı: jenerik çocuk + tavşan + orman + merkez ışık kompozisyonuna düşme; bunun yerine masalın belirleyici büyülü nesnesini veya asıl karşılaşma anını odak yap.";
+    if (key.includes("modern")) return "Kapak klişe yasağı: nostaljik stok masal posteri üretme; çağdaş, temiz ve özgün bir sahne seç.";
+    if (key.includes("macer")) return "Kapak klişe yasağı: sadece poz veren karakterler çizme; hareket, hedef ve yolculuk hissi olan bir an seç.";
+    if (key.includes("mitolojik")) return "Kapak klişe yasağı: sıradan çocuk kitabı düzenine düşme; daha törensel, sembolik ve kadim bir merkez imge kur.";
+    if (key.includes("eğitici") || key.includes("egitici")) return "Kapak klişe yasağı: ders kitabı infografiği veya aşırı sevimli stok afiş üretme; hikaye anı ve pedagojik sıcaklık birlikte hissedilsin.";
+    return "Kapak klişe yasağı: üstte başlık, ortada tek çocuk, altta sevimli hayvan ve arkada orman gibi jenerik çocuk kitabı düzenine düşme.";
+  }
+  if (bookType === "story") {
+    if (key.includes("komedi")) return "Kapak klişe yasağı: ucuz karikatür afişine veya kahkaha emojisi enerjisine düşme; zekice görsel durum komedisi kur.";
+    if (key.includes("distopik")) return "Kapak klişe yasağı: sadece gri şehir silüeti + tek yalnız figür klişesine düşme; seçilen sistem baskısını özgün bir görsel fikirle anlat.";
+    if (key.includes("gizem")) return "Kapak klişe yasağı: büyüteç, dedektif şapkası, anahtar deliği gibi stok gizem ikonlarına yaslanma; özgün ipucu atmosferi kur.";
+    if (key.includes("romantik")) return "Kapak klişe yasağı: birbirine bakan çift + gün batımı klişesine düşme; ilişkinin özgül gerilimini veya mesafesini seç.";
+    if (key.includes("korku")) return "Kapak klişe yasağı: sadece karanlık koridor veya tek göz klişisi çizme; özgün tehdit hissini seç.";
+    return "Kapak klişe yasağı: seçilen hikaye alt türünü stok poster kompozisyonlarına indirme; özgün bir merkez görsel fikir seç.";
+  }
+  if (bookType === "novel") {
+    if (key.includes("tarihsel")) return "Kapak klişe yasağı: sadece dönem kostümü giyen karakter portresi çizme; dönemin sosyal/dramatik çatışmasını taşıyan bir kompozisyon kur.";
+    if (key.includes("psikolojik")) return "Kapak klişe yasağı: kırık ayna, tek göz, yüzün yarısı gölgede gibi aşırı kullanılmış klişelere yaslanma; özgün zihinsel baskı imgesi bul.";
+    if (key.includes("fantastik")) return "Kapak klişe yasağı: ortada kahraman, arkada kale, etrafta parlayan sis klişisine düşme; dünyaya özgü güç ilişkisini göster.";
+    if (key.includes("distopik")) return "Kapak klişe yasağı: sadece kapüşonlu figür + baskıcı şehir klişisine düşme; sistemin özgül baskı biçimini seç.";
+    if (key.includes("romantik")) return "Kapak klişe yasağı: jenerik çift pozu ve pembe parlama klişisinden kaçın; ilişkinin özgül ruh halini yakala.";
+    return "Kapak klişe yasağı: premium roman kapağını stok afiş estetiğine indirme; tek güçlü merkez fikir etrafında özgün kompozisyon kur.";
+  }
+  return "Kapak klişe yasağı: stok poster estetiğinden kaçın; özgün merkez görsel fikir seç.";
 }
 
 function buildCreativeBriefInstruction(
@@ -1770,8 +2338,8 @@ function buildCreativeBriefInstruction(
     return buildNarrativeBriefBlock(brief, isEn, lockedLanguage, targetPageCount, {
       typeLabel: isEn ? "Fairy Tale" : "Masal",
       styleDirective: isEn
-        ? "Write this entirely as a fairy tale for ages 4-9: imaginary world, at least one extraordinary element (talking animals / magic / time travel), clear good-vs-evil contrast, always happy ending, and one explicit lesson."
-        : "Bu metni tamamen 4-9 yaşa uygun bir masal olarak yaz: hayali dünya kur, en az bir olağanüstü unsur kullan (konuşan hayvan/büyü/zaman yolculuğu), iyi-kötü ayrımını net ver, mutlu sonla bitir ve açık bir ders çıkar."
+        ? "Write this entirely as a fairy tale for ages 1-9: imaginary world, at least one extraordinary element (talking animals / magic / time travel), clear good-vs-evil contrast, always happy ending, and one explicit lesson."
+        : "Bu metni tamamen 1-9 yaşa uygun bir masal olarak yaz: hayali dünya kur, en az bir olağanüstü unsur kullan (konuşan hayvan/büyü/zaman yolculuğu), iyi-kötü ayrımını net ver, mutlu sonla bitir ve açık bir ders çıkar."
     });
   }
 
@@ -1846,8 +2414,8 @@ function buildNarrativeBriefBlock(
         ? "Mandatory fairy-tale flow: Opening Rhyme -> Introduction -> Development 1 -> Development 2 -> Resolution with wish ending."
         : "Zorunlu masal akışı: Döşeme -> Giriş -> Gelişme 1 -> Gelişme 2 -> Sonuç.",
       isEn
-        ? "Use one main event and one main message only."
-        : "Yalnızca tek ana olay ve tek ana mesaj kullan.",
+        ? "Keep emotional and narrative focus clear; avoid scattered side plots or noisy moral stacking."
+        : "Duygusal ve anlatisal odagi net tut; gereksiz yan olaylara veya üst üste yığılmış mesajlara kaçma.",
       isEn
         ? "Language must be simple, concrete, and child-friendly."
         : "Dil basit, somut ve çocuk dostu olmalı.",
@@ -1861,13 +2429,13 @@ function buildNarrativeBriefBlock(
       opts.styleDirective,
       brief.characters
         ? (isEn ? `Characters: ${brief.characters}` : `Karakterler: ${brief.characters}`)
-        : (isEn ? "Characters: model may define suitable characters." : "Karakterler: model konuya uygun karakterleri tanımlayabilir."),
+        : inferNarrativeMissingFieldInstruction("characters", isEn ? "en" : "tr"),
       brief.settingPlace
         ? (isEn ? `Setting place: ${brief.settingPlace}` : `Mekan: ${brief.settingPlace}`)
-        : (isEn ? "Setting place: model may choose suitable setting." : "Mekan: model uygun bir sahne seçebilir."),
+        : inferNarrativeMissingFieldInstruction("settingPlace", isEn ? "en" : "tr"),
       brief.settingTime
         ? (isEn ? `Setting time: ${brief.settingTime}` : `Zaman: ${brief.settingTime}`)
-        : (isEn ? "Setting time: model may choose suitable period." : "Zaman: model uygun bir dönem belirleyebilir.")
+        : inferNarrativeMissingFieldInstruction("settingTime", isEn ? "en" : "tr")
     ]
     : [
       isEn ? `Target page count: about ${targetPageCount}` : `Hedef sayfa: yaklaşık ${targetPageCount}`,
@@ -1877,15 +2445,22 @@ function buildNarrativeBriefBlock(
       opts.styleDirective,
       brief.characters
         ? (isEn ? `Characters: ${brief.characters}` : `Karakterler: ${brief.characters}`)
-        : (isEn ? "Characters: model may define suitable characters." : "Karakterler: model konuya uygun karakterleri tanımlayabilir."),
+        : inferNarrativeMissingFieldInstruction("characters", isEn ? "en" : "tr"),
       brief.settingPlace
         ? (isEn ? `Setting place: ${brief.settingPlace}` : `Mekan: ${brief.settingPlace}`)
-        : (isEn ? "Setting place: model may choose suitable setting." : "Mekan: model uygun bir sahne seçebilir."),
+        : inferNarrativeMissingFieldInstruction("settingPlace", isEn ? "en" : "tr"),
       brief.settingTime
         ? (isEn ? `Setting time: ${brief.settingTime}` : `Zaman: ${brief.settingTime}`)
-        : (isEn ? "Setting time: model may choose suitable period." : "Zaman: model uygun bir dönem belirleyebilir."),
+        : inferNarrativeMissingFieldInstruction("settingTime", isEn ? "en" : "tr"),
       isEn ? `Ending preference: ${endingStyleLabelForPrompt(brief.endingStyle, true)}` : `Final tercihi: ${endingStyleLabelForPrompt(brief.endingStyle, false)}`
     ];
+  lines.push(buildNarrativePedagogyDirective(brief.bookType, audienceLevel, isEn ? "en" : "tr"));
+  lines.push(buildNarrativeAutomaticTopicDirective(brief.bookType, brief.subGenre, isEn));
+  lines.push(buildNarrativeTitleDirection(brief.bookType, brief.subGenre, isEn));
+  lines.push(buildNarrativeSubGenreLiteraryDirective(brief.bookType, brief.subGenre, isEn));
+  if (isFairyTale) {
+    lines.push(buildFairyTaleSinglePathDirective(brief, audienceLevel, isEn));
+  }
   if (isStory) {
     lines.push(buildStorySinglePathDirective(brief, audienceLevel, isEn));
   }
@@ -1926,7 +2501,7 @@ function buildNarrativeCraftInstruction(
           : "Aşama kuralı: Sonuç. Ana çatışma neden-sonuç tutarlılığıyla çözülecek, duygusal karşılığı güçlü bir kapanış verilecek."
     );
 
-  const isForKids = audienceLevel === "4-6" || audienceLevel === "7-9" || audienceLevel === "7-11";
+  const isForKids = audienceLevel === "1-3" || audienceLevel === "4-6" || audienceLevel === "7-9" || audienceLevel === "7-11";
   const kidsRuleEn = isForKids ? " CRITICAL: Target audience is young kids. Use VERY SIMPLE, CONCRETE language. NO heavy metaphors, NO cosmic abstractions, NO complex philosophical themes." : "";
   const kidsRuleTr = isForKids ? ` KRİTİK: Hedef kitle küçük yaş grubudur (${audienceLevel} yaş). ÇOK BASİT, SOMUT ve ANLAŞILIR bir dil kullan. Asla kozmik soyutluklar, ağır metaforlar veya felsefi temalar kullanma.` : "";
   const fairyAgeRule = type === "fairy_tale"
@@ -1936,16 +2511,16 @@ function buildNarrativeCraftInstruction(
   const typeLine = isEn
     ? (
       type === "fairy_tale"
-        ? "Fairy-tale craft: imaginary world, at least one extraordinary element (talking animals / magic / time travel), clear good-vs-evil contrast, one main event, one main lesson, and simple child-friendly language. CRITICAL RULE: 'Show, Don't Tell'." + kidsRuleEn + fairyAgeRule
+        ? "Fairy-tale craft: imaginary world, at least one extraordinary element (talking animals / magic / time travel), clear emotional stakes, memorable wonder, and simple child-friendly language. Keep the tale focused, but do not flatten it into a mechanical moral. CRITICAL RULE: 'Show, Don't Tell'." + kidsRuleEn + fairyAgeRule
         : type === "story"
-          ? "Story craft: realistic or fantastical is allowed, but keep one dominant conflict, one main event line, small cast, and short time span. Ending does not have to be happy. CRITICAL RULE: 'Show, Don't Tell'. Limit internal monologue." + kidsRuleEn
+          ? "Story craft: realistic or fantastical is allowed, but keep one dominant conflict line, a focused time span, and a controlled cast. Ending does not have to be happy. CRITICAL RULE: 'Show, Don't Tell'. Limit internal monologue." + kidsRuleEn
           : "Novel craft: layered character arc, deep narrative world, sustained tension. CRITICAL RULE: 'Show, Don't Tell'. Avoid info-dumping."
     )
     : (
       type === "fairy_tale"
-        ? "Masal kurgusu: hayali dünya kur, en az bir olağanüstü öğe kullan (konuşan hayvan/büyü/zaman yolculuğu), iyi-kötü ayrımını net ver, tek ana olay ve tek ana mesaja odaklan, dil basit ve çocuk dostu olsun. KRİTİK KURAL 'Anlatma, Göster': Karakterlerin hislerini dümdüz söyleme." + kidsRuleTr + fairyAgeRule
+        ? "Masal kurgusu: hayali dünya kur, en az bir olağanüstü öğe kullan (konuşan hayvan/büyü/zaman yolculuğu), güçlü bir merak ve duygusal yönelim yarat, dili basit ve çocuk dostu tut. Masalı odaklı yürüt ama mekanik ders metnine çevirme. KRITIK KURAL 'Anlatma, Goster': Karakterlerin hislerini duz cumlelerle aciklama; sahnede yasat." + kidsRuleTr + fairyAgeRule
         : type === "story"
-          ? "Hikaye kurgusu: gerçekçi veya fantastik olabilir; tek baskın çatışma, tek ana olay hattı, az karakter ve kısa zaman aralığı kullan. Final mutlu olmak zorunda değildir. KRİTİK KURAL 'Anlatma, Göster': Okuyucuyu sahnede yaşat." + kidsRuleTr
+          ? "Hikaye kurgusu: gercekci veya fantastik olabilir; tek baskin catisma hatti, kontrollu karakter sayisi ve odakli zaman araligi kullan. Final mutlu olmak zorunda degildir. KRITIK KURAL 'Anlatma, Goster': Okuyucuyu sahnede yasat." + kidsRuleTr
           : "Roman kurgusu: katmanlı karakter dönüşümü, anlatı derinliği, güçlü gerilim (tension). KRİTİK KURAL 'Anlatma, Göster': Olguları ansiklopedik özetleme; olayları tamamen aktif ses kullanarak hissettir."
     );
 
@@ -1955,7 +2530,11 @@ function buildNarrativeCraftInstruction(
       ? `Ending preference must be respected: ${endingStyleLabelForPrompt(brief.endingStyle, true)}.`
       : `Final tercihi zorunlu: ${endingStyleLabelForPrompt(brief.endingStyle, false)}.`);
 
-  return `${stageLine}\n${typeLine}\n${endingLine}`;
+  const subGenreLine = buildNarrativeSubGenreLiteraryDirective(type, brief.subGenre, isEn);
+  const titleLine = buildNarrativeTitleDirection(type, brief.subGenre, isEn);
+  const topicLine = buildNarrativeAutomaticTopicDirective(type, brief.subGenre, isEn);
+
+  return `${stageLine}\n${typeLine}\n${subGenreLine}\n${titleLine}\n${topicLine}\n${endingLine}`;
 }
 
 function getSectionWordTargets(
@@ -1964,14 +2543,22 @@ function getSectionWordTargets(
   audienceLevel: SmartBookAudienceLevel = "general"
 ): { lectureMin: number; detailsMin: number; summaryMin: number } {
   if (bookType === "fairy_tale") {
-    const totalTargetWords = audienceLevel === "7-9"
-      ? Math.min(2_700, Math.max(2_250, Math.round(targetPageCount * 180)))
-      : Math.min(1_950, Math.max(1_650, Math.round(targetPageCount * 160)));
-    const chapterTarget = Math.max(audienceLevel === "7-9" ? 420 : 300, Math.round(totalTargetWords / 5));
+    const totalTargetWords = audienceLevel === "1-3"
+      ? Math.min(520, Math.max(300, Math.round(targetPageCount * 62)))
+      : audienceLevel === "7-9"
+        ? Math.min(2_500, Math.max(2_050, Math.round(targetPageCount * 170)))
+        : Math.min(1_750, Math.max(1_450, Math.round(targetPageCount * 155)));
+    const chapterTarget = Math.max(
+      audienceLevel === "1-3" ? 64 : audienceLevel === "7-9" ? 380 : 260,
+      Math.round(totalTargetWords / 5)
+    );
     return {
-      lectureMin: Math.max(audienceLevel === "7-9" ? 360 : 260, Math.round(chapterTarget * 0.86)),
-      detailsMin: Math.round(totalTargetWords * 0.28),
-      summaryMin: Math.round(totalTargetWords * 0.2)
+      lectureMin: Math.max(
+        audienceLevel === "1-3" ? 50 : audienceLevel === "7-9" ? 320 : 220,
+        Math.round(chapterTarget * 0.84)
+      ),
+      detailsMin: Math.round(totalTargetWords * (audienceLevel === "1-3" ? 0.22 : 0.28)),
+      summaryMin: Math.round(totalTargetWords * (audienceLevel === "1-3" ? 0.16 : 0.2))
     };
   }
   if (bookType === "novel") {
@@ -2003,22 +2590,80 @@ function getFairyTaleCharacterTargets(
   audienceLevel: SmartBookAudienceLevel,
   chapterCount: number
 ): Array<{ target: number; minAccepted: number; maxAccepted: number }> {
-  const baseTargets = [1000, 5000, 10000, 10000, 5000];
-  const multiplier = audienceLevel === "7-9" ? 1.2 : 1;
+  const totalSoftMin = audienceLevel === "1-3"
+    ? 12_000
+    : audienceLevel === "7-9"
+      ? 16_000
+      : 14_000;
+  const distribution = [0.14, 0.22, 0.24, 0.24, 0.16];
   if (chapterCount <= 1) {
-    const total = Math.round(baseTargets.reduce((sum, value) => sum + value, 0) * multiplier);
     return [{
-      target: total,
-      minAccepted: Math.floor(total * 0.9),
-      maxAccepted: Math.ceil(total * 1.1)
+      target: totalSoftMin,
+      minAccepted: Math.floor(totalSoftMin * 0.72),
+      maxAccepted: Math.ceil(totalSoftMin * 1.16)
     }];
   }
-  return baseTargets.slice(0, FAIRY_TALE_CHAPTER_COUNT).map((value) => {
-    const target = Math.round(value * multiplier);
+  return distribution.slice(0, FAIRY_TALE_CHAPTER_COUNT).map((ratio) => {
+    const target = Math.round(totalSoftMin * ratio);
     return {
       target,
-      minAccepted: Math.floor(target * 0.9),
-      maxAccepted: Math.ceil(target * 1.1)
+      minAccepted: Math.floor(target * 0.72),
+      maxAccepted: Math.ceil(target * 1.18)
+    };
+  });
+}
+
+function getNarrativeSoftMinimumChars(
+  bookType: SmartBookBookType,
+  audienceLevel: SmartBookAudienceLevel
+): number {
+  if (bookType === "fairy_tale") {
+    if (audienceLevel === "1-3") return 12_000;
+    if (audienceLevel === "7-9") return 16_000;
+    return 14_000;
+  }
+  if (bookType === "story") {
+    if (audienceLevel === "7-11") return 28_000;
+    if (audienceLevel === "12-18") return 34_000;
+    return 40_000;
+  }
+  if (bookType === "novel") {
+    if (audienceLevel === "7-11") return 38_000;
+    if (audienceLevel === "12-18") return 44_000;
+    return 50_000;
+  }
+  return 0;
+}
+
+function getNarrativeCharacterTargets(
+  bookType: SmartBookBookType,
+  audienceLevel: SmartBookAudienceLevel,
+  chapterCount: number
+): Array<{ target: number; minAccepted: number; maxAccepted: number }> {
+  const totalSoftMin = getNarrativeSoftMinimumChars(bookType, audienceLevel);
+  if (totalSoftMin <= 0) return [];
+  if (bookType === "fairy_tale") {
+    return getFairyTaleCharacterTargets(audienceLevel, chapterCount);
+  }
+  const distribution = bookType === "story"
+    ? [0.16, 0.22, 0.24, 0.2, 0.18]
+    : [0.14, 0.16, 0.18, 0.18, 0.16, 0.18];
+  if (chapterCount <= 1) {
+    return [{
+      target: totalSoftMin,
+      minAccepted: Math.floor(totalSoftMin * 0.74),
+      maxAccepted: Math.ceil(totalSoftMin * 1.14)
+    }];
+  }
+  const effectiveDistribution = distribution.length === chapterCount
+    ? distribution
+    : Array.from({ length: Math.max(1, chapterCount) }, () => 1 / Math.max(1, chapterCount));
+  return effectiveDistribution.map((ratio) => {
+    const target = Math.round(totalSoftMin * ratio);
+    return {
+      target,
+      minAccepted: Math.floor(target * 0.74),
+      maxAccepted: Math.ceil(target * 1.16)
     };
   });
 }
@@ -2030,23 +2675,23 @@ function getNarrativeChapterWordRange(
   audienceLevel: SmartBookAudienceLevel = "general"
 ): { min: number; max: number } {
   const safeChapterCount = Math.max(1, chapterCount);
+  const totalTargetWordsFromChars = Math.round(Math.max(800, getNarrativeSoftMinimumChars(bookType, audienceLevel) / 6));
   if (bookType === "fairy_tale") {
-    const totalTargetWords = audienceLevel === "7-9"
-      ? Math.round(Math.max(2_250, Math.min(2_700, targetPageCount * 180)))
-      : Math.round(Math.max(1_650, Math.min(1_950, targetPageCount * 160)));
-    const ideal = Math.round(totalTargetWords / safeChapterCount);
+    const ideal = Math.round(totalTargetWordsFromChars / safeChapterCount);
+    if (audienceLevel === "1-3") {
+      return { min: Math.max(60, ideal - 110), max: Math.max(120, ideal - 20) };
+    }
     return audienceLevel === "7-9"
-      ? { min: Math.max(360, ideal - 90), max: Math.max(620, ideal + 100) }
-      : { min: Math.max(260, ideal - 55), max: Math.max(430, ideal + 70) };
+      ? { min: Math.max(360, ideal - 70), max: Math.max(620, ideal + 90) }
+      : { min: Math.max(300, ideal - 60), max: Math.max(540, ideal + 80) };
   }
   if (bookType === "story") {
-    const totalTargetWords = Math.round(Math.max(6_200, Math.min(8_800, targetPageCount * 250)));
-    const ideal = Math.round(totalTargetWords / safeChapterCount);
-    return { min: Math.max(820, ideal - 260), max: Math.max(1_720, ideal + 260) };
+    const ideal = Math.round(totalTargetWordsFromChars / safeChapterCount);
+    return { min: Math.max(900, ideal - 220), max: Math.max(1_900, ideal + 260) };
   }
-  const totalTargetWords = Math.round(Math.max(9_000, Math.min(13_000, targetPageCount * 170)));
+  const totalTargetWords = Math.round(Math.max(totalTargetWordsFromChars, targetPageCount * 170));
   const ideal = Math.round(totalTargetWords / safeChapterCount);
-  return { min: Math.max(1_050, ideal - 250), max: Math.max(1_850, ideal + 320) };
+  return { min: Math.max(1_150, ideal - 260), max: Math.max(2_050, ideal + 340) };
 }
 
 function safeNumber(value: unknown): number {
@@ -2125,8 +2770,18 @@ function costForGemini3FlashPreview(inputTokens: number, outputTokens: number): 
   );
 }
 
+function costForGemini31FlashLitePreview(inputTokens: number, outputTokens: number): number {
+  return roundUsd(
+    (inputTokens / 1_000_000) * GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M +
+    (outputTokens / 1_000_000) * GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M
+  );
+}
+
 function costForGeminiModel(model: string, inputTokens: number, outputTokens: number): number {
   const normalized = String(model || "").toLowerCase();
+  if (normalized.includes("gemini-3.1-flash-lite")) {
+    return costForGemini31FlashLitePreview(inputTokens, outputTokens);
+  }
   if (normalized.includes("gemini-3-flash")) {
     return costForGemini3FlashPreview(inputTokens, outputTokens);
   }
@@ -2145,6 +2800,13 @@ function costForOpenAiGptImageLow(
   return roundUsd(
     imageCount * perImage +
     (inputTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_USD_PER_1M
+  );
+}
+
+function costForOpenAiMiniTts(inputTokens: number, outputTokens: number): number {
+  return roundUsd(
+    (inputTokens / 1_000_000) * OPENAI_MINI_TTS_INPUT_USD_PER_1M +
+    (outputTokens / 1_000_000) * OPENAI_MINI_TTS_OUTPUT_USD_PER_1M
   );
 }
 
@@ -2246,6 +2908,27 @@ function getAiRetryDelayMs(attempt: number, error?: unknown): number {
 
 function waitFor(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => Error
+): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(onTimeout()), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function getGeminiTtsRateLimitDocRef(model: string) {
@@ -2727,19 +3410,61 @@ function buildNarrativeSceneCues(content: string | undefined, imageCount: number
     return Array.from({ length: safeCount }, (_, i) => `Sahne ${i + 1}`);
   }
 
-  const cues: string[] = [];
-  for (let i = 0; i < safeCount; i += 1) {
-    const start = Math.floor((i * units.length) / safeCount);
-    const end = Math.min(units.length, start + Math.max(1, Math.ceil(units.length / safeCount)));
-    const cue = units
-      .slice(start, end)
-      .join(" ")
+  const normalizeCueKey = (value: string): string =>
+    value
+      .toLocaleLowerCase("tr-TR")
+      .replace(/[^a-z0-9çğıöşü\s]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 680);
-    cues.push(cue || `Sahne ${i + 1}`);
+      .slice(0, 140);
+
+  const uniqueUnits: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const unit of units) {
+    const cleaned = unit.replace(/\s+/g, " ").trim();
+    if (!cleaned) continue;
+    const key = normalizeCueKey(cleaned);
+    if (!key || seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    uniqueUnits.push(cleaned.slice(0, 680));
   }
+
+  if (uniqueUnits.length === 0) {
+    return Array.from({ length: safeCount }, (_, i) => `Sahne ${i + 1}`);
+  }
+
+  const cues: string[] = [];
+  for (let i = 0; i < safeCount; i += 1) {
+    if (uniqueUnits.length >= safeCount) {
+      const index = safeCount === 1
+        ? 0
+        : Math.min(uniqueUnits.length - 1, Math.round((i * (uniqueUnits.length - 1)) / (safeCount - 1)));
+      cues.push(uniqueUnits[index]);
+      continue;
+    }
+
+    const base = uniqueUnits[i % uniqueUnits.length] || `Sahne ${i + 1}`;
+    const phasePrefix = i === 0
+      ? "Başlangıç anı:"
+      : i === safeCount - 1
+        ? "Sonuç anı:"
+        : `Aşama ${i + 1}:`;
+    cues.push(`${phasePrefix} ${base}`.slice(0, 680));
+  }
+
   return cues;
+}
+
+function buildCharacterContinuityLock(characters: string): string {
+  const safeCharacters = compactInline(characters, 320) || "Ana karakter seti";
+  return `
+Character continuity lock (mandatory):
+- Keep recurring characters IDENTICAL across all visuals in this book sequence.
+- Preserve the same facial identity (face shape, eyes, nose, mouth proportions), hair color/style, skin tone, and body proportions.
+- Keep signature outfit colors and key accessories stable unless the section explicitly changes them.
+- Only pose, expression, and camera angle may change between scenes.
+- Character roster reference: ${safeCharacters}
+  `.trim();
 }
 
 function buildFairyTaleSectionImagePrompt(
@@ -2749,14 +3474,17 @@ function buildFairyTaleSectionImagePrompt(
   creativeBrief: SmartBookCreativeBrief | undefined,
   audienceLevel: SmartBookAudienceLevel,
   sectionIndex: number,
-  totalSections: number
+  totalSections: number,
+  previousSectionContent?: string
 ): string {
   const characters = compactInline(creativeBrief?.characters, 320) || "Masalın ana karakterleri";
   const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Masalın geçtiği ana mekan";
   const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Belirsiz masal zamanı";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || "Masal";
   const styleLine = buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, subGenre, false);
+  const continuityLock = buildCharacterContinuityLock(characters);
   const sectionExcerpt = String(sectionContent || "").trim().slice(0, 5000);
+  const previousExcerpt = String(previousSectionContent || "").replace(/\s+/g, " ").trim().slice(-1200);
 
   if (sectionIndex >= 2 && sectionIndex <= 4) {
     const panelCues = buildNarrativeSceneCues(sectionContent, 4);
@@ -2775,31 +3503,52 @@ Book context:
 - Characters: ${characters}
 - Place: ${settingPlace}
 - Time: ${settingTime}
+- Global scene order: ${sectionIndex}/${totalSections}
 
 Active section text. Use THIS section only as the primary visual source:
 """
 ${sectionExcerpt}
 """
+${previousExcerpt ? `
+Previous section recap (scene ${Math.max(1, sectionIndex - 1)}):
+"""
+${previousExcerpt}
+"""
+` : ""}
 
 Visual structure requirement:
 - The output must be ONE single image.
 - Compose it as a 4-panel storyboard grid inside one image: top-left, top-right, bottom-left, bottom-right.
 - Each panel must show a DIFFERENT moment from this same section, in chronological order.
 - The four panels together must clearly retell the active section from beginning to end.
+- Do NOT use any outer frame or border on the canvas edges.
+- Separate the four panels only with a very thin central cross divider.
+- The divider must be subtle and fine: one thin vertical line plus one thin horizontal line crossing at the center.
 
 Panel scene cues in order:
 ${panelBlock}
 
+Panel-to-grid mapping (mandatory):
+- Top-left panel: Scene cue #1 (opening moment, wide shot).
+- Top-right panel: Scene cue #2 (progression moment, medium shot).
+- Bottom-left panel: Scene cue #3 (turning action, dynamic shot).
+- Bottom-right panel: Scene cue #4 (resulting moment, close/medium close shot).
+
 ${styleLine}
+${continuityLock}
 
 Rules:
 1) Horizontal 16:9 only.
 2) No text, no captions, no speech bubbles, no logos, no watermark, no UI.
 3) Same characters, same world, same costumes, same props, same lighting logic across all four panels.
 4) Each panel must visualize a distinct action beat from the active section; do not repeat the same moment.
-5) Do not draw a generic cover. Draw concrete section events from the provided section text.
-6) Keep the mood child-friendly, vivid, readable, and visually coherent for a fairy tale book.
-7) Absolutely no prompt/system/backend/meta text in visuals.
+5) HARD constraint: do not reuse the same composition, camera distance, or character pose across panels.
+6) If two panels are too similar, change action, framing, and spatial beat so they become clearly different.
+7) Scene progression lock: this image is scene ${sectionIndex}/${totalSections}; it must advance the story timeline and must not repeat the previous scene.
+8) Do not draw a generic cover. Draw concrete section events from the provided section text.
+9) Keep the mood child-friendly, vivid, readable, and visually coherent for a fairy tale book.
+10) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
+11) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
   }
 
@@ -2814,21 +3563,30 @@ Book context:
 - Characters: ${characters}
 - Place: ${settingPlace}
 - Time: ${settingTime}
+- Global scene order: ${sectionIndex}/${totalSections}
 
 Active section text. Use THIS section only as the primary visual source:
 """
 ${sectionExcerpt}
 """
+${previousExcerpt ? `
+Previous section recap (scene ${Math.max(1, sectionIndex - 1)}):
+"""
+${previousExcerpt}
+"""
+` : ""}
 
 ${styleLine}
+${continuityLock}
 
 Rules:
 1) Horizontal 16:9 only.
 2) No text, no captions, no logos, no watermark, no UI panels.
 3) Draw the single most important and emotionally clear moment from this active section.
-4) The image must directly depict the events of this section, not a generic book cover.
-5) Keep character/world continuity strong and child-friendly.
-6) Absolutely no prompt/system/backend/meta text in visuals.
+4) Scene progression lock: this image is scene ${sectionIndex}/${totalSections}; it must depict a NEW event step and must not be a duplicate of earlier scene actions.
+5) The image must directly depict the events of this section, not a generic book cover.
+6) Keep character/world continuity strong and child-friendly.
+7) Absolutely no prompt/system/backend/meta text in visuals.
   `.trim();
 }
 
@@ -2854,8 +3612,11 @@ async function generateLessonImages(
       ? Math.max(1, Math.floor(forcedImageCount))
       : undefined;
   let imageCount = Math.max(1, imagePlan.lecture);
-  if (normalizedForcedImageCount) imageCount = normalizedForcedImageCount;
-  if (isNarrative) imageCount = 1;
+  if (isNarrative) {
+    imageCount = normalizedForcedImageCount || 1;
+  } else if (normalizedForcedImageCount) {
+    imageCount = normalizedForcedImageCount;
+  }
   const contentLanguage = detectContentLanguageCode(languageEvidenceText, topic, nodeTitle);
   const targetLanguageLabel = contentLanguageLabel(contentLanguage);
   const brainAllowed = isBrainRelatedTopic(topic, nodeTitle);
@@ -2908,9 +3669,9 @@ ${brainAllowed
       normalizedImages.push(normalizedImages[normalizedImages.length - 1]);
     }
 
-    const assets = normalizedImages.map((dataUrl) => ({
+    const assets = normalizedImages.map((dataUrl, index) => ({
       dataUrl,
-      alt: `${topic} için bilimsel infografik: ${nodeTitle} bölümünün ana kavram ilişkileri`
+      alt: `Görsel ${index + 1}/${imageCount} - ${topic}: ${nodeTitle} bilimsel infografik`
     }));
 
     const usageEntry: UsageReportEntry = {
@@ -2943,9 +3704,31 @@ ${brainAllowed
   const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Konuya uygun dönem";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
   const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
+  const continuityLock = buildCharacterContinuityLock(characters);
   const sceneCues = buildNarrativeSceneCues(languageEvidenceText, imageCount);
   const totalSections = Math.max(1, narrativeContext?.outlinePositions.total || 1);
   const activeSectionIndex = Math.max(1, Math.min(totalSections, narrativeContext?.outlinePositions.current || 1));
+  const previousChapterSnippet = String(narrativeContext?.previousChapterContent || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(-1200);
+  const targetInteriorVisualCount = getNarrativeInteriorVisualTargetForBookType(bookType);
+  const narrativeImageCountForSection = (section: number): number => {
+    if (!isNarrative) return imageCount;
+    if (section < 1 || section > totalSections) return 0;
+    if (section > targetInteriorVisualCount) return 0;
+    return getNarrativeLectureImageCount(bookType, audienceLevel, {
+      outlinePositions: { current: section, total: totalSections }
+    });
+  };
+  const sectionSequenceStart = isNarrative
+    ? Array.from({ length: Math.max(0, activeSectionIndex - 1) }, (_, idx) => narrativeImageCountForSection(idx + 1))
+      .reduce((sum, value) => sum + value, 0)
+    : 0;
+  const narrativeSequenceTotal = isNarrative
+    ? Array.from({ length: totalSections }, (_, idx) => narrativeImageCountForSection(idx + 1))
+      .reduce((sum, value) => sum + value, 0)
+    : imageCount;
 
   let finalImages: string[] = [];
   let totalInputTokens = 0;
@@ -2959,25 +3742,109 @@ ${brainAllowed
       creativeBrief,
       audienceLevel,
       activeSectionIndex,
-      totalSections
+      totalSections,
+      previousChapterSnippet
     );
-    const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, 1, {
-      sizeMode: "poster-16x9",
-      modelOverride: OPENAI_LECTURE_IMAGE_MODEL
-    });
-    finalImages = imageResult.images;
-    totalInputTokens = imageResult.usage.inputTokens;
-    totalOutputTokens = imageResult.usage.outputTokens;
+    let fairyImageGenerated = false;
+    let lastFairyImageError: unknown = null;
+    for (let attempt = 1; attempt <= 3 && !fairyImageGenerated; attempt += 1) {
+      try {
+        const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, 1, {
+          sizeMode: "poster-16x9",
+          modelOverride: OPENAI_LECTURE_IMAGE_MODEL
+        });
+        if (imageResult.images.length > 0) {
+          finalImages = imageResult.images;
+          totalInputTokens += imageResult.usage.inputTokens;
+          totalOutputTokens += imageResult.usage.outputTokens;
+          fairyImageGenerated = true;
+        } else {
+          lastFairyImageError = new Error("No fairy tale image returned.");
+        }
+      } catch (error) {
+        lastFairyImageError = error;
+        logger.warn("Failed to generate fairy tale section image", {
+          attempt,
+          sectionIndex: activeSectionIndex,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    if (!fairyImageGenerated) {
+      throw new HttpsError(
+        "internal",
+        `Masal görseli üretilemedi (sahne ${activeSectionIndex}/${totalSections}). ${lastFairyImageError instanceof Error ? lastFairyImageError.message : ""}`.trim()
+      );
+    }
   } else if (isNarrative && imageCount > 1) {
     const hintsPerImage = Math.max(1, Math.ceil(storyHints.length / imageCount));
-    const promises = [];
-
+    const sectionFourPanelCues = buildNarrativeSceneCues(languageEvidenceText, 4);
     for (let i = 0; i < imageCount; i++) {
       const chunkHints = storyHints.slice(i * hintsPerImage, (i + 1) * hintsPerImage);
       const chunkBlock = chunkHints.length ? chunkHints.map((item) => `- ${item}`).join("\n") : "";
       const sceneCue = sceneCues[i] || `Sahne ${i + 1}`;
+      const previousSceneCue = i > 0
+        ? (sceneCues[i - 1] || "")
+        : previousChapterSnippet;
+      const nextSceneCue = i + 1 < sceneCues.length ? sceneCues[i + 1] : "";
+      const sequenceIndex = sectionSequenceStart + i + 1;
+      const sequenceTotal = Math.max(sequenceIndex, narrativeSequenceTotal || imageCount);
+      const shouldUseFourPanelComposite =
+        (bookType === "story" || bookType === "novel") &&
+        imageCount > 1 &&
+        i === imageCount - 1;
 
-      const chunkPrompt = `
+      const chunkPromptBase = shouldUseFourPanelComposite
+        ? `
+Create exactly 1 horizontal 16:9 ${bookType === "story" ? "story" : "novel"} illustration for the active narrative section.
+
+Book context:
+- Topic: ${topic}
+- Section: ${nodeTitle}
+- Sub-genre: ${subGenre}
+- Characters: ${characters}
+- Place: ${settingPlace}
+- Time: ${settingTime}
+Scene index in section: ${i + 1}/${imageCount}
+Global sequence index in book timeline: ${sequenceIndex}/${sequenceTotal}
+Active section excerpt:
+"""
+${String(languageEvidenceText || "").slice(0, 4500)}
+"""
+${previousSceneCue ? `Previous scene cue (must not be repeated):\n"""\n${previousSceneCue}\n"""` : ""}
+
+Visual structure requirement:
+- Output ONE single image.
+- Compose as a 4-panel storyboard grid: top-left, top-right, bottom-left, bottom-right.
+- Panels must show 4 DIFFERENT moments in chronological order from this section.
+- Do NOT use any outer frame or border on the canvas edges.
+- Separate the four panels only with a very thin central cross divider.
+- The divider must be subtle and fine: one thin vertical line plus one thin horizontal line crossing at the center.
+
+Panel scene cues in order:
+${sectionFourPanelCues.map((cue, index) => `${index + 1}) ${cue}`).join("\n")}
+
+Panel-to-grid mapping (mandatory):
+- Top-left: cue #1 (opening beat).
+- Top-right: cue #2 (progression beat).
+- Bottom-left: cue #3 (turning beat).
+- Bottom-right: cue #4 (result beat).
+
+${styleLine}
+${continuityLock}
+
+Rules:
+1) Horizontal 16:9 only.
+2) No text, no captions, no logos, no watermark, no UI panels.
+3) Same characters/world continuity is mandatory (same face identity, same key outfit signals, same props).
+4) Each panel must depict a distinct action beat; no panel may repeat another panel's action.
+5) Do not reuse the same camera distance or pose across panels.
+6) Timeline lock: this 4-panel image must move the story forward from previous scenes.
+7) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
+8) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+9) Absolutely no prompt/system/backend/meta text in visuals.
+      `.trim()
+        : `
 Create exactly 1 horizontal 16:9 story scene illustration dedicated specifically to the active narrative scene.
 
 Book context:
@@ -2987,14 +3854,18 @@ Book context:
 - Characters: ${characters}
 - Place: ${settingPlace}
 - Time: ${settingTime}
-Scene index: ${i + 1}/${imageCount}
+Scene index in section: ${i + 1}/${imageCount}
+Global sequence index in book timeline: ${sequenceIndex}/${sequenceTotal}
 Scene excerpt for THIS specific image (mandatory reference):
 """
 ${sceneCue}
 """
+${previousSceneCue ? `Previous scene cue (must be different from this image):\n"""\n${previousSceneCue}\n"""` : ""}
+${nextSceneCue ? `Upcoming scene cue (do not jump directly to this one yet):\n"""\n${nextSceneCue}\n"""` : ""}
 ${chunkBlock ? `Narrative clues highlighting THIS SPECIFIC MOMENT:\n${chunkBlock}` : ""}
 
 ${styleLine}
+${continuityLock}
 
 Rules:
 1) Horizontal 16:9 only.
@@ -3002,81 +3873,60 @@ Rules:
 3) Must belong to the SAME visual world: consistent characters, faces, costumes, props, environment palette, and lighting language.
 4) The visual MUST tightly match the scene excerpt and narrative clues. Do not draw a generic cover. Visualize the exact action occurring in this specific moment.
 5) Visuals must directly depict the given story events and concrete actions; do not create generic decorative backgrounds.
-6) Keep details coherent across images (same objects remain recognizable).
-7) This image must be visually distinct from other scene indices (different action moment / camera framing / spatial beat).
-8) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
-9) Absolutely no prompt/system/backend/meta text in visuals.
+6) Progression lock: this image must represent the NEXT event step, not a repeated action from the previous scene cue.
+7) Distinctness lock: use different action beat, camera framing, and character pose compared to adjacent scene indices.
+8) Keep details coherent across images (same objects remain recognizable).
+9) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+10) Absolutely no prompt/system/backend/meta text in visuals.
       `.trim();
 
-      promises.push(
-        requestLowQualityLessonImages(openAiApiKey, chunkPrompt, 1, {
-          sizeMode: "poster-16x9",
-          modelOverride: OPENAI_LECTURE_IMAGE_MODEL
-        }).catch(err => {
-          logger.warn("Failed to generate narrative chunk image", { error: err });
-          return null;
-        })
-      );
-    }
-
-    const results = await Promise.all(promises);
-    for (const res of results) {
-      if (res && res.images.length > 0) {
-        finalImages.push(res.images[0]);
-        totalInputTokens += res.usage.inputTokens;
-        totalOutputTokens += res.usage.outputTokens;
-      }
-    }
-
-    let rescueAttempts = 0;
-    while (finalImages.length < imageCount && rescueAttempts < imageCount * 2) {
-      const idx = finalImages.length;
-      const rescueCue = sceneCues[idx] || `Sahne ${idx + 1}`;
-      const rescuePrompt = `
-Create exactly 1 horizontal 16:9 story scene illustration.
-
-Book context:
-- Topic: ${topic}
-- Section: ${nodeTitle}
-- Sub-genre: ${subGenre}
-- Characters: ${characters}
-- Place: ${settingPlace}
-- Time: ${settingTime}
-Scene index: ${idx + 1}/${imageCount}
-Scene excerpt:
-"""
-${rescueCue}
-"""
-
-${styleLine}
-
-Rules:
-1) Horizontal 16:9 only.
-2) No text/caption/logo/watermark.
-3) Scene must be distinct from previous generated scenes.
-4) Keep the same character/world continuity.
-      `.trim();
-      try {
-        const rescueResult = await requestLowQualityLessonImages(openAiApiKey, rescuePrompt, 1, {
-          sizeMode: "poster-16x9",
-          modelOverride: OPENAI_LECTURE_IMAGE_MODEL
-        });
-        if (rescueResult.images.length > 0) {
-          finalImages.push(rescueResult.images[0]);
-          totalInputTokens += rescueResult.usage.inputTokens;
-          totalOutputTokens += rescueResult.usage.outputTokens;
+      let generatedScene = false;
+      for (let attempt = 1; attempt <= 3 && !generatedScene; attempt += 1) {
+        const chunkPrompt = `${chunkPromptBase}\nAttempt hint: ${attempt}/3`;
+        try {
+          const chunkResult = await requestLowQualityLessonImages(openAiApiKey, chunkPrompt, 1, {
+            sizeMode: "poster-16x9",
+            modelOverride: OPENAI_LECTURE_IMAGE_MODEL
+          });
+          if (chunkResult.images.length > 0) {
+            finalImages.push(chunkResult.images[0]);
+            totalInputTokens += chunkResult.usage.inputTokens;
+            totalOutputTokens += chunkResult.usage.outputTokens;
+            generatedScene = true;
+          }
+        } catch (error) {
+          logger.warn("Failed to generate narrative sequence image", {
+            sectionIndex: activeSectionIndex,
+            sceneIndex: i + 1,
+            attempt,
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
-      } catch (error) {
-        logger.warn("Failed to generate narrative rescue image", {
-          index: idx + 1,
-          error: error instanceof Error ? error.message : String(error)
-        });
       }
-      rescueAttempts += 1;
+
+      if (!generatedScene) {
+        throw new HttpsError(
+          "internal",
+          `Bölüm görsel akışı üretilemedi (sahne ${i + 1}/${imageCount}, global ${sequenceIndex}/${sequenceTotal}).`
+        );
+      }
     }
   } else {
     // Akademik veya tek resim istendiğinde normal akış
     const storyHintBlock = storyHints.length ? storyHints.map((item) => `- ${item}`).join("\n") : "";
+    const sequenceLabel = isNarrative
+      ? `Global scene order: ${sectionSequenceStart + 1}/${Math.max(sectionSequenceStart + 1, narrativeSequenceTotal || totalSections)}`
+      : `Image order: 1/${imageCount}`;
+    const narrativeTimelineLock = isNarrative
+      ? [
+        "Narrative timeline lock:",
+        `- This visual belongs to global scene ${sectionSequenceStart + 1}/${Math.max(sectionSequenceStart + 1, narrativeSequenceTotal || totalSections)}.`,
+        previousChapterSnippet
+          ? `- Previous scene recap (must not be repeated): """${previousChapterSnippet}"""`
+          : "- There may be prior scenes in the book timeline; do not render a generic opening shot.",
+        "- The image must depict the NEXT chronological event step for this section."
+      ].join("\n")
+      : "";
     const prompt = `
 Create exactly ${imageCount} horizontal 16:9 story scene illustration(s) dedicated specifically to the active narrative scene.
 
@@ -3087,9 +3937,12 @@ Book context:
 - Characters: ${characters}
 - Place: ${settingPlace}
 - Time: ${settingTime}
+${sequenceLabel}
 ${storyHintBlock ? `Narrative clues from current section:\n${storyHintBlock}` : ""}
 
 ${styleLine}
+${continuityLock}
+${narrativeTimelineLock}
 
 Rules:
 1) Horizontal 16:9 only.
@@ -3098,8 +3951,10 @@ Rules:
 4) The visual MUST tightly match the 'Section' and 'Narrative clues'. Do not draw a generic cover or introduction. Visualize the exact action occurring in this specific scene.
 5) Visuals must directly depict the given story events and concrete actions; do not create generic decorative backgrounds.
 6) Keep details coherent across images (same objects remain recognizable across scenes).
-7) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
-8) Absolutely no prompt/system/backend/meta text in visuals.
+7) Progression lock: this section must advance the story timeline; do not repeat the previous scene event.
+7.1) If multiple images are requested, each image must move to the next event step and must not repeat earlier scene actions.
+8) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+9) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
 
     const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, imageCount, {
@@ -3115,15 +3970,46 @@ Rules:
     throw new HttpsError("internal", "Bölüm görselleri üretilemedi.");
   }
 
-  const normalizedImages = finalImages.slice(0, imageCount);
-  while (normalizedImages.length < imageCount && normalizedImages.length > 0) {
-    normalizedImages.push(normalizedImages[normalizedImages.length - 1]);
+  if (isNarrative && finalImages.length < imageCount) {
+    throw new HttpsError(
+      "internal",
+      `Bölüm görsel akışı eksik kaldı (${finalImages.length}/${imageCount}).`
+    );
   }
 
-  const assets = normalizedImages.map((dataUrl, index) => ({
-    dataUrl,
-    alt: "İçerik görseli"
-  }));
+  const normalizedImages = finalImages.slice(0, imageCount);
+  if (!isNarrative) {
+    while (normalizedImages.length < imageCount && normalizedImages.length > 0) {
+      normalizedImages.push(normalizedImages[normalizedImages.length - 1]);
+    }
+  }
+  if (isNarrative) {
+    for (let i = 1; i < normalizedImages.length; i += 1) {
+      if (normalizedImages[i] === normalizedImages[i - 1]) {
+        throw new HttpsError(
+          "internal",
+          `Ardışık tekrarlı görsel tespit edildi (index ${i}/${normalizedImages.length}).`
+        );
+      }
+    }
+  }
+
+  const resolvedNarrativeSequenceTotal = Math.max(1, narrativeSequenceTotal || normalizedImages.length);
+  const assets = normalizedImages.map((dataUrl, index) => {
+    const sequenceIndex = isNarrative
+      ? (sectionSequenceStart + index + 1)
+      : (index + 1);
+    const sequenceTotal = isNarrative
+      ? Math.max(sequenceIndex, resolvedNarrativeSequenceTotal)
+      : imageCount;
+    const isFourPanelFairy = bookType === "fairy_tale" && imageCount === 1 && activeSectionIndex >= 2 && activeSectionIndex <= 4;
+    const isFourPanelNarrative = (bookType === "story" || bookType === "novel") && imageCount > 1 && index === imageCount - 1;
+    const panelHint = isFourPanelFairy || isFourPanelNarrative ? " - 4 panel: 1->2->3->4 olay akışı" : "";
+    return {
+      dataUrl,
+      alt: `Görsel ${sequenceIndex}/${sequenceTotal}${panelHint} - ${nodeTitle}`
+    };
+  });
 
   const usageEntry: UsageReportEntry = {
     label: `${nodeTitle}: Bölüm görselleri`,
@@ -3202,11 +4088,11 @@ ${brainAllowed
 
     const assets = normalizedImages.map((dataUrl, index) => ({
       dataUrl,
-      alt: localizedRemedialImageCaption(
+      alt: `Görsel ${index + 1}/${imageCount} - ${localizedRemedialImageCaption(
         contentLanguage,
         index,
         visualFocuses[index] || topic
-      )
+      )}`
     }));
 
     const usageEntry: UsageReportEntry = {
@@ -3225,9 +4111,9 @@ ${brainAllowed
     throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
   }
 
-  const characters = compactInline(creativeBrief?.characters, 320) || "Konuya uygun karakter seti";
-  const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Konuya uygun mekan";
-  const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Konuya uygun zaman";
+  const characters = compactInline(creativeBrief?.characters, 320) || "Infer an original, path-faithful cast from the selected type, sub-genre, topic, and scene clues. Do not use stock placeholder protagonists.";
+  const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Infer a specific, story-faithful place from the selected path and section clues. Avoid generic placeholder scenery.";
+  const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Infer a story-faithful time-of-day or era from the selected path and scene clues. Avoid generic placeholder timing.";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
   const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
   const conceptHints = hintPool.length ? hintPool.map((item, idx) => `${idx + 1}) ${item}`).join("\n") : "";
@@ -3270,7 +4156,7 @@ Rules:
 
   const assets = normalizedImages.map((dataUrl, index) => ({
     dataUrl,
-    alt: `${topic} anlatısında detay sahnesi ${index + 1}: olay akışını ve temel kavramları görselleştiren yatay sahne`
+    alt: `Görsel ${index + 1}/${imageCount} - ${topic} anlatısında detay sahnesi ${index + 1}: olay akışını ve temel kavramları görselleştiren yatay sahne`
   }));
 
   const usageEntry: UsageReportEntry = {
@@ -3317,6 +4203,10 @@ async function generateCourseCover(
     subGenre,
     true
   );
+  const coverAntiClicheDirective = buildCoverCompositionAntiClicheDirective(
+    isStory ? "story" : isNovel ? "novel" : isFairyTale ? "fairy_tale" : "academic",
+    subGenre
+  );
   const prompt = `
 Konu / Kitap adı: ${titleText}
 Kapakta kullanılacak dil (varsa görünür metin için): ${titleLanguage}
@@ -3326,16 +4216,18 @@ ${normalizedCoverContext ? `İçerik bağlamı (kapak buna sadık olmalı): ${no
 ${isFairyTale
       ? "Sadece 1 adet çocuklara yönelik, masalsı, sevimli, 2D animasyon veya suluboya tarzında (ASLA FOTOGERÇEKÇİ OLMAYAN) bir masal kitabı kapağı üret."
       : isStory
-        ? "Sadece 1 adet hikaye kapağı üret. Görsel, çizgi film/anime etkili sinematik illüstrasyon dili taşımalı ve hikayenin tek ana olayını hissettirmeli."
+        ? "Sadece 1 adet hikaye kapağı üret. Görsel, seçilen alt türün görsel tonunu taşımalı; hikayenin duygusal merkezini, baskın çatışmasını ve atmosferini özgün biçimde hissettirmeli."
         : isNovel
           ? "Sadece 1 adet roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren sinematik/sanatsal bir kapak olmalı."
           : "Sadece 1 adet modern, profesyonel, bilimsel ve konuya doğrudan bağlı Fortale kapak görseli üret."}
 Stil yönü: ${narrativeVisualStyle}
+Alt türe özel kompozisyon yasağı: ${coverAntiClicheDirective}
 Kurallar:
-1) Tercih edilen çıktı: görünür metin içermeyen (text-free) kapak. Rastgele harfler, anlamsız yazılar, bozuk kelimeler, sahte tipografi kullanma.
-1.1) Eğer tasarım gereği görünür metin kullanırsan SADECE şu başlığı yaz: "${titleText}"
-1.2) Görünür metin kullanılırsa yazım, imla, dil bilgisi ve karakterler hatasız olmalı; hedef dil dışına çıkma.
-1.3) Başlık dışında başka kelime, alt başlık, slogan, etiket, marka adı, filigran veya dekoratif metin ekleme.
+1) KESİN KURAL: kapakta görünür ve doğru yazılmış kitap adı MUTLAKA yer almalı.
+1.1) Kullanılacak TEK görünür metin şudur: "${titleText}"
+1.2) Başlık doğru dilde, tam yazımla, okunur biçimde ve tasarımın doğal parçası olarak görünmeli.
+1.3) Başlık dışında başka kelime, alt başlık, slogan, etiket, marka adı, filigran veya dekoratif metin YASAK.
+1.4) Rastgele harfler, anlamsız yazılar, bozuk kelimeler, sahte tipografi veya başlık yer tutucusu YASAK.
 ${isFairyTale
       ? "2) Kapak tasarımı minik çocuklar için sevimli, renkli ve fantastik olmalı. Kesinlikle karanlık, korkutucu veya fotogerçekçi (photorealistic) olmamalı."
       : isStory
@@ -3354,6 +4246,10 @@ ${isFairyTale
 3.1) İçerik bağlamı verildiyse kapak sahnesini bu bağlamdaki karakter/olay/atmosferle uyumlu kur; alakasız sahne üretme.
 4) Renk dengesi profesyonel ve temiz olsun; kompozisyon net, kaliteli ve odaklı olsun.
 4.1) Kapak kompozisyonu dikey 3:4 oranına uygun tasarlansın (Fortale kapak oranı).
+4.2) Başlığı üstte, karakterleri altta dizen jenerik poster şablonu kullanma.
+4.3) Tek çocuk + tek hayvan + orman arka planı gibi klişe bir güvenli kompozisyona otomatik düşme; içerik gerçekten bunu gerektirmiyorsa YASAK.
+4.4) Karakter kataloğu yapma. Gerekirse tek güçlü an, tek baskın görsel metafor veya tek belirleyici çatışma sahnesi seç.
+4.5) Asimetrik, özgün ve sanat yönetimi hissi veren kompozisyon kur; stok kapak gibi görünmesin.
 ${brainAllowed && !isFairyTale
       ? "5) Beyin görseli yalnızca konu gerçekten nörobilim/psikoloji ise kullanılabilir."
       : "5) Beyin görseli, beyin ikonu veya beyin metaforu kullanma."}
@@ -3382,9 +4278,19 @@ ${brainAllowed && !isFairyTale
   return { coverImageUrl: imageResult.images[0], usageEntry };
 }
 
-function embedImagesIntoMarkdown(content: string, images: LessonImageAsset[]): string {
+function embedImagesIntoMarkdown(
+  content: string,
+  images: LessonImageAsset[],
+  options?: { minParagraphsBeforeFirstImage?: number }
+): string {
+  const buildImageMarkdownBlock = (image: LessonImageAsset): string => {
+    const alt = String(image.alt || "").replace(/[\r\n[\]]/g, " ").replace(/\s+/g, " ").trim();
+    const safeAlt = alt || "Gorsel";
+    return `![${safeAlt}](<${image.dataUrl}>)`;
+  };
   const cleanContent = content.trim();
   if (!cleanContent || images.length === 0) return cleanContent;
+  const minParagraphsBeforeFirstImage = Math.max(0, Math.floor(options?.minParagraphsBeforeFirstImage ?? 1));
 
   const paragraphs = cleanContent
     .split(/\n{2,}/)
@@ -3393,12 +4299,12 @@ function embedImagesIntoMarkdown(content: string, images: LessonImageAsset[]): s
 
   if (paragraphs.length < 2) {
     return `${cleanContent}\n\n${images
-      .map((image) => `![](<${image.dataUrl}>)`)
+      .map((image) => buildImageMarkdownBlock(image))
       .join("\n\n")}`;
   }
 
   const slots = Array.from({ length: images.length }, (_, index) =>
-    Math.max(1, Math.min(paragraphs.length, Math.round(((index + 1) * (paragraphs.length + 1)) / (images.length + 1))))
+    Math.max(minParagraphsBeforeFirstImage, Math.min(paragraphs.length, Math.round(((index + 1) * (paragraphs.length + 1)) / (images.length + 1))))
   );
   for (let idx = 1; idx < slots.length; idx += 1) {
     if (slots[idx] <= slots[idx - 1]) {
@@ -3412,13 +4318,13 @@ function embedImagesIntoMarkdown(content: string, images: LessonImageAsset[]): s
   paragraphs.forEach((paragraph, index) => {
     output.push(paragraph);
     while (injected < images.length && index + 1 >= slots[injected]) {
-      output.push(`![](<${images[injected].dataUrl}>)`);
+      output.push(buildImageMarkdownBlock(images[injected]));
       injected += 1;
     }
   });
 
   while (injected < images.length) {
-    output.push(`![](<${images[injected].dataUrl}>)`);
+    output.push(buildImageMarkdownBlock(images[injected]));
     injected += 1;
   }
 
@@ -3426,9 +4332,14 @@ function embedImagesIntoMarkdown(content: string, images: LessonImageAsset[]): s
 }
 
 function embedImagesAtTopIntoMarkdown(content: string, images: LessonImageAsset[]): string {
+  const buildImageMarkdownBlock = (image: LessonImageAsset): string => {
+    const alt = String(image.alt || "").replace(/[\r\n[\]]/g, " ").replace(/\s+/g, " ").trim();
+    const safeAlt = alt || "Gorsel";
+    return `![${safeAlt}](<${image.dataUrl}>)`;
+  };
   const cleanContent = content.trim();
   if (!cleanContent || images.length === 0) return cleanContent;
-  const imageBlock = images.map((image) => `![](<${image.dataUrl}>)`).join("\n\n");
+  const imageBlock = images.map((image) => buildImageMarkdownBlock(image)).join("\n\n");
   return `${imageBlock}\n\n${cleanContent}`.trim();
 }
 
@@ -3738,6 +4649,21 @@ function normalizeRevenueCatHint(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function revenueCatIdentifierMatchesHint(identifier: string, hint: string): boolean {
+  const normalizedId = normalizeRevenueCatHint(identifier);
+  const normalizedHint = normalizeRevenueCatHint(hint);
+  if (!normalizedId || !normalizedHint) return false;
+  if (normalizedId === normalizedHint) return true;
+
+  const idTokens = normalizedId.split(/[^a-z0-9]+/g).filter(Boolean);
+  if (idTokens.includes(normalizedHint)) return true;
+
+  // Numeric hints like "5" must not match "15" by substring.
+  if (/^\d+$/u.test(normalizedHint)) return false;
+
+  return normalizedHint.length >= 4 && normalizedId.includes(normalizedHint);
+}
+
 function readRevenueCatPackHintValues(keys: string[]): string[] {
   const values: string[] = [];
   for (const key of keys) {
@@ -3769,14 +4695,14 @@ function resolveRevenueCatPackId(productId: string): string | null {
   const packOrder = ["pack-30", "pack-15", "pack-5"];
   for (const packId of packOrder) {
     const hints = getRevenueCatPackHints(packId);
-    if (hints.some((hint) => normalizedProductId === hint || normalizedProductId.includes(hint))) {
+    if (hints.some((hint) => revenueCatIdentifierMatchesHint(normalizedProductId, hint))) {
       return packId;
     }
   }
 
-  if (normalizedProductId.includes("30")) return "pack-30";
-  if (normalizedProductId.includes("15")) return "pack-15";
-  if (normalizedProductId.includes("5")) return "pack-5";
+  if (revenueCatIdentifierMatchesHint(normalizedProductId, "30")) return "pack-30";
+  if (revenueCatIdentifierMatchesHint(normalizedProductId, "15")) return "pack-15";
+  if (revenueCatIdentifierMatchesHint(normalizedProductId, "5")) return "pack-5";
   return null;
 }
 
@@ -4876,7 +5802,7 @@ ${minRequiredChars > 0 ? `6) Metin en az ${minRequiredChars} karaktere ulaşmal�
         ? "Metin doğrudan bir anlatı sahnesiyle başlasın. Sahne, karakter eylemi ve olay örgüsüyle ilerlesin. İçerik tamamen kurmaca anlatı formatında kalmalı."
         : "Metin doğrudan ders içeriği gibi başlasın; meta giriş paragrafı bırakma."}
 9) ${options.bookType === "fairy_tale"
-        ? "Bu bir masal düzeltmesidir: AYNI masalı koru, karakterleri/olay çizgisini değiştirme, eksik kalan yerleri tamamla, tek ana olay ve tek ana mesajı bozma."
+        ? "Bu bir masal duzeltmesidir: AYNI masali koru, karakterleri/olay cizgisini degistirme, eksik kalan yerleri tamamla, ana masal butunlugunu ve duygusal yonelimi bozma."
         : "Anlatı devamlılığını koru; mevcut karakterleri ve olay çizgisini bozma."}
 ${retryHint ? `10) DÜZELTME: ${retryHint}` : ""}
 `.trim();
@@ -5190,7 +6116,7 @@ KRİTİK BAŞLIK KURALI: title alanlarında "Giriş", "Bölüm 1", "Döşeme", "
 5) Final / Sonuç
 Her adımın type değeri MUTLAKA "lecture" olmalı.
 KRİTİK BAŞLIK KURALI: title alanlarında "Giriş", "Gelişme", "Doruk", "Çözüm", "Final", "Bölüm 1" gibi teknik etiketleri YAZMA; her biri doğal/edebi hikaye başlığı olmalı.
-Hikaye tek ana olay hattında akmalı; karakter sayısı az olmalı; zaman aralığı kısa kalmalı.`;
+Hikaye tek baskın çatışma hattında akmalı; karakter sayısı kontrollü olmalı; zaman akışı odaklı kalmalı.`;
   } else if (isNovelPrompt) {
     expectedChapterCount = NOVEL_CHAPTER_COUNT;
     structureRules = `KRİTİK KURAL: Roman akışını TAM OLARAK ${NOVEL_CHAPTER_COUNT} ADIM olarak üret:
@@ -5217,9 +6143,11 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
 - podcast: locked
 - reinforce: locked
 - retention: locked`;
-  const bookTitleRule = allowAiBookTitleGeneration
-    ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün ve profesyonel bir kitap adı üretmeli; karakter adlarını başlığa zorla yapıştırma. Kategori/alt tür adı tek başına başlık olamaz (ör: 'Dram', 'Roman', 'Edebiyat', 'Bilim Kurgu')."
-    : "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını koru.";
+  const bookTitleRule = isNarrativePrompt
+    ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün, edebi ve profesyonel bir kitap adı üretmeli; kullanıcı konusunu olduğu gibi tekrar etme. Karakter adlarını başlığa zorla yapıştırma. 'Ayşe ile Mehmet'in ...', 'Ali ve Zeynep ...' gibi isimleri yan yana dizen çocuk kitabı klişeleri YASAK. Kategori/alt tür adı tek başına başlık olamaz (ör: 'Dram', 'Roman', 'Edebiyat', 'Bilim Kurgu')."
+    : allowAiBookTitleGeneration
+      ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün ve profesyonel bir kitap adı üretmeli; karakter adlarını başlığa zorla yapıştırma. 'Ayşe ile Mehmet'in ...', 'Ali ve Zeynep ...' gibi isimleri yan yana dizen çocuk kitabı klişeleri YASAK. Kategori/alt tür adı tek başına başlık olamaz (ör: 'Dram', 'Roman', 'Edebiyat', 'Bilim Kurgu')."
+      : "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını koru.";
 
   const prompt = `
 ${normalizedTopic ? `"${normalizedTopic}" konusu için yapılandırılmış bir öğrenme yolu oluştur.` : "Kullanıcı konu başlığı belirtmedi. Sadece seçilen tür/alt tür/yaş grubu/karakter ve diğer brief alanlarına göre özgün bir akış oluştur."}
@@ -5227,7 +6155,7 @@ ${sourceBlock}
 ${outlineAudienceInstruction}
 Kitap brief:
 ${creativeBriefInstruction}
-${isStoryPrompt ? "KRİTİK KURAL (KALİTE): Bu bir HİKAYE üretimidir. Hikaye 20-25 sayfa bandında, 20 sayfa alt sınırına sadık ve tek ana olay etrafında planlanmalı." : ""}
+${isStoryPrompt ? "KRITIK KURAL (KALITE): Bu bir HIKAYE uretimidir. Hikaye 20-25 sayfa bandinda, 20 sayfa alt sinirina sadik, tek baskin catisma hattina sahip ve odakli bir zaman akisi icinde planlanmali." : ""}
 ${isNovelPrompt ? "KRİTİK KURAL (KALİTE): Bu bir ROMAN üretimidir. Roman 30-35 sayfa bandında planlanmalı; 30 sayfa altına düşmemeli ve olay örgüsünde derinlik korunmalı." : ""}
 ${isStoryOrNovelPrompt ? "KRİTİK KURAL (KALİTE): Bölüm başlıkları teknik etiket olamaz. 'Bölüm 1', 'Giriş', 'Perde I' gibi başlıklar yerine doğal/edebi başlıklar kullan." : ""}
 
@@ -5482,11 +6410,18 @@ ${statusRules}
     const technicalOnly = /^(?:bölüm|chapter|kısım|kisim|part|perde|act|hazırlık|hazirlik|kurulum|y[üu]zle[şs]me|midpoint|en\s*alt\s*nokta|doruk|kritik\s*an|ç[öo]z[üu]m|cozum|final|sonu[çc]|giriş|introduction|roman|novel)$/iu.test(cleanedNovel);
     return !cleanedNovel || technicalOnly ? "" : cleanedNovel;
   };
-  const repairNarrativeTitlesIfNeeded = async (
+  const repairNarrativeMetadataIfNeeded = async (
     currentOutline: TimelineNode[],
-    rawBookTitleValue: string
-  ): Promise<{ outline: TimelineNode[]; bookTitle: string }> => {
-    if (!narrativeBrief) return { outline: currentOutline, bookTitle: rawBookTitleValue };
+    rawBookTitleValue: string,
+    rawBookDescriptionValue: string
+  ): Promise<{ outline: TimelineNode[]; bookTitle: string; bookDescription: string }> => {
+    if (!narrativeBrief) {
+      return {
+        outline: currentOutline,
+        bookTitle: rawBookTitleValue,
+        bookDescription: rawBookDescriptionValue
+      };
+    }
 
     const rawTitleCandidates = currentOutline
       .filter((node) => node.type === "lecture")
@@ -5496,17 +6431,25 @@ ${statusRules}
         description: String(node.description || "").replace(/\s+/g, " ").trim()
       }));
     const missingOrTechnicalTitleCount = rawTitleCandidates.filter((item) => !item.title.trim()).length;
-    const shouldRepairBookTitle = allowAiBookTitleGeneration && isNarrativeBookTitleTooGeneric(rawBookTitleValue, {
+    const shouldRepairBookTitle = !rawBookTitleValue.trim() || isNarrativeBookTitleTooGeneric(rawBookTitleValue, {
       topic: normalizedTopic,
       subGenre: normalizedBrief.subGenre,
       bookType: normalizedBrief.bookType
     });
-    if (!shouldRepairBookTitle && missingOrTechnicalTitleCount === 0) {
-      return { outline: currentOutline, bookTitle: rawBookTitleValue };
+    const shouldRepairBookDescription = !rawBookDescriptionValue.trim() || isGenericBookDescription(
+      rawBookDescriptionValue,
+      normalizedTopic || rawBookTitleValue
+    );
+    if (!shouldRepairBookTitle && !shouldRepairBookDescription && missingOrTechnicalTitleCount === 0) {
+      return {
+        outline: currentOutline,
+        bookTitle: rawBookTitleValue,
+        bookDescription: rawBookDescriptionValue
+      };
     }
 
     const repairPrompt = `
-${normalizedTopic ? `"${normalizedTopic}" için yalnızca başlık onarımı yap.` : "Yalnızca başlık onarımı yap."}
+${normalizedTopic ? `"${normalizedTopic}" için yalnızca anlatı metadata onarımı yap.` : "Yalnızca anlatı metadata onarımı yap."}
 
 Kitap brief:
 ${creativeBriefInstruction}
@@ -5514,17 +6457,23 @@ ${outlineAudienceInstruction}
 
 Kurallar:
 1) Yalnızca JSON döndür.
-2) Bu mevcut kitabı YENİDEN KURMA; sadece kitap adı ve bölüm adlarını üret/düzelt.
+2) Bu mevcut kitabı YENIDEN KURMA; sadece kitap adı, kısa kitap açıklaması ve bölüm adlarını üret/düzelt.
 3) bookTitle mutlaka özgün, edebi ve konuya/brief'e sadık olsun.
 4) bookTitle ASLA kategori/alt tür adı, teknik etiket veya sabit klişe isim olmasın.
-5) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
-6) Her chapter title doğal/edebi olmalı; "Giriş", "Bölüm 1", "Döşeme", "Serim", "Gelişme", "Sonuç", "Dilek", "Final", "Perde I" gibi teknik etiketler YASAK.
-7) Bütün chapterTitles aynı kitabın tek akışıyla tutarlı ve birbirinden farklı olmalı.
-8) Karakter adlarını anlamsız biçimde zorla başlığa doldurma.
-9) Dil, kullanıcının diliyle aynı olsun.
+4.1) "Ayşe ile Mehmet'in ...", "Ali ve Zeynep ...", "<karakter adı>'nın macerası" gibi mekanik çocuk kitabı formülleri YASAK.
+5) bookDescription tam olarak 1-2 cümlelik, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
+6) bookDescription generic, öğretici şablon, uygulama içi placeholder veya "bu kitap ..." diye mekanik tanıtım metni gibi durmamalı.
+7) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
+8) Her chapter title doğal/edebi olmalı; "Giriş", "Bölüm 1", "Döşeme", "Serim", "Gelişme", "Sonuç", "Dilek", "Final", "Perde I" gibi teknik etiketler YASAK.
+9) Bütün chapterTitles aynı kitabın tek akışıyla tutarlı ve birbirinden farklı olmalı.
+10) Karakter adlarını anlamsız biçimde zorla başlığa doldurma.
+11) Dil, kullanıcının diliyle aynı olsun.
 
 Mevcut kitap adı:
 "${rawBookTitleValue || normalizedTopic || (useEnglishScaffold ? "Untitled Book" : "Adsız Kitap")}"
+
+Mevcut kısa açıklama:
+"${rawBookDescriptionValue || "[BOS]"}"
 
 Mevcut bölüm bilgileri:
 ${rawTitleCandidates.map((item) => `${item.index + 1}) title="${item.title || "[BOŞ]"}" | description="${item.description || "-"}"`).join("\n")}
@@ -5532,6 +6481,7 @@ ${rawTitleCandidates.map((item) => `${item.index + 1}) title="${item.title || "[
 JSON şeması:
 {
   "bookTitle": "string",
+  "bookDescription": "string",
   "chapterTitles": ["string"]
 }
 `.trim();
@@ -5547,12 +6497,13 @@ JSON şeması:
           type: Type.OBJECT,
           properties: {
             bookTitle: { type: Type.STRING },
+            bookDescription: { type: Type.STRING },
             chapterTitles: {
               type: Type.ARRAY,
               items: { type: Type.STRING }
             }
           },
-          required: ["bookTitle", "chapterTitles"]
+          required: ["bookTitle", "bookDescription", "chapterTitles"]
         }
       }
     });
@@ -5561,6 +6512,9 @@ JSON şeması:
     const repairedBookTitle = typeof repaired.bookTitle === "string"
       ? repaired.bookTitle.replace(/\s+/g, " ").trim()
       : "";
+    const repairedBookDescription = typeof repaired.bookDescription === "string"
+      ? repaired.bookDescription.replace(/\s+/g, " ").trim()
+      : "";
     const repairedChapterTitles = Array.isArray(repaired.chapterTitles)
       ? repaired.chapterTitles
         .map((item) => typeof item === "string" ? item.replace(/\s+/g, " ").trim() : "")
@@ -5568,7 +6522,7 @@ JSON şeması:
       : [];
 
     titleRepairUsageEntries.push(buildGeminiUsageEntry(
-      "Başlık onarımı",
+      "Anlati metadata onarimi",
       GEMINI_PLANNER_MODEL,
       (response as unknown as { usageMetadata?: unknown }).usageMetadata,
       repairPrompt,
@@ -5587,7 +6541,8 @@ JSON şeması:
 
     return {
       outline: repairedOutline,
-      bookTitle: repairedBookTitle
+      bookTitle: repairedBookTitle,
+      bookDescription: repairedBookDescription
     };
   };
 
@@ -5716,9 +6671,14 @@ JSON şeması:
   }
 
   const rawBookTitle = parsed && typeof parsed.bookTitle === "string" ? parsed.bookTitle.replace(/\s+/g, " ").trim() : "";
-  const repairedTitleState = await repairNarrativeTitlesIfNeeded(outline, rawBookTitle);
-  outline = repairedTitleState.outline;
-  const generatedBookTitle = repairedTitleState.bookTitle
+  const rawBookDescription = parsed && typeof parsed.bookDescription === "string" ? parsed.bookDescription.replace(/\s+/g, " ").trim() : "";
+  const repairedMetadataState = await repairNarrativeMetadataIfNeeded(outline, rawBookTitle, rawBookDescription);
+  outline = repairedMetadataState.outline;
+  const generatedBookTitle = repairedMetadataState.bookTitle
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const repairedBookDescription = repairedMetadataState.bookDescription
     .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -5761,17 +6721,15 @@ JSON şeması:
         : ""
     )
     : normalizedTopic;
-  const finalBookTitle = allowAiBookTitleGeneration
-    ? (
-      generatedBookTitleLooksUsable
-        ? generatedBookTitle
-        : (
-          isNarrativeBookType
-            ? safeNarrativeFallbackTitle
-            : (topicLooksUsableForNarrative ? normalizedTopic : safeNarrativeFallbackTitle)
-        )
-    )
-    : normalizedTopic;
+  const finalBookTitle = isNarrativeBookType
+    ? (generatedBookTitleLooksUsable ? generatedBookTitle : safeNarrativeFallbackTitle)
+    : allowAiBookTitleGeneration
+      ? (
+        generatedBookTitleLooksUsable
+          ? generatedBookTitle
+          : (topicLooksUsableForNarrative ? normalizedTopic : safeNarrativeFallbackTitle)
+      )
+      : normalizedTopic;
   if (isNarrativeBookType) {
     const hasInvalidLectureTitle = outline.some((node, index) =>
       node.type === "lecture" && !buildNarrativeChapterTitle(index, String(node.title || ""), normalizedBrief.bookType)
@@ -5784,7 +6742,6 @@ JSON şeması:
       throw new HttpsError("internal", "Kitap adı veya bölüm başlıkları AI tarafından özgün biçimde üretilemedi.");
     }
   }
-  const rawBookDescription = parsed && typeof parsed.bookDescription === "string" ? parsed.bookDescription.replace(/\s+/g, " ").trim() : "";
   const rawSubGenre = parsed && typeof parsed.subGenre === "string" ? parsed.subGenre.replace(/\s+/g, " ").trim() : (normalizedBrief.subGenre || "");
   const rawTargetPage = parsed ? (parsed.targetPageCount as unknown) : undefined;
   const finalBookType = normalizedBrief.bookType;
@@ -5835,9 +6792,15 @@ JSON şeması:
     finalBookType,
     finalSubGenre
   );
-  const safeBookDescription = !rawBookDescription || isGenericBookDescription(rawBookDescription, normalizedTopic || finalBookTitle)
-    ? fallbackBookDescription
-    : ensureDescriptionSentence(rawBookDescription);
+  const safeBookDescription = isNarrativeBookType
+    ? (
+      !repairedBookDescription || isGenericBookDescription(repairedBookDescription, normalizedTopic || finalBookTitle)
+        ? fallbackBookDescription
+        : ensureDescriptionSentence(repairedBookDescription)
+    )
+    : (!rawBookDescription || isGenericBookDescription(rawBookDescription, normalizedTopic || finalBookTitle)
+      ? fallbackBookDescription
+      : ensureDescriptionSentence(rawBookDescription));
 
   const courseMeta: CourseOutlineMeta = {
     bookTitle: finalBookTitle,
@@ -6074,12 +7037,14 @@ async function generateLongFormMarkdown(
   let accumulatedOutputTokens = 0;
   let accumulatedTotalTokens = 0;
   let generatedContent: string | null = null;
-  let generationUsageEntry: UsageReportEntry | null = null;
+  const generationUsageEntries: UsageReportEntry[] = [];
   let bestFallbackCandidate = "";
   let bestFallbackWordCount = 0;
   let bestFallbackCharCount = 0;
+  let bestFallbackEndsCleanly = false;
+  let bestFallbackHasCompletionMarker = false;
   let usedFairyTaleRepairPass = false;
-  const maxGenerationAttempts = Math.max(1, Math.min(2, Math.floor(options.maxGenerationAttempts ?? 2)));
+  const maxGenerationAttempts = Math.max(1, Math.min(4, Math.floor(options.maxGenerationAttempts ?? 2)));
   const allowEmergencyGeneration = options.allowEmergencyGeneration !== false;
 
   if (options.singlePass) {
@@ -6149,6 +7114,13 @@ ${retryHint ? `7) DÜZELTME: ${retryHint}` : ""}
     accumulatedInputTokens += usage.inputTokens;
     accumulatedOutputTokens += usage.outputTokens;
     accumulatedTotalTokens += usage.totalTokens;
+    generationUsageEntries.push(buildGeminiUsageEntry(
+      `${options.usageLabel} deneme ${attempt}`,
+      GEMINI_CONTENT_MODEL,
+      (response as unknown as { usageMetadata?: unknown }).usageMetadata,
+      basePrompt,
+      response.text || ""
+    ));
 
     const raw = response.text?.trim() || "";
     if (!raw) {
@@ -6159,71 +7131,88 @@ ${retryHint ? `7) DÜZELTME: ${retryHint}` : ""}
     const cleaned = stripCompletionMarker(raw);
     const wordCount = countWords(cleaned);
     const charCount = countCharacters(cleaned);
+    const hasCompletionMarker = raw.includes(CONTENT_COMPLETION_MARKER);
+    const endsCleanly = /[.!?…]["')\]]?$/u.test(cleaned.trim());
     const acceptanceRatio = Math.max(0.55, Math.min(1, options.minAcceptanceRatio ?? 0.7));
-    const minimumWordFloor = isFairyTaleBook ? 80 : 220;
-    const minRequiredWords = Math.max(minimumWordFloor, Math.floor(options.minWords * acceptanceRatio));
+    const relaxedAcceptanceRatio = Math.max(0.45, Math.min(1, options.relaxedFallbackRatio ?? Math.max(0.5, acceptanceRatio - 0.1)));
+    const activeAcceptanceRatio = attempt >= maxGenerationAttempts ? relaxedAcceptanceRatio : acceptanceRatio;
+    const minimumWordFloor = isFairyTaleBook ? 45 : 220;
+    const minRequiredWords = Math.max(minimumWordFloor, Math.floor(options.minWords * activeAcceptanceRatio));
     const minRequiredChars = Number.isFinite(options.minChars)
-      ? Math.max(300, Math.floor(options.minChars || 0))
+      ? Math.max(220, Math.floor((options.minChars || 0) * activeAcceptanceRatio))
       : 0;
-    if (wordCount > bestFallbackWordCount) {
-      bestFallbackCandidate = cleaned;
-      bestFallbackWordCount = wordCount;
-      bestFallbackCharCount = charCount;
-    }
 
     const normalized = stripAssistantStyleLead(normalizeMarkdownListsAndHeadings(cleaned)).trim();
     if (!normalized) {
       retryHint = "Boş veya geçersiz içerik üretildi. Eksiksiz içerik üret.";
       continue;
     }
+    if (wordCount > bestFallbackWordCount) {
+      bestFallbackCandidate = normalized;
+      bestFallbackWordCount = wordCount;
+      bestFallbackCharCount = charCount;
+      bestFallbackEndsCleanly = endsCleanly;
+      bestFallbackHasCompletionMarker = hasCompletionMarker;
+    }
+    if (!hasCompletionMarker && attempt < maxGenerationAttempts) {
+      retryHint = "Yanıt tamamlanma işaretçisi olmadan döndü. Metni eksiksiz tamamla.";
+      continue;
+    }
+    if (wordCount < minRequiredWords) {
+      retryHint = `Yanıt kısa kaldı (${wordCount} kelime). En az ${minRequiredWords} kelimeye tamamla.`;
+      continue;
+    }
+    if (minRequiredChars > 0 && charCount < minRequiredChars) {
+      retryHint = `Yanıt kısa kaldı (${charCount} karakter). En az ${minRequiredChars} karaktere tamamla.`;
+      continue;
+    }
+    if (!endsCleanly) {
+      retryHint = "Yanıt yarım/kesik bitti. Son cümleyi doğal ve tamamlanmış bitir.";
+      continue;
+    }
 
-    const fallbackInput = estimateTokensFromText(basePrompt);
-    const fallbackOutput = estimateTokensFromText(normalized);
-    const inputTokens = accumulatedInputTokens > 0 ? accumulatedInputTokens : fallbackInput;
-    const outputTokens = accumulatedOutputTokens > 0 ? accumulatedOutputTokens : fallbackOutput;
-    const totalTokens = accumulatedTotalTokens > 0 ? accumulatedTotalTokens : (inputTokens + outputTokens);
+    const finalizedContent = Number.isFinite(options.maxWords)
+      ? trimTextToMaxWords(normalized, Math.max(1, Math.floor(options.maxWords || 0)))
+      : normalized;
+    if (!finalizedContent.trim()) {
+      retryHint = "Temizlenen metin boş kaldı. İçeriği eksiksiz yeniden üret.";
+      continue;
+    }
 
-    const usageEntry: UsageReportEntry = {
-      label: options.usageLabel,
-      provider: "google",
-      model: GEMINI_CONTENT_MODEL,
-      inputTokens,
-      outputTokens,
-      totalTokens,
-      estimatedCostUsd: costForGeminiModel(GEMINI_CONTENT_MODEL, inputTokens, outputTokens)
-    };
-    generatedContent = normalized;
-    generationUsageEntry = usageEntry;
+    generatedContent = finalizedContent;
     break;
   }
 
-  if (!generatedContent || !generationUsageEntry) {
-    if (bestFallbackCandidate) {
+  if (!generatedContent) {
+    const fallbackAcceptanceRatio = Math.max(0.45, Math.min(1, options.relaxedFallbackRatio ?? 0.6));
+    const fallbackMinRequiredWords = Math.max(
+      isFairyTaleBook ? 45 : 220,
+      Math.floor(options.minWords * fallbackAcceptanceRatio)
+    );
+    const fallbackMinRequiredChars = Number.isFinite(options.minChars)
+      ? Math.max(220, Math.floor((options.minChars || 0) * fallbackAcceptanceRatio))
+      : 0;
+    const fallbackLooksComplete =
+      bestFallbackEndsCleanly &&
+      (bestFallbackHasCompletionMarker || bestFallbackWordCount >= Math.floor(fallbackMinRequiredWords * 1.1));
+
+    if (
+      bestFallbackCandidate &&
+      bestFallbackWordCount >= fallbackMinRequiredWords &&
+      (fallbackMinRequiredChars === 0 || bestFallbackCharCount >= fallbackMinRequiredChars) &&
+      fallbackLooksComplete
+    ) {
       const normalizedFallback = stripAssistantStyleLead(
         normalizeMarkdownListsAndHeadings(bestFallbackCandidate.trim())
       );
       const fallbackWithClosing = normalizedFallback.trim();
-      const fallbackInput = estimateTokensFromText(basePrompt);
-      const fallbackOutput = estimateTokensFromText(fallbackWithClosing);
-      const inputTokens = accumulatedInputTokens > 0 ? accumulatedInputTokens : fallbackInput;
-      const outputTokens = accumulatedOutputTokens > 0 ? accumulatedOutputTokens : fallbackOutput;
-      const totalTokens = accumulatedTotalTokens > 0 ? accumulatedTotalTokens : (inputTokens + outputTokens);
       generatedContent = fallbackWithClosing;
-      generationUsageEntry = {
-        label: options.usageLabel,
-        provider: "google",
-        model: GEMINI_CONTENT_MODEL,
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        estimatedCostUsd: costForGeminiModel(GEMINI_CONTENT_MODEL, inputTokens, outputTokens)
-      };
-        logger.warn("Long-form generation accepted fallback without completion marker", {
-          usageLabel: options.usageLabel,
-          words: bestFallbackWordCount,
-          chars: bestFallbackCharCount,
-          usedBecause: "no-blocking-fallback"
-        });
+      logger.warn("Long-form generation accepted validated fallback candidate", {
+        usageLabel: options.usageLabel,
+        words: bestFallbackWordCount,
+        chars: bestFallbackCharCount,
+        hadCompletionMarker: bestFallbackHasCompletionMarker
+      });
     } else if (allowEmergencyGeneration) {
       try {
         const emergencyPrompt = `
@@ -6236,7 +7225,7 @@ Acil tamamlama modu:
 - Sadece içerik metnini döndür.
 `.trim();
         const emergencyResponse = await ai.models.generateContent({
-          model: GEMINI_PLANNER_MODEL,
+          model: GEMINI_CONTENT_MODEL,
           contents: emergencyPrompt,
           config: {
             systemInstruction: getSystemInstructionForBookType(options.bookType),
@@ -6248,32 +7237,33 @@ Acil tamamlama modu:
         accumulatedInputTokens += emergencyUsage.inputTokens;
         accumulatedOutputTokens += emergencyUsage.outputTokens;
         accumulatedTotalTokens += emergencyUsage.totalTokens;
+        generationUsageEntries.push(buildGeminiUsageEntry(
+          `${options.usageLabel} acil tamamlama`,
+          GEMINI_CONTENT_MODEL,
+          (emergencyResponse as unknown as { usageMetadata?: unknown }).usageMetadata,
+          emergencyPrompt,
+          emergencyResponse.text || ""
+        ));
 
         const emergencyRaw = emergencyResponse.text?.trim() || "";
         const emergencyClean = stripAssistantStyleLead(
           normalizeMarkdownListsAndHeadings(stripCompletionMarker(emergencyRaw))
         ).trim();
-        if (emergencyClean) {
+        const emergencyWordCount = countWords(emergencyClean);
+        const emergencyCharCount = countCharacters(emergencyClean);
+        const emergencyEndsCleanly = /[.!?…]["')\]]?$/u.test(emergencyClean);
+        if (
+          emergencyClean &&
+          emergencyEndsCleanly &&
+          emergencyWordCount >= fallbackMinRequiredWords &&
+          (fallbackMinRequiredChars === 0 || emergencyCharCount >= fallbackMinRequiredChars)
+        ) {
           const emergencyClosed = emergencyClean;
-          const fallbackInput = estimateTokensFromText(emergencyPrompt);
-          const fallbackOutput = estimateTokensFromText(emergencyClosed);
-          const inputTokens = accumulatedInputTokens > 0 ? accumulatedInputTokens : fallbackInput;
-          const outputTokens = accumulatedOutputTokens > 0 ? accumulatedOutputTokens : fallbackOutput;
-          const totalTokens = accumulatedTotalTokens > 0 ? accumulatedTotalTokens : (inputTokens + outputTokens);
-
           generatedContent = emergencyClosed;
-          generationUsageEntry = {
-            label: options.usageLabel,
-            provider: "google",
-            model: GEMINI_PLANNER_MODEL,
-            inputTokens,
-            outputTokens,
-            totalTokens,
-            estimatedCostUsd: costForGeminiModel(GEMINI_PLANNER_MODEL, inputTokens, outputTokens)
-          };
           logger.warn("Long-form generation used emergency fallback model", {
             usageLabel: options.usageLabel,
-            words: countWords(emergencyClosed)
+            words: emergencyWordCount,
+            chars: emergencyCharCount
           });
         }
       } catch (emergencyError) {
@@ -6284,15 +7274,16 @@ Acil tamamlama modu:
       }
     }
 
-    if (!generatedContent || !generationUsageEntry) {
+    if (!generatedContent) {
       throw new HttpsError(
         "internal",
-        "İçerik eksiksiz üretilemedi. Lütfen tekrar deneyin."
+        "İçerik eksiksiz üretilemedi. Lütfen tekrar deneyin.",
+        generationUsageEntries.length ? { usage: buildUsageReport("generateLectureContent", generationUsageEntries) } : undefined
       );
     }
   }
 
-  const usageEntries: UsageReportEntry[] = [generationUsageEntry];
+  const usageEntries: UsageReportEntry[] = [...generationUsageEntries];
   let bestContent = generatedContent;
   const applyNarrativeDriftPenalty = (
     assessment: LongFormQualityAssessment,
@@ -6443,6 +7434,7 @@ async function generateLectureContent(
   const briefInstruction = buildCreativeBriefInstruction(normalizedBrief, preferredLanguage, targetPageCount, audienceLevel);
   const isNarrative = normalizedBrief.bookType !== "academic";
   const isFairyTale = normalizedBrief.bookType === "fairy_tale";
+  const isToddlerFairy = isFairyTale && audienceLevel === "1-3";
   const isStory = normalizedBrief.bookType === "story";
   const isNovel = normalizedBrief.bookType === "novel";
   const isSinglePartFairyTale = isFairyTale && chapterCount <= 1;
@@ -6450,16 +7442,35 @@ async function generateLectureContent(
     ? fairyTaleAudienceInstruction(audienceLevel, preferredLanguage, targetPageCount)
     : "";
   const chapterPosition = Math.max(1, Math.min(chapterCount, narrativeContext?.outlinePositions.current || 1));
-  const fairyCharacterTargets = isFairyTale ? getFairyTaleCharacterTargets(audienceLevel, chapterCount) : [];
-  const activeFairyCharacterTarget = isFairyTale
-    ? (fairyCharacterTargets[Math.max(0, Math.min(fairyCharacterTargets.length - 1, chapterPosition - 1))] || fairyCharacterTargets[0])
+  const narrativeCharacterTargets = isNarrative
+    ? getNarrativeCharacterTargets(normalizedBrief.bookType, audienceLevel, chapterCount)
+    : [];
+  const activeNarrativeCharacterTarget = narrativeCharacterTargets.length
+    ? (narrativeCharacterTargets[Math.max(0, Math.min(narrativeCharacterTargets.length - 1, chapterPosition - 1))] || narrativeCharacterTargets[0])
     : null;
-  const fairyWordRange = activeFairyCharacterTarget
+  let fairyWordRange = activeNarrativeCharacterTarget
     ? {
-      min: Math.max(140, Math.floor(activeFairyCharacterTarget.minAccepted / 6.2)),
-      max: Math.max(220, Math.ceil(activeFairyCharacterTarget.maxAccepted / 5.4))
+      min: Math.max(180, Math.floor(activeNarrativeCharacterTarget.minAccepted / 6.6)),
+      max: Math.max(320, Math.ceil(activeNarrativeCharacterTarget.maxAccepted / 5.8))
     }
     : null;
+  const narrativeHardMinChars = activeNarrativeCharacterTarget
+    ? Math.max(
+      isFairyTale ? (isToddlerFairy ? 220 : 760) : isStory ? 1600 : 2200,
+      Math.floor(activeNarrativeCharacterTarget.target * (isFairyTale ? (isToddlerFairy ? 0.24 : 0.58) : isStory ? 0.62 : 0.64))
+    )
+    : undefined;
+  if (isToddlerFairy && fairyWordRange) {
+    fairyWordRange = {
+      min: Math.max(60, Math.min(fairyWordRange.min, 90)),
+      max: Math.max(110, Math.min(fairyWordRange.max, 140))
+    };
+  }
+  const softMinimumChars = activeNarrativeCharacterTarget?.minAccepted || 0;
+  const narrativePromptTargetChars = isToddlerFairy
+    ? Math.max(380, Math.min(activeNarrativeCharacterTarget?.target || 540, 620))
+    : (activeNarrativeCharacterTarget?.target || 0);
+  const pedagogyDirective = buildNarrativePedagogyDirective(normalizedBrief.bookType, audienceLevel, preferredLanguage);
   const isLastChapter = chapterPosition >= chapterCount;
   const normalizedNodeTitle = nodeTitle.toLocaleLowerCase("tr-TR");
   const isFirstChapter = chapterPosition === 1 || /bölüm 1\b|chapter 1\b/i.test(nodeTitle) || /giriş\b|intro\b/i.test(nodeTitle);
@@ -6526,8 +7537,21 @@ async function generateLectureContent(
     else if (/y[üu]zle[şs]me\s*3|en\s*alt\s*nokta|lowest\s*point|kriz|c[oö]k[üu][şs]/i.test(normalizedNodeTitle)) novelStage = "yuzlesme3";
     else if (/ç[öo]z[üu]m|cozum|doruk|climax|hesapla[şs]ma|final|sonu[çc]/i.test(normalizedNodeTitle)) novelStage = "cozum";
   }
-  const sanitizeNarrativeContextText = (value: string | undefined): string =>
+  const stripNarrativeSystemImageLines = (value: string | undefined): string =>
     String(value || "")
+      .split("\n")
+      .filter((line) => {
+        const plain = String(line || "").replace(/\s+/g, " ").trim();
+        if (!plain) return true;
+        if (/^g[öo]rsel\s+\d+\s*\/\s*\d+\s*(?:-\s*.+)?$/iu.test(plain)) return false;
+        if (/^(global sequence index|scene excerpt for this specific image|previous scene cue|narrative timeline lock|visual structure requirement|panel-to-grid mapping)\b/iu.test(plain)) {
+          return false;
+        }
+        return true;
+      })
+      .join("\n");
+  const sanitizeNarrativeContextText = (value: string | undefined): string =>
+    stripNarrativeSystemImageLines(value)
       .replace(/!\[[^\]]*]\(\s*<?(?:data:image\/[^)]+|https?:\/\/[^)]+)>?\s*\)/gi, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -6572,8 +7596,8 @@ ${previousChapterSnippet ? `- Son bölümün kaldığı yer:\n"""\n${previousCha
             : fairyStage === "gelisme1"
               ? "Bu adım Gelişme 1'dir: sorunu başlat, kötü unsuru görünür kıl, yolculuğu aç ve ilk engelleri kur."
               : fairyStage === "gelisme2"
-                ? "Bu adım Gelişme 2'dir: üçleme motifini sürdür, gerilimi artır, son büyük engeli doruğa yaklaştır."
-                : "Bu adım Sonuç'tur: sorunu çöz, iyileri ödüllendir, mesajı ver ve klasik iyi dilek kapanışıyla bitir."
+              ? "Bu adım Gelişme 2'dir: üçleme motifini sürdür, gerilimi artır, son büyük engeli doruğa yaklaştır."
+                : "Bu adım Sonuç'tur: sorunu çöz, iyileri ödüllendir, mesajı ver; ardından yeni huzurlu düzeni gösteren kısa ama somut bir sonrası sahnesi yaz ve en son klasik iyi dilek kapanışıyla bitir. Çatışma çözülür çözülmez aniden bitirme."
     );
   const storyStepInstruction = !isStory
     ? ""
@@ -6605,7 +7629,7 @@ ${previousChapterSnippet ? `- Son bölümün kaldığı yer:\n"""\n${previousCha
       ? `ÖNEMLİ BAĞLAM (TEK PARÇA MASAL):
 - Bu kitap tek parça masal olarak yazılacak, bölüm/bölümleme YASAK.
 - Metin tek akışta ilerlemeli: Döşeme -> Giriş -> Gelişme 1 -> Gelişme 2 -> Sonuç.
-- Yeni ana çatışma açma; tek ana olay çizgisini koru.
+- Yeni bir ana hat açma; ana masal çizgisini odaklı ve tutarlı biçimde sürdür.
 - Sonda klasik dilek kapanışı ile bitir (ör. "Onlar ermiş muradına...").`
       : `ÖNEMLİ BAĞLAM (MASAL BÜTÜNLÜĞÜ):
 - Bu kitap 5 bloklu TEK MASALDIR: Döşeme -> Giriş -> Gelişme 1 -> Gelişme 2 -> Sonuç.
@@ -6616,7 +7640,7 @@ ${storySoFarSnippet ? `- Şimdiye kadarki masal (kısa bağlam):\n"""\n${storySo
 ${previousChapterSnippet ? `- Özellikle son üretilen bölümün kaldığı yer:\n"""\n${previousChapterSnippet}\n"""` : ""}
 - Tek ana olay çizgisini koru; yeni ana çatışma açma.
 - Bu bölüm final değilse masalı burada kapatma; bir sonraki adıma doğal geçiş bırak.
-- Bu bölüm Sonuç bloğuysa çözümü, dersi ve "Onlar ermiş muradına..." veya "Gökten üç elma düşmüş..." türünde klasik kapanışı birlikte tamamla.`)
+- Bu bölüm Sonuç bloğuysa çözümü, dersi, kısa bir sonrası/huzur sahnesini ve en sonda "Onlar ermiş muradına..." veya "Gökten üç elma düşmüş..." türünde klasik kapanışı birlikte tamamla. Çözüm gelir gelmez metni kesme.`)
     : narrativeContext
     ? `ÖNEMLİ BAĞLAM (HİKAYE BÜTÜNLÜĞÜ):
 - Şu an toplam ${chapterCount} bölümden oluşan kitabın ${chapterPosition}. bölümünü yazıyorsun.
@@ -6639,18 +7663,21 @@ ${narrativeInstruction}
 ${contextInstruction}
 
 Masal kuralları (ZORUNLU):
-1) Bu blok için hedef yaklaşık ${activeFairyCharacterTarget?.target || 31000} karakterdir. Bu hedef bir yönlendirmedir; sapma olsa da metni durdurma veya kesme, akışı doğal biçimde tamamla.
+1) ${isToddlerFairy
+          ? "Bu yaş grubunda kitabı KISA tut. Toplam akış yaklaşık 5-6 sayfa hissinde kalmalı; metni gereksiz uzatma."
+          : `Bu blok için yumuşak minimum hedef yaklaşık ${narrativePromptTargetChars || 12000} karakterdir. Bu hedefi mümkün olduğunca yakala; eksik kalıyorsa sahne, geçiş ve duygusal çözülmeyi genişlet ama metni zorla kesme.`}
 2) ${fairyAudienceRule}
 3) Hayali dünya + en az bir olağanüstü unsur zorunlu (konuşan hayvan/büyü/zaman yolculuğu benzeri).
 4) İyi-kötü ayrımı net olmalı.
-5) Tek ana olay çizgisi ve tek ana mesaj olmalı.
+5) Ana olay hattını net tut; dağınık yan kollar açma.
 6) Masal akışı tek metinde tamamlanmalı: Döşeme -> Giriş -> Gelişme 1 -> Gelişme 2 -> Sonuç.
 7) Metinde "Bölüm 1", "1. Giriş", "5. Sonuç Bölümü", "Döşeme Bölümü" gibi teknik etiket kullanma.
 8) Akademik dil, analiz dili, meta açıklama ve asistan tonu YASAK.
 9) "Harika bir konu seçimi", "İşte taslak", "Sevgili Öğrencimiz" gibi ifadeler YASAK.
-10) ${languageRule}
-11) ${audienceRule}
-12) Sadece düz paragraf yaz; markdown başlıkları kullanma.
+10) ${pedagogyDirective}
+11) ${languageRule}
+12) ${audienceRule}
+13) Sadece düz paragraf yaz; markdown başlıkları kullanma.
 
 Markdown formatında döndür.
 `
@@ -6665,19 +7692,22 @@ ${narrativeInstruction}
 ${contextInstruction}
 
 Masal kuralları (ZORUNLU):
-1) Bu blok için hedef yaklaşık ${activeFairyCharacterTarget?.target || 5000} karakterdir. Bu hedef bir yönlendirmedir; sapma olsa da metni durdurma veya kesme, akışı doğal biçimde tamamla.
+1) ${isToddlerFairy
+          ? `Bu yaş grubunda blok kısa kalmalı; yaklaşık ${narrativePromptTargetChars || 520} karakterlik net ve sade bir sahne yeterlidir. Gereksiz uzatma yapma.`
+          : `Bu blok için yumuşak minimum hedef yaklaşık ${narrativePromptTargetChars || 2400} karakterdir. Bu hedefi mümkün olduğunca yakala; eksik kalıyorsa sahne, geçiş ve duygusal çözülmeyi genişlet ama metni zorla kesme.`}
 2) ${fairyAudienceRule}
 3) Hayali dünya + olağanüstü olay zorunlu (konuşan hayvan/büyü/zaman yolculuğu benzeri).
 4) İyi-kötü ayrımı net olsun.
-5) Tek ana olay çizgisi ve tek ana mesaj kullan; yan olayları çoğaltma.
+5) Ana olay hattını net tut; gereksiz yan olayları çoğaltma.
 6) Masal akışına sadık kal: Döşeme -> Giriş -> Gelişme 1 -> Gelişme 2 -> Sonuç.
 7) ${fairyStepInstruction}
-8) Sonuç bloğunda problemi tamamen kapat, dersi ver ve klasik iyi dilek kapanışıyla bitir.
+8) Sonuç bloğunda problemi tamamen kapat, dersi ver, çözümden sonra yeni huzurlu düzeni gösteren kısa bir kapanış sahnesi yaz ve en son klasik iyi dilek kapanışıyla bitir. Çatışma çözülür çözülmez pat diye kesme.
 9) Akademik dil, deneme dili, analiz dili, meta açıklama ve asistan tonu YASAK.
 10) "Harika bir konu seçimi", "İşte taslak", "Sevgili Öğrencimiz" gibi ifadeler YASAK.
-11) ${languageRule}
-12) ${audienceRule}
-13) Sadece düz paragraf yaz. "###" dahil markdown başlık, bölüm etiketi, numaralı teknik alt başlık kullanma.
+11) ${pedagogyDirective}
+12) ${languageRule}
+13) ${audienceRule}
+14) Sadece düz paragraf yaz. "###" dahil markdown başlık, bölüm etiketi, numaralı teknik alt başlık kullanma.
 
 Markdown formatında döndür.
 `)
@@ -6694,21 +7724,27 @@ ${storyContextInstruction || contextInstruction}
 
 Hikaye kuralları (ZORUNLU):
 1) Bu bölüm ${chapterWordRange.min}-${chapterWordRange.max} kelime aralığında olmalı.
-2) 5 bölüm yapısını koru: Giriş/Serim -> Gelişme/Düğüm -> Doruk -> Çözüm -> Final.
-3) ${storyStepInstruction}
-4) "Göster, Anlatma" tekniğini uygula: duygu ve gerilimi karakter eylemleri, beden dili, çevre tepkileri ve sahne davranışlarıyla göster.
-5) Çatışma net olmalı: kahramanın açık bir isteği olsun ve bu isteğe engel olan dış/iç kuvvet aktif biçimde sahnede çalışsın.
-6) Gelişme ve dorukta gerilimi kademeli artır; dorukta "şimdi ne olacak?" hissini en üst seviyeye taşı.
-7) Diyalogları canlı ve kişilik odaklı yaz; her karakterin konuşma biçimi farklı hissedilsin.
-8) Karakterler, mekan ve zaman brief'e ve önceki bölümlere sadık olsun; isim/kişilik değiştirme.
-9) METİN DEVAMLILIĞI: yeni ana hikaye açma, mevcut ana olay çizgisini taşı.
-10) Final bölümü değilse hikayeyi burada bitirme; doğal geçiş bırak.
-11) Final bölümünde karakterin başlangıç-son farkını ve dünyanın nasıl değiştiğini açıkça göster.
-12) Akademik dil, analiz dili, meta açıklama ve asistan tonu YASAK.
-13) "###", "Bölüm", "Chapter", numaralı teknik başlıklar YASAK; metin tek akışta olsun.
-14) ${languageRule}
-15) ${audienceRule}
-16) "Harika bir konu seçimi", "İşte taslak", "Sevgili Öğrencimiz", "senin için hazırladım" vb. ifadeler YASAK.
+2) Bu bölüm için yumuşak minimum hedef yaklaşık ${softMinimumChars || 0} karakterdir; mümkün olduğunca bu eşiğe yaklaş.
+3) 5 bölüm yapısını koru: Giriş/Serim -> Gelişme/Düğüm -> Doruk -> Çözüm -> Final.
+4) ${storyStepInstruction}
+5) "Göster, Anlatma" tekniğini uygula: duygu ve gerilimi karakter eylemleri, beden dili, çevre tepkileri ve sahne davranışlarıyla göster.
+6) Çatışma net olmalı: kahramanın açık bir isteği olsun ve bu isteğe engel olan dış/iç kuvvet aktif biçimde sahnede çalışsın.
+7) Gelişme ve dorukta gerilimi kademeli artır; dorukta "şimdi ne olacak?" hissini en üst seviyeye taşı.
+8) Diyalogları canlı ve kişilik odaklı yaz; her karakterin konuşma biçimi farklı hissedilsin.
+9) Karakterler, mekan ve zaman brief'e ve önceki bölümlere sadık olsun; isim/kişilik değiştirme.
+10) METİN DEVAMLILIĞI: yeni ana hikaye açma, mevcut ana olay çizgisini taşı.
+11) KARAKTER DERİNLİĞİ: bölüm içinde karakterin duygu değişimi, tereddüdü, niyeti veya karar baskısı görünür olmalı; sadece olay raporu yazma.
+12) GEÇİŞ KÖPRÜSÜ: sahneler arasında neden-sonuç bağı kur; yeni sahneye atlamadan önce önceki sahnenin duygusal/olaysal artçısını kısa bir geçişle hissettir.
+13) Bölümün son %20'lik kısmında bir sonraki bölüme taşınacak doğal bir eşik, soru, gerilim veya karar bırak.
+14) Final bölümü değilse hikayeyi burada bitirme; doğal geçiş bırak.
+15) Final bölümünde karakterin başlangıç-son farkını ve dünyanın nasıl değiştiğini açıkça göster.
+16) Hızlı özetleme yapma; önemli anlarda 1-2 beat daha kal, tepkiyi ve atmosferi biraz yaşat.
+17) ${pedagogyDirective}
+18) Akademik dil, analiz dili, meta açıklama ve asistan tonu YASAK.
+19) "###", "Bölüm", "Chapter", numaralı teknik başlıklar YASAK; metin tek akışta olsun.
+20) ${languageRule}
+21) ${audienceRule}
+22) "Harika bir konu seçimi", "İşte taslak", "Sevgili Öğrencimiz", "senin için hazırladım" vb. ifadeler YASAK.
 
 Markdown formatında döndür.
 `
@@ -6725,20 +7761,27 @@ ${novelContextInstruction || contextInstruction}
 
 Roman kuralları (ZORUNLU):
 1) Bu bölüm ${chapterWordRange.min}-${chapterWordRange.max} kelime aralığında olmalı.
-2) ${NOVEL_CHAPTER_COUNT} aşamalı mimariye sadık kal: Hazırlık/Dünya İnşası -> I. Perde Kurulum -> II. Perde Yüzleşme I -> II. Perde Yüzleşme II -> II. Perde Yüzleşme III -> III. Perde Çözüm/Final.
-3) ${novelStepInstruction}
-4) "Gösterme, Anlat" kuralını uygula: duygu, gerilim ve karakter değişimini sahne, eylem, diyalog ve çevre tepkileriyle göster.
-5) POV disiplini kur: bir bakış açısı seç ve bu bölüm boyunca tutarlı kullan; sebepsiz POV sıçraması yapma.
-6) Her sahnede çatışma zorunlu: karakter bir şey istemeli, ona engel olan iç/dış kuvvet aktif biçimde çalışmalı.
-7) Karakter arkını koru: karakterin arzusu, korkusu ve karar bedelleri önceki bölümlerle uyumlu ilerlesin.
-8) Dünya inşasını tutarlı yürüt: kurallar, kurumlar, mekan düzeni ve neden-sonuç ilişkisi çelişmesin.
-9) Midpoint/en alt nokta/doruk etkilerini aşamaya uygun işle; final değilse asıl düğümü tam kapatma.
-10) Final bölümünde doruk hesaplaşmayı net çöz ve yeni sıradan dünyayı karakter dönüşümüyle kapat.
-11) Akademik dil, meta açıklama, taslak notu, editör notu ve asistan tonu YASAK.
-12) "###", "Bölüm", "Chapter", "Perde", numaralı teknik başlıklar YASAK; metin tek akışta olsun.
-13) ${languageRule}
-14) ${audienceRule}
-15) "Harika bir konu seçimi", "İşte taslak", "Sevgili Öğrencimiz", "senin için hazırladım" vb. ifadeler YASAK.
+2) Bu bölüm için yumuşak minimum hedef yaklaşık ${softMinimumChars || 0} karakterdir; mümkün olduğunca bu eşiğe yaklaş.
+3) ${NOVEL_CHAPTER_COUNT} aşamalı mimariye sadık kal: Hazırlık/Dünya İnşası -> I. Perde Kurulum -> II. Perde Yüzleşme I -> II. Perde Yüzleşme II -> II. Perde Yüzleşme III -> III. Perde Çözüm/Final.
+4) ${novelStepInstruction}
+5) "Gösterme, Anlat" kuralını uygula: duygu, gerilim ve karakter değişimini sahne, eylem, diyalog ve çevre tepkileriyle göster.
+6) POV disiplini kur: bir bakış açısı seç ve bu bölüm boyunca tutarlı kullan; sebepsiz POV sıçraması yapma.
+7) Her sahnede çatışma zorunlu: karakter bir şey istemeli, ona engel olan iç/dış kuvvet aktif biçimde çalışmalı.
+8) Karakter arkını koru: karakterin arzusu, korkusu ve karar bedelleri önceki bölümlerle uyumlu ilerlesin.
+9) Dünya inşasını tutarlı yürüt: kurallar, kurumlar, mekan düzeni ve neden-sonuç ilişkisi çelişmesin.
+10) Midpoint/en alt nokta/doruk etkilerini aşamaya uygun işle; final değilse asıl düğümü tam kapatma.
+11) İÇ DERİNLİK: önemli kararlar öncesinde karakterin zihinsel/duygusal basıncını göster; kararlar havada verilmesin.
+12) GEÇİŞ DOKUSU: bölüm içindeki sahneleri sert kesmeyle bağlama; zaman, mekan ve duygu geçişlerini kısa ama hissedilir köprü cümleleriyle ör.
+13) İlişkileri katmanlı işle: karakterler sadece olay taşıyıcısı olmasın; aralarındaki güven, gerilim, beklenti ya da kırılma bölüm içinde biraz evrilsin.
+14) Hızlı özetlemeye kaçma; kritik sahnelerde tepki, sessizlik, bakış, iç yankı ve sonuç beat'lerine alan aç.
+15) Final bölümünde doruk hesaplaşmayı net çöz ve yeni sıradan dünyayı karakter dönüşümüyle kapat.
+16) Final değilse bölümü yeni bir eşiğe, risk artışına veya duygusal kırılmaya bağlayarak bitir.
+17) ${pedagogyDirective}
+18) Akademik dil, meta açıklama, taslak notu, editör notu ve asistan tonu YASAK.
+19) "###", "Bölüm", "Chapter", "Perde", numaralı teknik başlıklar YASAK; metin tek akışta olsun.
+20) ${languageRule}
+21) ${audienceRule}
+22) "Harika bir konu seçimi", "İşte taslak", "Sevgili Öğrencimiz", "senin için hazırladım" vb. ifadeler YASAK.
 
 Markdown formatında döndür.
 `
@@ -6800,22 +7843,22 @@ Markdown formatında döndür.
 
   const lectureMaxOutputTokens = isFairyTale
     ? Math.max(
-      audienceLevel === "7-9" ? 3400 : 3000,
-      Math.ceil(((activeFairyCharacterTarget?.maxAccepted || 6000) / 3.2))
+      audienceLevel === "1-3" ? 1400 : audienceLevel === "7-9" ? 3200 : 2800,
+      Math.ceil(((activeNarrativeCharacterTarget?.maxAccepted || 6000) / 3.2))
     )
     : normalizedBrief.bookType === "story"
-      ? 3400
-      : 5000;
+      ? Math.max(4200, Math.ceil(((activeNarrativeCharacterTarget?.maxAccepted || 28_000) / 3.4)))
+      : Math.max(5200, Math.ceil(((activeNarrativeCharacterTarget?.maxAccepted || 38_000) / 3.5)));
   const lectureTemperature = 1;
   const lectureMinAcceptanceRatio = isFairyTale
-    ? (audienceLevel === "7-9" ? 0.64 : 0.62)
+    ? (audienceLevel === "1-3" ? 0.72 : audienceLevel === "7-9" ? 0.76 : 0.74)
     : isStory
-      ? 0.74
+      ? 0.76
       : isNovel
-        ? 0.76
+        ? 0.78
         : 0.88;
   const lectureRelaxedFallbackRatio = isFairyTale
-    ? (audienceLevel === "7-9" ? 0.54 : 0.52)
+    ? (audienceLevel === "1-3" ? 0.6 : audienceLevel === "7-9" ? 0.66 : 0.63)
     : isStory
       ? 0.66
       : isNovel
@@ -6823,7 +7866,7 @@ Markdown formatında döndür.
         : 0.75;
   const narrativeSinglePass = false;
   const narrativeSkipQualityGate = true;
-  const narrativeMaxGenerationAttempts = isFairyTale ? 1 : 2;
+  const narrativeMaxGenerationAttempts = isFairyTale ? 3 : 3;
   const narrativeAllowEmergencyGeneration = true;
 
   const lesson = await generateLongFormMarkdown(
@@ -6838,8 +7881,8 @@ Markdown formatında döndür.
       maxWords: isNarrative
         ? (isFairyTale && fairyWordRange ? fairyWordRange.max : chapterWordRange.max)
         : undefined,
-      minChars: activeFairyCharacterTarget?.minAccepted,
-      maxChars: activeFairyCharacterTarget?.maxAccepted,
+      minChars: narrativeHardMinChars,
+      maxChars: activeNarrativeCharacterTarget?.maxAccepted,
       maxOutputTokens: lectureMaxOutputTokens,
       temperature: lectureTemperature,
       language: preferredLanguage,
@@ -6864,7 +7907,9 @@ Markdown formatında döndür.
   const shouldGenerateLectureImage = !isNarrative
     || !narrativeContext
     || narrativeContext.outlinePositions.current <= targetInteriorVisualCount;
-  const lectureImageCount = shouldGenerateLectureImage ? 1 : 0;
+  const lectureImageCount = shouldGenerateLectureImage
+    ? getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext)
+    : 0;
   if (lectureImageCount <= 0) {
     return { content: lectureContent, usageEntries: lectureUsageEntries };
   }
@@ -6881,7 +7926,7 @@ Markdown formatında döndür.
       narrativeContext
     );
     const content = isNarrative
-      ? embedImagesAtTopIntoMarkdown(lectureContent, imageResult.images)
+      ? embedImagesIntoMarkdown(lectureContent, imageResult.images, { minParagraphsBeforeFirstImage: 2 })
       : embedImagesIntoMarkdown(lectureContent, imageResult.images);
     return { content, usageEntries: [...lectureUsageEntries, imageResult.usageEntry] };
   } catch (imageError) {
@@ -6923,6 +7968,7 @@ async function generateLectureImages(
     return { content: cleanContent, usageEntries: [] };
   }
 
+  const lectureImageCount = getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
   const imageResult = await generateLessonImages(
     topic,
     nodeTitle,
@@ -6931,12 +7977,12 @@ async function generateLectureImages(
     normalizedBrief.bookType,
     normalizedBrief,
     audienceLevel,
-    1,
+    lectureImageCount,
     narrativeContext
   );
   return {
     content: normalizedBrief.bookType !== "academic"
-      ? embedImagesAtTopIntoMarkdown(cleanContent, imageResult.images)
+      ? embedImagesIntoMarkdown(cleanContent, imageResult.images, { minParagraphsBeforeFirstImage: 2 })
       : embedImagesIntoMarkdown(cleanContent, imageResult.images),
     usageEntries: [imageResult.usageEntry]
   };
@@ -7014,7 +8060,7 @@ Critical Rules:
 2) Use ONLY the information in the source text above. Do not add any outside fact, event, example, or claim.
 3) Do not write cheap openings such as "Welcome", "today we have a great topic", or presenter-style greetings. Start directly from strong content.
 4) Keep the tone natural, professional, and fluid. Do not fabricate interview or dialogue format.
-5) Delivery pace should feel measured and about 10% calmer than average speech. Use clear sentences and natural pause punctuation. Write as PURE MONOLOG.
+5) Delivery pace should feel measured and about 5% calmer than average speech. Use clear sentences and natural pause punctuation. Write as PURE MONOLOG.
 6) Estimated spoken duration must stay within ${range.minMinutes}-${range.maxMinutes} minutes.
 7) Approximate word range: ${targetMinWords}-${targetMaxWords}.
 8) ABSOLUTE RULE: Do not use speaker labels such as "Narrator:", "Speaker:", "Host:", or similar. Return plain paragraph text only.
@@ -7036,7 +8082,7 @@ Kritik Kurallar:
 2) SADECE yukarıdaki kaynak metindeki bilgileri kullan. Kaynak dışı tek bir bilgi, iddia, olay veya örnek ekleme.
 3) Kesinlikle "Merhaba ben uzman bilmem kim", "bugün harika bir konumuz var", "hoş geldiniz" gibi gereksiz, ucuz ve amatör giriş cümleleri KULLANMA. Doğrudan içeriğin güçlü başlangıcına gir.
 4) Üslup doğal, profesyonel ve akıcı olsun. Röportaj veya diyalog KURGULAMA.
-5) Konuşma temposu ölçülü ve bilinçli şekilde yavaş olmalı; ortalama anlatım temposundan yaklaşık %10 daha sakin ve tane tane ilerlesin. Dinleyicinin sindirerek takip edebileceği net cümleler kur. Gerektiğinde vurgu için kısa cümleler ve doğal duraklama hissi veren noktalama kullan. Tek bir kişi (anlatıcı/uzman) konuşuyormuş gibi METNİ PÜR MONOLOG OLARAK YAZ.
+5) Konuşma temposu ölçülü ve bilinçli şekilde yavaş olmalı; ortalama anlatım temposundan yaklaşık %5 daha sakin ve tane tane ilerlesin. Dinleyicinin sindirerek takip edebileceği net cümleler kur. Gerektiğinde vurgu için kısa cümleler ve doğal duraklama hissi veren noktalama kullan. Tek bir kişi (anlatıcı/uzman) konuşuyormuş gibi METNİ PÜR MONOLOG OLARAK YAZ.
 6) Tahmini konuşma süresi ${range.minMinutes}-${range.maxMinutes} dakika aralığında olmalı.
 7) Yaklaşık kelime aralığı ${targetMinWords}-${targetMaxWords}.
 8) KESİN KURAL: Metinde "Anlatıcı:", "Konuşmacı:", "Sunucu:", "Speaker:", "Seslendiren:" gibi konuşan kişiyi belirten HİÇBİR İSİM veya ETİKET KULLANMA. Doğrudan içeriğin ve anlatımın kendisini paragraf paragraf düz metin olarak ver.
@@ -7163,10 +8209,22 @@ function extractAudioPayload(response: { data?: string; candidates?: unknown[] }
   return { audioBase64: Buffer.concat(audioChunks).toString("base64"), audioMimeType };
 }
 
-function buildPodcastTtsPrompt(narrationText: string, speakerHint?: string): string {
+function buildPodcastTtsStyleDirective(bookType: SmartBookBookType = "academic"): string {
+  if (bookType === "fairy_tale") {
+    return "Perform this as a warm, expressive fairy-tale storyteller. Speak naturally, but about 5% slower than normal conversational pace. Articulate clearly and gently, let important words breathe, and use soft storybook emphasis. Do not sound stretched, robotic, or mechanically slowed down.";
+  }
+  return "Speak naturally and clearly, about 5% slower than normal conversational pace. Keep the delivery deliberate and easy to follow, with clean articulation and organic emphasis. Do not sound stretched, robotic, or mechanically slowed down.";
+}
+
+function buildPodcastTtsPrompt(
+  narrationText: string,
+  speakerHint?: string,
+  bookType: SmartBookBookType = "academic"
+): string {
   const normalizedText = normalizeNarrationTextForTts(narrationText);
   const normalizedHint = String(speakerHint || "").trim();
-  return `${normalizedHint ? `${normalizedHint}\n\n` : ""}Read this podcast script naturally and expressively. Read every sentence in order exactly as written. Do not summarize, omit, shorten, paraphrase, or skip any part of the script. Keep paragraph and section pauses brief and flowing.\n\n${normalizedText}`.trim();
+  const styleDirective = buildPodcastTtsStyleDirective(bookType);
+  return `${normalizedHint ? `${normalizedHint}\n\n` : ""}${styleDirective} Read this podcast script naturally and expressively. Read every sentence in order exactly as written. Do not summarize, omit, shorten, paraphrase, or skip any part of the script. Keep paragraph and section pauses brief and flowing.\n\n${normalizedText}`.trim();
 }
 
 function normalizeNarrationTextForTts(narrationText: string): string {
@@ -7189,11 +8247,16 @@ function countPodcastWords(text: string): number {
 function splitOversizedPodcastUnit(
   unit: string,
   maxChunkWords: number,
-  maxChunkChars: number
+  maxChunkChars: number,
+  maxChunkEstimatedInputTokens: number
 ): string[] {
   const normalizedUnit = String(unit || "").trim();
   if (!normalizedUnit) return [];
-  if (countPodcastWords(normalizedUnit) <= maxChunkWords && normalizedUnit.length <= maxChunkChars) {
+  if (
+    countPodcastWords(normalizedUnit) <= maxChunkWords &&
+    normalizedUnit.length <= maxChunkChars &&
+    estimateTokensFromText(normalizedUnit) <= maxChunkEstimatedInputTokens
+  ) {
     return [normalizedUnit];
   }
 
@@ -7210,7 +8273,11 @@ function splitOversizedPodcastUnit(
       const candidate = current ? `${current} ${sentence}` : sentence;
       if (
         current &&
-        (countPodcastWords(candidate) > maxChunkWords || candidate.length > maxChunkChars)
+        (
+          countPodcastWords(candidate) > maxChunkWords ||
+          candidate.length > maxChunkChars ||
+          estimateTokensFromText(candidate) > maxChunkEstimatedInputTokens
+        )
       ) {
         nestedChunks.push(current.trim());
         current = sentence;
@@ -7224,7 +8291,11 @@ function splitOversizedPodcastUnit(
     }
 
     return nestedChunks.flatMap((chunk) => {
-      if (countPodcastWords(chunk) <= maxChunkWords && chunk.length <= maxChunkChars) {
+      if (
+        countPodcastWords(chunk) <= maxChunkWords &&
+        chunk.length <= maxChunkChars &&
+        estimateTokensFromText(chunk) <= maxChunkEstimatedInputTokens
+      ) {
         return [chunk];
       }
       const words = chunk.split(/\s+/u).filter(Boolean);
@@ -7237,7 +8308,11 @@ function splitOversizedPodcastUnit(
         const candidate = candidateWords.join(" ");
         if (
           buffer.length > 0 &&
-          (candidateWords.length > maxChunkWords || candidate.length > maxChunkChars)
+          (
+            candidateWords.length > maxChunkWords ||
+            candidate.length > maxChunkChars ||
+            estimateTokensFromText(candidate) > maxChunkEstimatedInputTokens
+          )
         ) {
           fallbackChunks.push(buffer.join(" ").trim());
           buffer = [word];
@@ -7262,7 +8337,11 @@ function splitOversizedPodcastUnit(
     const candidate = candidateWords.join(" ");
     if (
       buffer.length > 0 &&
-      (candidateWords.length > maxChunkWords || candidate.length > maxChunkChars)
+      (
+        candidateWords.length > maxChunkWords ||
+        candidate.length > maxChunkChars ||
+        estimateTokensFromText(candidate) > maxChunkEstimatedInputTokens
+      )
     ) {
       fallbackChunks.push(buffer.join(" ").trim());
       buffer = [word];
@@ -7286,21 +8365,31 @@ function splitPodcastNarrationText(narrationText: string): string[] {
   if (!normalized) return [];
 
   const hardPromptCap = Math.max(1000, Math.floor(GEMINI_FLASH_TTS_INPUT_TOKENS_PER_MINUTE * 0.94));
+  const maxChunkEstimatedInputTokens = PODCAST_TTS_PROVIDER === "google"
+    ? Math.max(800, Math.min(hardPromptCap, GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS))
+    : Math.max(800, OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS);
   const tokenBoundChars = Math.max(
     1800,
-    Math.floor(Math.min(hardPromptCap, GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS) * 3.2)
+    Math.floor(maxChunkEstimatedInputTokens * 3.2)
   );
   const maxChunkChars = Math.max(
-    520,
-    Math.min(tokenBoundChars, GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS, 820)
+    820,
+    Math.min(
+      tokenBoundChars,
+      GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS,
+      GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS
+    )
   );
-  const maxChunkWords = Math.max(55, Math.min(GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS, 95));
+  const maxChunkWords = Math.max(
+    95,
+    Math.min(GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS, GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS)
+  );
 
   const oversizedUnits = normalized
     .split(/\n{2,}/u)
     .map((part) => part.trim())
     .filter(Boolean)
-    .flatMap((part) => splitOversizedPodcastUnit(part, maxChunkWords, maxChunkChars));
+    .flatMap((part) => splitOversizedPodcastUnit(part, maxChunkWords, maxChunkChars, maxChunkEstimatedInputTokens));
 
   const units = oversizedUnits.length > 0 ? oversizedUnits : [normalized];
   const chunks: string[] = [];
@@ -7325,7 +8414,11 @@ function splitPodcastNarrationText(narrationText: string): string[] {
 
     if (
       currentUnits.length > 0 &&
-      (nextWordCount > maxChunkWords || nextCharCount > maxChunkChars)
+      (
+        nextWordCount > maxChunkWords ||
+        nextCharCount > maxChunkChars ||
+        estimateTokensFromText(currentUnits.concat(unit).join("\n\n")) > maxChunkEstimatedInputTokens
+      )
     ) {
       flush();
     }
@@ -7338,7 +8431,7 @@ function splitPodcastNarrationText(narrationText: string): string[] {
   flush();
 
   const finalChunks = chunks.filter(Boolean);
-  const maxChunks = Math.max(GEMINI_FLASH_TTS_MAX_CHUNKS, 240);
+  const maxChunks = Math.max(1, GEMINI_FLASH_TTS_MAX_CHUNKS);
   if (finalChunks.length > maxChunks) {
     throw new HttpsError(
       "resource-exhausted",
@@ -7458,6 +8551,9 @@ function isPodcastTtsInputLimitError(error: unknown): boolean {
   return (
     raw.includes("tts kota sınırını aşıyor") ||
     raw.includes("input token") ||
+    raw.includes("max input token") ||
+    raw.includes("max_input_tokens") ||
+    raw.includes("maximum context length") ||
     raw.includes("generatecontentpaidtierinputtokenspermodelperminute")
   );
 }
@@ -7551,6 +8647,83 @@ function extractWavParts(wavBuffer: Buffer): {
   }
 
   return { sampleRate, numChannels, bitsPerSample, audioFormat, pcmData };
+}
+
+function estimateOpenAiMiniTtsOutputTokensFromWav(wavBuffer: Buffer): number {
+  try {
+    const parts = extractWavParts(wavBuffer);
+    const bytesPerSecond = parts.sampleRate * parts.numChannels * (parts.bitsPerSample / 8);
+    if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return 0;
+    const durationSeconds = parts.pcmData.length / bytesPerSecond;
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return 0;
+    const tokens = (durationSeconds / 60) * Math.max(1, OPENAI_MINI_TTS_ESTIMATED_OUTPUT_TOKENS_PER_MINUTE);
+    return Math.max(1, Math.ceil(tokens));
+  } catch {
+    return 0;
+  }
+}
+
+function parseOpenAiTtsUsageFromHeaders(headers: Headers): TokenUsageMetrics | null {
+  const parseIntegerHeader = (...keys: string[]): number => {
+    for (const key of keys) {
+      const value = headers.get(key);
+      if (!value) continue;
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.floor(parsed);
+      }
+    }
+    return 0;
+  };
+
+  let usage: TokenUsageMetrics | null = null;
+  const usageRaw = headers.get("x-openai-usage") || headers.get("openai-usage");
+  if (usageRaw) {
+    try {
+      const parsed = extractUsageNumbers(JSON.parse(usageRaw));
+      if (parsed.inputTokens > 0 || parsed.outputTokens > 0 || parsed.totalTokens > 0) {
+        usage = parsed;
+      }
+    } catch {
+      // Ignore malformed usage header and fall back to explicit numeric headers.
+    }
+  }
+
+  const inputTokens = parseIntegerHeader(
+    "x-openai-prompt-tokens",
+    "openai-prompt-tokens",
+    "x-prompt-tokens"
+  );
+  const outputTokens = parseIntegerHeader(
+    "x-openai-completion-tokens",
+    "x-openai-output-tokens",
+    "openai-completion-tokens",
+    "openai-output-tokens",
+    "x-completion-tokens"
+  );
+  const totalTokens = parseIntegerHeader(
+    "x-openai-total-tokens",
+    "openai-total-tokens",
+    "x-total-tokens"
+  );
+  const numericUsage: TokenUsageMetrics | null =
+    inputTokens > 0 || outputTokens > 0 || totalTokens > 0
+      ? {
+        inputTokens,
+        outputTokens,
+        totalTokens: totalTokens > 0 ? totalTokens : inputTokens + outputTokens
+      }
+      : null;
+
+  if (!usage && !numericUsage) return null;
+  if (!usage) return numericUsage;
+  if (!numericUsage) return usage;
+
+  return {
+    inputTokens: numericUsage.inputTokens || usage.inputTokens,
+    outputTokens: numericUsage.outputTokens || usage.outputTokens,
+    totalTokens: numericUsage.totalTokens || usage.totalTokens || (numericUsage.inputTokens + numericUsage.outputTokens)
+  };
 }
 
 function normalizeAudioPayloadToWavBuffer(payload: { audioBase64: string; audioMimeType: string }): Buffer {
@@ -7705,33 +8878,54 @@ async function failPodcastJob(
   const uid = typeof jobData?.uid === "string" ? jobData.uid : "";
   const receiptId = typeof jobData?.creditReceiptId === "string" ? jobData.creditReceiptId : "";
   const alreadyRefunded = jobData?.creditRefunded === true;
-
-  if (uid && receiptId && !alreadyRefunded) {
-    try {
-      await refundCreditByReceipt(uid, receiptId);
-      await jobRef.set(
-        {
-          creditRefunded: true,
-          creditRefundedAt: FieldValue.serverTimestamp()
-        },
-        { merge: true }
-      );
-    } catch (refundError) {
-      logger.warn("Podcast job credit refund failed", {
-        jobId: jobRef.id,
-        error: toErrorMessage(refundError)
-      });
-    }
-  }
+  const shouldAttemptRefund = Boolean(uid && receiptId && !alreadyRefunded);
 
   await jobRef.set(
     {
       status: "failed",
       errorMessage: toErrorMessage(error).slice(0, 1800),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
+      creditRefundPending: shouldAttemptRefund || FieldValue.delete()
     },
     { merge: true }
   );
+
+  if (!shouldAttemptRefund) {
+    return;
+  }
+
+  try {
+    await withTimeout(
+      refundCreditByReceipt(uid, receiptId),
+      PODCAST_REFUND_TIMEOUT_MS,
+      () => new HttpsError("deadline-exceeded", "Podcast kredi iadesi zaman aşımına uğradı.")
+    );
+    await jobRef.set(
+      {
+        creditRefunded: true,
+        creditRefundPending: false,
+        creditRefundedAt: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+  } catch (refundError) {
+    logger.warn("Podcast job credit refund failed", {
+      jobId: jobRef.id,
+      error: toErrorMessage(refundError)
+    });
+    try {
+      await jobRef.set(
+        {
+          creditRefundPending: true,
+          creditRefundError: toErrorMessage(refundError).slice(0, 400),
+          creditRefundErrorAt: FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+    } catch {
+      // best effort: job is already marked failed above
+    }
+  }
 }
 
 function audioFileExtensionFromMimeType(mimeType: string | undefined): string {
@@ -7800,15 +8994,26 @@ async function synthesizeGeminiPodcastAudioChunk(
   speechConfig: Record<string, unknown>,
   usageEntries: UsageReportEntry[],
   label: string,
-  speakerHint: string
+  speakerHint: string,
+  bookType: SmartBookBookType = "academic"
 ): Promise<Buffer> {
-  const ttsPrompt = buildPodcastTtsPrompt(narrationText, speakerHint);
-  const estimatedTtsInputTokens = estimateTokensFromText(ttsPrompt);
+  const normalizedNarration = String(narrationText || "").trim();
+  const narrationWordCount = countPodcastWords(normalizedNarration);
+  if (
+    normalizedNarration.length > GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS ||
+    narrationWordCount > GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS
+  ) {
+    throw new HttpsError(
+      "resource-exhausted",
+      `TTS tek istek limiti aşıldı. Maksimum ${GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS} karakter veya ${GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS} kelime desteklenir.`
+    );
+  }
+
+  const ttsPrompt = buildPodcastTtsPrompt(narrationText, speakerHint, bookType);
 
   logger.info("[PodcastAudio] Generating chunk audio.", {
     label,
-    attempt: 1,
-    estimatedTtsInputTokens
+    attempt: 1
   });
 
   const result = await ai.models.generateContentStream({
@@ -7822,8 +9027,14 @@ async function synthesizeGeminiPodcastAudioChunk(
   }) as AsyncIterable<unknown> & { response?: Promise<unknown> };
 
   const audioChunks: Buffer[] = [];
+  let streamUsage: TokenUsageMetrics | null = null;
   for await (const chunk of result) {
-    if (!isRecord(chunk) || !Array.isArray(chunk.candidates)) continue;
+    if (!isRecord(chunk)) continue;
+    const usageFromChunk = extractUsageNumbers((chunk as { usageMetadata?: unknown }).usageMetadata);
+    if (usageFromChunk.inputTokens > 0 || usageFromChunk.outputTokens > 0 || usageFromChunk.totalTokens > 0) {
+      streamUsage = usageFromChunk;
+    }
+    if (!Array.isArray(chunk.candidates)) continue;
     const firstCandidate = chunk.candidates[0];
     if (!isRecord(firstCandidate) || !isRecord(firstCandidate.content) || !Array.isArray(firstCandidate.content.parts)) continue;
 
@@ -7840,30 +9051,277 @@ async function synthesizeGeminiPodcastAudioChunk(
     throw new HttpsError("not-found", "Ses oluşturulamadı");
   }
 
+  let resolvedUsage: TokenUsageMetrics | null = streamUsage;
+  let usageSource: "stream-usageMetadata" | "response-usageMetadata" | "missing" =
+    streamUsage ? "stream-usageMetadata" : "missing";
+
   if (result.response) {
     const finalResponse = await result.response.catch(() => null);
     if (finalResponse) {
-      const usage = extractUsageNumbers((finalResponse as { usageMetadata?: unknown }).usageMetadata);
-      const inputTokens = usage.inputTokens > 0 ? usage.inputTokens : estimatedTtsInputTokens;
-      const outputTokens = usage.outputTokens > 0 ? usage.outputTokens : 0;
-      const totalTokens = usage.totalTokens > 0 ? usage.totalTokens : inputTokens + outputTokens;
-      usageEntries.push({
-        label,
-        provider: "google",
-        model: GEMINI_FLASH_TTS_MODEL,
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        estimatedCostUsd: costForGeminiFlashTts(inputTokens, outputTokens)
-      });
+      const responseUsage = extractUsageNumbers((finalResponse as { usageMetadata?: unknown }).usageMetadata);
+      if (responseUsage.inputTokens > 0 || responseUsage.outputTokens > 0 || responseUsage.totalTokens > 0) {
+        resolvedUsage = responseUsage;
+        usageSource = "response-usageMetadata";
+      }
     }
+  }
+
+  const inputTokens = resolvedUsage?.inputTokens || 0;
+  const outputTokens = resolvedUsage?.outputTokens || 0;
+  const totalTokens = resolvedUsage?.totalTokens || 0;
+  const estimatedCostUsd = costForGeminiFlashTts(inputTokens, outputTokens);
+  usageEntries.push({
+    label,
+    provider: "google",
+    model: GEMINI_FLASH_TTS_MODEL,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    estimatedCostUsd
+  });
+  if (!resolvedUsage) {
+    logger.error("[PodcastAudio] Chunk usage metadata missing", {
+      label,
+      model: GEMINI_FLASH_TTS_MODEL
+    });
+  } else {
+    logger.info("[PodcastAudio] Chunk usage resolved", {
+      label,
+      usageSource,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      estimatedCostUsd
+    });
   }
 
   return wrapPcmAsWav(Buffer.concat(audioChunks), 24000);
 }
 
+async function synthesizeOpenAiPodcastAudioChunk(
+  narrationText: string,
+  usageEntries: UsageReportEntry[],
+  label: string,
+  bookType: SmartBookBookType = "academic"
+): Promise<Buffer> {
+  const normalizedNarration = String(narrationText || "").trim();
+  const narrationWordCount = countPodcastWords(normalizedNarration);
+  const estimatedInputTokens = estimateTokensFromText(normalizedNarration);
+  if (
+    normalizedNarration.length > GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS ||
+    narrationWordCount > GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS ||
+    estimatedInputTokens > OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS
+  ) {
+    throw new HttpsError(
+      "resource-exhausted",
+      `TTS tek istek limiti aşıldı. Maksimum ${GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS} karakter, ${GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS} kelime veya ${OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS} input token desteklenir.`
+    );
+  }
+
+  const apiKey = resolveOpenAiApiKey();
+  if (!apiKey) {
+    throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+  }
+
+  const isFairyTaleBook = bookType === "fairy_tale";
+  const voiceCandidates = Array.from(
+    new Set(
+      (
+        isFairyTaleBook
+          ? [OPENAI_MINI_TTS_FAIRY_VOICE, OPENAI_MINI_TTS_VOICE, "coral"]
+          : [OPENAI_MINI_TTS_VOICE, "coral"]
+      ).map((item) => String(item || "").trim()).filter(Boolean)
+    )
+  );
+
+  logger.info("[PodcastAudio] Generating chunk audio.", {
+    label,
+    attempt: 1,
+    provider: "openai",
+    model: OPENAI_MINI_TTS_MODEL,
+    bookType,
+    voiceCandidates
+  });
+
+  const requestAudio = async (responseFormat: "wav" | "pcm", voiceName: string): Promise<{
+    responseHeaders: Headers;
+    contentType: string;
+    audioBuffer: Buffer;
+  }> => {
+    const response = await fetch(OPENAI_TTS_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: responseFormat === "wav" ? "audio/wav" : "audio/pcm",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: OPENAI_MINI_TTS_MODEL,
+        input: normalizedNarration,
+        voice: voiceName,
+        instructions: isFairyTaleBook ? OPENAI_MINI_TTS_FAIRY_INSTRUCTIONS : undefined,
+        // OpenAI TTS param name
+        response_format: responseFormat,
+        // Backward compatibility for older handlers.
+        format: responseFormat
+      })
+    });
+
+    if (!response.ok) {
+      let errorText = `OpenAI TTS API error: ${response.status}`;
+      try {
+        const errorJson = await response.json() as { error?: { message?: string } };
+        if (typeof errorJson.error?.message === "string" && errorJson.error.message.trim()) {
+          errorText = errorJson.error.message.trim();
+        }
+      } catch {
+        const raw = await response.text().catch(() => "");
+        if (raw.trim()) errorText = raw.trim();
+      }
+      const errorCode = response.status === 429
+        ? "resource-exhausted"
+        : response.status === 401 || response.status === 403
+          ? "permission-denied"
+          : "internal";
+      throw new HttpsError(errorCode, errorText);
+    }
+
+    const audioBuffer = Buffer.from(await response.arrayBuffer());
+    if (audioBuffer.length === 0) {
+      throw new HttpsError("not-found", "Ses oluşturulamadı");
+    }
+    const contentType = (response.headers.get("content-type") || "").toLocaleLowerCase("en-US");
+    return { responseHeaders: response.headers, contentType, audioBuffer };
+  };
+
+  const isRiffWav = (buffer: Buffer): boolean =>
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WAVE";
+
+  const isVoiceSelectionError = (error: unknown): boolean => {
+    const raw = toErrorMessage(error).toLocaleLowerCase("en-US");
+    return raw.includes("voice") && (
+      raw.includes("invalid") ||
+      raw.includes("unsupported") ||
+      raw.includes("allowed")
+    );
+  };
+
+  const requestAudioWithVoiceFallback = async (responseFormat: "wav" | "pcm"): Promise<{
+    responseHeaders: Headers;
+    contentType: string;
+    audioBuffer: Buffer;
+    voice: string;
+  }> => {
+    let lastError: unknown = null;
+    for (const voice of voiceCandidates) {
+      try {
+        const attempted = await requestAudio(responseFormat, voice);
+        return { ...attempted, voice };
+      } catch (error) {
+        lastError = error;
+        if (!isVoiceSelectionError(error)) {
+          throw error;
+        }
+        logger.warn("[PodcastAudio] OpenAI voice candidate failed, trying fallback voice.", {
+          label,
+          bookType,
+          voice,
+          error: toErrorMessage(error)
+        });
+      }
+    }
+    throw lastError instanceof Error ? lastError : new HttpsError("internal", "OpenAI TTS voice seçimi başarısız oldu.");
+  };
+
+  let responseHeaders: Headers;
+  let contentType: string;
+  let audioBuffer: Buffer;
+  let resolvedVoice = voiceCandidates[0] || OPENAI_MINI_TTS_VOICE;
+
+  const wavAttempt = await requestAudioWithVoiceFallback("wav");
+  responseHeaders = wavAttempt.responseHeaders;
+  contentType = wavAttempt.contentType;
+  audioBuffer = wavAttempt.audioBuffer;
+  resolvedVoice = wavAttempt.voice;
+
+  if (!isRiffWav(audioBuffer)) {
+    if (contentType.includes("audio/pcm") || contentType.includes("audio/l16")) {
+      audioBuffer = wrapPcmAsWav(audioBuffer, 24000);
+    } else {
+      const pcmAttempt = await requestAudioWithVoiceFallback("pcm");
+      responseHeaders = pcmAttempt.responseHeaders;
+      contentType = pcmAttempt.contentType;
+      audioBuffer = wrapPcmAsWav(pcmAttempt.audioBuffer, 24000);
+      resolvedVoice = pcmAttempt.voice;
+    }
+  }
+
+  const headerUsage = parseOpenAiTtsUsageFromHeaders(responseHeaders);
+  const usageSource = headerUsage ? "response-headers" : "estimated-input-and-duration";
+  const inputTokens = headerUsage?.inputTokens || estimatedInputTokens;
+  const outputTokens = headerUsage?.outputTokens || estimateOpenAiMiniTtsOutputTokensFromWav(audioBuffer);
+  const totalTokens = headerUsage?.totalTokens || (inputTokens + outputTokens);
+  const estimatedCostUsd = costForOpenAiMiniTts(inputTokens, outputTokens);
+  usageEntries.push({
+    label,
+    provider: "openai",
+    model: OPENAI_MINI_TTS_MODEL,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    estimatedCostUsd
+  });
+
+  logger.info("[PodcastAudio] Chunk usage resolved", {
+    label,
+    usageSource,
+    contentType: contentType || "unknown",
+    voice: resolvedVoice,
+    bookType,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    estimatedCostUsd
+  });
+
+  return audioBuffer;
+}
+
+async function synthesizePodcastAudioChunk(
+  ai: GoogleGenAI | null,
+  narrationText: string,
+  speechConfig: Record<string, unknown>,
+  usageEntries: UsageReportEntry[],
+  label: string,
+  speakerHint: string,
+  bookType: SmartBookBookType = "academic"
+): Promise<Buffer> {
+  if (PODCAST_TTS_PROVIDER === "google") {
+    if (!ai) {
+      throw new HttpsError("failed-precondition", "Google TTS client is not configured.");
+    }
+    return synthesizeGeminiPodcastAudioChunk(
+      ai,
+      narrationText,
+      speechConfig,
+      usageEntries,
+      label,
+      speakerHint,
+      bookType
+    );
+  }
+  return synthesizeOpenAiPodcastAudioChunk(
+    narrationText,
+    usageEntries,
+    label,
+    bookType
+  );
+}
+
 async function generatePodcastAudio(
-  ai: GoogleGenAI,
+  ai: GoogleGenAI | null,
   topic: string,
   range: PodcastDurationRange,
   providedScript?: string,
@@ -7893,6 +9351,7 @@ async function generatePodcastAudio(
   if (!script) {
     throw new HttpsError("failed-precondition", "Podcast ses üretimi için script zorunludur.");
   }
+  const podcastBookType = parseSmartBookBookType(creativeBrief?.bookType) || "academic";
 
   const speakerHint = format === 'monolog'
     ? `Use only speaker label "${narratorLabel}" if labels are present.`
@@ -7902,9 +9361,17 @@ async function generatePodcastAudio(
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   const narrationWordCount = countPodcastWords(narrationText);
+  const maxSingleRequestWords = Math.max(
+    95,
+    Math.min(GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS, GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS)
+  );
+  const maxSingleRequestChars = Math.max(
+    820,
+    Math.min(GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS, GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS)
+  );
   const shouldChunkByLength =
-    narrationWordCount > GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_WORDS ||
-    narrationText.length > GEMINI_FLASH_TTS_TARGET_MAX_CHUNK_CHARS;
+    narrationWordCount > maxSingleRequestWords ||
+    narrationText.length > maxSingleRequestChars;
 
   let speechConfig: any = {};
   if (format === 'monolog') {
@@ -7921,11 +9388,17 @@ async function generatePodcastAudio(
       }
     };
   }
-  logger.info(`[PodcastAudio] Sending request to Gemini TTS.Model: ${GEMINI_FLASH_TTS_MODEL} `);
+  const activePodcastTtsModel =
+    PODCAST_TTS_PROVIDER === "google" ? GEMINI_FLASH_TTS_MODEL : OPENAI_MINI_TTS_MODEL;
+  logger.info(`[PodcastAudio] Sending request to ${PODCAST_TTS_PROVIDER} TTS model: ${activePodcastTtsModel}`);
 
-  const fullPrompt = buildPodcastTtsPrompt(narrationText, speakerHint);
+  const fullPrompt = PODCAST_TTS_PROVIDER === "google"
+    ? buildPodcastTtsPrompt(narrationText, speakerHint, podcastBookType)
+    : narrationText;
   const fullEstimatedTtsInputTokens = estimateTokensFromText(fullPrompt);
-  const hardPromptCap = Math.max(1000, Math.floor(GEMINI_FLASH_TTS_INPUT_TOKENS_PER_MINUTE * 0.94));
+  const hardPromptCap = PODCAST_TTS_PROVIDER === "google"
+    ? Math.max(1000, Math.floor(GEMINI_FLASH_TTS_INPUT_TOKENS_PER_MINUTE * 0.94))
+    : OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS;
   let audioBuffer: Buffer;
   const storageContentType = "audio/wav";
 
@@ -7933,13 +9406,14 @@ async function generatePodcastAudio(
     if (shouldChunkByLength) {
       throw new HttpsError("resource-exhausted", "Podcast metni tek TTS çağrısı için uzun. Chunk fallback uygulanıyor.");
     }
-    audioBuffer = await synthesizeGeminiPodcastAudioChunk(
+    audioBuffer = await synthesizePodcastAudioChunk(
       ai,
       narrationText,
       speechConfig,
       usageEntries,
       "Podcast ses",
-      speakerHint
+      speakerHint,
+      podcastBookType
     );
   } catch (error) {
     const shouldChunkFallback =
@@ -7950,13 +9424,17 @@ async function generatePodcastAudio(
     }
 
     const narrationChunks = splitPodcastNarrationText(narrationText);
-    logger.info("[PodcastAudio] Falling back to chunked Gemini TTS.", {
+    logger.info("[PodcastAudio] Falling back to chunked podcast TTS.", {
       topic,
+      provider: PODCAST_TTS_PROVIDER,
+      model: activePodcastTtsModel,
       narrationChars: narrationText.length,
       narrationWords: narrationWordCount,
       chunkCount: narrationChunks.length,
       estimatedInputTokens: fullEstimatedTtsInputTokens,
-      fallbackChunkInputTokens: GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS
+      fallbackChunkInputTokens: PODCAST_TTS_PROVIDER === "google"
+        ? GEMINI_FLASH_TTS_FALLBACK_CHUNK_INPUT_TOKENS
+        : OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS
     });
 
     const chunkBuffers: Buffer[] = [];
@@ -7964,13 +9442,14 @@ async function generatePodcastAudio(
       const chunkText = narrationChunks[index];
       const chunkLabel = `Podcast ses ${index + 1}/${narrationChunks.length}`;
       chunkBuffers.push(
-        await synthesizeGeminiPodcastAudioChunk(
+        await synthesizePodcastAudioChunk(
           ai,
           chunkText,
           speechConfig,
           usageEntries,
           chunkLabel,
-          speakerHint
+          speakerHint,
+          podcastBookType
         )
       );
     }
@@ -8672,17 +10151,12 @@ export const aiGateway = onCall(
     const planTier = resolvePlanTier(request);
     const aiCreditCharge = resolveAiCreditCharge(operation, payload);
 
-    const apiKey = GEMINI_API_KEY.value();
-    if (!apiKey) {
-      throw new HttpsError("failed-precondition", "GEMINI_API_KEY is not configured.");
-    }
-
     await ensureCreditAvailable(uid, aiCreditCharge);
     await ensureQuotaAvailable(uid, operation, planTier);
     assertFreeToolRestrictions(planTier, payload);
     const spendReservation = await reserveAiSpendBudget(uid, operation);
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = createGoogleGenAiClient();
     const openAiApiKey = resolveOpenAiApiKey();
 
     const executeOperation = async (): Promise<AiGatewayResponse> => {
@@ -9105,11 +10579,17 @@ export const startPodcastAudioJob = onCall(
     const payload = isRecord(request.data) ? request.data : {};
     const topic = asString(payload.topic, "topic", 120);
     const script = asString(payload.script, "script", PODCAST_JOB_MAX_SCRIPT_CHARS).trim();
+    const bookType = parseSmartBookBookType(payload.bookType);
     if (!script) {
       throw new HttpsError("failed-precondition", "Podcast ses üretimi için script zorunludur.");
     }
 
-    const jobId = buildPodcastJobId(uid, topic, script);
+    const activePodcastTtsModel = PODCAST_TTS_PROVIDER === "google"
+      ? GEMINI_FLASH_TTS_MODEL
+      : OPENAI_MINI_TTS_MODEL;
+    const providerCacheSalt = `\n\n[tts-provider:${PODCAST_TTS_PROVIDER}|tts-model:${activePodcastTtsModel}]`;
+    const bookModeCacheSalt = bookType === "fairy_tale" ? "\n\n[mode:fairy-single-v1]" : "";
+    const jobId = buildPodcastJobId(uid, topic, `${script}${bookModeCacheSalt}${providerCacheSalt}`);
     const jobRef = getPodcastJobRef(jobId);
     const existingSnap = await jobRef.get();
     const existingData = existingSnap.data() as Record<string, unknown> | undefined;
@@ -9149,7 +10629,66 @@ export const startPodcastAudioJob = onCall(
       }
     }
 
-    const chunks = splitPodcastNarrationText(script);
+    let chunks: string[] = [];
+    if (bookType === "fairy_tale") {
+      const narrationText = script
+        .replace(/\r/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      const narrationWordCount = countPodcastWords(narrationText);
+      const speakerHint = 'Use only speaker label "Anlatıcı" if labels are present.';
+      const fullPrompt = PODCAST_TTS_PROVIDER === "google"
+        ? buildPodcastTtsPrompt(narrationText, speakerHint)
+        : narrationText;
+      const estimatedInputTokens = estimateTokensFromText(fullPrompt);
+      const hardPromptCap = PODCAST_TTS_PROVIDER === "google"
+        ? Math.max(1000, Math.floor(GEMINI_FLASH_TTS_INPUT_TOKENS_PER_MINUTE * 0.94))
+        : OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS;
+      const safeSingleChunkCap = PODCAST_TTS_PROVIDER === "google"
+        ? Math.max(1200, Math.min(hardPromptCap, GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_INPUT_TOKENS))
+        : Math.max(1000, Math.floor(OPENAI_MINI_TTS_HARD_MAX_INPUT_TOKENS * 0.9));
+      const safeSingleChunkWords = Math.min(
+        GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_WORDS,
+        GEMINI_FLASH_TTS_HARD_MAX_REQUEST_WORDS
+      );
+      const safeSingleChunkChars = Math.min(
+        GEMINI_FLASH_TTS_SAFE_SINGLE_CHUNK_CHARS,
+        GEMINI_FLASH_TTS_HARD_MAX_REQUEST_CHARS
+      );
+      const canUseSingleChunk =
+        estimatedInputTokens <= safeSingleChunkCap &&
+        narrationWordCount <= safeSingleChunkWords &&
+        narrationText.length <= safeSingleChunkChars;
+      if (canUseSingleChunk) {
+        chunks = [narrationText];
+        logger.info("Podcast job single-chunk mode enabled for fairy tale", {
+          jobId,
+          provider: PODCAST_TTS_PROVIDER,
+          estimatedInputTokens,
+          narrationWordCount,
+          narrationChars: narrationText.length,
+          hardPromptCap,
+          safeSingleChunkCap,
+          safeSingleChunkWords,
+          safeSingleChunkChars
+        });
+      } else {
+        logger.warn("Fairy tale podcast exceeded single-chunk safety caps; falling back to chunked mode", {
+          jobId,
+          provider: PODCAST_TTS_PROVIDER,
+          estimatedInputTokens,
+          narrationWordCount,
+          narrationChars: narrationText.length,
+          hardPromptCap,
+          safeSingleChunkCap,
+          safeSingleChunkWords,
+          safeSingleChunkChars
+        });
+        chunks = splitPodcastNarrationText(script);
+      }
+    } else {
+      chunks = splitPodcastNarrationText(script);
+    }
     if (chunks.length === 0) {
       throw new HttpsError("failed-precondition", "Podcast için seslendirilecek içerik bulunamadı.");
     }
@@ -9171,6 +10710,7 @@ export const startPodcastAudioJob = onCall(
       const nextData: Record<string, unknown> = {
         uid,
         topic,
+        bookType: bookType || null,
         status: "queued",
         totalChunks: chunks.length,
         completedChunks: 0,
@@ -9243,14 +10783,82 @@ export const getPodcastAudioJob = onCall(
 
     const payload = isRecord(request.data) ? request.data : {};
     const jobId = asString(payload.jobId, "jobId", 120);
-    const jobSnap = await getPodcastJobRef(jobId).get();
+    const jobRef = getPodcastJobRef(jobId);
+    const jobSnap = await jobRef.get();
     if (!jobSnap.exists) {
       throw new HttpsError("not-found", "Podcast job bulunamadı.");
     }
 
-    const data = jobSnap.data() as Record<string, unknown> | undefined;
+    let data = jobSnap.data() as Record<string, unknown> | undefined;
     if (typeof data?.uid !== "string" || data.uid !== uid) {
       throw new HttpsError("permission-denied", "Podcast job owner mismatch.");
+    }
+
+    const status = String(data?.status || "");
+    const updatedAtMs = toTimestampMillis(data?.updatedAt);
+    const ageMs = updatedAtMs > 0 ? Math.max(0, Date.now() - updatedAtMs) : Number.POSITIVE_INFINITY;
+    const shouldMarkStuckFailed =
+      (status === "queued" || status === "processing" || status === "finalizing") &&
+      ageMs > PODCAST_JOB_HARD_STUCK_MS;
+    if (shouldMarkStuckFailed) {
+      logger.error("Podcast job appears stuck; marking as failed", {
+        jobId,
+        status,
+        ageMs,
+        updatedAtMs
+      });
+      await failPodcastJob(
+        jobRef,
+        data,
+        new HttpsError("deadline-exceeded", "Podcast görevi zaman aşımına uğradı. Lütfen tekrar deneyin.")
+      );
+      const refreshedSnap = await jobRef.get();
+      data = refreshedSnap.data() as Record<string, unknown> | undefined;
+    }
+
+    const pendingRefundReceiptId =
+      typeof data?.creditReceiptId === "string"
+        ? data.creditReceiptId.trim()
+        : "";
+    const shouldAttemptPendingRefund =
+      String(data?.status || "") === "failed" &&
+      data?.creditRefunded !== true &&
+      data?.creditRefundPending === true &&
+      pendingRefundReceiptId.length > 0;
+    if (shouldAttemptPendingRefund) {
+      try {
+        await withTimeout(
+          refundCreditByReceipt(uid, pendingRefundReceiptId),
+          PODCAST_REFUND_TIMEOUT_MS,
+          () => new HttpsError("deadline-exceeded", "Podcast kredi iadesi zaman aşımına uğradı.")
+        );
+        await jobRef.set(
+          {
+            creditRefunded: true,
+            creditRefundPending: false,
+            creditRefundedAt: FieldValue.serverTimestamp(),
+            creditRefundError: FieldValue.delete(),
+            creditRefundErrorAt: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
+        const refreshedSnap = await jobRef.get();
+        data = refreshedSnap.data() as Record<string, unknown> | undefined;
+      } catch (refundError) {
+        logger.warn("Podcast job pending refund retry failed", {
+          jobId,
+          error: toErrorMessage(refundError)
+        });
+        await jobRef.set(
+          {
+            creditRefundPending: true,
+            creditRefundError: toErrorMessage(refundError).slice(0, 400),
+            creditRefundErrorAt: FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        ).catch(() => undefined);
+      }
     }
 
     const wallet = await getOrCreateCreditWallet(uid);
@@ -9259,7 +10867,7 @@ export const getPodcastAudioJob = onCall(
 );
 
 async function processPodcastAudioJobChunkTask(
-  ai: GoogleGenAI,
+  ai: GoogleGenAI | null,
   jobRef: FirebaseFirestore.DocumentReference,
   jobData: Record<string, unknown>,
   chunkIndex: number
@@ -9277,6 +10885,7 @@ async function processPodcastAudioJobChunkTask(
   try {
     const manifest = await readPodcastJobManifest(manifestPath);
     const totalChunks = manifest.chunks.length;
+    const jobBookType = parseSmartBookBookType(jobData.bookType) || "academic";
     if (chunkIndex < 0 || chunkIndex >= totalChunks) {
       throw new HttpsError("failed-precondition", "Podcast chunk index geçersiz.");
     }
@@ -9304,17 +10913,26 @@ async function processPodcastAudioJobChunkTask(
     const maxAttempts = 4;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        chunkBuffer = await synthesizeGeminiPodcastAudioChunk(
-          ai,
-          manifest.chunks[chunkIndex],
-          speechConfig,
-          usageEntries,
-          label,
-          speakerHint
+        chunkBuffer = await withTimeout(
+          synthesizePodcastAudioChunk(
+            ai,
+            manifest.chunks[chunkIndex],
+            speechConfig,
+            usageEntries,
+            label,
+            speakerHint,
+            jobBookType
+          ),
+          PODCAST_CHUNK_ATTEMPT_TIMEOUT_MS,
+          () => new HttpsError(
+            "deadline-exceeded",
+            `Podcast ses üretimi zaman aşımına uğradı (${Math.round(PODCAST_CHUNK_ATTEMPT_TIMEOUT_MS / 1000)} sn).`
+          )
         );
         break;
       } catch (error) {
-        const shouldRetry = attempt < maxAttempts && isTransientAiProviderError(error);
+        const isDeadlineError = error instanceof HttpsError && error.code === "deadline-exceeded";
+        const shouldRetry = attempt < maxAttempts && isTransientAiProviderError(error) && !isDeadlineError;
         if (!shouldRetry) throw error;
         const delayMs = getAiRetryDelayMs(attempt, error);
         logger.warn("Podcast job chunk transient provider error, retrying", {
@@ -9540,7 +11158,7 @@ export const processPodcastAudioJobTask = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 8,
-    secrets: [GEMINI_API_KEY]
+    secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
   },
   async (event) => {
     const snapshot = event.data;
@@ -9577,11 +11195,12 @@ export const processPodcastAudioJobTask = onDocumentCreated(
       if (taskType === "finalize") {
         await processPodcastAudioJobFinalizeTask(jobRef, jobData);
       } else {
-        const apiKey = GEMINI_API_KEY.value();
-        if (!apiKey) {
-          throw new HttpsError("failed-precondition", "GEMINI_API_KEY is not configured.");
+        let ai: GoogleGenAI | null = null;
+        if (PODCAST_TTS_PROVIDER === "google") {
+          ai = createGoogleGenAiClient();
+        } else if (!resolveOpenAiApiKey()) {
+          throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
         }
-        const ai = new GoogleGenAI({ apiKey });
         await processPodcastAudioJobChunkTask(ai, jobRef, jobData, chunkIndex);
       }
     } catch (error) {
@@ -9775,6 +11394,9 @@ const EMAIL_OTP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
 const EMAIL_OTP_MAX_REQUESTS_PER_EMAIL = 5;
 const EMAIL_OTP_MAX_REQUESTS_PER_IP = 20;
 const EMAIL_OTP_MAX_VERIFY_ATTEMPTS = 6;
+const APP_REVIEW_LOGIN_EMAIL_FALLBACK = "appstore-review@futurumapps.online";
+const APP_REVIEW_LOGIN_CODE_FALLBACK = "246810";
+const APP_REVIEW_LOGIN_DISPLAY_NAME_FALLBACK = "App Store Review";
 
 const EMAIL_OTP_COPY: Record<EmailOtpLanguage, EmailOtpCopy> = {
   tr: {
@@ -9874,6 +11496,44 @@ function sanitizeOtpCode(value: unknown): string | null {
 function sanitizeDisplayName(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, 120);
+}
+
+type AppReviewLoginConfig = {
+  enabled: boolean;
+  email: string;
+  code: string;
+  displayName: string;
+};
+
+function resolveAppReviewLoginConfig(): AppReviewLoginConfig {
+  const enabledRaw = resolveEnvValue("APP_REVIEW_LOGIN_ENABLED").toLowerCase();
+  const isExplicitlyDisabled = ["0", "false", "off", "no"].includes(enabledRaw);
+
+  if (isExplicitlyDisabled) {
+    return {
+      enabled: false,
+      email: "",
+      code: "",
+      displayName: APP_REVIEW_LOGIN_DISPLAY_NAME_FALLBACK
+    };
+  }
+
+  const resolvedEmail = sanitizeEmail(
+    resolveEnvValue("APP_REVIEW_LOGIN_EMAIL") || APP_REVIEW_LOGIN_EMAIL_FALLBACK
+  ) || "";
+  const resolvedCode = sanitizeOtpCode(
+    resolveEnvValue("APP_REVIEW_LOGIN_CODE") || APP_REVIEW_LOGIN_CODE_FALLBACK
+  ) || "";
+  const resolvedDisplayName =
+    sanitizeDisplayName(resolveEnvValue("APP_REVIEW_LOGIN_DISPLAY_NAME")) ||
+    APP_REVIEW_LOGIN_DISPLAY_NAME_FALLBACK;
+
+  return {
+    enabled: Boolean(resolvedEmail && resolvedCode),
+    email: resolvedEmail,
+    code: resolvedCode,
+    displayName: resolvedDisplayName
+  };
 }
 
 function resolveEmailOtpSecret(): string {
@@ -10578,13 +12238,21 @@ async function requestEmailLoginCodeCore(
   payload: EmailOtpRequestPayload,
   ipAddress: string | null
 ): Promise<{ success: true }> {
-  if (!isMailProviderConfigured()) {
-    throw new HttpsError("failed-precondition", "E-posta servisi yapılandırılmadı.");
-  }
-
   const email = sanitizeEmail(payload.email);
   if (!email) {
     throw new HttpsError("invalid-argument", "Geçerli bir e-posta adresi gerekli.");
+  }
+
+  const appReviewConfig = resolveAppReviewLoginConfig();
+  if (appReviewConfig.enabled && email === appReviewConfig.email) {
+    logger.info("app review login code requested", {
+      emailHash: hashValue(email).slice(0, 16)
+    });
+    return { success: true };
+  }
+
+  if (!isMailProviderConfigured()) {
+    throw new HttpsError("failed-precondition", "E-posta servisi yapılandırılmadı.");
   }
 
   const language = resolveEmailOtpLanguage(payload.language);
@@ -10695,50 +12363,64 @@ async function verifyEmailLoginCodeCore(
     throw new HttpsError("invalid-argument", "E-posta ve 6 haneli kod gerekli.");
   }
 
-  const now = Date.now();
-  const emailStateRef = firestore.collection("emailLoginCodes").doc(getEmailStateDocId(email));
-  const providedCodeHash = hashOtpCode(email, code);
+  const appReviewConfig = resolveAppReviewLoginConfig();
+  const isAppReviewBypass =
+    appReviewConfig.enabled &&
+    email === appReviewConfig.email &&
+    code === appReviewConfig.code;
+
   let isVerified = false;
 
-  await firestore.runTransaction(async (tx) => {
-    const stateSnap = await tx.get(emailStateRef);
-    if (!stateSnap.exists) {
-      return;
-    }
+  if (isAppReviewBypass) {
+    isVerified = true;
+    logger.info("app review login verified", {
+      emailHash: hashValue(email).slice(0, 16)
+    });
+  } else {
+    const now = Date.now();
+    const emailStateRef = firestore.collection("emailLoginCodes").doc(getEmailStateDocId(email));
+    const providedCodeHash = hashOtpCode(email, code);
 
-    const state = (stateSnap.data() || {}) as Record<string, unknown>;
-    const expiresAtMs = asNumber(state.expiresAtMs, 0);
-    const consumedAtMs = asNumber(state.consumedAtMs, 0);
-    const attemptCount = asNumber(state.attemptCount, 0);
-    const storedCodeHash =
-      typeof state.codeHash === "string" ? state.codeHash : "";
+    await firestore.runTransaction(async (tx) => {
+      const stateSnap = await tx.get(emailStateRef);
+      if (!stateSnap.exists) {
+        return;
+      }
 
-    if (!storedCodeHash || consumedAtMs > 0 || now > expiresAtMs) {
-      return;
-    }
+      const state = (stateSnap.data() || {}) as Record<string, unknown>;
+      const expiresAtMs = asNumber(state.expiresAtMs, 0);
+      const consumedAtMs = asNumber(state.consumedAtMs, 0);
+      const attemptCount = asNumber(state.attemptCount, 0);
+      const storedCodeHash =
+        typeof state.codeHash === "string" ? state.codeHash : "";
 
-    if (attemptCount >= EMAIL_OTP_MAX_VERIFY_ATTEMPTS) {
-      return;
-    }
+      if (!storedCodeHash || consumedAtMs > 0 || now > expiresAtMs) {
+        return;
+      }
 
-    if (storedCodeHash !== providedCodeHash) {
-      const nextAttemptCount = attemptCount + 1;
+      if (attemptCount >= EMAIL_OTP_MAX_VERIFY_ATTEMPTS) {
+        return;
+      }
+
+      if (storedCodeHash !== providedCodeHash) {
+        const nextAttemptCount = attemptCount + 1;
+        tx.update(emailStateRef, {
+          attemptCount: nextAttemptCount,
+          lastAttemptAtMs: now,
+          ...(nextAttemptCount >= EMAIL_OTP_MAX_VERIFY_ATTEMPTS ? { expiresAtMs: now } : {}),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+        return;
+      }
+
+      isVerified = true;
       tx.update(emailStateRef, {
-        attemptCount: nextAttemptCount,
-        lastAttemptAtMs: now,
-        ...(nextAttemptCount >= EMAIL_OTP_MAX_VERIFY_ATTEMPTS ? { expiresAtMs: now } : {}),
+        consumedAtMs: now,
+        verifiedAtMs: now,
         updatedAt: FieldValue.serverTimestamp()
       });
-      return;
-    }
-
-    isVerified = true;
-    tx.update(emailStateRef, {
-      consumedAtMs: now,
-      verifiedAtMs: now,
-      updatedAt: FieldValue.serverTimestamp()
     });
-  });
+  }
 
   if (!isVerified) {
     throw new HttpsError("invalid-argument", "Kod geçersiz veya süresi doldu.");
@@ -10746,7 +12428,8 @@ async function verifyEmailLoginCodeCore(
 
   let userRecord: UserRecord;
   let isNewUser = false;
-  const displayName = sanitizeDisplayName(payload.displayName);
+  const payloadDisplayName = sanitizeDisplayName(payload.displayName);
+  const displayName = payloadDisplayName || (isAppReviewBypass ? appReviewConfig.displayName : "");
 
   try {
     userRecord = await adminAuth.getUserByEmail(email);
@@ -10822,7 +12505,7 @@ async function verifyEmailLoginCodeCore(
   let customToken = "";
   try {
     customToken = await adminAuth.createCustomToken(userRecord.uid, {
-      loginMethod: "email_otp"
+      loginMethod: isAppReviewBypass ? "app_review_code" : "email_otp"
     });
   } catch (error) {
     logger.error("email otp createCustomToken failed", {
