@@ -19,7 +19,7 @@ export interface Subject {
 
 export type NodeType = 'lecture' | 'podcast' | 'quiz' | 'reinforce' | 'exam' | 'retention';
 
-export type SmartBookAgeGroup = '4-6' | '7-9' | '7-11' | '12-18' | 'general';
+export type SmartBookAgeGroup = '1-3' | '4-6' | '7-9' | '7-11' | '12-18' | 'general';
 
 export type SmartBookBookType = 'fairy_tale' | 'story' | 'novel';
 
@@ -68,6 +68,16 @@ export interface PodcastSegment {
   duration?: string;
 }
 
+export type PodcastVoiceName =
+  | 'Kore'
+  | 'Leda'
+  | 'Aoede'
+  | 'Autonoe'
+  | 'Enceladus'
+  | 'Iapetus'
+  | 'Umbriel'
+  | 'Algieba';
+
 export interface TimelineNode {
   id: string;
   title: string;
@@ -82,12 +92,14 @@ export interface TimelineNode {
   podcastAudioUrl?: string; // Generated Audio Url
   podcastSegments?: PodcastSegment[];
   podcastUsage?: PodcastUsageSummary;
+  podcastVoiceName?: PodcastVoiceName;
   podcastVariants?: Record<string, {
     audioUrl?: string;
     script?: string;
     duration?: string;
     segments?: PodcastSegment[];
     usage?: PodcastUsageSummary;
+    voiceName?: PodcastVoiceName;
   }>;
   questions?: QuizQuestion[]; // For quizzes/exams
   isLoading?: boolean; // To show loading state during generation
@@ -99,6 +111,72 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   suggestions?: string[];
+}
+
+export interface BookBundleDescriptor {
+  path: string;
+  version: number;
+  checksumSha256?: string;
+  sizeBytes?: number;
+  includesPodcast?: boolean;
+  generatedAt: Date;
+}
+
+export interface BookCoverDescriptor {
+  path?: string;
+  url?: string;
+}
+
+export interface BookMeta {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  creatorName?: string;
+  language?: string;
+  ageGroup?: SmartBookAgeGroup;
+  bookType?: SmartBookBookType;
+  subGenre?: string;
+  targetPageCount?: number;
+  category?: string;
+  searchTags?: string[];
+  totalDuration?: string;
+  cover?: BookCoverDescriptor;
+  bundle?: BookBundleDescriptor;
+  status?: 'processing' | 'ready' | 'failed';
+  createdAt: Date;
+  updatedAt?: Date;
+  lastActivity: Date;
+}
+
+export interface BookBundleManifest {
+  schemaVersion: number;
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  creatorName?: string;
+  language?: string;
+  ageGroup?: SmartBookAgeGroup;
+  bookType?: SmartBookBookType;
+  subGenre?: string;
+  targetPageCount?: number;
+  category?: string;
+  searchTags?: string[];
+  totalDuration?: string;
+  cover?: BookCoverDescriptor;
+  includesPodcast?: boolean;
+  nodes: TimelineNode[];
+  generatedAt: Date;
+  createdAt: Date;
+  lastActivity: Date;
+}
+
+export interface BookDownloadState {
+  status: 'idle' | 'queued' | 'downloading' | 'ready' | 'failed';
+  progress: number;
+  updatedAt: number;
+  error?: string;
 }
 
 export interface CourseData {
@@ -119,11 +197,21 @@ export interface CourseData {
   contentPackageUrl?: string;
   contentPackagePath?: string;
   contentPackageUpdatedAt?: Date;
+  bundle?: BookBundleDescriptor;
+  cover?: BookCoverDescriptor;
+  status?: 'processing' | 'ready' | 'failed';
   userId?: string;
-  isPublic?: boolean;
   nodes: TimelineNode[];
   createdAt: Date;
   lastActivity: Date;
+}
+
+export type CourseOpenUiStatus = 'idle' | 'downloading' | 'ready' | 'failed';
+
+export interface CourseOpenUiState {
+  status: CourseOpenUiStatus;
+  progress: number; // 0-100
+  updatedAt: number;
 }
 
 export interface StickyNoteData {

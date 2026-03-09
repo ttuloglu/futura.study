@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Coins, X } from 'lucide-react';
+import FLogo from './FLogo';
 import { CreditActionType, CreditWallet } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
 
@@ -19,12 +20,43 @@ interface CreditPaywallModalProps {
   onPurchase: (packId: string) => void | Promise<void>;
 }
 
-const SMARTBOOK_SURFACE_BG = 'rgba(17, 22, 29, 0.42)';
-const SMARTBOOK_SURFACE_BORDER = 'rgba(173, 149, 124, 0.09)';
+type PackAccent = {
+  panelClass: string;
+  buyButtonClass: string;
+  chipClass: string;
+  priceClass: string;
+};
 
-function getHintByAction(action: CreditActionType | null | undefined, t: (key: string) => string): string {
-  if (action === 'create') return t('Fortale oluşturmak için oluşturma kredisi gerekir.');
-  return t('Kredi bakiyenizi yükselterek kesintisiz devam edebilirsiniz.');
+const PACK_ACCENTS: PackAccent[] = [
+  {
+    panelClass: 'border-lime-300/70 bg-lime-500/24',
+    buyButtonClass: 'from-lime-300 to-emerald-300',
+    chipClass: 'bg-lime-100 text-lime-950',
+    priceClass: 'text-lime-100'
+  },
+  {
+    panelClass: 'border-cyan-300/70 bg-cyan-500/24',
+    buyButtonClass: 'from-cyan-300 to-sky-300',
+    chipClass: 'bg-cyan-100 text-cyan-950',
+    priceClass: 'text-cyan-100'
+  },
+  {
+    panelClass: 'border-orange-300/70 bg-orange-500/24',
+    buyButtonClass: 'from-amber-300 to-orange-300',
+    chipClass: 'bg-amber-100 text-amber-950',
+    priceClass: 'text-amber-100'
+  },
+  {
+    panelClass: 'border-pink-300/70 bg-pink-500/24',
+    buyButtonClass: 'from-pink-300 to-fuchsia-300',
+    chipClass: 'bg-pink-100 text-pink-950',
+    priceClass: 'text-pink-100'
+  }
+];
+
+function getHintByAction(action: CreditActionType | null | undefined): string {
+  if (action === 'create') return 'Kredi bakiyenizi yükselterek kesintisiz devam edebilirsiniz.';
+  return 'Kredi bakiyenizi yükselterek kesintisiz devam edebilirsiniz.';
 }
 
 export default function CreditPaywallModal({
@@ -38,10 +70,6 @@ export default function CreditPaywallModal({
 }: CreditPaywallModalProps) {
   const { t } = useUiI18n();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const smartbookSurfaceStyle: React.CSSProperties = {
-    backgroundColor: SMARTBOOK_SURFACE_BG,
-    borderColor: SMARTBOOK_SURFACE_BORDER
-  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -68,72 +96,84 @@ export default function CreditPaywallModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[11000] bg-black/22 backdrop-blur-sm animate-enter" onClick={onClose} />
-      <div className="fixed inset-0 z-[11001] px-3 sm:px-4 flex items-center justify-center">
+      <div className="fixed inset-0 z-[11000] bg-black/34 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[11001] px-2 pb-[max(10px,env(safe-area-inset-bottom))] sm:px-3">
         <div
           ref={panelRef}
-          className="w-full max-w-[460px] rounded-[24px] border border-dashed shadow-[0_20px_38px_-18px_rgba(0,0,0,0.7)] backdrop-blur-[22px] animate-enter overflow-hidden"
-          style={smartbookSurfaceStyle}
+          className="pointer-events-auto mx-auto w-full max-w-[520px] overflow-hidden rounded-[28px] border border-amber-300/65 bg-[linear-gradient(136deg,rgba(30,15,75,0.96),rgba(3,47,85,0.95)_38%,rgba(7,94,84,0.94)_68%,rgba(109,40,217,0.96))] shadow-[0_-14px_56px_rgba(8,15,25,0.56)] animate-enter"
         >
-          <div className="p-4 space-y-4">
+          <div className="bg-[radial-gradient(circle_at_10%_4%,rgba(250,204,21,0.36),transparent_36%),radial-gradient(circle_at_98%_2%,rgba(14,165,233,0.34),transparent_34%),radial-gradient(circle_at_32%_96%,rgba(236,72,153,0.28),transparent_38%)] p-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-white">{t('Kredi Satın Al')}</p>
-                <p className="mt-1 text-[11px] text-white/68">{getHintByAction(insufficientAction, t)}</p>
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-300/70 bg-amber-300/22">
+                  <FLogo size={22} className="text-emerald-300" />
+                </div>
+                <div>
+                  <p className="text-[17px] font-extrabold tracking-tight text-white">{t('Fortale')}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100">{t('Build Your Epic')}</p>
+                </div>
               </div>
+
               <button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full border border-dashed text-white/80 leading-none transition-colors hover:bg-[rgba(23,28,36,0.52)]"
-                style={smartbookSurfaceStyle}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-orange-300/70 bg-orange-400/28 text-orange-100 transition-colors hover:bg-orange-400/40"
                 aria-label={t('Kapat')}
               >
                 <X size={14} />
               </button>
             </div>
 
-            <div
-              className="w-full rounded-2xl border border-dashed px-3 py-2.5 text-left"
-              style={smartbookSurfaceStyle}
-            >
-              <div className="flex items-center gap-2">
-                <Coins size={14} className="text-[#b7d2f0]" />
-                <p className="text-[12px] font-semibold text-white/92">{t('Mevcut Kredi')}</p>
-              </div>
-              <div className="mt-2 text-[11px]">
-                <div className="rounded-xl border border-dashed px-2.5 py-2" style={smartbookSurfaceStyle}>
-                  <div className="inline-flex items-center gap-1 text-white/62">
+            <div className="mt-3 rounded-2xl border border-cyan-300/65 bg-cyan-500/20 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold text-white">{t('Kredi Satın Al')}</p>
+                  <p className="mt-1 text-[11px] text-white/80">{t(getHintByAction(insufficientAction))}</p>
+                </div>
+                <div className="rounded-xl border border-amber-300/70 bg-amber-400/26 px-2.5 py-1.5 text-right">
+                  <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-50">
                     <Coins size={11} />
-                    {t('Kredi')}
+                    {t('Mevcut Kredi')}
                   </div>
-                  <div className="mt-1 text-white font-bold">{wallet.createCredits}</div>
+                  <div className="text-lg font-black text-white">{wallet.createCredits}</div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-2.5">
-              {packs.map((pack) => (
-                <button
-                  key={pack.id}
-                  type="button"
-                  onClick={() => void onPurchase(pack.id)}
-                  disabled={isPurchasing}
-                  className="w-full rounded-2xl border border-dashed px-3 py-3 text-left transition-all hover:bg-[rgba(23,28,36,0.52)] disabled:opacity-70"
-                  style={smartbookSurfaceStyle}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-[#c9dff7]" style={{ background: 'rgba(23,38,58,0.88)' }}>
-                        {t('Kredi')}
-                      </span>
-                      <p className="text-[12px] font-bold text-white">
-                        +{pack.createCredits} {t('kredi')}
-                      </p>
+            <div className="mt-3 space-y-2.5">
+              {packs.map((pack, index) => {
+                const accent = PACK_ACCENTS[index % PACK_ACCENTS.length];
+                return (
+                  <div
+                    key={pack.id}
+                    className={`rounded-2xl border p-3 backdrop-blur-sm ${accent.panelClass}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${accent.chipClass}`}>
+                          {t('Kredi')}
+                        </span>
+                        <p className="truncate text-[15px] font-extrabold text-white">
+                          +{pack.createCredits}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 flex items-center gap-1">
+                        <p className={`text-[13px] font-black ${accent.priceClass}`}>${pack.priceUsd.toFixed(2)}</p>
+                        <button
+                          type="button"
+                          onClick={() => void onPurchase(pack.id)}
+                          disabled={isPurchasing}
+                          className={`inline-flex items-center rounded-xl bg-gradient-to-r px-3 py-2 text-[12px] font-extrabold text-slate-900 shadow-[0_8px_20px_rgba(0,0,0,0.25)] transition-transform active:scale-[0.98] disabled:opacity-60 ${accent.buyButtonClass}`}
+                        >
+                          {isPurchasing ? t('İşleniyor...') : t('Kredi Satın Al')}
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-sm font-black text-[#cfe4fb]">${pack.priceUsd.toFixed(2)}</p>
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

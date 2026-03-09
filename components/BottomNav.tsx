@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, List } from 'lucide-react';
+import { Library, List } from 'lucide-react';
 import { ViewState } from '../types';
 import FLogo from './FLogo';
 
@@ -42,7 +42,7 @@ export default function BottomNav({ currentView, onViewChange }: BottomNavProps)
                     onClick={() => onViewChange('HOME')}
                     className={`flex items-center justify-center w-8 h-8 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 ${currentView === 'HOME' ? 'opacity-100' : 'opacity-85 hover:opacity-100'}`}
                   >
-                    <LayoutGrid size={22} strokeWidth={2} />
+                    <FLogo size={22} />
                   </button>
                   <button
                     onClick={() => onViewChange('COURSE_FLOW')}
@@ -63,7 +63,7 @@ export default function BottomNav({ currentView, onViewChange }: BottomNavProps)
                     onClick={() => onViewChange('AI_CHAT')}
                     className={`flex items-center justify-center w-8 h-8 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 ${currentView === 'AI_CHAT' ? 'opacity-100' : 'opacity-92 hover:opacity-100'}`}
                   >
-                    <FLogo size={22} />
+                    <Library size={22} strokeWidth={2} />
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { ArrowRight, KeyRound, Mail } from 'lucide-react';
 import FaviconSpinner from '../components/FaviconSpinner';
 import {
@@ -42,6 +43,59 @@ type VerifyEmailLoginCodeResponse = {
   code?: string;
 };
 
+const FUNCTIONS_REGION = 'us-central1';
+const FIREBASE_PROJECT_ID = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim();
+const TOP_FAN_CARD_LAYOUT = [
+  { offsetX: -114, rotate: -16 },
+  { offsetX: -38, rotate: -6 },
+  { offsetX: 38, rotate: 6 },
+  { offsetX: 114, rotate: 16 }
+] as const;
+const DEFAULT_LOGIN_COVERS = [
+  '/onboarding/fortale-1.webp',
+  '/onboarding/fortale-2.webp',
+  '/onboarding/fortale-3.webp',
+  '/onboarding/fortale-4.webp'
+] as const;
+
+function shouldUseHttpOtpFallback(): boolean {
+  return Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.location.protocol === 'capacitor:');
+}
+
+function buildFunctionsHttpUrl(functionName: 'requestEmailLoginCodeHttp' | 'verifyEmailLoginCodeHttp'): string {
+  if (!FIREBASE_PROJECT_ID) {
+    throw new Error('Firebase project ID is missing.');
+  }
+
+  return `https://${FUNCTIONS_REGION}-${FIREBASE_PROJECT_ID}.cloudfunctions.net/${functionName}`;
+}
+
+async function callOtpHttpFunction<TResponse>(
+  functionName: 'requestEmailLoginCodeHttp' | 'verifyEmailLoginCodeHttp',
+  payload: Record<string, unknown>
+): Promise<TResponse> {
+  const response = await fetch(buildFunctionsHttpUrl(functionName), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  let data: Record<string, unknown> = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok || data.success === false) {
+    throw new Error(String(data.error || `HTTP ${response.status}`));
+  }
+
+  return data as TResponse;
+}
+
 const normalizeOtpCode = (raw: string): string => {
   if (!raw) return '';
   return raw
@@ -73,6 +127,15 @@ const resolveOtpErrorMessage = (error: unknown, fallback: string): string => {
 
   if (combined.includes('too-many-requests') || combined.includes('resource-exhausted')) {
     return 'Çok fazla deneme yapıldı. Biraz sonra tekrar deneyin.';
+  }
+
+  if (
+    combined.includes('requests from referer') ||
+    combined.includes('api_key_http_referrer_blocked') ||
+    combined.includes('ios client application') ||
+    combined.includes('api_key_ios_app_blocked')
+  ) {
+    return 'iOS giriş yapılandırması reddedildi. Uygulamayı güncelleyip tekrar deneyin.';
   }
 
   return fallback;
@@ -193,6 +256,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
       cancelled = true;
     };
   }, []);
+  const topCovers = DEFAULT_LOGIN_COVERS.slice(0, 4);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name } = event.target;
@@ -221,14 +285,22 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
     const startedAt = Date.now();
 
     try {
-      const requestCode = httpsCallable<
-        { email: string; language: string },
-        EmailLoginCodeResponse
-      >(functions, 'requestEmailLoginCode');
+      let payload: EmailLoginCodeResponse;
+      if (shouldUseHttpOtpFallback()) {
+        payload = await callOtpHttpFunction<EmailLoginCodeResponse>('requestEmailLoginCodeHttp', {
+          email: normalizedEmail,
+          language: 'tr'
+        });
+      } else {
+        const requestCode = httpsCallable<
+          { email: string; language: string },
+          EmailLoginCodeResponse
+        >(functions, 'requestEmailLoginCode');
 
-      await appCheckReady;
-      const result = await requestCode({ email: normalizedEmail, language: 'tr' });
-      const payload = result.data || {};
+        await appCheckReady;
+        const result = await requestCode({ email: normalizedEmail, language: 'tr' });
+        payload = result.data || {};
+      }
 
       if (payload.success === false) {
         throw new Error(payload.error || 'Giriş kodu gönderilemedi.');
@@ -278,18 +350,27 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
     setIsBusy(true);
 
     try {
-      const verifyCode = httpsCallable<
-        { email: string; code: string; language: string },
-        VerifyEmailLoginCodeResponse
-      >(functions, 'verifyEmailLoginCode');
+      let payload: VerifyEmailLoginCodeResponse;
+      if (shouldUseHttpOtpFallback()) {
+        payload = await callOtpHttpFunction<VerifyEmailLoginCodeResponse>('verifyEmailLoginCodeHttp', {
+          email: normalizedEmail,
+          code: normalizedCode,
+          language: 'tr'
+        });
+      } else {
+        const verifyCode = httpsCallable<
+          { email: string; code: string; language: string },
+          VerifyEmailLoginCodeResponse
+        >(functions, 'verifyEmailLoginCode');
 
-      await appCheckReady;
-      const result = await verifyCode({
-        email: normalizedEmail,
-        code: normalizedCode,
-        language: 'tr'
-      });
-      const payload = result.data || {};
+        await appCheckReady;
+        const result = await verifyCode({
+          email: normalizedEmail,
+          code: normalizedCode,
+          language: 'tr'
+        });
+        payload = result.data || {};
+      }
 
       if (payload.success === false || !payload.customToken) {
         throw new Error(payload.error || 'Giriş kodu doğrulanamadı.');
@@ -387,12 +468,38 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
       className="fixed inset-0 text-white"
       style={{
         background:
-          'radial-gradient(circle at 12% 7%, rgba(154, 172, 191, 0.11), transparent 44%), radial-gradient(circle at 88% 11%, rgba(118, 132, 148, 0.1), transparent 42%), linear-gradient(180deg, #2d353d 0%, #232a31 100%)'
+          'radial-gradient(circle at 12% 7%, rgba(182, 223, 255, 0.24), transparent 44%), radial-gradient(circle at 88% 11%, rgba(143, 206, 255, 0.2), transparent 42%), linear-gradient(180deg, #1f3a57 0%, #162b42 100%)'
       }}
     >
+      <div
+        className="pointer-events-none absolute left-1/2 z-[2] h-[160px] w-[300px] -translate-x-1/2"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 86px)' }}
+      >
+        {topCovers.map((cover, index) => {
+          const layout = TOP_FAN_CARD_LAYOUT[index] || TOP_FAN_CARD_LAYOUT[TOP_FAN_CARD_LAYOUT.length - 1];
+          return (
+            <div
+              key={`top-cover-${cover}-${index}`}
+              className="absolute left-1/2 top-1 h-[122px] w-[86px] overflow-hidden rounded-[8px] border border-slate-300/35 shadow-[0_16px_26px_rgba(0,0,0,0.45)]"
+              style={{ transform: `translateX(calc(-50% + ${layout.offsetX}px)) rotate(${layout.rotate}deg)` }}
+            >
+              <img
+                src={cover}
+                alt={t('Kitap kapağı')}
+                className="h-full w-full object-cover"
+                loading="eager"
+                fetchPriority={index < 2 ? 'high' : 'auto'}
+                decoding="async"
+              />
+            </div>
+          );
+        })}
+      </div>
+
       <div className="app-content-width flex h-full flex-col px-6 md:px-8">
-        <div className="flex-1 flex items-center justify-center py-6">
-          <div className="relative z-10 w-full max-w-[440px] mx-auto space-y-5">
+        <div className="relative flex-1">
+          <div className="flex h-full items-center justify-center pt-[224px] pb-8">
+            <div className="relative z-10 w-full max-w-[440px] mx-auto space-y-5">
             <div className="grid grid-cols-[44px_1fr] items-center gap-3 rounded-2xl border border-dashed px-3 py-2.5" style={secondaryStyle}>
               <div className="h-11 w-11 rounded-2xl p-2 flex items-center justify-center" style={inputStyle}>
                 <img src="/favicon-red.svg" alt="Fortale logo" className="h-7 w-7" />
@@ -564,6 +671,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                 {status.message}
               </p>
             )}
+            </div>
           </div>
         </div>
 

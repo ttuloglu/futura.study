@@ -12,6 +12,7 @@ import {
   Download,
   History,
   Lock,
+  PauseCircle,
   PlayCircle,
   Target,
   Zap,
@@ -22,13 +23,14 @@ import {
   Maximize2,
   Minimize2
 } from 'lucide-react';
-import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState } from '../types';
+import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState, PodcastVoiceName } from '../types';
 import FLogo from '../components/FLogo';
 import FaviconSpinner from '../components/FaviconSpinner';
 import {
   generateLectureContent,
   getPodcastAudioJob,
   generateRemedialContent,
+  previewPodcastVoice,
   startPodcastAudioJob,
   generateSummaryCard
 } from '../ai';
@@ -37,6 +39,7 @@ import { downloadFile } from '../utils/fileDownload';
 import StyledMarkdown from '../components/StyledMarkdown';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
+import { getEstimatedGenerationMinutes } from '../utils/bookGeneration';
 import { getAppLanguageLabel, normalizeAppLanguageCode } from '../data/appLanguages';
 import { useUiI18n } from '../i18n/uiI18n';
 import remarkGfm from 'remark-gfm';
@@ -48,7 +51,7 @@ interface CourseFlowViewProps {
   onNavigate: (view: ViewState) => void;
   courseData: CourseData | null;
   onUpdateCourse: (nodes: TimelineNode[]) => void;
-  onEnsureCourseHydrated?: (courseId: string) => Promise<boolean> | boolean;
+  onResolveCourseForExport?: (courseId: string) => Promise<CourseData | null> | CourseData | null;
   allowOpenAutoGeneration?: boolean;
   onReadingFullscreenChange?: (isFullscreen: boolean) => void;
   onRequireCredit: (action: 'create', costOverride?: number) => boolean;
@@ -83,8 +86,42 @@ const PDF_BACKGROUND_PRESETS = [
   { id: 'candy-brown', label: 'Şeker kahverengi', color: '#e9d4be' },
   { id: 'candy-lilac', label: 'Şeker lila', color: '#eadcff' },
   { id: 'candy-coral', label: 'Şeker mercan', color: '#ffd1c7' },
-  { id: 'candy-cloud', label: 'Şeker bulut', color: '#edf2f7' }
+  { id: 'candy-cloud', label: 'Şeker bulut', color: '#edf2f7' },
+  { id: 'candy-black', label: 'Şeker siyah', color: '#1f2430' }
 ] as const;
+const PODCAST_VOICE_OPTIONS: Array<{ id: string; label: string; voiceName: PodcastVoiceName }> = [
+  { id: 'fortale-1', label: 'Fortale-1', voiceName: 'Kore' },
+  { id: 'fortale-2', label: 'Fortale-2', voiceName: 'Leda' },
+  { id: 'fortale-3', label: 'Fortale-3', voiceName: 'Aoede' },
+  { id: 'fortale-4', label: 'Fortale-4', voiceName: 'Autonoe' },
+  { id: 'fortale-5', label: 'Fortale-5', voiceName: 'Enceladus' },
+  { id: 'fortale-6', label: 'Fortale-6', voiceName: 'Iapetus' },
+  { id: 'fortale-7', label: 'Fortale-7', voiceName: 'Umbriel' },
+  { id: 'fortale-8', label: 'Fortale-8', voiceName: 'Algieba' }
+];
+const DEFAULT_PODCAST_VOICE_NAME: PodcastVoiceName = PODCAST_VOICE_OPTIONS[0].voiceName;
+const PODCAST_VOICE_PREVIEW_TEXTS: Record<string, string> = {
+  ar: 'مرحبًا بكم في Fortale. اصنعوا حكاياتكم الملحمية.',
+  da: 'Velkommen til Fortale. Skab jeres episke historier.',
+  de: 'Willkommen bei Fortale. Erschafft eure epischen Geschichten.',
+  el: 'Καλώς ήρθατε στο Fortale. Δημιουργήστε τις επικές ιστορίες σας.',
+  en: 'Welcome to Fortale. Create your epic stories.',
+  es: 'Bienvenidos a Fortale. Cread vuestras historias épicas.',
+  fi: 'Tervetuloa Fortaleen. Luo omat eeppiset tarinasi.',
+  fr: 'Bienvenue sur Fortale. Créez vos histoires épiques.',
+  hi: 'Fortale में आपका स्वागत है। अपनी शानदार कहानियाँ बनाइए।',
+  id: 'Selamat datang di Fortale. Ciptakan kisah epikmu.',
+  it: 'Benvenuti in Fortale. Create le vostre storie epiche.',
+  ja: 'Fortaleへようこそ。壮大な物語を作りましょう。',
+  ko: 'Fortale에 오신 것을 환영합니다. 멋진 이야기를 만들어 보세요.',
+  nl: 'Welkom bij Fortale. Maak jullie epische verhalen.',
+  no: 'Velkommen til Fortale. Lag deres episke historier.',
+  pl: 'Witamy w Fortale. Twórzcie swoje epickie historie.',
+  'pt-BR': 'Bem-vindos ao Fortale. Criem suas histórias épicas.',
+  sv: 'Välkommen till Fortale. Skapa era episka berättelser.',
+  th: 'ยินดีต้อนรับสู่ Fortale สร้างเรื่องราวสุดยิ่งใหญ่ของคุณ',
+  tr: "Fortale'e hoş geldiniz. Epik hikayelerinizi oluşturun."
+};
 let exportUtilsPromise: Promise<typeof import('../utils/exportUtils')> | null = null;
 
 function resolveBookTypeLabel(bookType: CourseData['bookType'] | undefined, t: (value: string) => string): string {
@@ -97,6 +134,11 @@ function resolveBookTypeLabel(bookType: CourseData['bookType'] | undefined, t: (
 function isFairyTaleBookType(bookType: CourseData['bookType'] | undefined): boolean {
   const normalized = String(bookType || '').trim().toLowerCase();
   return normalized === 'fairy_tale' || normalized === 'fairy-tale';
+}
+
+function getPodcastVoicePreviewText(languageCode: string): string {
+  const normalized = normalizeAppLanguageCode(languageCode) || 'en';
+  return PODCAST_VOICE_PREVIEW_TEXTS[normalized] || PODCAST_VOICE_PREVIEW_TEXTS.en;
 }
 
 function buildBookTypeSubGenreLabel(courseData: CourseData, t: (value: string) => string): string {
@@ -326,7 +368,7 @@ function getMilestoneMessageForProgress(
 ): Omit<MilestonePayload, 'id'> {
   if (!nextNode) {
     const finalScore = typeof score === 'number' ? score : (typeof completedNode.score === 'number' ? completedNode.score : undefined);
-    let expertiseLine = `"${courseTopic}" konusunda SmartBook uzmanısınız.`;
+    let expertiseLine = `"${courseTopic}" konusunda kitap uzmanısınız.`;
     if (typeof finalScore === 'number') {
       if (finalScore >= 90) expertiseLine = `"${courseTopic}" konusunda ileri düzey uzmanlık seviyesinde performans gösterdiniz.`;
       else if (finalScore >= 80) expertiseLine = `"${courseTopic}" konusunda güçlü bir uzmanlık düzeyi yakaladınız.`;
@@ -584,7 +626,7 @@ export default function CourseFlowView({
   onNavigate,
   courseData,
   onUpdateCourse,
-  onEnsureCourseHydrated,
+  onResolveCourseForExport,
   allowOpenAutoGeneration = false,
   onReadingFullscreenChange,
   onRequireCredit,
@@ -610,6 +652,10 @@ export default function CourseFlowView({
   const [podcastSkipConfirmNodeId, setPodcastSkipConfirmNodeId] = useState<string | null>(null);
   const [isHeaderPodcastPanelOpen, setIsHeaderPodcastPanelOpen] = useState(false);
   const [headerPodcastLanguageCode, setHeaderPodcastLanguageCode] = useState<string>('tr');
+  const [isPodcastVoicePickerOpen, setIsPodcastVoicePickerOpen] = useState(false);
+  const [selectedPodcastVoiceName, setSelectedPodcastVoiceName] = useState<PodcastVoiceName>(DEFAULT_PODCAST_VOICE_NAME);
+  const [loadingPodcastPreviewVoiceName, setLoadingPodcastPreviewVoiceName] = useState<PodcastVoiceName | null>(null);
+  const [playingPodcastPreviewVoiceName, setPlayingPodcastPreviewVoiceName] = useState<PodcastVoiceName | null>(null);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [milestoneQueue, setMilestoneQueue] = useState<MilestonePayload[]>([]);
   const [activeMilestone, setActiveMilestone] = useState<MilestonePayload | null>(null);
@@ -633,6 +679,14 @@ export default function CourseFlowView({
   const pulseTabTimerRef = useRef<number | null>(null);
   const progressPulseTimerRef = useRef<number | null>(null);
   const deferredContentHydrationTimerRef = useRef<number | null>(null);
+  const pdfPaletteScrollRef = useRef<HTMLDivElement | null>(null);
+  const pdfPaletteTouchStateRef = useRef<{ startX: number; startScrollLeft: number; dragging: boolean }>({
+    startX: 0,
+    startScrollLeft: 0,
+    dragging: false
+  });
+  const pdfPaletteDraggedRef = useRef(false);
+  const podcastVoicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const autoIntroGenerationRef = useRef<Set<string>>(new Set());
   const nodeReadySnapshotRef = useRef<Map<string, { primaryReady: boolean; summaryReady: boolean }>>(new Map());
   const nodeReadyInitCourseIdRef = useRef<string | null>(null);
@@ -648,6 +702,7 @@ export default function CourseFlowView({
     courseData?.bookType === 'fairy_tale' ||
     courseData?.bookType === 'story' ||
     courseData?.bookType === 'novel';
+  const estimatedCreationMinutes = getEstimatedGenerationMinutes(courseData?.bookType);
   const calculateTotalDuration = (nodes: TimelineNode[]): string => {
     const totalMinutes = nodes.reduce((sum, node) => {
       if (!isNodeVisibleInFlow(node)) return sum;
@@ -694,6 +749,37 @@ export default function CourseFlowView({
       return `${hours} ${t('saat')} ${mins > 0 ? `${mins} ${t('dk')} ` : ''}${t('tahmini okuma süresi')}`;
     }
     return `${totalMinutes} ${t('dk')} ${t('tahmini okuma süresi')}`;
+  };
+
+  const handlePdfPaletteTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const container = pdfPaletteScrollRef.current;
+    const touch = event.touches[0];
+    if (!container || !touch) return;
+    pdfPaletteTouchStateRef.current = {
+      startX: touch.clientX,
+      startScrollLeft: container.scrollLeft,
+      dragging: true
+    };
+    pdfPaletteDraggedRef.current = false;
+  };
+
+  const handlePdfPaletteTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const container = pdfPaletteScrollRef.current;
+    const touch = event.touches[0];
+    const state = pdfPaletteTouchStateRef.current;
+    if (!container || !touch || !state.dragging) return;
+    const deltaX = touch.clientX - state.startX;
+    if (Math.abs(deltaX) > 6) {
+      pdfPaletteDraggedRef.current = true;
+    }
+    container.scrollLeft = state.startScrollLeft - deltaX;
+  };
+
+  const handlePdfPaletteTouchEnd = () => {
+    pdfPaletteTouchStateRef.current.dragging = false;
+    window.setTimeout(() => {
+      pdfPaletteDraggedRef.current = false;
+    }, 80);
   };
 
   useEffect(() => {
@@ -936,16 +1022,6 @@ export default function CourseFlowView({
   );
 
   useEffect(() => {
-    if (!courseData?.id || !onEnsureCourseHydrated || !orderedTabNodes.length) return;
-    const needsHydration = orderedTabNodes.some((node) => {
-      if (node.type === 'podcast') return false;
-      return !node.content?.trim();
-    });
-    if (!needsHydration) return;
-    void onEnsureCourseHydrated(courseData.id);
-  }, [courseData?.id, orderedTabNodeIdSignature, onEnsureCourseHydrated, orderedTabNodes]);
-
-  useEffect(() => {
     if (deferredContentHydrationTimerRef.current !== null) {
       window.clearTimeout(deferredContentHydrationTimerRef.current);
       deferredContentHydrationTimerRef.current = null;
@@ -1157,6 +1233,25 @@ export default function CourseFlowView({
     return updated;
   };
 
+  const stopPodcastVoicePreview = () => {
+    const audio = podcastVoicePreviewAudioRef.current;
+    if (audio) {
+      audio.pause();
+      if (audio.src?.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src);
+      }
+      podcastVoicePreviewAudioRef.current = null;
+    }
+    setPlayingPodcastPreviewVoiceName(null);
+    setLoadingPodcastPreviewVoiceName(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopPodcastVoicePreview();
+    };
+  }, []);
+
   const markNodeCompleted = (node: TimelineNode, patch?: Partial<TimelineNode>) => {
     const updatedNodes = updateNodes(existingNodes => {
       const completedNodes = existingNodes.map(n => {
@@ -1256,9 +1351,6 @@ export default function CourseFlowView({
     const needsAutoGeneration = (node.type === 'podcast' || node.type === 'quiz') ? false : !node.content;
 
     if (needsAutoGeneration) {
-      if (courseData?.id && onEnsureCourseHydrated) {
-        void onEnsureCourseHydrated(courseData.id);
-      }
       showIosPopup(node.isLoading
         ? 'Bu bölüm arka planda hazırlanıyor. Birazdan tekrar dene.'
         : 'Bu bölüm paketi henüz hazır değil. Arka planda hazırlanıyor.');
@@ -1344,7 +1436,7 @@ export default function CourseFlowView({
   const tryGoToNextSection = (node: TimelineNode, options?: { allowPodcastSkip?: boolean }) => {
     const nextNode = findNextNodeInOrder(node.id);
     if (!nextNode) {
-      showIosPopup('Bu SmartBook içinde sonraki bölüm yok.');
+      showIosPopup('Bu kitap içinde sonraki bölüm yok.');
       return;
     }
 
@@ -1418,7 +1510,7 @@ export default function CourseFlowView({
 
   const getFullSmartBookDownloadState = () => {
     if (!orderedTabNodes.length) {
-      return { canDownload: false, reason: 'SmartBook henüz hazır değil.' };
+      return { canDownload: false, reason: 'Kitap henüz hazır değil.' };
     }
 
     const hasAnyNodeContentReady = orderedTabNodes.some((node) => hasNodePdfContent(node));
@@ -1445,7 +1537,7 @@ export default function CourseFlowView({
 
     const downloadState = getFullSmartBookDownloadState();
     if (!downloadState.canDownload) {
-      showIosPopup(downloadState.reason || 'SmartBook indir şu an kilitli.');
+      showIosPopup(downloadState.reason || 'Kitap indir şu an kilitli.');
       return;
     }
 
@@ -1454,9 +1546,13 @@ export default function CourseFlowView({
         setIsPdfPaletteOpen(false);
       }
       await runExportWithSpinner('full-pdf', async () => {
+        const resolvedCourse = onResolveCourseForExport
+          ? await onResolveCourseForExport(courseData.id)
+          : courseData;
+        const exportSource = resolvedCourse || courseData;
         const exportCourse: CourseData = {
-          ...courseData,
-          nodes: orderedTabNodes
+          ...exportSource,
+          nodes: (exportSource.nodes || []).filter(isNodeVisibleInFlow)
         };
         const { exportCourseToPdf } = await loadExportUtils();
         await exportCourseToPdf(exportCourse, {
@@ -1473,7 +1569,7 @@ export default function CourseFlowView({
     e.stopPropagation();
     if (isExportBusy) return;
     if (!canDownloadFullSmartBook) {
-      showIosPopup(fullSmartBookDownloadState.reason || 'SmartBook indir şu an kilitli.');
+      showIosPopup(fullSmartBookDownloadState.reason || 'Kitap indir şu an kilitli.');
       return;
     }
     setIsPdfPaletteOpen((current) => !current);
@@ -1487,6 +1583,8 @@ export default function CourseFlowView({
       closePalette: true
     });
   };
+  const selectedPdfBackgroundPreset =
+    PDF_BACKGROUND_PRESETS.find((preset) => preset.id === selectedPdfBackgroundPresetId) || PDF_BACKGROUND_PRESETS[0];
 
   const handleFullSmartBookEpubDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1495,15 +1593,19 @@ export default function CourseFlowView({
 
     const downloadState = getFullSmartBookDownloadState();
     if (!downloadState.canDownload) {
-      showIosPopup(downloadState.reason || 'SmartBook EPUB indir şu an kilitli.');
+      showIosPopup(downloadState.reason || 'Kitap EPUB indir şu an kilitli.');
       return;
     }
 
     try {
       await runExportWithSpinner('full-epub', async () => {
+        const resolvedCourse = onResolveCourseForExport
+          ? await onResolveCourseForExport(courseData.id)
+          : courseData;
+        const exportSource = resolvedCourse || courseData;
         const exportCourse: CourseData = {
-          ...courseData,
-          nodes: orderedTabNodes
+          ...exportSource,
+          nodes: (exportSource.nodes || []).filter(isNodeVisibleInFlow)
         };
         const { exportCourseToEpub } = await loadExportUtils();
         await exportCourseToEpub(exportCourse);
@@ -1546,34 +1648,98 @@ export default function CourseFlowView({
       .trim();
   };
 
+  const removePodcastSectionHeadingLines = (markdown: string, sectionTitle?: string): string => {
+    const source = String(markdown || '').replace(/\r/g, '\n');
+    if (!source.trim()) return '';
+
+    const normalizedSectionTitle = normalizeSectionHeadingToken(sectionTitle);
+    const lines = source.split('\n');
+    const keptLines: string[] = [];
+    let hasContentStarted = false;
+
+    for (const rawLine of lines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed) {
+        if (hasContentStarted && keptLines[keptLines.length - 1] !== '') {
+          keptLines.push('');
+        }
+        continue;
+      }
+
+      const markdownHeadingMatch = trimmed.match(/^#{1,6}\s+(.+?)\s*$/u);
+      const headingCandidate = markdownHeadingMatch ? markdownHeadingMatch[1] : trimmed;
+      const normalizedHeading = normalizeSectionHeadingToken(headingCandidate);
+      const isDuplicateSectionTitle =
+        Boolean(normalizedSectionTitle) &&
+        Boolean(normalizedHeading) &&
+        normalizedSectionTitle === normalizedHeading;
+      const isStructuralHeading =
+        /^(?:b[öo]l[üu]m|chapter|k[ıi]s[ıi]m|part|section|episode|epizot)\s*(?:\d+|[ivxlcdm]+)(?:\s*[:\-–—]\s*.*)?$/iu.test(headingCandidate);
+
+      if (isDuplicateSectionTitle || markdownHeadingMatch || (!hasContentStarted && isStructuralHeading)) {
+        continue;
+      }
+
+      hasContentStarted = true;
+      keptLines.push(rawLine);
+    }
+
+    return keptLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+
+  const buildPodcastOpeningLine = (): string => {
+    const bookTitle = String(courseData?.topic || '').trim();
+    if (!bookTitle) return '';
+
+    const creatorName = String(courseData?.creatorName || '').trim();
+    const bookTypeLabel = courseData?.bookType === 'fairy_tale'
+      ? 'Masal'
+      : courseData?.bookType === 'story'
+        ? 'Hikaye'
+        : 'Roman';
+
+    if (creatorName) {
+      return `${bookTypeLabel}: ${bookTitle}. Kurgulayan: ${creatorName}.`;
+    }
+
+    return `${bookTypeLabel}: ${bookTitle}.`;
+  };
+
   const buildPodcastSourceContent = (): string => {
     if (!courseData?.nodes?.length) return '';
     return courseData.nodes
       .filter((node) => isNodeVisibleInFlow(node) && node.type !== 'podcast' && typeof node.content === 'string' && node.content.trim())
-      .map((node) => `${node.title}\n${node.content || ''}`)
+      .map((node) => {
+        const contentWithoutSectionHeadings = removePodcastSectionHeadingLines(node.content || '', node.title);
+        return normalizeBookTextForTts(contentWithoutSectionHeadings);
+      })
+      .filter(Boolean)
       .join('\n\n')
       .slice(0, 22000);
   };
 
   const buildFullBookPodcastScript = (): string => {
+    const openingLine = buildPodcastOpeningLine();
     const bookNodesWithContent = orderedTabNodes.filter(
       (node) => node.type !== 'podcast' && typeof node.content === 'string' && node.content.trim().length > 0
     );
 
     if (bookNodesWithContent.length > 0) {
-      return bookNodesWithContent
+      const body = bookNodesWithContent
         .map((section) => {
-          const sectionTitle = String(section.title || '').trim();
-          const sectionBody = normalizeBookTextForTts(section.content || '');
-          return [sectionTitle, sectionBody].filter(Boolean).join('\n').trim();
+          const sectionSource = stripLeadingDuplicateSectionHeadings(section.content || '', [section.title]);
+          const sectionBody = removePodcastSectionHeadingLines(sectionSource, section.title);
+          return normalizeBookTextForTts(sectionBody);
         })
         .filter(Boolean)
         .join('\n\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+      return [openingLine, body].filter(Boolean).join('\n\n').trim();
     }
 
-    return normalizeBookTextForTts(buildPodcastSourceContent());
+    const fallbackBody = buildPodcastSourceContent();
+    return [openingLine, fallbackBody].filter(Boolean).join('\n\n').trim();
   };
 
   const buildDetailsSourceContent = (): string => {
@@ -1649,6 +1815,90 @@ export default function CourseFlowView({
     return t('Podcast oluşturulamadı, kredi iade edildi.');
   };
 
+  const getResolvedPodcastVoiceName = (node: TimelineNode | null, languageCode: string): PodcastVoiceName => {
+    const candidate = node?.podcastVariants?.[languageCode]?.voiceName || node?.podcastVoiceName || DEFAULT_PODCAST_VOICE_NAME;
+    return PODCAST_VOICE_OPTIONS.find((option) => option.voiceName === candidate)?.voiceName || DEFAULT_PODCAST_VOICE_NAME;
+  };
+
+  const handleOpenPodcastVoicePicker = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!courseData) return;
+    if (isExportBusy) return;
+    if (!isFairyTaleBookType(courseData.bookType)) {
+      showIosPopup('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.');
+      return;
+    }
+
+    const podcastNode = getPodcastCarrierNode(courseData.nodes);
+    if (!podcastNode) {
+      showIosPopup('Podcast üretimi için uygun bölüm bulunamadı.');
+      return;
+    }
+
+    const languageCode = resolveActiveLanguageCode();
+    setHeaderPodcastLanguageCode(languageCode);
+    setSelectedPodcastVoiceName(getResolvedPodcastVoiceName(podcastNode, languageCode));
+    setIsHeaderPodcastPanelOpen(true);
+    setIsPodcastVoicePickerOpen(true);
+    stopPodcastVoicePreview();
+  };
+
+  const handlePreviewPodcastVoice = async (voiceName: PodcastVoiceName) => {
+    if (!courseData || isExportBusy) return;
+
+    if (playingPodcastPreviewVoiceName === voiceName) {
+      stopPodcastVoicePreview();
+      return;
+    }
+
+    stopPodcastVoicePreview();
+    setLoadingPodcastPreviewVoiceName(voiceName);
+
+    try {
+      const languageCode = headerPodcastLanguageCode || resolveActiveLanguageCode();
+      const preview = await previewPodcastVoice(
+        voiceName,
+        getPodcastVoicePreviewText(languageCode),
+        { bookType: courseData.bookType }
+      );
+      const binaryString = window.atob(preview.audioData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let index = 0; index < binaryString.length; index += 1) {
+        bytes[index] = binaryString.charCodeAt(index);
+      }
+      const blob = new Blob([bytes], { type: preview.mimeType || 'audio/wav' });
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      podcastVoicePreviewAudioRef.current = audio;
+
+      audio.onended = () => {
+        if (podcastVoicePreviewAudioRef.current?.src === audioUrl) {
+          podcastVoicePreviewAudioRef.current = null;
+        }
+        URL.revokeObjectURL(audioUrl);
+        setPlayingPodcastPreviewVoiceName(null);
+        setLoadingPodcastPreviewVoiceName(null);
+      };
+      audio.onerror = () => {
+        if (podcastVoicePreviewAudioRef.current?.src === audioUrl) {
+          podcastVoicePreviewAudioRef.current = null;
+        }
+        URL.revokeObjectURL(audioUrl);
+        setPlayingPodcastPreviewVoiceName(null);
+        setLoadingPodcastPreviewVoiceName(null);
+      };
+
+      await audio.play();
+      setPlayingPodcastPreviewVoiceName(voiceName);
+      setLoadingPodcastPreviewVoiceName(null);
+    } catch (error) {
+      console.error('Podcast voice preview failed:', error);
+      setPlayingPodcastPreviewVoiceName(null);
+      setLoadingPodcastPreviewVoiceName(null);
+      showIosPopup('Ses önizlemesi oynatılamadı.');
+    }
+  };
+
   const handlePodcastDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!courseData) return;
@@ -1664,6 +1914,8 @@ export default function CourseFlowView({
     const languageCode = resolveActiveLanguageCode();
     setHeaderPodcastLanguageCode(languageCode);
     setIsHeaderPodcastPanelOpen(true);
+    setIsPodcastVoicePickerOpen(false);
+    stopPodcastVoicePreview();
   };
 
   const handleCreatePodcast = async (e: React.MouseEvent) => {
@@ -1682,9 +1934,11 @@ export default function CourseFlowView({
     }
 
     const languageCode = resolveActiveLanguageCode();
+    const selectedVoiceName = selectedPodcastVoiceName || DEFAULT_PODCAST_VOICE_NAME;
     const fullBookScript = buildFullBookPodcastScript();
     const existingSegments = podcastNode.podcastVariants?.[languageCode]?.segments || podcastNode.podcastSegments || [];
     const existingDurationText = podcastNode.podcastVariants?.[languageCode]?.duration || podcastNode.duration || '';
+    const existingVoiceName = getResolvedPodcastVoiceName(podcastNode, languageCode);
     const estimatedFullMinutes = fullBookScript ? estimatePodcastMinutesFromScript(fullBookScript) : 0;
     const existingDurationMinutes = parsePodcastDurationMinutes(existingDurationText);
     const shouldRegenerateShortPodcast =
@@ -1693,8 +1947,10 @@ export default function CourseFlowView({
       existingDurationMinutes > 0 &&
       existingDurationMinutes < Math.max(2, estimatedFullMinutes * 0.7);
 
-    if (existingSegments.length > 0 && !shouldRegenerateShortPodcast) {
+    if (existingSegments.length > 0 && !shouldRegenerateShortPodcast && existingVoiceName === selectedVoiceName) {
       setHeaderPodcastLanguageCode(languageCode);
+      setIsPodcastVoicePickerOpen(false);
+      stopPodcastVoicePreview();
       return;
     }
 
@@ -1709,6 +1965,7 @@ export default function CourseFlowView({
     }
 
     try {
+      stopPodcastVoicePreview();
       let resolvedAudioUrl = '';
       let resolvedUsage: PodcastUsageSummary | undefined;
       let resolvedSegmentCount = 0;
@@ -1725,13 +1982,15 @@ export default function CourseFlowView({
         let duration = podcastNode.podcastVariants?.[languageCode]?.duration || podcastNode.duration || '';
         let segments = podcastNode.podcastVariants?.[languageCode]?.segments || podcastNode.podcastSegments || [];
         let usage: PodcastUsageSummary | undefined = podcastNode.podcastVariants?.[languageCode]?.usage || podcastNode.podcastUsage;
+        let voiceName: PodcastVoiceName = getResolvedPodcastVoiceName(podcastNode, languageCode);
 
-        if (shouldRegenerateShortPodcast) {
+        if (shouldRegenerateShortPodcast || voiceName !== selectedVoiceName) {
           script = '';
           audioUrl = '';
           duration = '';
           segments = [];
           usage = undefined;
+          voiceName = selectedVoiceName;
         }
 
         if (segments.length === 0) {
@@ -1746,7 +2005,10 @@ export default function CourseFlowView({
             courseData.topic || '',
             fullBookScript,
             {
-              bookType: courseData.bookType
+              bookType: courseData.bookType,
+              voiceName: selectedVoiceName,
+              bookId: courseData.id,
+              nodeId: podcastNode.id
             }
           );
           podcastGenerationProgressRef.current = {
@@ -1824,6 +2086,7 @@ export default function CourseFlowView({
                 duration,
                 podcastSegments: segments,
                 podcastUsage: usage,
+                podcastVoiceName: selectedVoiceName,
                 podcastVariants: {
                   ...(node.podcastVariants || {}),
                   [languageCode]: {
@@ -1831,7 +2094,8 @@ export default function CourseFlowView({
                     audioUrl,
                     duration,
                     segments,
-                    usage
+                    usage,
+                    voiceName: selectedVoiceName
                   }
                 }
               };
@@ -1876,6 +2140,7 @@ export default function CourseFlowView({
       setPodcastGenerationVisualProgress(100);
       setHeaderPodcastLanguageCode(languageCode);
       setIsHeaderPodcastPanelOpen(true);
+      setIsPodcastVoicePickerOpen(false);
       showIosPopup('Podcast hazır.');
     } catch (error) {
       console.error('Podcast download failed:', error);
@@ -1889,7 +2154,7 @@ export default function CourseFlowView({
     if (isExportBusy) return;
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
-      showIosPopup('Bu SmartBook için podcast bulunamadı.');
+      showIosPopup('Bu kitap için podcast bulunamadı.');
       return;
     }
     const lang = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
@@ -1963,7 +2228,7 @@ export default function CourseFlowView({
             className="rounded-2xl border border-dashed px-4 py-4 text-[12px]"
             style={{ background: 'rgba(17,22,29,0.84)', borderColor: 'rgba(173,149,124,0.12)', color: 'rgba(255,255,255,0.78)' }}
           >
-            Bu SmartBook için görüntülenecek bölüm bulunamadı.
+            Bu kitap için görüntülenecek bölüm bulunamadı.
           </div>
         </div>
       </div>
@@ -2242,14 +2507,9 @@ export default function CourseFlowView({
                       <>
                         <img
                           src={courseData.coverImageUrl}
-                          alt={`${courseData.topic} ${t('SmartBook kapağı')}`}
+                          alt={`${courseData.topic} ${t('Kitap kapağı')}`}
                           className="absolute inset-0 w-full h-full object-contain object-center border-0"
                         />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/88 via-black/50 to-transparent px-1.5 pb-1.5 pt-6">
-                          <p className="line-clamp-3 text-[9px] font-black leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
-                            {courseData.topic}
-                          </p>
-                        </div>
                       </>
                     )}
                     {!courseData.coverImageUrl && (
@@ -2390,42 +2650,62 @@ export default function CourseFlowView({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
-                            {t('Arka Plan Rengi Seçin')}
+                            {t(selectedPdfBackgroundPreset.label)}
                           </p>
-                          <div className="flex items-center gap-2 overflow-x-auto">
-                            <div className="flex min-w-0 flex-nowrap items-center gap-2">
-                              {PDF_BACKGROUND_PRESETS.map((preset) => {
-                                const isSelected = preset.id === selectedPdfBackgroundPresetId;
-                                return (
-                                  <button
-                                    key={preset.id}
-                                    type="button"
-                                    onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all"
-                                    style={{
-                                      background: preset.color,
-                                      borderColor: isSelected ? '#f04e5e' : 'rgba(210,231,255,0.42)',
-                                      borderWidth: isSelected ? 2.5 : 1,
-                                      boxShadow: isSelected ? '0 0 0 3px rgba(240,78,94,0.18)' : 'none'
-                                    }}
-                                    title={preset.label}
-                                    aria-label={preset.label}
-                                  />
-                                );
-                              })}
+                          <div className="flex items-center gap-2">
+                            <div
+                              ref={pdfPaletteScrollRef}
+                              className="touch-scroll-x hide-scrollbar min-w-0 flex-1 pb-1"
+                              style={{
+                                WebkitOverflowScrolling: 'touch',
+                                overflowX: 'scroll',
+                                overflowY: 'hidden'
+                              }}
+                              onTouchStart={handlePdfPaletteTouchStart}
+                              onTouchMove={handlePdfPaletteTouchMove}
+                              onTouchEnd={handlePdfPaletteTouchEnd}
+                              onTouchCancel={handlePdfPaletteTouchEnd}
+                            >
+                              <div className="flex w-max flex-nowrap items-center gap-2 pr-1">
+                                {PDF_BACKGROUND_PRESETS.map((preset) => {
+                                  const isSelected = preset.id === selectedPdfBackgroundPresetId;
+                                  return (
+                                    <button
+                                      key={preset.id}
+                                      type="button"
+                                      onClick={(event) => {
+                                        if (pdfPaletteDraggedRef.current) {
+                                          event.preventDefault();
+                                          return;
+                                        }
+                                        setSelectedPdfBackgroundPresetId(preset.id);
+                                      }}
+                                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all"
+                                      style={{
+                                        background: preset.color,
+                                        borderColor: isSelected ? '#f04e5e' : 'rgba(210,231,255,0.42)',
+                                        borderWidth: isSelected ? 2.5 : 1,
+                                        boxShadow: isSelected ? '0 0 0 3px rgba(240,78,94,0.18)' : 'none'
+                                      }}
+                                      title={t(preset.label)}
+                                      aria-label={t(preset.label)}
+                                    />
+                                  );
+                                })}
+                              </div>
                             </div>
                             <button
                               type="button"
                               onClick={handlePdfPaletteDownload}
-                              className="ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 text-[10px] font-bold text-[#e2f1ff] transition-all hover:-translate-y-[1px] active:scale-95"
+                              className="ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-95"
                               style={{
-                                background: 'linear-gradient(135deg, rgba(39,88,139,0.98) 0%, rgba(24,58,95,0.96) 100%)',
+                                background: 'rgba(27, 67, 110, 0.98)',
                                 borderColor: 'rgba(171,214,255,0.5)',
                                 boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
                               }}
                             >
-                              <Download size={13} className="text-[#d9ecff]" />
-                              <span>{t('İndir')}</span>
+                              <Download size={13} style={{ color: '#ffffff' }} />
+                              <span style={{ color: '#ffffff' }}>{t('İndir')}</span>
                             </button>
                           </div>
                         </div>
@@ -2519,50 +2799,155 @@ export default function CourseFlowView({
                               </p>
                               <button
                                 type="button"
-                                onClick={handleCreatePodcast}
+                                onClick={handleOpenPodcastVoicePicker}
                                 disabled={isExportBusy}
                                 className={`mt-2 h-14 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-between transition-all overflow-hidden relative ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] hover:shadow-[0_10px_20px_rgba(26,71,116,0.36)] active:scale-[0.99]'}`}
                                 style={{
-                                  background: 'linear-gradient(120deg, rgba(20,62,104,0.99) 0%, rgba(35,92,147,0.98) 48%, rgba(46,112,172,0.98) 100%)',
-                                  borderColor: 'rgba(255,217,122,0.78)',
+                                  background: 'rgba(28, 67, 108, 0.96)',
+                                  borderColor: 'rgba(186, 219, 248, 0.22)',
                                   color: '#ffffff',
-                                  boxShadow: 'inset 0 0 0 1px rgba(173,218,255,0.28), 0 8px 16px rgba(18,44,74,0.34)'
+                                  boxShadow: 'inset 0 0 0 1px rgba(225,240,255,0.06), 0 8px 16px rgba(18,44,74,0.22)'
                                 }}
                               >
                                 <div
                                   className="pointer-events-none absolute inset-0"
-                                  style={{ background: 'linear-gradient(100deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 36%, rgba(10,26,45,0.08) 100%)' }}
+                                  style={{ background: 'none' }}
                                 />
                                 <span className="relative inline-flex items-center gap-2 min-w-0">
                                   <span
                                     className="h-7 w-7 shrink-0 rounded-xl inline-flex items-center justify-center border border-dashed"
                                     style={{
-                                      borderColor: 'rgba(255,228,164,0.7)',
-                                      background: 'rgba(12,28,48,0.34)'
+                                      borderColor: 'rgba(225,240,255,0.18)',
+                                      background: 'rgba(12,28,48,0.22)'
                                     }}
                                   >
-                                    {isExportBusy ? <DownloadCircleSpinner size={13} /> : <AudioLines size={13} className="text-[#fff3cf]" />}
+                                    {isExportBusy ? <DownloadCircleSpinner size={13} /> : <AudioLines size={13} className="text-white" />}
                                   </span>
                                   <span className="min-w-0 text-left leading-tight">
                                     <span className="block text-[13px] font-black tracking-[0.01em] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.72)' }}>
-                                      {t('Masalı Seslendir')}
+                                      {t('Podcast oluştur')}
                                     </span>
                                     <span className="block mt-1 text-[11px] font-semibold text-[#eef6ff] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.62)' }}>
-                                      {isExportBusy ? t('Hazırlanıyor...') : t('Tek parça sesli anlatım')}
+                                      {isExportBusy ? t('Hazırlanıyor...') : t('Önce sesi test et, sonra oluştur.')}
                                     </span>
                                   </span>
                                 </span>
                                 <span
                                   className="relative ml-2 shrink-0 h-8 px-2.5 rounded-xl border border-dashed inline-flex items-center justify-center text-[11px] font-black"
                                   style={{
-                                    borderColor: 'rgba(255,224,147,0.72)',
-                                    background: 'rgba(9,24,40,0.52)',
-                                    color: '#fff4d0'
+                                    borderColor: 'rgba(225,240,255,0.18)',
+                                    background: 'rgba(9,24,40,0.24)',
+                                    color: '#ffffff'
                                   }}
                                 >
                                   {PODCAST_CREATE_CREDIT_COST} {t('kredi')}
                                 </span>
                               </button>
+                              {isPodcastVoicePickerOpen && (
+                                <div
+                                  className="mt-3 rounded-2xl border border-dashed p-3"
+                                  style={{
+                                    borderColor: 'rgba(120,171,226,0.26)',
+                                    background: 'rgba(11,20,33,0.56)'
+                                  }}
+                                >
+                                  <div className="mb-3 flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] font-black tracking-[0.03em] text-white">
+                                        {t('Podcast sesini seç')}
+                                      </p>
+                                      <p className="mt-1 text-[10px] text-[#b7d3ef]">
+                                        {t('Her sesi kitap dilinde dinleyip sonra seçebilirsin.')}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setIsPodcastVoicePickerOpen(false);
+                                        stopPodcastVoicePreview();
+                                      }}
+                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-dashed text-[#d8ebff] transition-all hover:bg-white/5"
+                                      style={{ borderColor: 'rgba(153,188,226,0.28)' }}
+                                      aria-label={t('Kapat')}
+                                      title={t('Kapat')}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                    {PODCAST_VOICE_OPTIONS.map((option) => {
+                                      const isSelected = selectedPodcastVoiceName === option.voiceName;
+                                      const isLoadingPreview = loadingPodcastPreviewVoiceName === option.voiceName;
+                                      const isPlayingPreview = playingPodcastPreviewVoiceName === option.voiceName;
+                                      return (
+                                        <div
+                                          key={option.id}
+                                          className="rounded-2xl border border-dashed p-2"
+                                          style={{
+                                            borderColor: isSelected ? 'rgba(255,217,122,0.68)' : 'rgba(120,171,226,0.24)',
+                                            background: isSelected
+                                              ? 'linear-gradient(160deg, rgba(31,64,102,0.72) 0%, rgba(24,46,72,0.78) 100%)'
+                                              : 'rgba(17,24,36,0.72)',
+                                            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255,217,122,0.18)' : 'none'
+                                          }}
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setSelectedPodcastVoiceName(option.voiceName);
+                                            }}
+                                            className="w-full text-left"
+                                          >
+                                            <span className="block text-[12px] font-black text-white">{option.label}</span>
+                                            <span className="mt-1 block text-[10px] text-[#b7d3ef]">
+                                              {isSelected ? t('Seçildi') : t('Ses örneğini dinle')}
+                                            </span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              void handlePreviewPodcastVoice(option.voiceName);
+                                            }}
+                                            className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-[0.98]"
+                                            style={{
+                                              borderColor: isPlayingPreview ? 'rgba(135,231,146,0.74)' : 'rgba(142,188,235,0.34)',
+                                              background: isPlayingPreview ? 'rgba(57,102,45,0.34)' : 'rgba(24,43,66,0.8)',
+                                              color: '#ffffff'
+                                            }}
+                                          >
+                                            {isLoadingPreview ? (
+                                              <DownloadCircleSpinner size={12} />
+                                            ) : isPlayingPreview ? (
+                                              <PauseCircle size={13} className="text-white" />
+                                            ) : (
+                                              <PlayCircle size={13} className="text-white" />
+                                            )}
+                                            {isPlayingPreview ? t('Durdur') : t('Dinle')}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={handleCreatePodcast}
+                                    disabled={isExportBusy}
+                                    className={`mt-3 h-11 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-center gap-2 transition-all ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
+                                    style={{
+                                      background: 'rgba(28, 67, 108, 0.96)',
+                                      borderColor: 'rgba(186, 219, 248, 0.22)',
+                                      color: '#ffffff',
+                                      boxShadow: 'inset 0 0 0 1px rgba(225,240,255,0.06), 0 8px 16px rgba(18,44,74,0.22)'
+                                    }}
+                                  >
+                                    {isExportBusy ? <DownloadCircleSpinner size={14} /> : <AudioLines size={14} className="text-white" />}
+                                    <span className="text-[12px] font-black">{t('Seçili sesle podcast oluştur')}</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2578,34 +2963,57 @@ export default function CourseFlowView({
 
         <section className={`mt-3 animate-enter flex-1 ${isReadingFullscreen ? 'pb-6' : 'pb-24'}`}>
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsReadingFullscreen((current) => !current)}
-              className={`h-9 w-9 rounded-xl border border-dashed flex items-center justify-center text-white/80 transition-all duration-200 active:scale-95 ${isReadingFullscreen
-                ? 'fixed right-4 z-[95]'
-                : 'absolute right-0 -top-1 z-20'
-                }`}
-              style={isReadingFullscreen
-                ? {
-                  top: 'var(--app-header-row-top)',
-                  background: 'rgba(17,22,29,0.78)',
-                  borderColor: 'rgba(173,149,124,0.16)'
-                }
-                : {
+            {isReadingFullscreen ? (
+              <button
+                type="button"
+                onClick={() => setIsReadingFullscreen(false)}
+                className="fixed z-[110] h-9 rounded-xl border border-dashed inline-flex items-center justify-center gap-1.5 px-3 text-white/80 transition-all duration-200 active:scale-95"
+                style={{
+                  top: 'calc(env(safe-area-inset-top, 0px) + 22px)',
+                  right: '12px',
                   background: 'rgba(17,22,29,0.78)',
                   borderColor: 'rgba(173,149,124,0.16)'
                 }}
-              aria-label={isReadingFullscreen ? t('Tam ekrandan çık') : t('Tam ekran okuma')}
-              title={isReadingFullscreen ? t('Tam ekrandan çık') : t('Tam ekran okuma')}
-            >
-              {isReadingFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
-            <div className={`${isReadingFullscreen ? 'pt-11' : 'pt-9'} space-y-7`}>
+                aria-label={t('Tam ekranı kapat')}
+                title={t('Tam ekranı kapat')}
+              >
+                <Minimize2 size={14} />
+                <span className="text-[11px] font-bold whitespace-nowrap">
+                  {t('Kapat')}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsReadingFullscreen(true)}
+                className="absolute right-0 z-20 h-9 rounded-xl border border-dashed inline-flex items-center justify-center gap-1.5 px-3 text-white/80 transition-all duration-200 active:scale-95"
+                style={{
+                  top: '18px',
+                  background: 'rgba(17,22,29,0.78)',
+                  borderColor: 'rgba(173,149,124,0.16)'
+                }}
+                aria-label={t('Tam ekran okuma')}
+                title={t('Tam ekran okuma')}
+              >
+                <Maximize2 size={14} />
+                <span className="text-[11px] font-bold whitespace-nowrap">
+                  {t('Tam ekran')}
+                </span>
+              </button>
+            )}
+            <div className={`${isReadingFullscreen ? 'pt-0' : 'pt-12'} space-y-7`}>
               {orderedTabNodes.map((node, index) => {
                 const sectionTitle = getFlowTabLabel(node, index);
-                const isLocked = (node.status === 'locked' || node.status === 'conditional') && !node.content;
+                const isLocked = (node.status === 'locked' || node.status === 'conditional') && !node.content && !node.isLoading;
                 const isGen = generatingNodeId === node.id;
                 const isBackgroundPreparing = Boolean(node.isLoading && !isGen);
+                const isNarrativeHydrationPlaceholder = Boolean(
+                  isNarrativeBook &&
+                  !node.content &&
+                  !isLocked &&
+                  !isGen &&
+                  node.isLoading
+                );
                 const showNodeSubtitle = !isNarrativeBook && Boolean(node.title && !isSameSectionHeading(node.title, sectionTitle));
                 const isContentHydrated = !node.content || hydratedContentNodeIds.includes(node.id);
                 const displayContent = isContentHydrated && node.content
@@ -2615,6 +3023,7 @@ export default function CourseFlowView({
                 const showGenerateButton =
                   !node.content &&
                   !isLocked &&
+                  !isNarrativeBook &&
                   (node.type === 'lecture' || node.type === 'reinforce' || node.type === 'retention') &&
                   !node.isLoading &&
                   !isGen;
@@ -2646,17 +3055,26 @@ export default function CourseFlowView({
                       </div>
                     )}
 
-                    {!isLocked && !isReadingFullscreen && (isGen || isBackgroundPreparing) && (
+                    {!isLocked && !isReadingFullscreen && (isGen || isBackgroundPreparing || isNarrativeHydrationPlaceholder) && (
                       <div className="space-y-4 py-6 max-w-[300px] mx-auto text-center">
                         <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
                           <FaviconSpinner size={30} />
                         </div>
-                        <h3 className="text-sm font-bold text-white/90">{t('İçerik Hazırlanıyor')}</h3>
+                        <h3 className="text-sm font-bold text-white/90">
+                          {isNarrativeHydrationPlaceholder ? t('İçerik İndiriliyor') : t('İçerik Hazırlanıyor')}
+                        </h3>
                         <p className="text-[11px] text-white/45 leading-relaxed">
-                          {isBackgroundPreparing
+                          {isNarrativeHydrationPlaceholder
+                            ? t('Kitap içeriği indiriliyor. Hazır olduğunda bölüm tak diye açılacak.')
+                            : isBackgroundPreparing
                             ? t('Bu bölüm arka planda hazırlanıyor. Hazır olduğunda içerik burada görünecek.')
                             : t('İçerik üretiliyor. Lütfen bekleyin.')}
                         </p>
+                        {isNarrativeBook && (
+                          <p className="text-[11px] text-[#b9cde8]">
+                            {t('Tahmini üretim süresi')}: {estimatedCreationMinutes} {t('dk')}
+                          </p>
+                        )}
                         <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-3">
                           <div className="h-full bg-accent-green transition-all duration-300" style={{ width: `${visualProgress}%` }} />
                         </div>
@@ -2669,6 +3087,7 @@ export default function CourseFlowView({
                         variant="inline"
                         className="text-sm md:text-[15px]"
                         quoteFirstParagraph={node.type === 'lecture'}
+                        readerMode={isReadingFullscreen && isFairyTaleBook ? 'fairytale-fullscreen' : 'default'}
                       />
                     )}
                     {!isLocked && node.content && !isContentHydrated && (
@@ -2854,10 +3273,6 @@ function PodcastInlinePlayer({
   const currentAudioSrc = hasSingleTrackAudio
     ? baseAudioSrc
     : (normalizedAudioSegments[activeAudioSegmentIndex]?.audioUrl || '');
-  const activeSegmentTitle = normalizedAudioSegments.length > 0
-    ? (normalizedAudioSegments[activeAudioSegmentIndex]?.title || `${t('Parça')} ${activeAudioSegmentIndex + 1}`)
-    : t('Tam Podcast');
-
   useEffect(() => {
     setActiveAudioSegmentIndex(0);
     setCompletionNotified(false);
@@ -2904,9 +3319,9 @@ function PodcastInlinePlayer({
       className="rounded-xl border border-dashed p-3 space-y-3"
       style={{ background: 'rgba(17,22,29,0.86)', borderColor: 'rgba(173,149,124,0.12)' }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="pointer-events-none flex-1">
-          <div className="mx-auto flex h-4 min-w-[180px] max-w-full items-center justify-center gap-[3px] opacity-95">
+      <div className="flex items-center justify-between gap-3">
+        <div className="pointer-events-none min-w-0 flex-1">
+          <div className="flex h-4 max-w-full items-center justify-start gap-[3px] opacity-95">
             {[
               '#34d399', '#fbbf24', '#60a5fa', '#fb7185',
               '#a78bfa', '#22d3ee', '#f97316', '#38bdf8',
@@ -2930,17 +3345,6 @@ function PodcastInlinePlayer({
             ))}
           </div>
         </div>
-        <span className="text-[10px] font-bold text-white/55">
-          {hasSingleTrackAudio
-            ? '1/1'
-            : normalizedAudioSegments.length > 0
-            ? `${activeAudioSegmentIndex + 1}/${normalizedAudioSegments.length}`
-            : '1/1'}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold text-white/70 truncate">{activeSegmentTitle}</p>
         <button
           type="button"
           onClick={onDownload}
@@ -2991,7 +3395,7 @@ function PodcastInlinePlayer({
             onCompleted?.();
           }
         }}
-        className="w-full h-8 opacity-70 invert grayscale"
+        className="podcast-audio-player w-full h-10"
       />
 
       {!hasSingleTrackAudio && normalizedAudioSegments.length > 1 && (

@@ -16,7 +16,7 @@ export default function CourseCard({ subject, onClick }: CourseCardProps) {
       className="group relative glass-panel bg-white/[0.03] border-white/5 rounded-2xl p-4 transition-all duration-300 cursor-pointer overflow-hidden active:scale-[0.98] hover:bg-white/[0.08]"
     >
       <div className="relative z-10">
-        <div className="flex justify-between items-start mb-3">
+        <div className="mb-3">
           <div className="flex-1">
             <span className="inline-block px-2 py-0.5 bg-accent-green/10 text-accent-green text-[8px] font-black tracking-tighter rounded-lg mb-1.5 shadow-none">
               {t('Devam Ediyor')}
@@ -27,36 +27,6 @@ export default function CourseCard({ subject, onClick }: CourseCardProps) {
             <p className="text-text-secondary text-[10px] font-medium opacity-60">
               {subject.subtitle}
             </p>
-          </div>
-
-          {/* Progress Indicator */}
-          <div className="relative w-11 h-11 flex items-center justify-center">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle
-                cx="22"
-                cy="22"
-                r="18"
-                stroke="currentColor"
-                strokeWidth="3"
-                fill="transparent"
-                className="text-white/5"
-              />
-              <circle
-                cx="22"
-                cy="22"
-                r="18"
-                stroke="currentColor"
-                strokeWidth="3"
-                fill="transparent"
-                strokeDasharray={2 * Math.PI * 18}
-                strokeDashoffset={2 * Math.PI * 18 * (1 - subject.progress / 100)}
-                className="text-accent-green transition-all duration-1000 ease-out drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="absolute text-[8px] font-black text-accent-green">
-              %{subject.progress}
-            </span>
           </div>
         </div>
 

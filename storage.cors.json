@@ -7,6 +7,8 @@
       "http://127.0.0.1:3000",
       "http://127.0.0.1:3001",
       "http://127.0.0.1:5173",
+      "capacitor://localhost",
+      "ionic://localhost",
       "https://f-study-53ef9.web.app",
       "https://f-study-53ef9.firebaseapp.com"
     ],

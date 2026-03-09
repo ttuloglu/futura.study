@@ -598,7 +598,13 @@ export default function ExploreView({
   };
 
   return (
-    <div className="view-container">
+    <div
+      className="view-container"
+      style={{
+        background:
+          'radial-gradient(circle at 12% 7%, rgba(255, 182, 212, 0.2), transparent 44%), radial-gradient(circle at 88% 11%, rgba(255, 133, 188, 0.18), transparent 42%), linear-gradient(180deg, #3a2030 0%, #2a1723 100%)'
+      }}
+    >
       <div className="app-content-width space-y-6 pb-24">
 
         <header>
@@ -975,7 +981,7 @@ export default function ExploreView({
                   : 'text-[#7f95b3]'
                 }`}
               style={{
-                background: 'rgba(17, 22, 29, 0.9)',
+                background: 'rgba(17, 22, 29, 0.74)',
                 borderColor: hasCascadeFilterSelection ? 'rgba(86,133,190,0.24)' : 'rgba(86,133,190,0.14)'
               }}
               aria-label="Filtre seçimlerini temizle"
@@ -1035,7 +1041,7 @@ export default function ExploreView({
                                       background: 'transparent'
                                     }
                                     : {
-                                      background: 'rgba(26, 31, 38, 0.92)'
+                                      background: 'rgba(26, 31, 38, 0.72)'
                                     }}
                                 >
                                   {course.coverImageUrl ? (
@@ -1070,7 +1076,7 @@ export default function ExploreView({
                                       }}
                                       className="absolute top-1 left-1 flex items-center justify-center rounded-lg w-6 h-6 active:scale-95 transition-transform"
                                       style={{
-                                        background: 'rgba(17, 22, 29, 0.72)',
+                                        background: 'rgba(17, 22, 29, 0.56)',
                                         border: '1px dashed rgba(86, 133, 190, 0.16)',
                                         boxShadow: 'none'
                                       }}
@@ -1088,7 +1094,7 @@ export default function ExploreView({
                                       }}
                                       className="absolute top-1 right-1 flex flex-col items-center justify-center rounded-lg px-1 py-1 active:scale-95 transition-transform"
                                       style={{
-                                        background: 'rgba(17, 22, 29, 0.7)',
+                                        background: 'rgba(17, 22, 29, 0.54)',
                                         border: '1px dashed rgba(86, 133, 190, 0.16)',
                                         boxShadow: 'none'
                                       }}
@@ -1130,8 +1136,8 @@ export default function ExploreView({
                       <div
                         key={course.id}
                         onClick={() => setSelectedCourse(course)}
-                        className="cursor-pointer active:scale-[0.995] transition-all rounded-2xl overflow-hidden bg-[#111b29] shadow-[inset_0_0_0_1px_rgba(54,79,108,0.34)]"
-                        style={{ background: 'rgba(17, 22, 29, 0.42)' }}
+                        className="cursor-pointer active:scale-[0.995] transition-all rounded-2xl overflow-hidden shadow-[inset_0_0_0_1px_rgba(54,79,108,0.34)]"
+                        style={{ background: 'rgba(17, 22, 29, 0.2)' }}
                       >
                         <div className="flex items-stretch gap-0 h-[112px]">
                           <div
@@ -1170,7 +1176,7 @@ export default function ExploreView({
                                 }}
                                 className="shrink-0 flex items-center justify-center rounded-lg w-7 h-7 active:scale-95 transition-transform"
                                 style={{
-                                  background: 'rgba(17, 22, 29, 0.76)',
+                                  background: 'rgba(17, 22, 29, 0.62)',
                                   boxShadow: 'inset 0 0 0 1px rgba(86, 133, 190, 0.22)'
                                 }}
                                 aria-label="SmartBook paylaş"
@@ -1192,7 +1198,7 @@ export default function ExploreView({
                                 <span
                                   className="min-w-0 max-w-[45%] truncate inline-flex items-center gap-1 rounded-md px-1.5 py-0.5"
                                   style={{
-                                    background: 'rgba(23, 38, 58, 0.8)',
+                                    background: 'rgba(23, 38, 58, 0.64)',
                                     boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.26)'
                                   }}
                                   title={category}
@@ -1203,7 +1209,7 @@ export default function ExploreView({
                                 <span
                                   className="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5"
                                   style={{
-                                    background: 'rgba(23, 38, 58, 0.8)',
+                                    background: 'rgba(23, 38, 58, 0.64)',
                                     boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)'
                                   }}
                                   title="Yaş grubu / seviye"
@@ -1226,7 +1232,7 @@ export default function ExploreView({
                                 }}
                                 className="shrink-0 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 active:scale-95 transition-transform"
                                 style={{
-                                  background: 'rgba(17, 22, 29, 0.76)',
+                                  background: 'rgba(17, 22, 29, 0.62)',
                                   boxShadow: 'inset 0 0 0 1px rgba(86, 133, 190, 0.22)'
                                 }}
                                 aria-label={isLiked ? 'Beğeniden çıkar' : 'Beğen'}
@@ -1266,7 +1272,7 @@ export default function ExploreView({
           <div className="absolute inset-0 px-3 sm:px-4 flex items-center justify-center">
             <div
               className="w-full max-w-[460px] rounded-[24px] border border-dashed p-4 shadow-[0_20px_38px_-18px_rgba(0,0,0,0.7)] backdrop-blur-[22px] animate-enter overflow-hidden"
-              style={{ background: 'rgba(17, 22, 29, 0.42)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
+              style={{ background: 'rgba(17, 22, 29, 0.3)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
             >
               <div className="flex items-start justify-between gap-3">
                 <h3 className="text-[14px] font-black text-white">{t('Kitap Bilgisi')}</h3>
@@ -1274,7 +1280,7 @@ export default function ExploreView({
                   type="button"
                   onClick={() => setSelectedCourse(null)}
                   className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full border border-dashed text-white leading-none transition-colors hover:bg-[rgba(23,28,36,0.52)]"
-                  style={{ backgroundColor: 'rgba(17, 22, 29, 0.42)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
+                  style={{ backgroundColor: 'rgba(17, 22, 29, 0.3)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
                   aria-label="Kapat"
                 >
                   <X size={13} />
@@ -1283,8 +1289,8 @@ export default function ExploreView({
 
               <div className="mt-3 flex items-start gap-3">
                 <div
-                  className="w-[98px] h-[132px] rounded-[4px] overflow-hidden shrink-0"
-                  style={selectedCourse.coverImageUrl ? { background: 'transparent' } : { background: 'rgba(17, 22, 29, 0.42)' }}
+                  className="relative w-[98px] h-[132px] rounded-[4px] overflow-hidden shrink-0"
+                  style={selectedCourse.coverImageUrl ? { background: 'transparent' } : { background: 'rgba(17, 22, 29, 0.3)' }}
                 >
                   {selectedCourse.coverImageUrl ? (
                     <img
@@ -1307,7 +1313,7 @@ export default function ExploreView({
                   <div className="pt-1 text-[10px] text-[#bfd4ee] space-y-0.5">
                     <p>{t('Kategori:')} {t(deriveRealCategoryFromCourse(selectedCourse))}</p>
                     <p>{t('Yaş Grubu:')} {t(getSmartBookAgeGroupLabel(selectedCourse.ageGroup))}</p>
-                    <p>{t('Oluşturucu:')} {selectedCourse.creatorName?.trim() || t('Anonim')}</p>
+                    <p>{t('Kurgulayan:')} {selectedCourse.creatorName?.trim() || t('Anonim')}</p>
                     <p>{t('Sayfa:')} {estimatePageCount(selectedCourse)} sf</p>
                     <p>{t('Tür:')} {t(bookTypeLabel(selectedCourse.bookType))}</p>
                     <p>{t('Alt Tür:')} {selectedCourse.subGenre ? t(selectedCourse.subGenre) : t('Belirtilmedi')}</p>
@@ -1317,7 +1323,7 @@ export default function ExploreView({
 
               <div
                 className="mt-3 rounded-2xl border border-dashed px-3 py-2 flex items-center justify-between gap-2"
-                style={{ backgroundColor: 'rgba(17, 22, 29, 0.42)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
+                style={{ backgroundColor: 'rgba(17, 22, 29, 0.3)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
               >
                 <div className="text-[10px] text-[#bfd4ee]">
                   <p>{t('Okunma:')} <span className="font-bold text-white">{getLibraryReadCount(selectedCourse)}</span></p>
@@ -1331,7 +1337,7 @@ export default function ExploreView({
                     onCourseSelect(nextId);
                   }}
                   className="h-10 px-5 rounded-2xl border border-dashed text-[12px] font-black text-white active:scale-95"
-                  style={{ backgroundColor: 'rgba(17, 22, 29, 0.42)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
+                  style={{ backgroundColor: 'rgba(17, 22, 29, 0.3)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
                 >
                   Oku
                 </button>

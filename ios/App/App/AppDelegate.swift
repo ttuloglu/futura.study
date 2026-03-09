@@ -1,5 +1,8 @@
 import UIKit
 import Capacitor
+#if canImport(FirebaseCore)
+import FirebaseCore
+#endif
 #if canImport(GoogleSignIn)
 import GoogleSignIn
 #endif
@@ -10,6 +13,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        #if canImport(FirebaseCore)
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+        #endif
         return true
     }
 

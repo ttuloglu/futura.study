@@ -1,12 +1,16 @@
 import { httpsCallable } from "firebase/functions";
 import { appCheckReady, functions } from "./firebaseConfig";
 import {
+  CourseData,
+  BookMeta,
+  BookBundleDescriptor,
   TimelineNode,
   QuizQuestion,
   ChatMessage,
   SmartBookAgeGroup,
   SmartBookBookType,
-  SmartBookCreativeBrief
+  SmartBookCreativeBrief,
+  PodcastVoiceName
 } from "./types";
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from "./utils/contentSafety";
 
@@ -18,6 +22,7 @@ type AiOperation =
   | "generateLectureImages"
   | "generatePodcastScript"
   | "generatePodcastAudio"
+  | "previewPodcastVoice"
   | "generateQuizQuestions"
   | "generateRemedialContent"
   | "generateSummaryCard"
@@ -59,6 +64,9 @@ interface AiGatewayResponse {
   coverImageUrl?: string;
   content?: string;
   audioFilePath?: string;
+  audioData?: string;
+  mimeType?: string;
+  voiceName?: PodcastVoiceName;
   questions?: QuizQuestion[];
   message?: string;
   usage?: UsageReport;
@@ -84,12 +92,60 @@ interface PodcastAudioJobResponse {
   wallet?: CreditWalletSnapshot;
 }
 
+interface BookGenerationJobResponse {
+  success?: boolean;
+  bookId?: string | null;
+  jobId?: string;
+  courseId?: string | null;
+  status?: string;
+  totalSections?: number;
+  completedSections?: number;
+  currentSectionIndex?: number | null;
+  currentSectionTitle?: string | null;
+  currentStepLabel?: string | null;
+  resultPath?: string | null;
+  book?: Record<string, unknown> | null;
+  bundle?: Record<string, unknown> | null;
+  course?: Record<string, unknown> | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
+  usageEntries?: unknown;
+  error?: string | null;
+  wallet?: CreditWalletSnapshot;
+}
+
 export interface PodcastUsageSummary {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
   estimatedCostUsd: number;
   audioFileBytes: number;
+}
+
+export interface BookGenerationJobResult {
+  jobId: string;
+  bookId: string | null;
+  courseId: string | null;
+  status: "queued" | "processing" | "completed" | "failed";
+  totalSections: number;
+  completedSections: number;
+  currentSectionIndex: number | null;
+  currentSectionTitle: string | null;
+  currentStepLabel: string | null;
+  resultPath: string | null;
+  book: BookMeta | null;
+  bundle: BookBundleDescriptor | null;
+  course: CourseData | null;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+  };
+  usageEntries: UsageReportEntry[];
+  error: string | null;
 }
 
 function asPayloadText(value: unknown): string | undefined {
@@ -110,6 +166,7 @@ function assertPayloadBookSafety(operation: AiOperation, payload: Record<string,
   push(payload.nodeTitle);
   push(payload.sourceContent);
   push(payload.script);
+  push(payload.previewText);
   push(payload.subGenre);
   push(payload.newMessage);
   push(payload.topicContext);
@@ -174,6 +231,16 @@ const getPodcastAudioJobCallable = httpsCallable<{ jobId: string }, PodcastAudio
   "getPodcastAudioJob",
   { timeout: 30_000 }
 );
+const startBookGenerationJobCallable = httpsCallable<Record<string, unknown>, BookGenerationJobResponse>(
+  functions,
+  "startBookGenerationJob",
+  { timeout: 60_000 }
+);
+const getBookGenerationJobCallable = httpsCallable<{ jobId: string }, BookGenerationJobResponse>(
+  functions,
+  "getBookGenerationJob",
+  { timeout: 30_000 }
+);
 
 const OPERATION_LABELS: Record<AiOperation, string> = {
   extractDocumentContext: "dokuman analizi",
@@ -183,6 +250,7 @@ const OPERATION_LABELS: Record<AiOperation, string> = {
   generateLectureImages: "bolum gorseli",
   generatePodcastScript: "podcast",
   generatePodcastAudio: "podcast ses",
+  previewPodcastVoice: "podcast ses onizleme",
   generateQuizQuestions: "quiz",
   generateRemedialContent: "pekistirme",
   generateSummaryCard: "ozet karti",
@@ -200,6 +268,57 @@ function toUsd(value: unknown): string {
   if (!Number.isFinite(num)) return "0.000000";
   const rounded = Math.round(Math.max(0, num) * 1_000_000) / 1_000_000;
   return rounded.toFixed(6);
+}
+
+function normalizeStorageObjectPath(value: unknown): string | undefined {
+  const normalized = String(value || "").trim().replace(/^\/+/, "");
+  return normalized || undefined;
+}
+
+function getBookPackagePathCandidates(value: unknown): string[] {
+  const normalized = normalizeStorageObjectPath(value);
+  if (!normalized) return [];
+  const result: string[] = [];
+  const push = (nextValue: string | undefined) => {
+    const next = normalizeStorageObjectPath(nextValue);
+    if (!next || result.includes(next)) return;
+    result.push(next);
+  };
+
+  if (/\/package\.json$/i.test(normalized)) {
+    const withoutFile = normalized.replace(/\/package\.json$/i, "");
+    if (/\/v\d+$/i.test(withoutFile)) {
+      push(`${withoutFile}/book.zip`);
+    } else {
+      push(`${withoutFile}/v1/book.zip`);
+      push(`${withoutFile}/book.zip`);
+    }
+    push(normalized);
+    return result;
+  }
+
+  if (/\/book\.json$/i.test(normalized)) {
+    const withoutFile = normalized.replace(/\/book\.json$/i, "");
+    if (/\/v\d+$/i.test(withoutFile)) {
+      push(`${withoutFile}/book.zip`);
+    } else {
+      push(`${withoutFile}/v1/book.zip`);
+    }
+    push(normalized);
+    return result;
+  }
+
+  push(normalized);
+  return result;
+}
+
+function resolvePreferredBookZipPath(...values: Array<unknown>): string | undefined {
+  for (const value of values) {
+    const candidates = getBookPackagePathCandidates(value);
+    const zipCandidate = candidates.find((candidate) => /\/book\.zip$/i.test(candidate));
+    if (zipCandidate) return zipCandidate;
+  }
+  return undefined;
 }
 
 function normalizeCreditWalletSnapshot(value: unknown): CreditWalletSnapshot | null {
@@ -238,6 +357,7 @@ function logAiUsage(operation: AiOperation, usage?: UsageReport): void {
   }
 
   const operationLabel = OPERATION_LABELS[operation] || operation;
+  const parts: string[] = [];
   for (const entry of usage.entries) {
     const label = (entry.label || operationLabel).trim() || operationLabel;
     const provider = (entry.provider || "unknown").trim();
@@ -246,15 +366,46 @@ function logAiUsage(operation: AiOperation, usage?: UsageReport): void {
     const outputTokens = toTokenCount(entry.outputTokens);
     const totalTokens = toTokenCount(entry.totalTokens);
     const priceUsd = toUsd(entry.estimatedCostUsd);
-    console.info(
-      `[AI COST] ${label}: ${provider} ${model} in ${inputTokens} out ${outputTokens} total ${totalTokens} price ${priceUsd} usd`
+    parts.push(
+      `${label}: ${provider} ${model} in ${inputTokens} out ${outputTokens} total ${totalTokens} price ${priceUsd} usd`
     );
   }
 
   const totalPriceUsd = toUsd(
     usage.totalEstimatedCostUsd ?? usage.entries.reduce((sum, entry) => sum + (Number(entry.estimatedCostUsd) || 0), 0)
   );
-  console.info(`[AI COST] ${operationLabel} toplam: ${totalPriceUsd} usd`);
+  if (parts.length === 1) {
+    console.info(`[AI COST] ${parts[0]}`);
+    return;
+  }
+  console.info(`[AI COST] ${operationLabel}: total ${totalPriceUsd} usd | ${parts.join(" || ")}`);
+}
+
+function normalizeJobUsageEntries(raw: unknown): UsageReportEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const entries: UsageReportEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const data = item as Record<string, unknown>;
+    const providerRaw = String(data.provider || "google").trim().toLowerCase();
+    const provider: UsageReportEntry["provider"] =
+      providerRaw === "openai" || providerRaw === "xai"
+        ? providerRaw
+        : "google";
+    const inputTokens = toTokenCount(data.inputTokens);
+    const outputTokens = toTokenCount(data.outputTokens);
+    const totalTokensRaw = toTokenCount(data.totalTokens);
+    entries.push({
+      label: String(data.label || "İşlem").trim() || "İşlem",
+      provider,
+      model: String(data.model || "unknown").trim() || "unknown",
+      inputTokens,
+      outputTokens,
+      totalTokens: totalTokensRaw > 0 ? totalTokensRaw : inputTokens + outputTokens,
+      estimatedCostUsd: Number(toUsd(data.estimatedCostUsd))
+    });
+  }
+  return entries;
 }
 
 function extractErrorUsage(error: any): UsageReport | undefined {
@@ -533,6 +684,12 @@ export interface PodcastAudioResult {
   audioUrl: string;
 }
 
+export interface PodcastVoicePreviewResult {
+  audioData: string;
+  mimeType: string;
+  voiceName: PodcastVoiceName;
+}
+
 export interface PodcastAudioJobResult {
   jobId: string;
   status: 'queued' | 'processing' | 'finalizing' | 'completed' | 'failed';
@@ -558,6 +715,255 @@ async function resolveStorageDownloadUrl(pathValue: string | null | undefined): 
   const storage = getStorage();
   const fileRef = ref(storage, storagePath);
   return await getDownloadURL(fileRef);
+}
+
+function hydrateCourseNode(raw: unknown): TimelineNode {
+  const node = raw && typeof raw === 'object' ? raw as Partial<TimelineNode> : {};
+  return {
+    id: typeof node.id === 'string' ? node.id : '',
+    title: typeof node.title === 'string' ? node.title : '',
+    description: typeof node.description === 'string' ? node.description : '',
+    type:
+      node.type === 'lecture' ||
+      node.type === 'podcast' ||
+      node.type === 'quiz' ||
+      node.type === 'reinforce' ||
+      node.type === 'exam' ||
+      node.type === 'retention'
+        ? node.type
+        : 'lecture',
+    status:
+      node.status === 'completed' ||
+      node.status === 'current' ||
+      node.status === 'locked' ||
+      node.status === 'conditional'
+        ? node.status
+        : 'locked',
+    score: typeof node.score === 'number' ? node.score : undefined,
+    duration: typeof node.duration === 'string' ? node.duration : undefined,
+    content: typeof node.content === 'string' ? node.content : undefined,
+    podcastScript: typeof node.podcastScript === 'string' ? node.podcastScript : undefined,
+    podcastAudioUrl: typeof node.podcastAudioUrl === 'string' ? node.podcastAudioUrl : undefined,
+    questions: Array.isArray(node.questions) ? node.questions : undefined,
+    isLoading: typeof node.isLoading === 'boolean' ? node.isLoading : undefined
+  };
+}
+
+function hydrateCourseData(raw: unknown): CourseData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Partial<CourseData> & Record<string, unknown>;
+  const id = typeof data.id === 'string' ? data.id : '';
+  const topic = typeof data.topic === 'string' ? data.topic : '';
+  if (!id || !topic) return null;
+
+  const createdAt = new Date(typeof data.createdAt === 'string' ? data.createdAt : Date.now());
+  const lastActivity = new Date(typeof data.lastActivity === 'string' ? data.lastActivity : createdAt.toISOString());
+
+  const normalizedContentPath = resolvePreferredBookZipPath(data.contentPackagePath)
+    || normalizeStorageObjectPath(data.contentPackagePath);
+
+  return {
+    id,
+    topic,
+    description: typeof data.description === 'string' ? data.description : undefined,
+    creatorName: typeof data.creatorName === 'string' ? data.creatorName : undefined,
+    language: typeof data.language === 'string' ? data.language : undefined,
+    ageGroup: typeof data.ageGroup === 'string' ? data.ageGroup as SmartBookAgeGroup : undefined,
+    bookType:
+      data.bookType === 'fairy_tale' ||
+      data.bookType === 'story' ||
+      data.bookType === 'novel'
+        ? data.bookType
+        : undefined,
+    subGenre: typeof data.subGenre === 'string' ? data.subGenre : undefined,
+    creativeBrief: data.creativeBrief && typeof data.creativeBrief === 'object'
+      ? data.creativeBrief as SmartBookCreativeBrief
+      : undefined,
+    targetPageCount: Number.isFinite(Number(data.targetPageCount))
+      ? Math.max(1, Math.floor(Number(data.targetPageCount)))
+      : undefined,
+    category: typeof data.category === 'string' ? data.category : undefined,
+    searchTags: Array.isArray(data.searchTags)
+      ? data.searchTags.filter((item): item is string => typeof item === 'string')
+      : undefined,
+    totalDuration: typeof data.totalDuration === 'string' ? data.totalDuration : undefined,
+    coverImageUrl: typeof data.coverImageUrl === 'string' ? data.coverImageUrl : undefined,
+    contentPackageUrl: typeof data.contentPackageUrl === 'string' ? data.contentPackageUrl : undefined,
+    contentPackagePath: normalizedContentPath,
+    contentPackageUpdatedAt: typeof data.contentPackageUpdatedAt === 'string'
+      ? new Date(data.contentPackageUpdatedAt)
+      : undefined,
+    status:
+      data.status === 'processing' || data.status === 'ready' || data.status === 'failed'
+        ? data.status
+        : undefined,
+    userId: typeof data.userId === 'string' ? data.userId : undefined,
+    nodes: Array.isArray(data.nodes) ? data.nodes.map(hydrateCourseNode) : [],
+    createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+    lastActivity: Number.isNaN(lastActivity.getTime()) ? new Date() : lastActivity
+  };
+}
+
+function hydrateBookBundleDescriptor(raw: unknown): BookBundleDescriptor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Partial<BookBundleDescriptor> & Record<string, unknown>;
+  const path = resolvePreferredBookZipPath(data.path) || normalizeStorageObjectPath(data.path) || '';
+  if (!path) return null;
+  const version = Number.isFinite(Number(data.version))
+    ? Math.max(1, Math.floor(Number(data.version)))
+    : 1;
+  const generatedAt = new Date(typeof data.generatedAt === 'string' ? data.generatedAt : Date.now());
+  return {
+    path,
+    version,
+    checksumSha256: typeof data.checksumSha256 === 'string' ? data.checksumSha256 : undefined,
+    sizeBytes: Number.isFinite(Number(data.sizeBytes)) ? Math.max(0, Math.floor(Number(data.sizeBytes))) : undefined,
+    includesPodcast: data.includesPodcast === true,
+    generatedAt: Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt
+  };
+}
+
+function hydrateBookMeta(raw: unknown): BookMeta | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Partial<BookMeta> & Record<string, unknown>;
+  const id = typeof data.id === 'string' ? data.id.trim() : '';
+  const userId = typeof data.userId === 'string' ? data.userId.trim() : '';
+  const title = typeof data.title === 'string'
+    ? data.title.trim()
+    : (typeof data.topic === 'string' ? data.topic.trim() : '');
+  if (!id || !userId || !title) return null;
+
+  const createdAt = new Date(typeof data.createdAt === 'string' ? data.createdAt : Date.now());
+  const updatedAt = new Date(typeof data.updatedAt === 'string' ? data.updatedAt : createdAt.toISOString());
+  const lastActivity = new Date(typeof data.lastActivity === 'string' ? data.lastActivity : createdAt.toISOString());
+  const bundle = hydrateBookBundleDescriptor(data.bundle);
+  const rawCover = data.cover && typeof data.cover === 'object' ? data.cover as Record<string, unknown> : null;
+
+  return {
+    id,
+    userId,
+    title,
+    description: typeof data.description === 'string' ? data.description : undefined,
+    creatorName: typeof data.creatorName === 'string' ? data.creatorName : undefined,
+    language: typeof data.language === 'string' ? data.language : undefined,
+    ageGroup: typeof data.ageGroup === 'string' ? data.ageGroup as SmartBookAgeGroup : undefined,
+    bookType:
+      data.bookType === 'fairy_tale' ||
+      data.bookType === 'story' ||
+      data.bookType === 'novel'
+        ? data.bookType
+        : undefined,
+    subGenre: typeof data.subGenre === 'string' ? data.subGenre : undefined,
+    targetPageCount: Number.isFinite(Number(data.targetPageCount))
+      ? Math.max(1, Math.floor(Number(data.targetPageCount)))
+      : undefined,
+    category: typeof data.category === 'string' ? data.category : undefined,
+    searchTags: Array.isArray(data.searchTags)
+      ? data.searchTags.filter((item): item is string => typeof item === 'string')
+      : undefined,
+    totalDuration: typeof data.totalDuration === 'string' ? data.totalDuration : undefined,
+    cover: rawCover
+      ? {
+        path: typeof rawCover.path === 'string' ? rawCover.path : undefined,
+        url: typeof rawCover.url === 'string' ? rawCover.url : (typeof data.coverImageUrl === 'string' ? data.coverImageUrl : undefined)
+      }
+      : (typeof data.coverImageUrl === 'string' ? { url: data.coverImageUrl } : undefined),
+    bundle: bundle || undefined,
+    status: data.status === 'processing' || data.status === 'ready' || data.status === 'failed'
+      ? data.status
+      : undefined,
+    createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+    updatedAt: Number.isNaN(updatedAt.getTime()) ? undefined : updatedAt,
+    lastActivity: Number.isNaN(lastActivity.getTime()) ? new Date() : lastActivity
+  };
+}
+
+function buildCoursePlaceholderFromBookMeta(book: BookMeta): CourseData {
+  return {
+    id: book.id,
+    topic: book.title,
+    description: book.description,
+    creatorName: book.creatorName,
+    language: book.language,
+    ageGroup: book.ageGroup,
+    bookType: book.bookType,
+    subGenre: book.subGenre,
+    targetPageCount: book.targetPageCount,
+    category: book.category,
+    searchTags: book.searchTags,
+    totalDuration: book.totalDuration,
+    coverImageUrl: book.cover?.url,
+    contentPackagePath: book.bundle?.path,
+    contentPackageUpdatedAt: book.bundle?.generatedAt,
+    bundle: book.bundle,
+    cover: book.cover,
+    status: book.status,
+    userId: book.userId,
+    nodes: [],
+    createdAt: book.createdAt,
+    lastActivity: book.lastActivity
+  };
+}
+
+async function hydrateBookGenerationJob(data: BookGenerationJobResponse): Promise<BookGenerationJobResult> {
+  emitCreditWalletSnapshot(data.wallet);
+  const jobId = String(data.jobId || '').trim();
+  if (!jobId) {
+    throw new Error('Book job response is missing jobId.');
+  }
+
+  const rawStatus = String(data.status || 'queued').trim();
+  const status: BookGenerationJobResult['status'] =
+    rawStatus === 'processing' ||
+    rawStatus === 'completed' ||
+    rawStatus === 'failed'
+      ? rawStatus
+      : 'queued';
+  const hydratedBook = hydrateBookMeta(data.book);
+  const hydratedBundle = hydrateBookBundleDescriptor(data.bundle) || hydratedBook?.bundle || null;
+  const hydratedCourseBase = hydrateCourseData(data.course) || (hydratedBook ? buildCoursePlaceholderFromBookMeta(hydratedBook) : null);
+  const hydratedCourse = hydratedCourseBase
+    ? {
+      ...hydratedCourseBase,
+      contentPackagePath: resolvePreferredBookZipPath(
+        hydratedBundle?.path,
+        hydratedCourseBase.contentPackagePath
+      ) || hydratedCourseBase.contentPackagePath || hydratedBundle?.path,
+      contentPackageUpdatedAt: hydratedCourseBase.contentPackageUpdatedAt || hydratedBundle?.generatedAt,
+      bundle: hydratedCourseBase.bundle || hydratedBundle || undefined,
+      status: hydratedCourseBase.status || hydratedBook?.status || (hydratedBundle ? 'ready' : undefined)
+    }
+    : null;
+  const usageEntries = normalizeJobUsageEntries(data.usageEntries);
+  const courseId = typeof data.courseId === 'string'
+    ? data.courseId
+    : (typeof data.bookId === 'string' ? data.bookId : null);
+
+  return {
+    jobId,
+    bookId: typeof data.bookId === 'string' ? data.bookId : courseId,
+    courseId,
+    status,
+    totalSections: Math.max(0, Math.floor(Number(data.totalSections) || 0)),
+    completedSections: Math.max(0, Math.floor(Number(data.completedSections) || 0)),
+    currentSectionIndex: Number.isFinite(Number(data.currentSectionIndex))
+      ? Math.max(0, Math.floor(Number(data.currentSectionIndex)))
+      : null,
+    currentSectionTitle: typeof data.currentSectionTitle === 'string' ? data.currentSectionTitle : null,
+    currentStepLabel: typeof data.currentStepLabel === 'string' ? data.currentStepLabel : null,
+    resultPath: typeof data.resultPath === 'string' ? data.resultPath : null,
+    book: hydratedBook,
+    bundle: hydratedBundle,
+    course: hydratedCourse,
+    usage: {
+      inputTokens: Math.max(0, Math.floor(Number(data.inputTokens) || 0)),
+      outputTokens: Math.max(0, Math.floor(Number(data.outputTokens) || 0)),
+      totalTokens: Math.max(0, Math.floor(Number(data.totalTokens) || 0)),
+      estimatedCostUsd: Math.max(0, Number(data.estimatedCostUsd) || 0)
+    },
+    usageEntries,
+    error: typeof data.error === 'string' ? data.error : null
+  };
 }
 
 async function hydratePodcastAudioJob(data: PodcastAudioJobResponse): Promise<PodcastAudioJobResult> {
@@ -613,16 +1019,56 @@ async function hydratePodcastAudioJob(data: PodcastAudioJobResponse): Promise<Po
   };
 }
 
+export async function startBookGenerationJob(params: {
+  topic?: string;
+  sourceContent?: string;
+  creatorName?: string;
+  ageGroup?: SmartBookAgeGroup;
+  bookType?: SmartBookBookType;
+  subGenre?: string;
+  targetPageCount?: number;
+  creativeBrief?: SmartBookCreativeBrief;
+  allowAiBookTitleGeneration?: boolean;
+}): Promise<BookGenerationJobResult> {
+  await appCheckReady;
+  const payload: Record<string, unknown> = {};
+  if (params.topic?.trim()) payload.topic = params.topic.trim();
+  if (params.sourceContent?.trim()) payload.sourceContent = params.sourceContent.trim();
+  if (params.creatorName?.trim()) payload.creatorName = params.creatorName.trim();
+  if (params.ageGroup) payload.ageGroup = params.ageGroup;
+  if (params.bookType) payload.bookType = params.bookType;
+  if (params.subGenre?.trim()) payload.subGenre = params.subGenre.trim();
+  if (Number.isFinite(params.targetPageCount as number)) {
+    payload.targetPageCount = Math.max(1, Math.floor(params.targetPageCount as number));
+  }
+  if (params.creativeBrief) payload.creativeBrief = params.creativeBrief;
+  if (params.allowAiBookTitleGeneration === true) payload.allowAiBookTitleGeneration = true;
+  const response = await startBookGenerationJobCallable(payload);
+  return await hydrateBookGenerationJob(response.data || {});
+}
+
+export async function getBookGenerationJob(jobId: string): Promise<BookGenerationJobResult> {
+  await appCheckReady;
+  const response = await getBookGenerationJobCallable({ jobId });
+  return await hydrateBookGenerationJob(response.data || {});
+}
+
 export async function startPodcastAudioJob(
   topic: string,
   script: string,
   options?: {
     bookType?: SmartBookBookType;
+    voiceName?: PodcastVoiceName;
+    bookId?: string;
+    nodeId?: string;
   }
 ): Promise<PodcastAudioJobResult> {
   await appCheckReady;
   const payload: Record<string, unknown> = { topic, script };
   if (options?.bookType) payload.bookType = options.bookType;
+  if (options?.voiceName) payload.voiceName = options.voiceName;
+  if (options?.bookId) payload.bookId = options.bookId;
+  if (options?.nodeId) payload.nodeId = options.nodeId;
   const response = await startPodcastAudioJobCallable(payload);
   return await hydratePodcastAudioJob(response.data || {});
 }
@@ -638,7 +1084,8 @@ export async function generatePodcastAudio(
   script?: string,
   sourceContent?: string,
   ageGroup?: SmartBookAgeGroup,
-  generationPayload?: SmartBookGenerationPayload
+  generationPayload?: SmartBookGenerationPayload,
+  voiceName?: PodcastVoiceName
 ): Promise<PodcastAudioResult> {
   const payload: Record<string, unknown> = { topic };
   if (script && script.trim()) payload.script = script;
@@ -650,6 +1097,7 @@ export async function generatePodcastAudio(
     payload.targetPageCount = Math.max(6, Math.floor(generationPayload!.targetPageCount as number));
   }
   if (generationPayload?.creativeBrief) payload.creativeBrief = generationPayload.creativeBrief;
+  if (voiceName) payload.voiceName = voiceName;
 
   const data = await callAi("generatePodcastAudio", payload);
   if (!data.audioFilePath) {
@@ -663,6 +1111,29 @@ export async function generatePodcastAudio(
   return {
     content: data.content || script || "",
     audioUrl
+  };
+}
+
+export async function previewPodcastVoice(
+  voiceName: PodcastVoiceName,
+  previewText: string,
+  options?: {
+    bookType?: SmartBookBookType;
+  }
+): Promise<PodcastVoicePreviewResult> {
+  const payload: Record<string, unknown> = {
+    voiceName,
+    previewText
+  };
+  if (options?.bookType) payload.bookType = options.bookType;
+  const data = await callAi("previewPodcastVoice", payload);
+  if (!data.audioData || !data.mimeType) {
+    throw new Error("Podcast voice preview response is missing audio data.");
+  }
+  return {
+    audioData: data.audioData,
+    mimeType: data.mimeType,
+    voiceName: (data.voiceName as PodcastVoiceName | undefined) || voiceName
   };
 }
 

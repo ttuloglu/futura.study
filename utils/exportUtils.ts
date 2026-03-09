@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import katex from 'katex';
-import { getBlob, getStorage, ref as storageRef } from 'firebase/storage';
+import { getBlob, getDownloadURL, getStorage, ref as storageRef } from 'firebase/storage';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import loadPdfMake from './pdfMakeLoader';
@@ -18,6 +18,26 @@ const PDF_PAGE_WIDTH_PT = 595.28;
 const PDF_PAGE_HORIZONTAL_MARGIN_PT = 40;
 const PDF_TEXT_BLOCK_WIDTH_PT = PDF_PAGE_WIDTH_PT - PDF_PAGE_HORIZONTAL_MARGIN_PT * 2;
 const MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE = 2;
+const PDF_WIDE_IMAGE_MIN_ASPECT_RATIO = 1.3;
+const PDF_WIDE_IMAGE_MAX_HEIGHT_PT = 320;
+const PDF_COMPACT_IMAGE_MAX_HEIGHT_PT = 260;
+
+type FirebaseStorageObjectReference = {
+    bucketUrl?: string;
+    objectPath: string;
+};
+
+const isDarkPdfBackground = (color: string): boolean => {
+    const normalized = String(color || '').trim();
+    const hex = normalized.match(/^#([0-9a-f]{6})$/i)?.[1];
+    if (!hex) return false;
+
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return luminance < 0.35;
+};
 
 const buildReadableBookDownloadFileName = (
     title: string,
@@ -106,6 +126,22 @@ const ensurePdfCompatibleImageDataUrl = async (dataUrl: string): Promise<string 
     }
     return convertImageDataUrlToPng(dataUrl);
 };
+
+const getImageDataUrlDimensions = (dataUrl: string): Promise<{ width: number; height: number } | null> =>
+    new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => {
+            const width = image.naturalWidth || image.width || 0;
+            const height = image.naturalHeight || image.height || 0;
+            if (!width || !height) {
+                resolve(null);
+                return;
+            }
+            resolve({ width, height });
+        };
+        image.onerror = () => resolve(null);
+        image.src = dataUrl;
+    });
 
 // Fetch image as Base64 Data URI
 const fetchImageAsBase64 = async (url: string): Promise<string | null> => {
@@ -339,7 +375,7 @@ const getDashedLineCompact = () => ({
         lineColor: '#6E8D78',
         dash: { length: 4, space: 3 }
     }],
-    margin: [0, 4, 0, 8]
+    margin: [0, 3, 0, 6]
 });
 
 const getSectionTransitionSeparator = () => ({
@@ -364,7 +400,7 @@ const getSectionTransitionSeparator = () => ({
             margin: [0, 0, 0, 0]
         }
     ],
-    margin: [0, 0, 0, 10]
+    margin: [0, 0, 0, 7]
 });
 
 const PDF_FOOTER_LEFT_TEXT = 'Fortale | Build Your Epic';
@@ -762,8 +798,52 @@ export const exportCourseToPdf = async (
         preparedCourse.bookType === 'novel';
     const pdfContent: any[] = [];
     const pdfPageBackgroundColor = options?.backgroundColor?.trim() || DEFAULT_PDF_PAGE_BACKGROUND_COLOR;
+    const isDarkPdfTheme = isDarkPdfBackground(pdfPageBackgroundColor);
+    const pdfTitleColor = isDarkPdfTheme ? '#F8FAFC' : '#1F2937';
+    const pdfSecondaryTextColor = isDarkPdfTheme ? '#D8E3F0' : '#4B5563';
+    const pdfMutedTextColor = isDarkPdfTheme ? '#BCC9D8' : '#6B7280';
+    const pdfBrandTextColor = isDarkPdfTheme ? '#FFFFFF' : '#1F4D7A';
+    const pdfBodyTextColor = isDarkPdfTheme ? '#F4F7FB' : '#1F2937';
+    const pdfSoftBodyTextColor = isDarkPdfTheme ? '#DCE5EF' : '#334155';
+    const pdfHeadingTextColor = isDarkPdfTheme ? '#FFFFFF' : '#1A1A1A';
+    const pdfTableHeaderTextColor = isDarkPdfTheme ? '#F8FAFC' : '#0F172A';
+    const pdfTableHeaderFillColor = isDarkPdfTheme ? '#334155' : '#E8EEF8';
+    const pdfTableEvenFillColor = isDarkPdfTheme ? '#1F2937' : '#F8FAFC';
+    const pdfTableOddFillColor = isDarkPdfTheme ? '#111827' : '#FFFFFF';
+    const pdfTableGridColor = isDarkPdfTheme ? '#64748B' : '#A8B8CC';
+    const pdfQuoteFillColor = isDarkPdfTheme ? '#1F2937' : '#F8FAFC';
+    const pdfQuoteAccentColor = isDarkPdfTheme ? '#E5EEF9' : '#334155';
+    const pdfImportantColor = isDarkPdfTheme ? '#BFDBFE' : '#0F3C72';
+    const pdfWarningColor = isDarkPdfTheme ? '#BBF7D0' : '#14532D';
     const PDF_FONT_BUMP = preparedCourse.bookType === 'fairy_tale' ? 2 : 1;
     const PDF_FONT_BUMP_MAX = preparedCourse.bookType === 'fairy_tale' ? 64 : 14;
+    const buildPdfParagraphBlock = (text: string, margin: [number, number, number, number] = [0, 2, 0, 6]) => ({
+        text: cleanMarkdownToSpans(text),
+        fontSize: 11,
+        lineHeight: 1.4,
+        margin,
+        alignment: 'justify' as const,
+        color: pdfBodyTextColor
+    });
+    const buildAdaptiveFullWidthPdfImageBlock = async (imageData: string) => {
+        const dimensions = await getImageDataUrlDimensions(imageData);
+        const aspectRatio = dimensions && dimensions.height > 0 ? dimensions.width / dimensions.height : null;
+        if (aspectRatio && aspectRatio >= PDF_WIDE_IMAGE_MIN_ASPECT_RATIO) {
+            return {
+                image: imageData,
+                width: PDF_TEXT_BLOCK_WIDTH_PT,
+                margin: [0, 8, 0, 8],
+                alignment: 'center' as const
+            };
+        }
+
+        return {
+            image: imageData,
+            fit: [PDF_TEXT_BLOCK_WIDTH_PT, isNarrativeBook ? PDF_COMPACT_IMAGE_MAX_HEIGHT_PT : PDF_WIDE_IMAGE_MAX_HEIGHT_PT],
+            margin: [0, 8, 0, 8],
+            alignment: 'center' as const
+        };
+    };
     const bumpPdfFontSizes = (value: any): any => {
         if (Array.isArray(value)) {
             return value.map((item) => bumpPdfFontSizes(item));
@@ -818,22 +898,22 @@ export const exportCourseToPdf = async (
             {
                 width: '*',
                 stack: [
-                    { text: preparedCourse.topic, fontSize: 18, bold: true, color: '#1F2937', margin: [0, 2, 0, 8] },
-                    { text: `Tür: ${typeLabel} • Alt Tür: ${subGenreLabel} • ${ageLabel} • Kategori: ${categoryLabel}`, fontSize: 10.5, color: '#4B5563', margin: [0, 0, 0, 6] },
+                    { text: preparedCourse.topic, fontSize: 18, bold: true, color: pdfTitleColor, margin: [0, 2, 0, 8] },
+                    { text: `Tür: ${typeLabel} • Alt Tür: ${subGenreLabel} • ${ageLabel} • Kategori: ${categoryLabel}`, fontSize: 10.5, color: pdfSecondaryTextColor, margin: [0, 0, 0, 6] },
                     {
                         columns: [
                             {
                                 width: 'auto',
                                 text: `Kurgulayan: ${creatorLabel} | ${headerDate} |`,
                                 fontSize: 10,
-                                color: '#6B7280'
+                                color: pdfMutedTextColor
                             },
                             {
                                 width: 11,
                                 svg: FORTALE_PDF_LOGO_SVG,
                                 margin: [0, 0.6, 0, 0]
                             },
-                            { width: 'auto', text: 'Fortale I Build Your Epic', fontSize: 10.2, bold: true, color: '#1F4D7A' }
+                            { width: 'auto', text: 'Fortale I Build Your Epic', fontSize: 10.2, bold: true, color: pdfBrandTextColor }
                         ],
                         columnGap: 2
                     }
@@ -882,8 +962,8 @@ export const exportCourseToPdf = async (
             text: nodeHeader,
             fontSize: 14,
             bold: true,
-            margin: [0, nodeIndex === 0 ? 0 : 6, 0, 6],
-            color: '#1F2937'
+            margin: [0, nodeIndex === 0 ? 0 : 5, 0, 5],
+            color: pdfTitleColor
         });
         // Under heading: render the emphasized (solid + dashed) separator pair.
         pdfContent.push(getSectionTransitionSeparator());
@@ -936,8 +1016,8 @@ export const exportCourseToPdf = async (
                 pendingImageBlocks = [];
             }
         };
-        const registerParagraphBlock = () => {
-            paragraphBlocksSinceLastHeading += 1;
+        const registerParagraphBlock = (count = 1) => {
+            paragraphBlocksSinceLastHeading += count;
             flushPendingImageBlocks();
         };
         const queueOrRenderImageBlock = (block: any) => {
@@ -1009,19 +1089,15 @@ export const exportCourseToPdf = async (
                             pair.map(async (cell) => {
                                 const cleanUrl = extractMarkdownImageUrl(cell.url);
                                 const base64Data = await fetchImageAsBase64(cleanUrl);
-                                return { ...cell, base64Data };
+                                const imageBlock = base64Data ? await buildAdaptiveFullWidthPdfImageBlock(base64Data) : null;
+                                return { ...cell, base64Data, imageBlock };
                             })
                         );
                         embeddedPdfImageCount += imageDataList.filter((item) => Boolean(item.base64Data)).length;
 
                         imageDataList.forEach((item) => {
-                            if (item.base64Data) {
-                                queueOrRenderImageBlock({
-                                    image: item.base64Data,
-                                    width: PDF_TEXT_BLOCK_WIDTH_PT,
-                                    margin: [0, 8, 0, 8],
-                                    alignment: 'center'
-                                });
+                            if (item.imageBlock) {
+                                queueOrRenderImageBlock(item.imageBlock);
                                 return;
                             }
 
@@ -1056,13 +1132,13 @@ export const exportCourseToPdf = async (
                         genericTable.headers.map((cell) => ({
                             text: cleanMarkdownToSpans(stripLatex(stripStrayMarkdown(cell))),
                             bold: true,
-                            color: '#0F172A',
+                            color: pdfTableHeaderTextColor,
                             margin: [6, 5, 6, 5]
                         })),
                         ...genericTable.rows.map((row) =>
                             row.map((cell) => ({
                                 text: cleanMarkdownToSpans(stripLatex(stripStrayMarkdown(cell))),
-                                color: '#1F2937',
+                                color: pdfBodyTextColor,
                                 margin: [6, 5, 6, 5]
                             }))
                         )
@@ -1075,9 +1151,9 @@ export const exportCourseToPdf = async (
                             body
                         },
                         layout: {
-                            fillColor: (rowIndex: number) => (rowIndex === 0 ? '#E8EEF8' : rowIndex % 2 === 0 ? '#F8FAFC' : '#FFFFFF'),
-                            hLineColor: () => '#A8B8CC',
-                            vLineColor: () => '#A8B8CC',
+                            fillColor: (rowIndex: number) => (rowIndex === 0 ? pdfTableHeaderFillColor : rowIndex % 2 === 0 ? pdfTableEvenFillColor : pdfTableOddFillColor),
+                            hLineColor: () => pdfTableGridColor,
+                            vLineColor: () => pdfTableGridColor,
                             hLineWidth: () => 0.8,
                             vLineWidth: () => 0.8
                         },
@@ -1104,12 +1180,8 @@ export const exportCourseToPdf = async (
                 if (base64Data) {
                     lastRenderedNoticeQuote = false;
                     embeddedPdfImageCount += 1;
-                    queueOrRenderImageBlock({
-                        image: base64Data,
-                        width: PDF_TEXT_BLOCK_WIDTH_PT,
-                        margin: [0, 10, 0, 10],
-                        alignment: 'center'
-                    });
+                    const imageBlock = await buildAdaptiveFullWidthPdfImageBlock(base64Data);
+                    queueOrRenderImageBlock(imageBlock);
                 } else {
                     lastRenderedNoticeQuote = false;
                     queueOrRenderImageBlock({
@@ -1156,7 +1228,7 @@ export const exportCourseToPdf = async (
                     fontSize: sizes[level - 1] || 12,
                     bold: true,
                     margin: [0, 12, 0, 6],
-                    color: '#1A1A1A'
+                    color: pdfHeadingTextColor
                 });
                 continue;
             }
@@ -1174,7 +1246,7 @@ export const exportCourseToPdf = async (
                         fontSize: 12,
                         bold: true,
                         margin: [0, 10, 0, 4],
-                        color: '#1F2937'
+                        color: pdfTitleColor
                     });
                     continue;
                 }
@@ -1194,7 +1266,7 @@ export const exportCourseToPdf = async (
                         fontSize: 12,
                         bold: true,
                         margin: [0, 10, 0, 4],
-                        color: '#1F2937'
+                        color: pdfTitleColor
                     });
                     continue;
                 }
@@ -1233,7 +1305,7 @@ export const exportCourseToPdf = async (
                         fontSize: 11.2,
                         lineHeight: 1.48,
                         alignment: 'center',
-                        color: isImportant ? '#0F3C72' : '#14532D',
+                        color: isImportant ? pdfImportantColor : pdfWarningColor,
                         margin: [12, lastRenderedNoticeQuote ? 14 : 8, 12, 10]
                     });
                     registerParagraphBlock();
@@ -1246,14 +1318,14 @@ export const exportCourseToPdf = async (
                         widths: ['*'],
                         body: [[{
                             text: cleanMarkdownToSpans(stripLatex(stripStrayMarkdown(quoteText))),
-                            color: '#334155',
+                            color: pdfQuoteAccentColor,
                             margin: [8, 7, 8, 7]
                         }]]
                     },
                     layout: {
-                        fillColor: () => '#F8FAFC',
-                        hLineColor: () => '#F8FAFC',
-                        vLineColor: () => '#F8FAFC',
+                        fillColor: () => pdfQuoteFillColor,
+                        hLineColor: () => pdfQuoteFillColor,
+                        vLineColor: () => pdfQuoteFillColor,
                         hLineWidth: () => 0,
                         vLineWidth: () => 0
                     },
@@ -1273,7 +1345,7 @@ export const exportCourseToPdf = async (
                     lineHeight: 1.5,
                     margin: [12, 4, 12, 10],
                     alignment: 'center',
-                    color: '#334155'
+                    color: pdfQuoteAccentColor
                 });
                 registerParagraphBlock();
                 firstLectureParagraphRendered = true;
@@ -1281,7 +1353,7 @@ export const exportCourseToPdf = async (
             }
 
             lastRenderedNoticeQuote = false;
-            pdfContent.push({ text: cleanMarkdownToSpans(trimmed), fontSize: 11, lineHeight: 1.4, margin: [0, 2, 0, 6], alignment: 'justify' });
+            pdfContent.push(buildPdfParagraphBlock(trimmed));
             registerParagraphBlock();
         }
 
@@ -1313,12 +1385,12 @@ export const exportCourseToPdf = async (
                                 {
                                     width: '*',
                                     text: [
-                                        { text: 'Soru: ', bold: true, color: '#1F2937' },
+                                        { text: 'Soru: ', bold: true, color: pdfTitleColor },
                                         ...cleanMarkdownToSpans(q.question || '')
                                     ],
                                     fontSize: 10.5,
                                     lineHeight: 1.35,
-                                    color: '#1F2937'
+                                    color: pdfBodyTextColor
                                 }
                             ],
                             columnGap: 6
@@ -1331,7 +1403,7 @@ export const exportCourseToPdf = async (
                             fontSize: 10.5,
                             lineHeight: 1.35,
                             margin: [22, 4, 0, 0],
-                            color: '#334155'
+                            color: pdfSoftBodyTextColor
                         }
                     ],
                     margin: [0, 2, 0, 6]
@@ -1366,11 +1438,11 @@ export const exportCourseToPdf = async (
                     text: `${currentPage} / ${pageCount}`,
                     alignment: 'center',
                     fontSize: 9,
-                    color: '#6B7280'
+                    color: pdfMutedTextColor
                 }
             ]
         }),
-        defaultStyle: { font: 'Roboto' }
+        defaultStyle: { font: 'Roboto', color: pdfBodyTextColor }
     };
 
     try {
@@ -1540,6 +1612,8 @@ const parseDataUrlMimeType = (value: string): string | null => {
     return match[1].trim().toLowerCase();
 };
 
+const isInlineDataUrl = (value: string): boolean => /^data:/i.test(String(value || '').trim());
+
 const inferMediaType = (blob: Blob, url?: string): string => {
     const explicit = (blob.type || '').split(';')[0].trim().toLowerCase();
     if (explicit && explicit !== 'application/octet-stream') return explicit;
@@ -1559,6 +1633,9 @@ const inferMediaType = (blob: Blob, url?: string): string => {
 };
 
 const inferMediaTypeFromUrl = (url: string): string => {
+    const dataUrlMimeType = parseDataUrlMimeType(url);
+    if (dataUrlMimeType) return dataUrlMimeType;
+
     const path = String(url || '').split('?')[0].toLowerCase();
     if (path.endsWith('.png')) return 'image/png';
     if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
@@ -1649,6 +1726,26 @@ const base64ToBlob = (rawData: string, mimeType: string): Blob | null => {
     }
 };
 
+const dataUrlToBlob = (rawData: string): Blob | null => {
+    const data = String(rawData || '').trim();
+    if (!isInlineDataUrl(data)) return null;
+
+    const mimeType = parseDataUrlMimeType(data) || 'application/octet-stream';
+    if (/;base64,/i.test(data)) {
+        return base64ToBlob(data, mimeType);
+    }
+
+    const commaIndex = data.indexOf(',');
+    if (commaIndex < 0) return null;
+
+    try {
+        const decoded = decodeURIComponent(data.slice(commaIndex + 1));
+        return new Blob([decoded], { type: mimeType });
+    } catch {
+        return null;
+    }
+};
+
 const ensureBlobMediaType = async (blob: Blob, url?: string): Promise<Blob> => {
     const explicit = (blob.type || '').split(';')[0].trim().toLowerCase();
     if (explicit && explicit !== 'application/octet-stream') return blob;
@@ -1674,19 +1771,28 @@ const fetchAssetBlobViaNativeFilesystem = async (url: string): Promise<Blob | nu
 
     const ext = extensionForMediaType(inferMediaTypeFromUrl(url), 'bin');
     const tempPath = `export-assets/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    let downloadedPath = tempPath;
+    let downloadedPathIsAbsolute = false;
 
     try {
-        await Filesystem.downloadFile({
+        const downloadResult = await Filesystem.downloadFile({
             url,
             path: tempPath,
             directory: Directory.Temporary,
             recursive: true
         });
+        const resolvedDownloadPath = String(downloadResult.path || '').trim();
+        if (resolvedDownloadPath) {
+            downloadedPath = resolvedDownloadPath;
+            downloadedPathIsAbsolute = resolvedDownloadPath.startsWith('file://') || resolvedDownloadPath.startsWith('/');
+        }
 
-        const readResult = await Filesystem.readFile({
-            path: tempPath,
-            directory: Directory.Temporary
-        });
+        const readResult = downloadedPathIsAbsolute
+            ? await Filesystem.readFile({ path: downloadedPath })
+            : await Filesystem.readFile({
+                path: downloadedPath,
+                directory: Directory.Temporary
+            });
 
         if (readResult.data instanceof Blob) {
             return await ensureBlobMediaType(readResult.data, url);
@@ -1701,34 +1807,44 @@ const fetchAssetBlobViaNativeFilesystem = async (url: string): Promise<Blob | nu
         console.warn('Native filesystem asset fetch failed:', url, error);
         return null;
     } finally {
-        await Filesystem.deleteFile({
-            path: tempPath,
-            directory: Directory.Temporary
-        }).catch(() => undefined);
+        await (
+            downloadedPathIsAbsolute
+                ? Filesystem.deleteFile({ path: downloadedPath })
+                : Filesystem.deleteFile({
+                    path: downloadedPath,
+                    directory: Directory.Temporary
+                })
+        ).catch(() => undefined);
     }
 };
 
 const fetchAssetBlob = async (url: string): Promise<Blob | null> => {
-    const firebaseBlob = await withTimeout(getFirebaseStorageBlobFromUrl(url), EXPORT_ASSET_TIMEOUT_MS, null);
-    if (firebaseBlob) return await ensureBlobMediaType(firebaseBlob, url);
+    const normalizedUrl = String(url || '').trim();
+    if (!normalizedUrl) return null;
+
+    const inlineBlob = dataUrlToBlob(normalizedUrl);
+    if (inlineBlob) return await ensureBlobMediaType(inlineBlob, normalizedUrl);
 
     const nativeBlob = await withTimeout(
-        fetchAssetBlobViaNativeFilesystem(url),
+        fetchAssetBlobViaNativeFilesystem(normalizedUrl),
         EXPORT_NATIVE_ASSET_TIMEOUT_MS,
         null
     );
-    if (nativeBlob) return await ensureBlobMediaType(nativeBlob, url);
+    if (nativeBlob) return await ensureBlobMediaType(nativeBlob, normalizedUrl);
+
+    const firebaseBlob = await withTimeout(getFirebaseStorageBlobFromUrl(normalizedUrl), EXPORT_ASSET_TIMEOUT_MS, null);
+    if (firebaseBlob) return await ensureBlobMediaType(firebaseBlob, normalizedUrl);
 
     try {
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), EXPORT_ASSET_TIMEOUT_MS);
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(normalizedUrl, { signal: controller.signal });
         window.clearTimeout(timer);
         if (!response.ok) return null;
         const blob = await response.blob();
-        return await ensureBlobMediaType(blob, url);
+        return await ensureBlobMediaType(blob, normalizedUrl);
     } catch (error) {
-        console.warn('Failed to load asset for EPUB:', url, error);
+        console.warn('Failed to load asset for EPUB:', normalizedUrl, error);
         return null;
     }
 };
@@ -1739,7 +1855,7 @@ const isFirebaseStorageDownloadUrlForSdk = (url: string): boolean => (
     /https?:\/\/storage\.googleapis\.com\//i.test(url)
 );
 
-const tryParseFirebaseStorageObjectPath = (url: string): string | null => {
+const tryResolveFirebaseStorageReference = (url: string): FirebaseStorageObjectReference | null => {
     const safeDecode = (value: string): string => {
         try {
             return decodeURIComponent(value);
@@ -1748,29 +1864,54 @@ const tryParseFirebaseStorageObjectPath = (url: string): string | null => {
         }
     };
 
+    const normalized = String(url || '').trim();
+    if (!normalized) return null;
+
+    const gsMatch = normalized.match(/^gs:\/\/([^/]+)\/(.+)$/i);
+    if (gsMatch?.[1] && gsMatch?.[2]) {
+        return {
+            bucketUrl: `gs://${gsMatch[1]}`,
+            objectPath: safeDecode(gsMatch[2])
+        };
+    }
+
+    if (!/^https?:\/\//i.test(normalized)) {
+        return { objectPath: normalized.replace(/^\/+/, '') };
+    }
+
     try {
-        const parsed = new URL(url);
+        const parsed = new URL(normalized);
         const pathname = parsed.pathname || '';
 
         // New download endpoint styles:
         // /v0/b/<bucket>/o/<encodedPath>
         // /download/storage/v1/b/<bucket>/o/<encodedPath>
-        const v0Match = pathname.match(/\/(?:v0|download\/storage\/v1)\/b\/[^/]+\/o\/(.+)$/i);
-        if (v0Match?.[1]) {
-            return safeDecode(v0Match[1]);
+        const v0Match = pathname.match(/\/(?:v0|download\/storage\/v1)\/b\/([^/]+)\/o\/(.+)$/i);
+        if (v0Match?.[1] && v0Match?.[2]) {
+            return {
+                bucketUrl: `gs://${safeDecode(v0Match[1])}`,
+                objectPath: safeDecode(v0Match[2])
+            };
         }
 
         // v0 API style: .../o/<encodedPath>?alt=media...
         const objectMatch = pathname.match(/\/o\/(.+)$/);
         if (objectMatch?.[1]) {
-            return safeDecode(objectMatch[1]);
+            const hostBucketMatch = parsed.hostname.match(/^([^.]+)\.firebasestorage\.app$/i);
+            return {
+                bucketUrl: hostBucketMatch?.[1] ? `gs://${safeDecode(hostBucketMatch[1])}` : undefined,
+                objectPath: safeDecode(objectMatch[1])
+            };
         }
 
         // storage.googleapis.com/<bucket>/<path>
         if (/^storage\.googleapis\.com$/i.test(parsed.hostname)) {
             const parts = pathname.split('/').filter(Boolean);
             if (parts.length >= 2) {
-                return safeDecode(parts.slice(1).join('/'));
+                return {
+                    bucketUrl: `gs://${safeDecode(parts[0])}`,
+                    objectPath: safeDecode(parts.slice(1).join('/'))
+                };
             }
         }
 
@@ -1783,31 +1924,22 @@ const tryParseFirebaseStorageObjectPath = (url: string): string | null => {
 const getFirebaseStorageBlobFromUrl = async (url: string): Promise<Blob | null> => {
     const normalized = String(url || '').trim();
     if (!normalized) return null;
+    if (isInlineDataUrl(normalized) || /^blob:/i.test(normalized)) return null;
 
-    const gsMatch = normalized.match(/^gs:\/\/([^/]+)\/(.+)$/i);
-    if (gsMatch?.[1] && gsMatch?.[2]) {
-        try {
-            const bucketStorage = getStorage(firebaseApp, `gs://${gsMatch[1]}`);
-            const ref = storageRef(bucketStorage, gsMatch[2]);
-            return await getBlob(ref);
-        } catch (error) {
-            console.warn('Firebase Storage SDK blob fetch failed for gs:// reference:', normalized, error);
-            return null;
-        }
-    }
-
-    const objectPath = /^https?:\/\//i.test(normalized)
-        ? (isFirebaseStorageDownloadUrlForSdk(normalized) ? tryParseFirebaseStorageObjectPath(normalized) : null)
-        : normalized.replace(/^\/+/, '');
-    if (!objectPath) return null;
+    const reference = isFirebaseStorageDownloadUrlForSdk(normalized) || /^gs:\/\//i.test(normalized) || !/^https?:\/\//i.test(normalized)
+        ? tryResolveFirebaseStorageReference(normalized)
+        : null;
+    if (!reference?.objectPath) return null;
 
     try {
-        const storage = getStorage(firebaseApp);
-        const ref = storageRef(storage, objectPath);
+        const storage = reference.bucketUrl
+            ? getStorage(firebaseApp, reference.bucketUrl)
+            : getStorage(firebaseApp);
+        const ref = storageRef(storage, reference.objectPath);
         return await getBlob(ref);
     } catch (error) {
         // Fall back to native/browser fetch below; some URLs may still require public token access.
-        console.warn('Firebase Storage SDK blob fetch failed for export asset, falling back to URL fetch:', objectPath, error);
+        console.warn('Firebase Storage SDK blob fetch failed for export asset, falling back to URL fetch:', reference.objectPath, error);
         return null;
     }
 };
@@ -1949,6 +2081,7 @@ class EpubAssetCollector {
         this.bySource.set(sourceKey, ref);
         return ref;
     }
+
 }
 
 const renderMathFragmentForEpub = (math: string, displayMode: boolean): string => {
@@ -2332,13 +2465,24 @@ html, body {
 body { padding: 1.05rem 1rem 1.25rem; }
 h1, h2, h3, h4, h5, h6 { margin: 0; line-height: 1.28; }
 p { margin: 0; }
-.cover-page { min-height: 95vh; display: flex; flex-direction: column; gap: 1rem; }
-.cover-top { display: flex; gap: 0.9rem; align-items: flex-start; }
-.cover-image-wrap { width: 96px; flex: 0 0 96px; }
-.cover-image-wrap img { width: 96px; height: 128px; object-fit: cover; border-radius: 3px; display: block; background: #11161d; }
-.cover-meta h1 { font-size: 1.15rem; font-weight: 800; color: #1f2937; margin-top: 0.1rem; }
-.cover-meta .meta-line { color: #4b5563; font-size: 0.8rem; margin-top: 0.2rem; }
-.brand-line { color: #6b7280; font-size: 0.72rem; margin-top: 0.35rem; }
+.cover-page { min-height: 95vh; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.cover-top { display: block; width: 100%; }
+.cover-image-wrap { width: 100%; max-width: 24rem; margin: 0 auto; }
+.cover-image-wrap img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 72vh;
+  object-fit: contain;
+  border-radius: 0.65rem;
+  display: block;
+  background: #11161d;
+  box-shadow: 0 1rem 2rem rgba(17, 22, 29, 0.16);
+}
+.cover-meta { margin-top: 1rem; text-align: center; }
+.cover-meta h1 { font-size: 1.2rem; font-weight: 800; color: #1f2937; margin-top: 0.1rem; }
+.cover-meta .meta-line { color: #4b5563; font-size: 0.8rem; margin-top: 0.28rem; }
+.brand-line { color: #6b7280; font-size: 0.72rem; margin-top: 0.4rem; }
 .cover-divider, .dashed-sep {
   border: 0;
   border-top: 1px dashed #6e8d78;
@@ -2500,7 +2644,7 @@ code {
 .asset-missing {
   border: 1px dashed rgba(110,141,120,0.35);
   border-radius: 0.3rem;
-  padding: 1rem 0.6rem;
+  padding: 2rem 0.8rem;
   color: #6b7280;
   text-align: center;
   font-size: 0.8rem;
@@ -2806,6 +2950,10 @@ const buildEpub = async (course: CourseData, fileNameBase?: string) => {
         `<item id="${escapeXml(item.id)}" href="${escapeXml(item.href)}" media-type="${escapeXml(item.mediaType)}"${item.properties ? ` properties="${escapeXml(item.properties)}"` : ''} />`
     )).join('\n    ');
 
+    const coverMeta = coverImageRef
+        ? `\n    <meta name="cover" content="${escapeXml(coverImageRef.id)}" />`
+        : '';
+
     const opf = `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id" xml:lang="${escapeXml(language)}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -2815,6 +2963,7 @@ const buildEpub = async (course: CourseData, fileNameBase?: string) => {
     <dc:creator>Fortale</dc:creator>
     <dc:publisher>Fortale</dc:publisher>
     <dc:description>${escapeXml(preparedCourse.description || '')}</dc:description>
+    ${coverMeta}
     <meta property="dcterms:modified">${nowIso}</meta>
   </metadata>
   <manifest>
@@ -2880,8 +3029,108 @@ export const exportNodeToEpub = async (course: CourseData, node: TimelineNode) =
     return exportCourseToEpub(singleNodeCourse);
 };
 
+const buildCoverPathCandidatesForExport = (course: CourseData): string[] => {
+    const COVER_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'] as const;
+    const candidates: string[] = [];
+    const pushCandidate = (value: string | null | undefined) => {
+        const normalized = String(value || '').trim().replace(/^\/+/, '');
+        if (!normalized || candidates.includes(normalized)) return;
+        candidates.push(normalized);
+    };
+
+    const pushCoverVariantsForBasePath = (basePath: string | null | undefined) => {
+        const normalizedBase = String(basePath || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+        if (!normalizedBase) return;
+        for (const ext of COVER_EXTENSIONS) {
+            pushCandidate(`${normalizedBase}.${ext}`);
+        }
+    };
+
+    const normalizedCoverUrl = String(course.coverImageUrl || '').trim();
+    const coverRef = tryResolveFirebaseStorageReference(normalizedCoverUrl);
+    if (coverRef?.objectPath) {
+        const normalizedCoverPath = coverRef.objectPath.trim().replace(/^\/+/, '');
+        if (normalizedCoverPath) {
+            pushCandidate(normalizedCoverPath);
+            const withoutExtension = normalizedCoverPath.replace(/\.(?:jpe?g|png|webp|gif)$/i, '');
+            if (withoutExtension !== normalizedCoverPath) {
+                pushCoverVariantsForBasePath(withoutExtension);
+            }
+        }
+    }
+
+    const packageBasePath = String(course.contentPackagePath || '').trim().replace(/\/package\.json$/i, '');
+    if (packageBasePath) {
+        pushCoverVariantsForBasePath(`${packageBasePath}/cover`);
+    }
+
+    const packageRef = tryResolveFirebaseStorageReference(String(course.contentPackageUrl || '').trim());
+    const packageBasePathFromUrl = String(packageRef?.objectPath || '').trim().replace(/\/package\.json$/i, '');
+    if (packageBasePathFromUrl) {
+        pushCoverVariantsForBasePath(`${packageBasePathFromUrl}/cover`);
+    }
+
+    const safeCourseId = String(course.id || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
+    const safeOwnerId = String(course.userId || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
+    if (safeCourseId) {
+        pushCoverVariantsForBasePath(`smartbooks/${safeCourseId}/cover`);
+        if (safeOwnerId) {
+            pushCoverVariantsForBasePath(`smartbooks/${safeOwnerId}/${safeCourseId}/cover`);
+        }
+    }
+
+    return candidates;
+};
+
+const resolveExistingCoverLocationForExport = async (course: CourseData): Promise<string | undefined> => {
+    const resolveExportStorageObjectPath = (value: string): string | null => {
+        const reference = tryResolveFirebaseStorageReference(value);
+        if (!reference?.objectPath) return null;
+        return reference.objectPath.trim().replace(/^\/+/, '') || null;
+    };
+
+    const ensureFirebaseStorageObjectDownloadUrl = async (value: string): Promise<string | null> => {
+        const objectPath = resolveExportStorageObjectPath(value);
+        if (!objectPath) return null;
+        try {
+            return await getDownloadURL(storageRef(getStorage(firebaseApp), objectPath));
+        } catch {
+            return null;
+        }
+    };
+
+    const normalizedCoverUrl = String(course.coverImageUrl || '').trim();
+    if (/^data:image\//i.test(normalizedCoverUrl)) return normalizedCoverUrl;
+
+    if (normalizedCoverUrl) {
+        if (/^https?:\/\//i.test(normalizedCoverUrl) && !isFirebaseStorageDownloadUrlForSdk(normalizedCoverUrl)) {
+            return normalizedCoverUrl;
+        }
+        const existingStorageDownloadUrl = await ensureFirebaseStorageObjectDownloadUrl(normalizedCoverUrl);
+        if (existingStorageDownloadUrl) return existingStorageDownloadUrl;
+        if (/^https?:\/\//i.test(normalizedCoverUrl)) {
+            return normalizedCoverUrl;
+        }
+    }
+
+    for (const path of buildCoverPathCandidatesForExport(course)) {
+        const existingStorageDownloadUrl = await ensureFirebaseStorageObjectDownloadUrl(path);
+        if (existingStorageDownloadUrl) return existingStorageDownloadUrl;
+    }
+
+    return undefined;
+};
+
 const prepareCourseForRichExport = async (course: CourseData): Promise<CourseData> => {
     // Hard rule: export never triggers AI generation/repair.
-    // Export uses only the content already present in the Fortale package.
-    return course;
+    // Export may only resolve already-existing packaged assets like the saved cover.
+    const resolvedCoverImageUrl = await resolveExistingCoverLocationForExport(course);
+    if (!resolvedCoverImageUrl || resolvedCoverImageUrl === course.coverImageUrl) {
+        return course;
+    }
+
+    return {
+        ...course,
+        coverImageUrl: resolvedCoverImageUrl
+    };
 };

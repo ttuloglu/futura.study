@@ -7,7 +7,8 @@ import {
   StickyNoteData,
   SmartBookAgeGroup,
   CreditActionType,
-  CreditWallet
+  CreditWallet,
+  CourseOpenUiState
 } from './types';
 import { normalizeSmartBookAgeGroup } from './utils/smartbookAgeGroup';
 import BottomNav from './components/BottomNav';
@@ -24,13 +25,15 @@ import {
 } from './data/appLanguages';
 import { LEGAL_CONSENT_VERSION, defaultPrivacyPolicy, defaultTermsPolicy } from './data/policies';
 import { appCheckReady, auth, db, functions } from './firebaseConfig';
-import { collection, getDoc, getDocs, doc, setDoc, query, orderBy, where, deleteDoc } from 'firebase/firestore';
+import { collection, getDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { deleteUser, onAuthStateChanged, signOut, updateProfile, type User as FirebaseUser } from 'firebase/auth';
-import { getBlob, getDownloadURL, getStorage, ref as storageRef, uploadBytes, uploadString } from 'firebase/storage';
+import { getBlob, getDownloadURL, getStorage, listAll, ref as storageRef, uploadBytes, uploadString } from 'firebase/storage';
+import JSZip from 'jszip';
 import {
   CREDIT_EXHAUSTED_EVENT,
   CREDIT_WALLET_UPDATED_EVENT,
+  generateCourseCover,
   generateLectureContent,
   generateRemedialContent,
   generateSummaryCard
@@ -45,7 +48,6 @@ import {
 const HomeView = lazy(() => import('./views/HomeView'));
 const CourseFlowView = lazy(() => import('./views/CourseFlowView'));
 const PersonalGrowthView = lazy(() => import('./views/PersonalGrowthView'));
-const ExploreView = lazy(() => import('./views/ExploreView'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const PrivacyView = lazy(() => import('./views/PrivacyView'));
 const TermsView = lazy(() => import('./views/TermsView'));
@@ -73,6 +75,15 @@ const MAX_LOCAL_COURSE_CACHE_ITEMS = 10;
 const MAX_LOCAL_FULL_COURSE_CACHE_ITEMS = 6;
 const MAX_LOCAL_INLINE_COVER_CACHE_ITEMS = 4;
 const BACKGROUND_SMARTBOOK_POLL_MS = 300;
+const SMARTBOOK_PREFETCH_RETRY_COOLDOWN_MS = 15_000;
+const SMARTBOOK_COVER_REPAIR_RETRY_COOLDOWN_MS = 3500;
+const SMARTBOOK_HYDRATION_PREFETCH_CONCURRENCY = 4;
+const SMARTBOOK_EXPORT_HYDRATION_WAIT_MS = 5000;
+const SMARTBOOK_PACKAGE_FETCH_TIMEOUT_MS = 40_000;
+const SMARTBOOK_STORAGE_BLOB_TIMEOUT_MS = 30_000;
+const SMARTBOOK_STORAGE_URL_TIMEOUT_MS = 20_000;
+const SMARTBOOK_BACKEND_TIMEOUT_MS = 45_000;
+const SMARTBOOK_OPEN_HYDRATION_TIMEOUT_MS = 65_000;
 const READING_WORDS_PER_MINUTE = 180;
 const CREDIT_WEBHOOK_SYNC_TIMEOUT_MS = 45_000;
 const CREDIT_WEBHOOK_SYNC_POLL_MS = 1_250;
@@ -106,6 +117,54 @@ function FullScreenFallback({ message }: { message: string }) {
   );
 }
 
+function markRetriableAttemptWithCooldown(target: Set<string>, key: string, cooldownMs: number): boolean {
+  if (target.has(key)) return false;
+  target.add(key);
+  window.setTimeout(() => {
+    target.delete(key);
+  }, Math.max(500, cooldownMs));
+  return true;
+}
+
+async function runTasksWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  const safeConcurrency = Math.max(1, Math.min(concurrency, items.length));
+  let currentIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: safeConcurrency }, async () => {
+      while (true) {
+        const nextIndex = currentIndex;
+        currentIndex += 1;
+        if (nextIndex >= items.length) return;
+        await worker(items[nextIndex]);
+      }
+    })
+  );
+}
+
+function withPromiseTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(message));
+    }, Math.max(1, timeoutMs));
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 type StoredCourse = Omit<CourseData, 'createdAt' | 'lastActivity'> & {
   createdAt: string;
   lastActivity: string;
@@ -136,27 +195,9 @@ type CreditGatewayResponse = {
   receiptId?: string;
 };
 
-type ClaimLegacySmartBookDataResponse = {
-  success?: boolean;
-  migratedCourseCount?: number;
-  migratedStickyCount?: number;
-  migratedStorageObjectCount?: number;
-  sourceUids?: string[];
-};
-
-type ResolveSmartBookCourseRequest = {
-  courseId: string;
-};
-
-type ResolveSmartBookCourseResponse = {
-  success?: boolean;
-  course?: Record<string, unknown> | null;
-  source?: 'storage' | 'topLevel' | 'privateFull' | null;
-};
-
 type ListMySmartBookCoursesResponse = {
   success?: boolean;
-  courses?: Record<string, unknown>[];
+  books?: Record<string, unknown>[];
 };
 
 type LegalConsentState = 'unknown' | 'required' | 'accepted';
@@ -180,14 +221,14 @@ const MARKDOWN_DATA_IMAGE_CAPTURE_RE = /!\[([^\]]*)\]\(\s*(data:image\/[^)\s]+)\
 const pendingLocalCourseWrites = new Map<string, CourseData[]>();
 const localCourseWriteTimers = new Map<string, number>();
 const localCourseCacheWarned = new Set<string>();
+const localCourseCacheDisabledByQuota = new Set<string>();
+const missingNativeFullCourseCachePaths = new Set<string>();
+const missingNativeFullCourseCacheDirs = new Set<string>();
+const nativeFullCourseCacheRevisionByPath = new Map<string, string>();
+const nativeFullCourseCacheWritePromiseByPath = new Map<string, Promise<void>>();
 const creditGateway = httpsCallable<CreditGatewayRequest, CreditGatewayResponse>(functions, 'creditGateway', {
   timeout: 45_000
 });
-const resolveSmartBookCourse = httpsCallable<ResolveSmartBookCourseRequest, ResolveSmartBookCourseResponse>(
-  functions,
-  'resolveSmartBookCourse',
-  { timeout: 45_000 }
-);
 const listMySmartBookCourses = httpsCallable<Record<string, never>, ListMySmartBookCoursesResponse>(
   functions,
   'listMySmartBookCourses',
@@ -294,8 +335,7 @@ function buildCourseMetadataPayload(course: CourseData): Record<string, unknown>
   const payload: Record<string, unknown> = {
     topic: resolveCourseTopic(course.topic),
     lastActivity: course.lastActivity,
-    createdAt: course.createdAt,
-    isPublic: course.isPublic ?? true
+    createdAt: course.createdAt
   };
 
   if (typeof course.description === 'string') payload.description = course.description;
@@ -318,6 +358,176 @@ function buildCourseMetadataPayload(course: CourseData): Record<string, unknown>
   if (typeof course.userId === 'string') payload.userId = course.userId;
 
   return payload;
+}
+
+function extractBundleVersionFromPath(path: string | undefined): number {
+  const rawPath = String(path || '').trim();
+  const match = rawPath.match(/\/v(\d+)\/book\.zip$/i);
+  const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return parsed;
+}
+
+function isBookZipStoragePath(value: unknown): boolean {
+  return typeof value === 'string' && /\/book\.zip$/i.test(value.trim());
+}
+
+function normalizeStorageObjectPath(value: unknown): string | undefined {
+  const normalized = String(value || '').trim().replace(/^\/+/, '');
+  return normalized || undefined;
+}
+
+function getBookPackagePathCandidates(value: unknown): string[] {
+  const normalized = normalizeStorageObjectPath(value);
+  if (!normalized) return [];
+  const candidates: string[] = [];
+  const push = (nextValue: string | undefined) => {
+    const next = normalizeStorageObjectPath(nextValue);
+    if (!next || candidates.includes(next)) return;
+    candidates.push(next);
+  };
+
+  if (/\/package\.json$/i.test(normalized)) {
+    const withoutFile = normalized.replace(/\/package\.json$/i, '');
+    if (/\/v\d+$/i.test(withoutFile)) {
+      push(`${withoutFile}/book.zip`);
+    } else {
+      push(`${withoutFile}/v1/book.zip`);
+      push(`${withoutFile}/book.zip`);
+    }
+    // Keep legacy JSON fallback last for old snapshots.
+    push(normalized);
+    return candidates;
+  }
+
+  if (/\/book\.json$/i.test(normalized)) {
+    const withoutFile = normalized.replace(/\/book\.json$/i, '');
+    if (/\/v\d+$/i.test(withoutFile)) {
+      push(`${withoutFile}/book.zip`);
+    } else {
+      push(`${withoutFile}/v1/book.zip`);
+    }
+    push(normalized);
+    return candidates;
+  }
+
+  push(normalized);
+  return candidates;
+}
+
+function resolvePreferredBookZipStoragePath(...values: Array<unknown>): string | undefined {
+  for (const value of values) {
+    const candidates = getBookPackagePathCandidates(value);
+    const zipCandidate = candidates.find((candidate) => isBookZipStoragePath(candidate));
+    if (zipCandidate) return zipCandidate;
+  }
+  return undefined;
+}
+
+function normalizeCourseStatus(value: unknown): CourseData['status'] | undefined {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'processing' || normalized === 'ready' || normalized === 'failed') {
+    return normalized;
+  }
+  return undefined;
+}
+
+function hasBookZipBundlePath(course: CourseData | null | undefined): boolean {
+  if (!course) return false;
+  if (isBookZipStoragePath(course.bundle?.path)) return true;
+  if (isBookZipStoragePath(course.contentPackagePath)) return true;
+  return false;
+}
+
+function shouldKeepSingleBundleStoredCourse(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const item = raw as Record<string, unknown>;
+  if (isBookZipStoragePath(item.contentPackagePath)) return true;
+  const bundle = item.bundle;
+  if (bundle && typeof bundle === 'object' && isBookZipStoragePath((bundle as Record<string, unknown>).path)) {
+    return true;
+  }
+  const status = normalizeCourseStatus(item.status);
+  if (status === 'processing' || status === 'failed') return true;
+
+  // Safety valve: keep private "ready" entries even if bundle metadata is
+  // temporarily missing, so hard refresh does not permanently drop newly
+  // generated books before metadata backfill completes.
+  if (status === 'ready') {
+    const hasOwner = typeof item.userId === 'string' && item.userId.trim().length > 0;
+    return hasOwner;
+  }
+
+  return false;
+}
+
+function buildBookDocumentPayload(
+  uid: string,
+  courseId: string,
+  course: CourseData
+): Record<string, unknown> {
+  const now = new Date();
+  const title = resolveCourseTopic(course.topic);
+  const packagePath = resolvePreferredBookZipStoragePath(course.bundle?.path, course.contentPackagePath) || '';
+  const generatedAt = (
+    course.contentPackageUpdatedAt instanceof Date &&
+    !Number.isNaN(course.contentPackageUpdatedAt.getTime())
+  )
+    ? course.contentPackageUpdatedAt
+    : now;
+  const existingBundleVersion = Number.isFinite(course.bundle?.version)
+    ? Math.max(1, Math.floor(Number(course.bundle?.version)))
+    : undefined;
+  const bundleVersion = existingBundleVersion || extractBundleVersionFromPath(packagePath);
+  const includesPodcast = Array.isArray(course.nodes)
+    ? course.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim()))
+    : false;
+  const nextCover: Record<string, unknown> = {};
+  if (typeof course.cover?.path === 'string' && course.cover.path.trim()) {
+    nextCover.path = course.cover.path.trim();
+  }
+  if (typeof course.cover?.url === 'string' && course.cover.url.trim()) {
+    nextCover.url = course.cover.url.trim();
+  } else if (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim()) {
+    nextCover.url = course.coverImageUrl.trim();
+  }
+
+  const bundle = packagePath
+    ? {
+      path: packagePath,
+      version: bundleVersion,
+      checksumSha256: typeof course.bundle?.checksumSha256 === 'string' ? course.bundle.checksumSha256 : undefined,
+      sizeBytes: Number.isFinite(course.bundle?.sizeBytes) ? course.bundle?.sizeBytes : undefined,
+      includesPodcast: course.bundle?.includesPodcast ?? includesPodcast,
+      generatedAt
+    }
+    : undefined;
+  const normalizedStatus = normalizeCourseStatus(course.status);
+  const status: CourseData['status'] = bundle
+    ? (normalizedStatus || 'ready')
+    : (normalizedStatus === 'failed' ? 'failed' : 'processing');
+
+  return {
+    id: courseId,
+    userId: uid,
+    title,
+    description: course.description,
+    creatorName: course.creatorName,
+    language: course.language,
+    ageGroup: course.ageGroup,
+    bookType: course.bookType,
+    subGenre: course.subGenre,
+    targetPageCount: Number.isFinite(course.targetPageCount) ? course.targetPageCount : undefined,
+    category: course.category,
+    searchTags: Array.isArray(course.searchTags) ? course.searchTags : undefined,
+    totalDuration: course.totalDuration,
+    status,
+    cover: Object.keys(nextCover).length > 0 ? nextCover : undefined,
+    bundle,
+    createdAt: course.createdAt,
+    updatedAt: now,
+    lastActivity: course.lastActivity
+  };
 }
 
 function stripUndefinedDeepForFirestore<T>(value: T): T {
@@ -366,20 +576,8 @@ function isCapacitorNativeRuntime(): boolean {
 }
 
 function readSharedSmartBookIdFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const url = new URL(window.location.href);
-    const raw = url.searchParams.get(SMARTBOOK_SHARE_QUERY_KEY);
-    const source = url.searchParams.get(SMARTBOOK_SHARE_SOURCE_QUERY_KEY);
-    if (!raw) return null;
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    // Accept explicit library links and backward-compatible plain smartbook param links.
-    if (source && source !== SMARTBOOK_SHARE_SOURCE_VALUE) return trimmed;
-    return trimmed;
-  } catch {
-    return null;
-  }
+  // Legacy community/library deep-link flow is disabled.
+  return null;
 }
 
 function normalizeAppPathname(pathname: string): string {
@@ -527,6 +725,32 @@ function clearLocalUserDataCaches(uid: string): void {
   localCourseWriteTimers.delete(uid);
   pendingLocalCourseWrites.delete(uid);
   localCourseCacheWarned.delete(uid);
+  localCourseCacheDisabledByQuota.delete(uid);
+
+  const nativeCachePathPrefix = `${getNativeFullCourseCacheDir(uid)}/`;
+  for (const cachePath of Array.from(missingNativeFullCourseCachePaths)) {
+    if (cachePath.startsWith(nativeCachePathPrefix)) {
+      missingNativeFullCourseCachePaths.delete(cachePath);
+    }
+  }
+  for (const cacheDir of Array.from(missingNativeFullCourseCacheDirs)) {
+    if (cacheDir.startsWith(nativeCachePathPrefix)) {
+      missingNativeFullCourseCacheDirs.delete(cacheDir);
+    }
+  }
+  for (const cachePath of Array.from(nativeFullCourseCacheRevisionByPath.keys())) {
+    if (cachePath.startsWith(nativeCachePathPrefix)) {
+      nativeFullCourseCacheRevisionByPath.delete(cachePath);
+    }
+  }
+  for (const [cachePath, writePromise] of Array.from(nativeFullCourseCacheWritePromiseByPath.entries())) {
+    if (cachePath.startsWith(nativeCachePathPrefix)) {
+      void writePromise.catch(() => {
+        // Ignore in-flight write failures while clearing cache state.
+      });
+      nativeFullCourseCacheWritePromiseByPath.delete(cachePath);
+    }
+  }
 
   try {
     window.localStorage.removeItem(getLocalCoursesKey(uid));
@@ -692,6 +916,151 @@ function tryParseFirebaseStorageObjectPath(url: string): string | null {
   }
 }
 
+function inferMimeTypeFromAssetPath(pathValue: string): string {
+  const normalized = String(pathValue || '').toLowerCase();
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.gif')) return 'image/gif';
+  if (normalized.endsWith('.svg')) return 'image/svg+xml';
+  if (normalized.endsWith('.mp3')) return 'audio/mpeg';
+  if (normalized.endsWith('.wav')) return 'audio/wav';
+  if (normalized.endsWith('.ogg')) return 'audio/ogg';
+  if (normalized.endsWith('.aac')) return 'audio/aac';
+  if (normalized.endsWith('.m4a')) return 'audio/mp4';
+  if (normalized.endsWith('.webm')) return 'audio/webm';
+  if (normalized.endsWith('.json')) return 'application/json';
+  return 'application/octet-stream';
+}
+
+async function hydrateCourseFromBundleBlob(
+  courseId: string,
+  bundleBlob: Blob,
+  urlOverride?: string,
+  pathOverride?: string
+): Promise<CourseData | null> {
+  const zip = await JSZip.loadAsync(await bundleBlob.arrayBuffer());
+  const manifestFile = zip.file('manifest.json');
+  if (!manifestFile) return null;
+
+  const manifestRaw = JSON.parse(await manifestFile.async('string')) as Record<string, unknown>;
+  const imageAssetCache = new Map<string, string>();
+  const audioAssetCache = new Map<string, string>();
+
+  const resolveAssetImageDataUrl = async (rawPath: string): Promise<string | undefined> => {
+    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
+    if (!normalizedPath) return undefined;
+    const cached = imageAssetCache.get(normalizedPath);
+    if (cached) return cached;
+    const assetFile = zip.file(normalizedPath);
+    if (!assetFile) return undefined;
+    const base64 = await assetFile.async('base64');
+    const mimeType = inferMimeTypeFromAssetPath(normalizedPath);
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    imageAssetCache.set(normalizedPath, dataUrl);
+    return dataUrl;
+  };
+
+  const resolveAssetAudioUrl = async (rawPath: string): Promise<string | undefined> => {
+    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
+    if (!normalizedPath) return undefined;
+    const cached = audioAssetCache.get(normalizedPath);
+    if (cached) return cached;
+    const assetFile = zip.file(normalizedPath);
+    if (!assetFile) return undefined;
+    const blob = await assetFile.async('blob');
+    const objectUrl = URL.createObjectURL(blob);
+    audioAssetCache.set(normalizedPath, objectUrl);
+    return objectUrl;
+  };
+
+  const rewriteMarkdownImageUrls = async (markdown: string | undefined): Promise<string | undefined> => {
+    if (typeof markdown !== 'string' || !markdown.trim()) return markdown;
+    const regex = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?\s*\)/g;
+    let output = '';
+    let cursor = 0;
+    let match: RegExpExecArray | null = regex.exec(markdown);
+    while (match) {
+      const full = match[0];
+      const alt = match[1] || '';
+      const source = match[2] || '';
+      let replacement = full;
+      if (
+        source &&
+        !/^data:/i.test(source) &&
+        !/^https?:\/\//i.test(source) &&
+        !source.startsWith('blob:')
+      ) {
+        const assetUrl = await resolveAssetImageDataUrl(source);
+        if (assetUrl) {
+          const escapedAlt = alt.replace(/]/g, '\\]');
+          replacement = `![${escapedAlt}](${assetUrl})`;
+        }
+      }
+      output += markdown.slice(cursor, match.index) + replacement;
+      cursor = match.index + full.length;
+      match = regex.exec(markdown);
+    }
+    output += markdown.slice(cursor);
+    return output;
+  };
+
+  const normalizedNodes = Array.isArray(manifestRaw.nodes)
+    ? await Promise.all(manifestRaw.nodes.map(async (rawNode, index) => {
+      const node = (rawNode && typeof rawNode === 'object')
+        ? rawNode as Record<string, unknown>
+        : {};
+      const podcastAudioUrlRaw = typeof node.podcastAudioUrl === 'string' ? node.podcastAudioUrl : undefined;
+      const resolvedPodcastAudioUrl = (
+        podcastAudioUrlRaw &&
+        !/^https?:\/\//i.test(podcastAudioUrlRaw) &&
+        !/^data:/i.test(podcastAudioUrlRaw) &&
+        !podcastAudioUrlRaw.startsWith('blob:')
+      )
+        ? await resolveAssetAudioUrl(podcastAudioUrlRaw)
+        : podcastAudioUrlRaw;
+      return {
+        id: typeof node.id === 'string' ? node.id : `node-${index + 1}`,
+        title: typeof node.title === 'string' ? node.title : '',
+        description: typeof node.description === 'string' ? node.description : '',
+        type: node.type,
+        status: node.status,
+        duration: typeof node.duration === 'string' ? node.duration : undefined,
+        content: await rewriteMarkdownImageUrls(typeof node.content === 'string' ? node.content : undefined),
+        podcastScript: typeof node.podcastScript === 'string' ? node.podcastScript : undefined,
+        podcastAudioUrl: resolvedPodcastAudioUrl,
+        questions: Array.isArray(node.questions) ? node.questions : undefined
+      } as TimelineNode;
+    }))
+    : [];
+
+  const rawCover = (manifestRaw.cover && typeof manifestRaw.cover === 'object')
+    ? manifestRaw.cover as Record<string, unknown>
+    : null;
+  const coverPath = typeof rawCover?.path === 'string' ? rawCover.path : undefined;
+  const coverDataUrl = coverPath ? await resolveAssetImageDataUrl(coverPath) : undefined;
+
+  const materializedRawCourse: Record<string, unknown> = {
+    ...manifestRaw,
+    id: typeof manifestRaw.id === 'string' ? manifestRaw.id : courseId,
+    topic: resolveCourseTopic(manifestRaw.topic, manifestRaw.title, manifestRaw.bookTitle),
+    coverImageUrl: coverDataUrl,
+    contentPackagePath: pathOverride,
+    contentPackageUrl: urlOverride,
+    contentPackageUpdatedAt: typeof manifestRaw.generatedAt === 'string'
+      ? manifestRaw.generatedAt
+      : new Date().toISOString(),
+    status: 'ready',
+    createdAt: typeof manifestRaw.createdAt === 'string' ? manifestRaw.createdAt : new Date().toISOString(),
+    lastActivity: typeof manifestRaw.lastActivity === 'string'
+      ? manifestRaw.lastActivity
+      : (typeof manifestRaw.generatedAt === 'string' ? manifestRaw.generatedAt : new Date().toISOString()),
+    nodes: normalizedNodes
+  };
+
+  return fromStoredCourse(materializedRawCourse);
+}
+
 function sanitizeNodeForLocalStorage(node: TimelineNode): TimelineNode {
   const nextNode: TimelineNode = { ...node };
 
@@ -712,9 +1081,17 @@ function hasRichNodeContent(node: TimelineNode | null | undefined): boolean {
   );
 }
 
-function hasPersistableCourseContent(course: CourseData | null | undefined): boolean {
+function hasCompleteLectureContent(course: CourseData | null | undefined): boolean {
   if (!course || !Array.isArray(course.nodes) || course.nodes.length === 0) return false;
-  return course.nodes.some((node) => hasRichNodeContent(node));
+  const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
+  if (lectureNodes.length === 0) {
+    return course.nodes.some((node) => hasRichNodeContent(node));
+  }
+  return lectureNodes.every((node) => typeof node.content === 'string' && node.content.trim().length > 0);
+}
+
+function hasPersistableCourseContent(course: CourseData | null | undefined): boolean {
+  return hasCompleteLectureContent(course);
 }
 
 function courseNeedsFullContentRepair(course: CourseData | null | undefined): boolean {
@@ -733,6 +1110,14 @@ function courseNeedsHydration(course: CourseData | null | undefined): boolean {
   return (
     isCourseProgressOnly(course) ||
     !course?.coverImageUrl ||
+    courseNeedsFullContentRepair(course) ||
+    hasMissingPrimaryNodeContent(course)
+  );
+}
+
+function courseNeedsContentHydration(course: CourseData | null | undefined): boolean {
+  return (
+    isCourseProgressOnly(course) ||
     courseNeedsFullContentRepair(course) ||
     hasMissingPrimaryNodeContent(course)
   );
@@ -818,6 +1203,7 @@ function toQuotaSafeStoredCourse(course: CourseData): StoredCourse {
 }
 
 function writeFullCoursesToLocal(uid: string, courses: CourseData[]): void {
+  if (localCourseCacheDisabledByQuota.has(uid)) return;
   const storageKey = getLocalFullCoursesKey(uid);
   const candidates = sortCoursesByLastActivity(courses)
     .filter((course) => hasPersistableCourseContent(course))
@@ -839,10 +1225,16 @@ function writeFullCoursesToLocal(uid: string, courses: CourseData[]): void {
       return;
     } catch (error) {
       if (!isQuotaExceededLocalStorageError(error)) {
-        console.warn('Full course local cache write skipped.');
+        console.warn('Full book local cache write skipped.');
         return;
       }
     }
+  }
+
+  localCourseCacheDisabledByQuota.add(uid);
+  if (!localCourseCacheWarned.has(uid)) {
+    localCourseCacheWarned.add(uid);
+    console.warn('Book local cache disabled (storage quota exceeded). Firebase sync continues.');
   }
 
   try {
@@ -852,44 +1244,234 @@ function writeFullCoursesToLocal(uid: string, courses: CourseData[]): void {
   }
 }
 
-function getNativeFullCourseCachePath(uid: string, courseId: string): string {
-  const safeUid = String(uid || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
-  const safeCourseId = String(courseId || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
-  return `${NATIVE_FULL_COURSE_CACHE_DIR}/${safeUid}/${safeCourseId}.json`;
+function getNativeFullCourseCacheSafeUid(uid: string): string {
+  return String(uid || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
+}
+
+function getNativeFullCourseCacheSafeCourseId(courseId: string): string {
+  return String(courseId || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
+}
+
+function getNativeFullCourseCacheDir(uid: string): string {
+  return `${NATIVE_FULL_COURSE_CACHE_DIR}/${getNativeFullCourseCacheSafeUid(uid)}`;
+}
+
+function getNativeFullCourseLegacyCachePath(uid: string, courseId: string): string {
+  return `${getNativeFullCourseCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}.json`;
+}
+
+function getNativeFullCourseCachePath(uid: string, courseId: string, version: number): string {
+  const safeVersion = Number.isFinite(version) ? Math.max(1, Math.floor(version)) : 1;
+  return `${getNativeFullCourseCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}/v${safeVersion}/book.json`;
+}
+
+function resolveNativeCourseCacheVersionFromPath(path: string | undefined): number {
+  const rawPath = String(path || '').trim();
+  const match = rawPath.match(/\/v(\d+)\/book\.zip$/i);
+  const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return parsed;
+}
+
+function resolveNativeCourseCacheVersion(course: CourseData): number {
+  if (Number.isFinite(course.bundle?.version)) {
+    return Math.max(1, Math.floor(Number(course.bundle?.version)));
+  }
+  return resolveNativeCourseCacheVersionFromPath(course.contentPackagePath);
+}
+
+function getNativeFullCourseNodeRevision(node: TimelineNode): string {
+  const normalizedContent = typeof node.content === 'string'
+    ? stripEmbeddedDataImagesFromMarkdown(node.content).trim()
+    : '';
+  const normalizedPodcastScript = typeof node.podcastScript === 'string'
+    ? node.podcastScript.trim()
+    : '';
+  const normalizedPodcastAudioUrl = typeof node.podcastAudioUrl === 'string'
+    ? node.podcastAudioUrl.trim()
+    : '';
+  const questionCount = Array.isArray(node.questions) ? node.questions.length : 0;
+
+  return [
+    node.id,
+    node.type,
+    node.title || '',
+    node.description || '',
+    node.duration || '',
+    normalizedContent ? simpleStableHash(normalizedContent) : '',
+    normalizedPodcastScript ? simpleStableHash(normalizedPodcastScript) : '',
+    normalizedPodcastAudioUrl ? simpleStableHash(normalizedPodcastAudioUrl) : '',
+    String(questionCount)
+  ].join(':');
+}
+
+function getNativeFullCourseCacheRevision(course: CourseData): string {
+  const normalizedCover = (
+    typeof course.coverImageUrl === 'string' &&
+    !DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl)
+  )
+    ? course.coverImageUrl.trim()
+    : '';
+  const packageUpdatedAt = (
+    course.contentPackageUpdatedAt instanceof Date &&
+    !Number.isNaN(course.contentPackageUpdatedAt.getTime())
+  )
+    ? course.contentPackageUpdatedAt.toISOString()
+    : '';
+  const packageMarker = [
+    course.contentPackagePath || '',
+    course.contentPackageUrl || '',
+    packageUpdatedAt,
+    normalizedCover
+  ].join('|');
+  const nodeMarker = Array.isArray(course.nodes)
+    ? course.nodes.map(getNativeFullCourseNodeRevision).join('|')
+    : '';
+
+  return simpleStableHash(`${packageMarker}|${nodeMarker}`);
+}
+
+function isNativeFilesystemMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return (
+    /OS-PLUG-FILE-0008/i.test(message) ||
+    /does not exist/i.test(message) ||
+    /failed because file/i.test(message)
+  );
+}
+
+function isNativeFilesystemAlreadyExistsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return (
+    /OS-PLUG-FILE-0010/i.test(message) ||
+    /already exists/i.test(message)
+  );
 }
 
 async function writeFullCourseToNativeCache(uid: string, course: CourseData): Promise<void> {
   if (!isCapacitorNativeRuntime()) return;
   if (!hasPersistableCourseContent(course)) return;
+  const cacheVersion = resolveNativeCourseCacheVersion(course);
+  const cachePath = getNativeFullCourseCachePath(uid, course.id, cacheVersion);
+  const courseCacheDir = `${getNativeFullCourseCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(course.id)}`;
+  const nextRevision = getNativeFullCourseCacheRevision(course);
+
+  if (nativeFullCourseCacheRevisionByPath.get(cachePath) === nextRevision) {
+    return;
+  }
+
+  const existingWrite = nativeFullCourseCacheWritePromiseByPath.get(cachePath);
+  if (existingWrite) {
+    try {
+      await existingWrite;
+    } catch {
+      // Ignore in-flight write failures and retry if needed.
+    }
+    if (nativeFullCourseCacheRevisionByPath.get(cachePath) === nextRevision) {
+      return;
+    }
+  }
+
+  const serializedCourse = JSON.stringify(toStoredCourse(course));
+  const writePromise = (async () => {
+    try {
+      await Filesystem.writeFile({
+        path: cachePath,
+        data: serializedCourse,
+        directory: Directory.Data,
+        encoding: Encoding.UTF8,
+        recursive: true
+      });
+      missingNativeFullCourseCachePaths.delete(cachePath);
+      missingNativeFullCourseCacheDirs.delete(courseCacheDir);
+      nativeFullCourseCacheRevisionByPath.set(cachePath, nextRevision);
+    } catch {
+      // Ignore native cache failures.
+    }
+  })();
+
+  nativeFullCourseCacheWritePromiseByPath.set(cachePath, writePromise);
   try {
-    await Filesystem.writeFile({
-      path: getNativeFullCourseCachePath(uid, course.id),
-      data: JSON.stringify(toStoredCourse(course)),
-      directory: Directory.Data,
-      encoding: Encoding.UTF8,
-      recursive: true
-    });
-  } catch {
-    // Ignore native cache failures.
+    await writePromise;
+  } finally {
+    if (nativeFullCourseCacheWritePromiseByPath.get(cachePath) === writePromise) {
+      nativeFullCourseCacheWritePromiseByPath.delete(cachePath);
+    }
   }
 }
 
-async function readFullCourseFromNativeCache(uid: string, courseId: string): Promise<CourseData | null> {
-  if (!isCapacitorNativeRuntime()) return null;
+async function listNativeFullCourseCacheVersions(uid: string, courseId: string): Promise<number[]> {
+  if (!isCapacitorNativeRuntime()) return [];
+  const courseCacheDir = `${getNativeFullCourseCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}`;
+  if (missingNativeFullCourseCacheDirs.has(courseCacheDir)) return [];
   try {
-    const result = await Filesystem.readFile({
-      path: getNativeFullCourseCachePath(uid, courseId),
-      directory: Directory.Data,
-      encoding: Encoding.UTF8
+    const result = await Filesystem.readdir({
+      path: courseCacheDir,
+      directory: Directory.Data
     });
-    const raw = typeof result.data === 'string' ? result.data : '';
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const course = fromStoredCourse(parsed);
-    return course && hasPersistableCourseContent(course) ? course : null;
-  } catch {
-    return null;
+    const versions = (result.files || [])
+      .map((entry) => (typeof entry === 'string' ? entry : entry?.name || ''))
+      .map((name) => {
+        const match = String(name).match(/^v(\d+)$/i);
+        return match ? Number.parseInt(match[1], 10) : Number.NaN;
+      })
+      .filter((value) => Number.isFinite(value) && value >= 1)
+      .map((value) => Math.floor(value));
+    versions.sort((left, right) => right - left);
+    missingNativeFullCourseCacheDirs.delete(courseCacheDir);
+    return versions;
+  } catch (error) {
+    if (isNativeFilesystemMissingError(error)) {
+      missingNativeFullCourseCacheDirs.add(courseCacheDir);
+    }
+    return [];
   }
+}
+
+async function readFullCourseFromNativeCache(uid: string, courseId: string, versionHint?: number): Promise<CourseData | null> {
+  if (!isCapacitorNativeRuntime()) return null;
+  const candidatePaths: string[] = [];
+  const pushCandidate = (path: string) => {
+    if (!path || candidatePaths.includes(path)) return;
+    candidatePaths.push(path);
+  };
+
+  const hintedVersion = Number.isFinite(versionHint) ? Math.max(1, Math.floor(Number(versionHint))) : undefined;
+  if (hintedVersion) {
+    pushCandidate(getNativeFullCourseCachePath(uid, courseId, hintedVersion));
+  }
+
+  const knownVersions = await listNativeFullCourseCacheVersions(uid, courseId);
+  for (const version of knownVersions) {
+    pushCandidate(getNativeFullCourseCachePath(uid, courseId, version));
+  }
+
+  // Backward compatibility: old single-file cache layout.
+  pushCandidate(getNativeFullCourseLegacyCachePath(uid, courseId));
+
+  for (const cachePath of candidatePaths) {
+    if (missingNativeFullCourseCachePaths.has(cachePath)) continue;
+    try {
+      const result = await Filesystem.readFile({
+        path: cachePath,
+        directory: Directory.Data,
+        encoding: Encoding.UTF8
+      });
+      const raw = typeof result.data === 'string' ? result.data : '';
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const course = fromStoredCourse(parsed);
+      if (!course || !hasPersistableCourseContent(course)) continue;
+      missingNativeFullCourseCachePaths.delete(cachePath);
+      return course;
+    } catch (error) {
+      if (isNativeFilesystemMissingError(error)) {
+        missingNativeFullCourseCachePaths.add(cachePath);
+        nativeFullCourseCacheRevisionByPath.delete(cachePath);
+      }
+    }
+  }
+  return null;
 }
 
 async function readFullCoursesFromNativeCache(uid: string, courseIds: string[]): Promise<Map<string, CourseData>> {
@@ -910,8 +1492,13 @@ function readFullCoursesFromLocal(uid: string): Map<string, CourseData> {
 
     return new Map(
       parsed
+        .filter((item) => shouldKeepSingleBundleStoredCourse(item))
         .map(fromStoredCourse)
-        .filter((course): course is CourseData => course !== null && hasPersistableCourseContent(course))
+        .filter((course): course is CourseData => (
+          course !== null &&
+          hasPersistableCourseContent(course) &&
+          hasBookZipBundlePath(course)
+        ))
         .map((course) => [course.id, course] as const)
     );
   } catch {
@@ -931,8 +1518,26 @@ function isQuotaExceededLocalStorageError(error: unknown): boolean {
 
 function fromStoredCourse(raw: unknown): CourseData | null {
   if (typeof raw !== 'object' || raw === null) return null;
-  const item = raw as Partial<StoredCourse>;
-  if (!item.id || !item.nodes || !item.createdAt || !item.lastActivity) return null;
+  const item = raw as Partial<StoredCourse> & Record<string, unknown>;
+  if (!item.id || !item.createdAt || !item.lastActivity) return null;
+  const bundlePayload = (item.bundle && typeof item.bundle === 'object')
+    ? item.bundle as Record<string, unknown>
+    : null;
+  const coverPayload = (item.cover && typeof item.cover === 'object')
+    ? item.cover as Record<string, unknown>
+    : null;
+  const resolvedBundlePath = resolvePreferredBookZipStoragePath(
+    bundlePayload?.path,
+    item.contentPackagePath
+  );
+  const resolvedContentPackagePath = resolvedBundlePath
+    || normalizeStorageObjectPath(item.contentPackagePath)
+    || normalizeStorageObjectPath(bundlePayload?.path);
+  const resolvedCoverImageUrl = (
+    typeof item.coverImageUrl === 'string'
+      ? item.coverImageUrl
+      : (typeof coverPayload?.url === 'string' ? coverPayload.url : undefined)
+  );
 
   const normalizedNodes = Array.isArray(item.nodes)
     ? item.nodes.filter(
@@ -943,11 +1548,47 @@ function fromStoredCourse(raw: unknown): CourseData | null {
         (node as TimelineNode).type !== 'quiz'
     )
     : [];
+  const bundleVersion = Number(bundlePayload?.version);
+  const bundleGeneratedAtRaw = bundlePayload?.generatedAt;
+  const bundleGeneratedAt = (
+    bundleGeneratedAtRaw instanceof Date
+      ? bundleGeneratedAtRaw
+      : (bundleGeneratedAtRaw ? new Date(bundleGeneratedAtRaw as string) : undefined)
+  );
+  const normalizedBundle = (
+    resolvedBundlePath
+  )
+    ? {
+      path: resolvedBundlePath,
+      version: Number.isFinite(bundleVersion) ? Math.max(1, Math.floor(bundleVersion)) : extractBundleVersionFromPath(resolvedBundlePath),
+      checksumSha256: typeof bundlePayload?.checksumSha256 === 'string' ? bundlePayload.checksumSha256 : undefined,
+      sizeBytes: Number.isFinite(Number(bundlePayload?.sizeBytes))
+        ? Math.max(0, Math.floor(Number(bundlePayload?.sizeBytes)))
+        : undefined,
+      includesPodcast: bundlePayload?.includesPodcast === true,
+      generatedAt: bundleGeneratedAt && !Number.isNaN(bundleGeneratedAt.getTime())
+        ? bundleGeneratedAt
+        : new Date(item.contentPackageUpdatedAt as string || item.lastActivity)
+    }
+    : undefined;
+  const normalizedCover = (
+    typeof coverPayload?.path === 'string' ||
+    typeof coverPayload?.url === 'string' ||
+    typeof resolvedCoverImageUrl === 'string'
+  )
+    ? {
+      path: typeof coverPayload?.path === 'string' ? coverPayload.path : undefined,
+      url: typeof coverPayload?.url === 'string'
+        ? coverPayload.url
+        : (typeof resolvedCoverImageUrl === 'string' ? resolvedCoverImageUrl : undefined)
+    }
+    : undefined;
 
   return {
     id: item.id,
     topic: resolveCourseTopic(
       item.topic,
+      item.title,
       (item as unknown as Record<string, unknown>).bookTitle,
       (item as unknown as Record<string, unknown>).title
     ),
@@ -966,65 +1607,72 @@ function fromStoredCourse(raw: unknown): CourseData | null {
       ? item.searchTags.filter((tag): tag is string => typeof tag === 'string')
       : undefined,
     totalDuration: typeof item.totalDuration === 'string' ? item.totalDuration : undefined,
-    coverImageUrl: typeof item.coverImageUrl === 'string' ? item.coverImageUrl : undefined,
+    coverImageUrl: resolvedCoverImageUrl,
     contentPackageUrl: typeof item.contentPackageUrl === 'string' ? item.contentPackageUrl : undefined,
-    contentPackagePath: typeof item.contentPackagePath === 'string' ? item.contentPackagePath : undefined,
+    contentPackagePath: resolvedContentPackagePath,
     contentPackageUpdatedAt: item.contentPackageUpdatedAt ? new Date(item.contentPackageUpdatedAt) : undefined,
+    bundle: normalizedBundle,
+    cover: normalizedCover,
+    status: normalizeCourseStatus(item.status),
     userId: typeof item.userId === 'string' ? item.userId : undefined,
-    isPublic: typeof item.isPublic === 'boolean' ? item.isPublic : undefined,
     nodes: normalizedNodes,
     createdAt: new Date(item.createdAt),
     lastActivity: new Date(item.lastActivity)
   };
 }
 
-function fromFirestoreCourse(id: string, data: Record<string, any>): CourseData {
-  const normalizedNodes = Array.isArray(data.nodes)
-    ? data.nodes.filter(
-      (node: unknown): node is TimelineNode =>
-        Boolean(node) &&
-        typeof (node as TimelineNode).id === 'string' &&
-        (node as TimelineNode).type !== 'exam' &&
-        (node as TimelineNode).type !== 'quiz'
-    )
-    : [];
+function toIsoStringForBookMetadata(value: unknown, fallback: string): string {
+  const resolved = resolveOptionalIsoDate(value);
+  return resolved || fallback;
+}
 
-  return {
-    id,
-    topic: resolveCourseTopic(data.topic, data.bookTitle, data.title),
-    description: typeof data.description === 'string' ? data.description : undefined,
-    creatorName: typeof data.creatorName === 'string' ? data.creatorName : undefined,
-    language: typeof data.language === 'string' ? data.language : undefined,
-    ageGroup: normalizeSmartBookAgeGroup(data.ageGroup),
-    bookType: typeof data.bookType === 'string' ? data.bookType : undefined,
-    subGenre: typeof data.subGenre === 'string' ? data.subGenre : undefined,
-    creativeBrief: typeof data.creativeBrief === 'object' && data.creativeBrief !== null
-      ? data.creativeBrief
+function fromUserBookDocument(
+  bookId: string,
+  raw: Record<string, unknown>,
+  fallbackUserId: string
+): CourseData | null {
+  const nowIso = new Date().toISOString();
+  const createdAtIso = toIsoStringForBookMetadata(raw.createdAt, nowIso);
+  const lastActivityIso = toIsoStringForBookMetadata(raw.lastActivity, createdAtIso);
+  const contentPackageUpdatedAtIso = resolveOptionalIsoDate(raw.contentPackageUpdatedAt)
+    || resolveOptionalIsoDate(raw.updatedAt)
+    || undefined;
+  const bundlePayload = raw.bundle && typeof raw.bundle === 'object'
+    ? raw.bundle as Record<string, unknown>
+    : undefined;
+  const coverPayload = raw.cover && typeof raw.cover === 'object'
+    ? raw.cover as Record<string, unknown>
+    : undefined;
+
+  const normalized: Record<string, unknown> = {
+    ...raw,
+    id: bookId,
+    userId: typeof raw.userId === 'string' ? raw.userId : fallbackUserId,
+    createdAt: createdAtIso,
+    lastActivity: lastActivityIso,
+    contentPackageUpdatedAt: contentPackageUpdatedAtIso,
+    bundle: bundlePayload
+      ? {
+        ...bundlePayload,
+        generatedAt: resolveOptionalIsoDate(bundlePayload.generatedAt) || contentPackageUpdatedAtIso || lastActivityIso
+      }
       : undefined,
-    targetPageCount: Number.isFinite(data.targetPageCount) ? Number(data.targetPageCount) : undefined,
-    category: typeof data.category === 'string' ? data.category : undefined,
-    searchTags: Array.isArray(data.searchTags)
-      ? data.searchTags.filter((tag: unknown): tag is string => typeof tag === 'string')
-      : undefined,
-    totalDuration: typeof data.totalDuration === 'string' ? data.totalDuration : undefined,
-    coverImageUrl: typeof data.coverImageUrl === 'string' ? data.coverImageUrl : undefined,
-    contentPackageUrl: typeof data.contentPackageUrl === 'string' ? data.contentPackageUrl : undefined,
-    contentPackagePath: typeof data.contentPackagePath === 'string' ? data.contentPackagePath : undefined,
-    contentPackageUpdatedAt: data.contentPackageUpdatedAt?.seconds
-      ? new Date(data.contentPackageUpdatedAt.seconds * 1000)
-      : (data.contentPackageUpdatedAt ? new Date(data.contentPackageUpdatedAt) : undefined),
-    userId: typeof data.userId === 'string' ? data.userId : undefined,
-    isPublic: typeof data.isPublic === 'boolean' ? data.isPublic : undefined,
-    nodes: normalizedNodes,
-    createdAt: data.createdAt?.seconds ? new Date(data.createdAt.seconds * 1000) : new Date(data.createdAt || Date.now()),
-    lastActivity: data.lastActivity?.seconds ? new Date(data.lastActivity.seconds * 1000) : new Date(data.lastActivity || Date.now())
+    cover: coverPayload
+      ? {
+        ...coverPayload,
+        url: typeof coverPayload.url === 'string'
+          ? coverPayload.url
+          : (typeof raw.coverImageUrl === 'string' ? raw.coverImageUrl : undefined)
+      }
+      : undefined
   };
+
+  return fromStoredCourse(normalized);
 }
 
 type UserCourseProgressDoc = {
   id: string;
   userId?: string;
-  sharedCourseId: string;
   topic?: string;
   description?: string;
   creatorName?: string;
@@ -1042,7 +1690,6 @@ type UserCourseProgressDoc = {
   contentPackagePath?: string;
   contentPackageUpdatedAt?: Date;
   nodes: TimelineNode[];
-  contentNodes?: TimelineNode[];
   createdAt: Date;
   lastActivity: Date;
 };
@@ -1051,77 +1698,6 @@ function isNodeProgressOnlyShape(node: unknown): boolean {
   if (!node || typeof node !== 'object') return false;
   const value = node as Record<string, unknown>;
   return !('content' in value) && !('podcastScript' in value) && !('podcastAudioUrl' in value) && !('questions' in value);
-}
-
-function looksLikeLegacyFullCourseDoc(data: Record<string, any>): boolean {
-  if (!Array.isArray(data.nodes) || data.nodes.length === 0) return false;
-  return data.nodes.some((node: any) => (
-    typeof node?.content === 'string' ||
-    typeof node?.podcastScript === 'string' ||
-    typeof node?.podcastAudioUrl === 'string' ||
-    Array.isArray(node?.questions)
-  ));
-}
-
-function fromFirestoreUserCourseProgress(id: string, data: Record<string, any>): UserCourseProgressDoc {
-  const rawNodes = Array.isArray(data.nodes) ? data.nodes : [];
-  const nodes = rawNodes
-    .filter((node): node is TimelineNode => isNodeProgressOnlyShape(node))
-    .filter((node) => node.type !== 'exam' && node.type !== 'quiz')
-    .map((node) => ({ ...node }));
-
-  const rawContentNodes = Array.isArray(data.contentNodes) ? data.contentNodes : [];
-  const contentNodes = rawContentNodes
-    .filter((node): node is TimelineNode =>
-      Boolean(node) &&
-      typeof (node as TimelineNode).id === 'string' &&
-      (node as TimelineNode).type !== 'exam' &&
-      (node as TimelineNode).type !== 'quiz'
-    )
-    .map((node) => ({ ...node }));
-
-  return {
-    id,
-    userId: typeof data.userId === 'string' ? data.userId : undefined,
-    sharedCourseId: String(data.sharedCourseId || data.courseId || id),
-    topic: resolveOptionalCourseTopic(data.topic, data.bookTitle, data.title),
-    description: typeof data.description === 'string' ? data.description : undefined,
-    creatorName: typeof data.creatorName === 'string' ? data.creatorName : undefined,
-    language: typeof data.language === 'string' ? data.language : undefined,
-    ageGroup: normalizeSmartBookAgeGroup(data.ageGroup),
-    bookType: typeof data.bookType === 'string' ? data.bookType : undefined,
-    subGenre: typeof data.subGenre === 'string' ? data.subGenre : undefined,
-    creativeBrief: typeof data.creativeBrief === 'object' && data.creativeBrief !== null
-      ? data.creativeBrief
-      : undefined,
-    targetPageCount: Number.isFinite(data.targetPageCount) ? Number(data.targetPageCount) : undefined,
-    category: typeof data.category === 'string' ? data.category : undefined,
-    searchTags: Array.isArray(data.searchTags)
-      ? data.searchTags.filter((tag: unknown): tag is string => typeof tag === 'string')
-      : undefined,
-    totalDuration: typeof data.totalDuration === 'string' ? data.totalDuration : undefined,
-    coverImageUrl: typeof data.coverImageUrl === 'string' ? data.coverImageUrl : undefined,
-    contentPackageUrl: typeof data.contentPackageUrl === 'string' ? data.contentPackageUrl : undefined,
-    contentPackagePath: typeof data.contentPackagePath === 'string' ? data.contentPackagePath : undefined,
-    contentPackageUpdatedAt: data.contentPackageUpdatedAt?.seconds
-      ? new Date(data.contentPackageUpdatedAt.seconds * 1000)
-      : (data.contentPackageUpdatedAt ? new Date(data.contentPackageUpdatedAt) : undefined),
-    nodes,
-    contentNodes: contentNodes.length > 0 ? contentNodes : undefined,
-    createdAt: data.createdAt?.seconds ? new Date(data.createdAt.seconds * 1000) : new Date(data.createdAt || Date.now()),
-    lastActivity: data.lastActivity?.seconds ? new Date(data.lastActivity.seconds * 1000) : new Date(data.lastActivity || Date.now())
-  };
-}
-
-function toSharedCourseNode(node: TimelineNode, index: number): TimelineNode {
-  // Shared master payload must keep content image references until cloud materialization
-  // uploads data URLs and rewrites them to Firebase Storage URLs.
-  const rawNode = { ...node } as TimelineNode & { score?: number; isLoading?: boolean };
-  const { score: _score, isLoading: _isLoading, ...rest } = rawNode;
-  return {
-    ...rest,
-    status: index === 0 ? 'current' : 'locked'
-  };
 }
 
 function toUserProgressNode(node: TimelineNode): TimelineNode {
@@ -1135,136 +1711,6 @@ function toUserProgressNode(node: TimelineNode): TimelineNode {
   if (typeof node.score === 'number') progressNode.score = node.score;
   if (typeof node.duration === 'string') progressNode.duration = node.duration;
   return progressNode;
-}
-
-function mergeNodesWithContentSnapshot(baseNodes: TimelineNode[], contentNodes?: TimelineNode[]): TimelineNode[] {
-  if (!Array.isArray(contentNodes) || contentNodes.length === 0) {
-    return baseNodes.map((node) => ({ ...node }));
-  }
-
-  const contentNodeMap = new Map(contentNodes.map((node) => [node.id, node] as const));
-  const merged = baseNodes.map((node) => {
-    const contentNode = contentNodeMap.get(node.id);
-    if (!contentNode) return { ...node };
-    return {
-      ...contentNode,
-      id: node.id,
-      title: contentNode.title || node.title,
-      description: contentNode.description || node.description,
-      type: node.type,
-      status: node.status,
-      score: typeof node.score === 'number' ? node.score : contentNode.score,
-      duration: node.duration || contentNode.duration
-    };
-  });
-
-  const existingIds = new Set(merged.map((node) => node.id));
-  contentNodes.forEach((node) => {
-    if (existingIds.has(node.id)) return;
-    merged.push({ ...node });
-  });
-
-  return merged;
-}
-
-function buildSharedCoursePayloadFromPartial(
-  payload: Record<string, unknown>,
-  fallbackOwnerUid?: string,
-  options?: { includeNodesWhenProgressOnly?: boolean }
-): Record<string, unknown> {
-  const shared: Record<string, unknown> = {};
-  const passthroughKeys = [
-    'topic',
-    'description',
-    'creatorName',
-    'language',
-    'ageGroup',
-    'bookType',
-    'subGenre',
-    'creativeBrief',
-    'targetPageCount',
-    'category',
-    'searchTags',
-    'totalDuration',
-    'coverImageUrl',
-    'createdAt',
-    'lastActivity',
-    'isPublic'
-  ] as const;
-
-  for (const key of passthroughKeys) {
-    if (!(key in payload)) continue;
-    const value = payload[key];
-    if (value !== undefined) shared[key] = value;
-  }
-
-  if ('userId' in payload && typeof payload.userId === 'string') {
-    shared.userId = payload.userId;
-  } else if (fallbackOwnerUid) {
-    shared.userId = fallbackOwnerUid;
-  }
-
-  if ('nodes' in payload && Array.isArray(payload.nodes)) {
-    const rawNodes = payload.nodes as TimelineNode[];
-    const hasSharedContentFields = rawNodes.some((node) => !isNodeProgressOnlyShape(node));
-    if (options?.includeNodesWhenProgressOnly || hasSharedContentFields) {
-      shared.nodes = rawNodes.map(toSharedCourseNode);
-    }
-  }
-
-  return shared;
-}
-
-function buildUserCourseProgressPayloadFromPartial(
-  uid: string,
-  courseId: string,
-  payload: Record<string, unknown>
-): Record<string, unknown> {
-  const progress: Record<string, unknown> = {
-    userId: uid,
-    courseId,
-    sharedCourseId: courseId
-  };
-
-  const metadataKeys = [
-    'topic',
-    'description',
-    'creatorName',
-    'language',
-    'ageGroup',
-    'bookType',
-    'subGenre',
-    'creativeBrief',
-    'targetPageCount',
-    'category',
-    'searchTags',
-    'totalDuration',
-    'coverImageUrl',
-    'contentPackageUrl',
-    'contentPackagePath',
-    'contentPackageUpdatedAt',
-    'createdAt',
-    'lastActivity'
-  ] as const;
-
-  for (const key of metadataKeys) {
-    if (!(key in payload)) continue;
-    const value = payload[key];
-    if (value !== undefined) progress[key] = value;
-  }
-
-  if (
-    typeof progress.coverImageUrl === 'string' &&
-    DATA_IMAGE_URL_PREFIX_RE.test(progress.coverImageUrl)
-  ) {
-    progress.coverImageUrl = undefined;
-  }
-
-  if ('nodes' in payload && Array.isArray(payload.nodes)) {
-    progress.nodes = (payload.nodes as TimelineNode[]).map(toUserProgressNode);
-  }
-
-  return progress;
 }
 
 function mergeSharedCourseWithUserProgress(sharedCourse: CourseData, progress: UserCourseProgressDoc): CourseData {
@@ -1301,50 +1747,6 @@ function mergeSharedCourseWithUserProgress(sharedCourse: CourseData, progress: U
   };
 }
 
-function buildCourseFromUserProgressDoc(
-  progressDoc: UserCourseProgressDoc,
-  fallbackCourse?: CourseData | null
-): CourseData {
-  if (fallbackCourse && !isCourseProgressOnly(fallbackCourse)) {
-    return mergeSharedCourseWithUserProgress(fallbackCourse, progressDoc);
-  }
-
-  const fallbackNodes = mergeNodesWithContentSnapshot(progressDoc.nodes, progressDoc.contentNodes);
-  const nodes = (
-    fallbackNodes.length > 0
-      ? fallbackNodes
-      : (Array.isArray(fallbackCourse?.nodes) ? fallbackCourse.nodes : [])
-  );
-
-  return {
-    id: progressDoc.sharedCourseId,
-    topic: resolveCourseTopic(progressDoc.topic, fallbackCourse?.topic),
-    description: progressDoc.description || fallbackCourse?.description,
-    creatorName: progressDoc.creatorName || fallbackCourse?.creatorName,
-    language: progressDoc.language || fallbackCourse?.language,
-    ageGroup: progressDoc.ageGroup || fallbackCourse?.ageGroup,
-    bookType: progressDoc.bookType || fallbackCourse?.bookType,
-    subGenre: progressDoc.subGenre || fallbackCourse?.subGenre,
-    creativeBrief: progressDoc.creativeBrief || fallbackCourse?.creativeBrief,
-    targetPageCount: progressDoc.targetPageCount || fallbackCourse?.targetPageCount,
-    category: progressDoc.category || fallbackCourse?.category,
-    searchTags: progressDoc.searchTags || fallbackCourse?.searchTags,
-    totalDuration: progressDoc.totalDuration || fallbackCourse?.totalDuration,
-    coverImageUrl: progressDoc.coverImageUrl || fallbackCourse?.coverImageUrl,
-    contentPackageUrl: progressDoc.contentPackageUrl || fallbackCourse?.contentPackageUrl,
-    contentPackagePath: progressDoc.contentPackagePath || fallbackCourse?.contentPackagePath,
-    contentPackageUpdatedAt: progressDoc.contentPackageUpdatedAt || fallbackCourse?.contentPackageUpdatedAt,
-    userId: progressDoc.userId || fallbackCourse?.userId,
-    isPublic: fallbackCourse?.isPublic ?? false,
-    nodes: nodes.map((node, index) => ({
-      ...node,
-      status: node.status || (index === 0 ? 'current' : 'locked')
-    })),
-    createdAt: progressDoc.createdAt || fallbackCourse?.createdAt || new Date(),
-    lastActivity: progressDoc.lastActivity || fallbackCourse?.lastActivity || new Date()
-  };
-}
-
 function isCourseProgressOnly(course: CourseData | undefined | null): boolean {
   if (!course || !Array.isArray(course.nodes) || course.nodes.length === 0) return true;
   return course.nodes.every((node) => isNodeProgressOnlyShape(node));
@@ -1354,7 +1756,6 @@ function toProgressDocFromCourseSnapshot(course: CourseData): UserCourseProgress
   return {
     id: course.id,
     userId: course.userId,
-    sharedCourseId: course.id,
     topic: course.topic,
     description: course.description,
     creatorName: course.creatorName,
@@ -1446,8 +1847,17 @@ function writeCourseCoverCacheToLocal(uid: string, courses: CourseData[]): void 
 }
 
 function persistCoursesToLocal(uid: string, courses: CourseData[]): void {
+  if (localCourseCacheDisabledByQuota.has(uid)) {
+    pendingLocalCourseWrites.delete(uid);
+    return;
+  }
+
   writeCourseCoverCacheToLocal(uid, courses);
   writeFullCoursesToLocal(uid, courses);
+  if (localCourseCacheDisabledByQuota.has(uid)) {
+    pendingLocalCourseWrites.delete(uid);
+    return;
+  }
 
   pendingLocalCourseWrites.set(uid, [...courses]);
   const latestCourses = pendingLocalCourseWrites.get(uid);
@@ -1458,10 +1868,10 @@ function persistCoursesToLocal(uid: string, courses: CourseData[]): void {
     maxItems: number;
     mapper: (course: CourseData) => StoredCourse;
   }> = [
-    { maxItems: Math.min(4, MAX_LOCAL_COURSE_CACHE_ITEMS), mapper: toCompactStoredCourse },
-    { maxItems: Math.min(8, MAX_LOCAL_COURSE_CACHE_ITEMS), mapper: toQuotaSafeStoredCourse },
-    { maxItems: MAX_LOCAL_COURSE_CACHE_ITEMS, mapper: toQuotaSafeStoredCourse }
-  ];
+      { maxItems: Math.min(4, MAX_LOCAL_COURSE_CACHE_ITEMS), mapper: toCompactStoredCourse },
+      { maxItems: Math.min(8, MAX_LOCAL_COURSE_CACHE_ITEMS), mapper: toQuotaSafeStoredCourse },
+      { maxItems: MAX_LOCAL_COURSE_CACHE_ITEMS, mapper: toQuotaSafeStoredCourse }
+    ];
 
   let quotaExceeded = false;
   for (const plan of writePlans) {
@@ -1481,15 +1891,19 @@ function persistCoursesToLocal(uid: string, courses: CourseData[]): void {
 
       if (!localCourseCacheWarned.has(uid)) {
         localCourseCacheWarned.add(uid);
-        console.warn('Course local cache write skipped.');
+        console.warn('Book local cache write skipped.');
       }
       return;
     }
   }
 
-  if (quotaExceeded && !localCourseCacheWarned.has(uid)) {
-    localCourseCacheWarned.add(uid);
-    console.warn('Course local cache write skipped (storage quota exceeded).');
+  if (quotaExceeded) {
+    localCourseCacheDisabledByQuota.add(uid);
+    pendingLocalCourseWrites.delete(uid);
+    if (!localCourseCacheWarned.has(uid)) {
+      localCourseCacheWarned.add(uid);
+      console.warn('Book local cache disabled (storage quota exceeded). Firebase sync continues.');
+    }
   }
 }
 
@@ -1509,6 +1923,7 @@ function flushCoursesToLocalNow(uid: string, courses?: CourseData[]): void {
 }
 
 function writeCoursesToLocal(uid: string, courses: CourseData[]): void {
+  if (localCourseCacheDisabledByQuota.has(uid)) return;
   pendingLocalCourseWrites.set(uid, [...courses]);
   const existingTimer = localCourseWriteTimers.get(uid);
   if (typeof existingTimer === 'number') {
@@ -1539,13 +1954,14 @@ function readCoursesFromLocal(uid: string): CourseData[] {
   try {
     const raw = window.localStorage.getItem(getLocalCoursesKey(uid));
     if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const retainedStoredCourses = parsed.filter((item) => shouldKeepSingleBundleStoredCourse(item));
+
     const coverCache = readCourseCoverCacheFromLocal(uid);
     const fullCourseCache = readFullCoursesFromLocal(uid);
 
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    const baseCourses = parsed
+    const baseCourses = retainedStoredCourses
       .map(fromStoredCourse)
       .map((course) => {
         if (!course) return null;
@@ -1561,7 +1977,7 @@ function readCoursesFromLocal(uid: string): CourseData[] {
         }
 
         const fullCachedCourse = fullCourseCache.get(nextCourse.id);
-        if (fullCachedCourse && courseNeedsHydration(nextCourse)) {
+        if (fullCachedCourse && courseNeedsContentHydration(nextCourse)) {
           return mergeSharedCourseWithUserProgress(fullCachedCourse, toProgressDocFromCourseSnapshot(nextCourse));
         }
 
@@ -1577,7 +1993,7 @@ function readCoursesFromLocal(uid: string): CourseData[] {
 
     return sortCoursesByLastActivity(Array.from(byId.values()));
   } catch (error) {
-    console.warn('Failed to parse courses from local storage:', error);
+    console.warn('Failed to parse books from local storage:', error);
     return [];
   }
 }
@@ -1713,7 +2129,7 @@ export default function App() {
   const [appLanguageSource, setAppLanguageSource] = useState<AppLanguagePreferenceSource>(initialAppLanguageSetupRef.current.source);
   const [isAppLanguageSetupOpen, setAppLanguageSetupOpen] = useState<boolean>(initialAppLanguageSetupRef.current.requiresSelection);
   const [savedCourses, setSavedCourses] = useState<CourseData[]>([]);
-  const [publicCourses, setPublicCourses] = useState<CourseData[]>([]);
+  const [courseOpenStateById, setCourseOpenStateById] = useState<Record<string, CourseOpenUiState>>({});
   const [stickyNotes, setStickyNotes] = useState<StickyNoteData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Kitaplar yükleniyor...');
@@ -1753,21 +2169,24 @@ export default function App() {
   const sessionCreatedCourseIdsRef = useRef<Set<string>>(new Set());
   const progressOnlyFallbackCourseIdsRef = useRef<Set<string>>(new Set());
   const savedCoursesRef = useRef<CourseData[]>([]);
+  const courseOpenStateByIdRef = useRef<Record<string, CourseOpenUiState>>({});
+  const courseOpenInFlightByIdRef = useRef<Set<string>>(new Set());
   const backgroundPackagingCourseIdsRef = useRef<Set<string>>(new Set());
   const backgroundPackagingStartAttemptedRef = useRef<Set<string>>(new Set());
   const backgroundNodeGenerationInFlightRef = useRef<Set<string>>(new Set());
+  const backgroundCoverGenerationInFlightRef = useRef<Set<string>>(new Set());
   const backgroundGenerationSuppressedRef = useRef(false);
   const uploadedStorageAssetUrlByKeyRef = useRef<Map<string, string>>(new Map());
   const uploadingStorageAssetPromiseByKeyRef = useRef<Map<string, Promise<string>>>(new Map());
   const packageSyncAttemptedByCourseRef = useRef<Set<string>>(new Set());
   const coverRepairAttemptedByCourseRef = useRef<Set<string>>(new Set());
-  const courseHydrationRepairAttemptedRef = useRef<Set<string>>(new Set());
   const shareLinkRedirectAttemptedRef = useRef<Set<string>>(new Set());
   const shareLinkAutoOpenHandledRef = useRef<Set<string>>(new Set());
   const creditWalletRef = useRef<CreditWallet>(FREE_STARTER_CREDITS);
   const coursePackageByIdRef = useRef<Map<string, CourseData>>(new Map());
   const coursePackagePromiseByIdRef = useRef<Map<string, Promise<CourseData | null>>>(new Map());
-  const courseHydrationInFlightRef = useRef<Set<string>>(new Set());
+  const coursePackagePromiseModeByIdRef = useRef<Map<string, 'storage-first' | 'backend-first'>>(new Map());
+  const courseHydrationPromiseByKeyRef = useRef<Map<string, Promise<boolean>>>(new Map());
 
   const uploadDataImageToCourseStorage = async (
     ownerUid: string,
@@ -1979,7 +2398,7 @@ export default function App() {
     }
 
     const packageBasePath = typeof course.contentPackagePath === 'string'
-      ? course.contentPackagePath.trim().replace(/\/package\.json$/i, '')
+      ? course.contentPackagePath.trim().replace(/\/(?:package\.json|book\.zip)$/i, '')
       : '';
     if (packageBasePath) {
       pushCandidate(`${packageBasePath}/cover.jpg`);
@@ -2030,14 +2449,45 @@ export default function App() {
       throw new Error('Missing owner uid for smartbook storage path.');
     }
     const safeCourseId = String(courseId).replace(/[^a-zA-Z0-9_-]/g, '_');
-    const storagePath = `smartbooks/${safeOwnerId}/${safeCourseId}/package.json`;
-    const payload = JSON.stringify(toStoragePackageCourse({
-      ...course,
-      contentPackageUrl: undefined,
-      contentPackagePath: undefined,
-      contentPackageUpdatedAt: undefined
-    }));
-    const cacheKey = `${safeOwnerId}:${courseId}:package:${simpleStableHash(payload)}`;
+    const currentVersion = (() => {
+      const match = String(course.contentPackagePath || '').match(/\/v(\d+)\/book\.zip$/i);
+      const parsed = match ? Number.parseInt(match[1], 10) : 0;
+      if (!Number.isFinite(parsed) || parsed < 1) return 0;
+      return parsed;
+    })();
+    const nextVersion = Math.max(1, currentVersion + 1);
+    const storagePath = `smartbooks/${safeOwnerId}/${safeCourseId}/v${nextVersion}/book.zip`;
+    const manifest = {
+      schemaVersion: 1,
+      id: course.id,
+      userId: ownerUid,
+      title: course.topic,
+      description: course.description,
+      creatorName: course.creatorName,
+      language: course.language,
+      ageGroup: course.ageGroup,
+      bookType: course.bookType,
+      subGenre: course.subGenre,
+      targetPageCount: course.targetPageCount,
+      category: course.category,
+      searchTags: course.searchTags,
+      totalDuration: course.totalDuration,
+      generatedAt: new Date().toISOString(),
+      createdAt: course.createdAt.toISOString(),
+      lastActivity: course.lastActivity.toISOString(),
+      cover: {
+        url: course.coverImageUrl
+      },
+      includesPodcast: course.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim())),
+      nodes: Array.isArray(course.nodes)
+        ? course.nodes.map((node) => ({
+          ...node,
+          isLoading: undefined
+        }))
+        : []
+    };
+    const manifestPayload = JSON.stringify(manifest);
+    const cacheKey = `${safeOwnerId}:${courseId}:bookzip:${simpleStableHash(manifestPayload)}`;
     const cachedUrl = uploadedStorageAssetUrlByKeyRef.current.get(cacheKey);
 
     if (cachedUrl) {
@@ -2051,7 +2501,14 @@ export default function App() {
     const inFlight = uploadingStorageAssetPromiseByKeyRef.current.get(cacheKey);
     const uploadPromise = inFlight ?? (async () => {
       const fileRef = storageRef(getStorage(), storagePath);
-      await uploadString(fileRef, payload, 'raw', { contentType: 'application/json; charset=utf-8' });
+      const zip = new JSZip();
+      zip.file('manifest.json', manifestPayload);
+      const zipBlob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 }
+      });
+      await uploadBytes(fileRef, zipBlob, { contentType: 'application/zip' });
       const downloadUrl = await getDownloadURL(fileRef);
       uploadedStorageAssetUrlByKeyRef.current.set(cacheKey, downloadUrl);
       return downloadUrl;
@@ -2079,13 +2536,18 @@ export default function App() {
     courseId: string,
     ownerUid?: string,
     packageUrl?: string,
-    packagePath?: string
+    packagePath?: string,
+    options?: { preferBackend?: boolean; backendOnly?: boolean; versionHint?: number }
   ): Promise<CourseData | null> => {
     const cached = coursePackageByIdRef.current.get(courseId);
-    if (cached && !courseNeedsHydration(cached)) return cached;
+    if (cached && !courseNeedsContentHydration(cached)) return cached;
 
+    const preferBackend = options?.preferBackend === true;
+    const backendOnly = options?.backendOnly === true;
+    const requestedMode: 'storage-first' | 'backend-first' = preferBackend ? 'backend-first' : 'storage-first';
     const existingPromise = coursePackagePromiseByIdRef.current.get(courseId);
-    if (existingPromise) return existingPromise;
+    const existingMode = coursePackagePromiseModeByIdRef.current.get(courseId);
+    if (existingPromise && (!preferBackend || existingMode === 'backend-first')) return existingPromise;
 
     const loadPromise = (async () => {
       const candidatePaths: string[] = [];
@@ -2094,66 +2556,191 @@ export default function App() {
         if (!normalized || candidatePaths.includes(normalized)) return;
         candidatePaths.push(normalized);
       };
+      const pushPathCandidates = (value: string | null | undefined) => {
+        for (const candidate of getBookPackagePathCandidates(value)) {
+          pushPath(candidate);
+        }
+      };
 
-      pushPath(packagePath);
+      pushPathCandidates(packagePath);
       if (typeof packageUrl === 'string' && packageUrl.trim() && isFirebaseStorageDownloadUrl(packageUrl.trim())) {
-        pushPath(tryParseFirebaseStorageObjectPath(packageUrl.trim()));
+        pushPathCandidates(tryParseFirebaseStorageObjectPath(packageUrl.trim()));
       }
 
       const safeOwnerId = String(ownerUid || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
       const safeCourseId = String(courseId || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
+      const hintedVersion = Number.isFinite(Number(options?.versionHint))
+        ? Math.max(1, Math.floor(Number(options?.versionHint)))
+        : undefined;
       if (safeOwnerId && safeCourseId) {
-        pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/package.json`);
+        if (hintedVersion) {
+          pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/v${hintedVersion}/book.zip`);
+        }
+        pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/v1/book.zip`);
       }
       if (safeCourseId) {
-        pushPath(`smartbooks/${safeCourseId}/package.json`);
+        pushPath(`smartbooks/${safeCourseId}/v1/book.zip`);
       }
 
       let resolvedUrl = typeof packageUrl === 'string' && packageUrl.trim() ? packageUrl.trim() : undefined;
       let resolvedPath = candidatePaths[0];
-      let payload: unknown = null;
+      let hydratedCourse: CourseData | null = null;
       let lastError: unknown = null;
 
-      const tryLoadFromDownloadUrl = async (url: string): Promise<unknown> => {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Course package fetch failed (${response.status})`);
-        }
-        return await response.json();
-      };
-
-      const tryLoadFromStoragePath = async (path: string): Promise<unknown> => {
-        const packageRef = storageRef(getStorage(), path);
-        const packageBlob = await getBlob(packageRef);
-        return JSON.parse(await packageBlob.text());
-      };
-
-      const tryLoadFromBackend = async (): Promise<CourseData | null> => {
-        if (!ownerUid) return null;
-        await appCheckReady;
-        const response = await resolveSmartBookCourse({ courseId });
-        const payload = response.data?.course;
-        if (!payload || typeof payload !== 'object') return null;
-        const course = fromStoredCourse(payload);
-        if (!course) return null;
-        return course;
-      };
-
-      for (const candidatePath of candidatePaths) {
+      const tryLoadFromDownloadUrl = async (url: string): Promise<CourseData | null> => {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = window.setTimeout(() => {
+          controller?.abort();
+        }, SMARTBOOK_PACKAGE_FETCH_TIMEOUT_MS);
         try {
-          payload = await tryLoadFromStoragePath(candidatePath);
-          resolvedPath = candidatePath;
-          resolvedUrl = await getDownloadURL(storageRef(getStorage(), candidatePath));
+          const response = await fetch(url, {
+            signal: controller?.signal,
+            cache: 'no-store'
+          });
+          if (!response.ok) {
+            throw new Error(`Book package fetch failed (${response.status})`);
+          }
+          const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+          const responseBlob = await response.blob();
+          const isZipLike = /application\/zip|application\/x-zip-compressed/i.test(contentType) || /\.zip($|\?)/i.test(url);
+          if (isZipLike) {
+            return await hydrateCourseFromBundleBlob(courseId, responseBlob, url, resolvedPath || packagePath);
+          }
+          const payload = await response.json();
+          const course = fromStoredCourse(payload);
+          return await materializeCourse(course || null, url, resolvedPath || packagePath);
+        } finally {
+          window.clearTimeout(timer);
+        }
+      };
+
+      const tryLoadFromStoragePath = async (path: string): Promise<CourseData | null> => {
+        const packageRef = storageRef(getStorage(), path);
+        const packageBlob = await withPromiseTimeout(
+          getBlob(packageRef),
+          SMARTBOOK_STORAGE_BLOB_TIMEOUT_MS,
+          `Book package blob timeout (${path})`
+        );
+        const isZipLike = /\.zip$/i.test(path) || /application\/zip|application\/x-zip-compressed/i.test(String(packageBlob.type || '').toLowerCase());
+        if (isZipLike) {
+          return await hydrateCourseFromBundleBlob(courseId, packageBlob, resolvedUrl, path);
+        }
+        const payload = JSON.parse(await packageBlob.text());
+        const course = fromStoredCourse(payload);
+        return await materializeCourse(course || null, resolvedUrl, path);
+      };
+
+      const materializeCourse = async (
+        rawCourse: CourseData | null,
+        urlOverride?: string,
+        pathOverride?: string
+      ): Promise<CourseData | null> => {
+        if (!rawCourse) return null;
+        const nextCourse: CourseData = {
+          ...rawCourse,
+          coverImageUrl: rawCourse.coverImageUrl,
+          contentPackageUrl: rawCourse.contentPackageUrl || urlOverride,
+          contentPackagePath: rawCourse.contentPackagePath || pathOverride,
+          contentPackageUpdatedAt: rawCourse.contentPackageUpdatedAt || new Date()
+        };
+
+        // Reject courses with 0 nodes — the source had no useful data.
+        // This ensures the fallback chain continues to try Storage.
+        if (!nextCourse.nodes || nextCourse.nodes.length === 0) {
+          return null;
+        }
+
+        // Accept the course even if some content is still missing.
+        // A course with *some* nodes is always better than null.
+        coursePackageByIdRef.current.set(courseId, nextCourse);
+        return nextCourse;
+      };
+
+      const tryLoadFromBackend = async (_preferFirestore = false): Promise<CourseData | null> => null;
+
+      if (backendOnly) {
+        try {
+          const backendCourse = await tryLoadFromBackend(preferBackend);
+          if (backendCourse) {
+            return backendCourse;
+          }
+        } catch (backendError) {
+          lastError = backendError;
+        }
+        try {
+          const backendCourse = await tryLoadFromBackend(false);
+          if (backendCourse) {
+            return backendCourse;
+          }
+        } catch (backendError) {
+          lastError = backendError;
+        }
+        return null;
+      }
+
+      if (preferBackend) {
+        try {
+          const backendCourse = await tryLoadFromBackend(true);
+          if (backendCourse) {
+            return backendCourse;
+          }
+        } catch (backendError) {
+          lastError = backendError;
+        }
+      }
+
+      if (resolvedUrl) {
+        try {
+          hydratedCourse = await tryLoadFromDownloadUrl(resolvedUrl);
+          if (!resolvedPath && isFirebaseStorageDownloadUrl(resolvedUrl)) {
+            resolvedPath = tryParseFirebaseStorageObjectPath(resolvedUrl) || resolvedPath;
+          }
           lastError = null;
-          break;
         } catch (error) {
           lastError = error;
         }
       }
 
-      if (!payload && resolvedUrl) {
+      for (const candidatePath of candidatePaths) {
+        if (hydratedCourse) break;
         try {
-          payload = await tryLoadFromDownloadUrl(resolvedUrl);
+          hydratedCourse = await tryLoadFromStoragePath(candidatePath);
+          resolvedPath = candidatePath;
+          try {
+            resolvedUrl = await withPromiseTimeout(
+              getDownloadURL(storageRef(getStorage(), candidatePath)),
+              SMARTBOOK_STORAGE_URL_TIMEOUT_MS,
+              `Book package URL resolve timeout (${candidatePath})`
+            );
+          } catch {
+            resolvedUrl = undefined;
+          }
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          // iOS WebView may fail direct SDK blob fetch depending on CORS/runtime;
+          // fallback to tokenized download URL + regular fetch for the same object.
+          try {
+            const candidateUrl = await withPromiseTimeout(
+              getDownloadURL(storageRef(getStorage(), candidatePath)),
+              SMARTBOOK_STORAGE_URL_TIMEOUT_MS,
+              `Book package URL resolve timeout (${candidatePath})`
+            );
+            resolvedUrl = candidateUrl;
+            hydratedCourse = await tryLoadFromDownloadUrl(candidateUrl);
+            resolvedPath = candidatePath;
+            lastError = null;
+            break;
+          } catch (urlFallbackError) {
+            lastError = urlFallbackError;
+          }
+        }
+      }
+
+      if (!hydratedCourse && resolvedUrl) {
+        try {
+          hydratedCourse = await tryLoadFromDownloadUrl(resolvedUrl);
           if (!resolvedPath && isFirebaseStorageDownloadUrl(resolvedUrl)) {
             resolvedPath = tryParseFirebaseStorageObjectPath(resolvedUrl) || resolvedPath;
           }
@@ -2162,59 +2749,34 @@ export default function App() {
         }
       }
 
-      if (!payload) {
+      if (!hydratedCourse) {
         try {
-          const backendCourse = await tryLoadFromBackend();
+          const backendCourse = await tryLoadFromBackend(preferBackend);
           if (backendCourse) {
-            const refreshedCoverImageUrl = await resolveFreshCoverUrlForCourse({
-              id: courseId,
-              coverImageUrl: backendCourse.coverImageUrl,
-              contentPackagePath: backendCourse.contentPackagePath || resolvedPath || packagePath
-            });
-
-            const nextCourse: CourseData = {
-              ...backendCourse,
-              coverImageUrl: refreshedCoverImageUrl || backendCourse.coverImageUrl,
-              contentPackageUrl: backendCourse.contentPackageUrl || resolvedUrl,
-              contentPackagePath: backendCourse.contentPackagePath || resolvedPath || packagePath,
-              contentPackageUpdatedAt: backendCourse.contentPackageUpdatedAt || new Date()
-            };
-            coursePackageByIdRef.current.set(courseId, nextCourse);
-            return nextCourse;
+            return backendCourse;
           }
         } catch (backendError) {
           lastError = backendError;
         }
       }
 
-      if (!payload) {
+      if (!hydratedCourse) {
         return null;
       }
-
-      const course = fromStoredCourse(payload);
-      if (!course) return null;
-      const refreshedCoverImageUrl = await resolveFreshCoverUrlForCourse({
-        id: courseId,
-        coverImageUrl: course.coverImageUrl,
-        contentPackagePath: resolvedPath || packagePath
-      });
-
-      const nextCourse: CourseData = {
-        ...course,
-        coverImageUrl: refreshedCoverImageUrl || course.coverImageUrl,
-        contentPackageUrl: resolvedUrl,
-        contentPackagePath: resolvedPath || packagePath,
-        contentPackageUpdatedAt: course.contentPackageUpdatedAt || new Date()
-      };
-      coursePackageByIdRef.current.set(courseId, nextCourse);
-      return nextCourse;
+      return hydratedCourse;
     })();
 
     coursePackagePromiseByIdRef.current.set(courseId, loadPromise);
+    coursePackagePromiseModeByIdRef.current.set(courseId, requestedMode);
     try {
       return await loadPromise;
     } finally {
-      coursePackagePromiseByIdRef.current.delete(courseId);
+      if (coursePackagePromiseByIdRef.current.get(courseId) === loadPromise) {
+        coursePackagePromiseByIdRef.current.delete(courseId);
+      }
+      if (coursePackagePromiseModeByIdRef.current.get(courseId) === requestedMode) {
+        coursePackagePromiseModeByIdRef.current.delete(courseId);
+      }
     }
   };
 
@@ -2231,8 +2793,8 @@ export default function App() {
     const normalizedMessage = message.toLowerCase();
     const code =
       typeof error === 'object' &&
-      error !== null &&
-      typeof (error as { code?: unknown }).code === 'string'
+        error !== null &&
+        typeof (error as { code?: unknown }).code === 'string'
         ? String((error as { code?: string }).code).toLowerCase()
         : '';
 
@@ -2245,28 +2807,99 @@ export default function App() {
     );
   };
 
+  const fetchUserBooksDirectly = async (uid: string): Promise<CourseData[]> => {
+    const userBooksCollection = collection(db, 'users', uid, 'books');
+    let snapshot;
+    try {
+      snapshot = await getDocs(query(userBooksCollection, orderBy('lastActivity', 'desc')));
+    } catch {
+      snapshot = await getDocs(userBooksCollection);
+    }
+
+    const courses = snapshot.docs
+      .map((bookDoc) => fromUserBookDocument(
+        bookDoc.id,
+        bookDoc.data() as Record<string, unknown>,
+        uid
+      ))
+      .filter((course): course is CourseData => course !== null);
+
+    return sortCoursesByLastActivity(courses);
+  };
+
   const fetchCourseListFromBackend = async (): Promise<CourseData[]> => {
     let lastError: unknown;
     const maxAttempts = 3;
+    const fallbackUid = auth.currentUser?.uid;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         await appCheckReady;
         const response = await listMySmartBookCourses({});
-        const payload = Array.isArray(response.data?.courses) ? response.data?.courses : [];
-        const courses = payload
+        const payload = Array.isArray(response.data?.books) ? response.data?.books : [];
+        const callableCourses = payload
           .map(fromStoredCourse)
           .filter((course): course is CourseData => course !== null);
+        if (callableCourses.length > 0) {
+          let mergedCourses = callableCourses;
+          if (fallbackUid) {
+            try {
+              const directCourses = await fetchUserBooksDirectly(fallbackUid);
+              if (directCourses.length > 0) {
+                const directById = new Map(directCourses.map((course) => [course.id, course] as const));
+                mergedCourses = callableCourses.map((callableCourse) => {
+                  const directCourse = directById.get(callableCourse.id);
+                  if (!directCourse) return callableCourse;
+                  return {
+                    ...callableCourse,
+                    contentPackageUrl: directCourse.contentPackageUrl || callableCourse.contentPackageUrl,
+                    contentPackagePath: directCourse.contentPackagePath || callableCourse.contentPackagePath,
+                    contentPackageUpdatedAt: directCourse.contentPackageUpdatedAt || callableCourse.contentPackageUpdatedAt,
+                    bundle: directCourse.bundle || callableCourse.bundle,
+                    cover: directCourse.cover || callableCourse.cover,
+                    coverImageUrl: directCourse.coverImageUrl || callableCourse.coverImageUrl
+                  };
+                });
+              }
+            } catch {
+              // Callable payload is enough for bootstrap when direct Firestore read fails.
+            }
+          }
 
-        for (const course of courses) {
+          for (const course of mergedCourses) {
+            if (hasPersistableCourseContent(course)) {
+              coursePackageByIdRef.current.set(course.id, course);
+            }
+          }
+          return sortCoursesByLastActivity(mergedCourses);
+        }
+
+        const directCourses = fallbackUid
+          ? await fetchUserBooksDirectly(fallbackUid)
+          : [];
+        for (const course of directCourses) {
           if (hasPersistableCourseContent(course)) {
             coursePackageByIdRef.current.set(course.id, course);
           }
         }
-
-        return sortCoursesByLastActivity(courses);
+        return sortCoursesByLastActivity(directCourses);
       } catch (error) {
         lastError = error;
+        if (fallbackUid) {
+          try {
+            const directCourses = await fetchUserBooksDirectly(fallbackUid);
+            if (directCourses.length > 0) {
+              for (const course of directCourses) {
+                if (hasPersistableCourseContent(course)) {
+                  coursePackageByIdRef.current.set(course.id, course);
+                }
+              }
+              return sortCoursesByLastActivity(directCourses);
+            }
+          } catch {
+            // Keep retry loop behavior for transient callable failures.
+          }
+        }
         if (attempt >= maxAttempts || !isTransientCourseBootstrapError(error)) {
           throw error;
         }
@@ -2279,7 +2912,37 @@ export default function App() {
       }
     }
 
-    throw lastError instanceof Error ? lastError : new Error('SmartBook course bootstrap failed.');
+    throw lastError instanceof Error ? lastError : new Error('Book bootstrap failed.');
+  };
+
+  const waitForHydratedCourseSnapshot = async (
+    courseId: string,
+    timeoutMs = SMARTBOOK_EXPORT_HYDRATION_WAIT_MS
+  ): Promise<CourseData | null> => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || null;
+      if (!snapshot) return null;
+      if (!courseNeedsContentHydration(snapshot)) return snapshot;
+      await waitMs(120);
+    }
+
+    return savedCoursesRef.current.find((course) => course.id === courseId) || null;
+  };
+
+  const resolveCourseForExport = async (courseId: string): Promise<CourseData | null> => {
+    const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || null;
+    if (!snapshot) return null;
+    if (!courseNeedsContentHydration(snapshot)) return snapshot;
+
+    try {
+      await ensureCourseHydrated(courseId, { markNodesLoading: false });
+    } catch {
+      // Best-effort hydration only; export still falls back to the latest known snapshot.
+    }
+
+    const hydratedSnapshot = await waitForHydratedCourseSnapshot(courseId);
+    return hydratedSnapshot || snapshot;
   };
 
   const disableCloudSyncForPermission = () => {
@@ -2309,6 +2972,9 @@ export default function App() {
           contentPackageUrl: cloudCourse.contentPackageUrl || course.contentPackageUrl,
           contentPackagePath: cloudCourse.contentPackagePath || course.contentPackagePath,
           contentPackageUpdatedAt: cloudCourse.contentPackageUpdatedAt || course.contentPackageUpdatedAt,
+          bundle: cloudCourse.bundle || course.bundle,
+          cover: cloudCourse.cover || course.cover,
+          status: normalizeCourseStatus(cloudCourse.status) || normalizeCourseStatus(course.status),
           nodes: Array.isArray(cloudCourse.nodes) && cloudCourse.nodes.length > 0 ? cloudCourse.nodes : course.nodes
         };
       });
@@ -2319,36 +2985,30 @@ export default function App() {
     });
   };
 
-  const ensureCourseHydrated = async (courseId: string): Promise<boolean> => {
-    if (!authUser?.uid || !courseId) return false;
-    const inFlightKey = `${authUser.uid}:${courseId}`;
-    if (courseHydrationInFlightRef.current.has(inFlightKey)) return false;
+  const ensureCourseHydrated = async (
+    courseId: string,
+    options?: {
+      markNodesLoading?: boolean;
+      force?: boolean;
+    }
+  ): Promise<boolean> => {
+    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    if (!localUserId || !courseId) {
+      return false;
+    }
+    const inFlightKey = `${localUserId}:${courseId}`;
+    const inFlightPromise = courseHydrationPromiseByKeyRef.current.get(inFlightKey);
+    if (inFlightPromise) {
+      return inFlightPromise;
+    }
 
     const snapshot = savedCoursesRef.current.find((course) => course.id === courseId);
-    if (!snapshot) return false;
+    const markNodesLoading = options?.markNodesLoading === true;
 
-    const needsHydration = courseNeedsHydration(snapshot);
-    if (!needsHydration) return true;
-
-    courseHydrationInFlightRef.current.add(inFlightKey);
-    try {
-      try {
-        await authUser.getIdToken(true);
-      } catch {
-        // Continue with best-effort auth state.
-      }
-
-      const hydrated = await fetchCoursePackageFromStorage(
-        courseId,
-        authUser.uid,
-        snapshot.contentPackageUrl,
-        snapshot.contentPackagePath
-      );
-      if (!hydrated) return false;
-
+    const applyHydratedCourseLocally = (hydrated: CourseData, progressSnapshot: CourseData) => {
       const mergedCourse = mergeSharedCourseWithUserProgress(
         hydrated,
-        toProgressDocFromCourseSnapshot(snapshot)
+        toProgressDocFromCourseSnapshot(progressSnapshot)
       );
 
       setSavedCourses((prev) => {
@@ -2360,15 +3020,110 @@ export default function App() {
           return mergedCourse;
         });
         if (!changed) return prev;
-        writeCoursesToLocal(authUser.uid, nextCourses);
-        writeFullCoursesToLocal(authUser.uid, nextCourses);
-        void writeFullCourseToNativeCache(authUser.uid, mergedCourse);
+        writeCoursesToLocal(localUserId, nextCourses);
+        writeFullCoursesToLocal(localUserId, nextCourses);
+        void writeFullCourseToNativeCache(localUserId, mergedCourse);
         return nextCourses;
       });
-      return true;
-    } finally {
-      courseHydrationInFlightRef.current.delete(inFlightKey);
+    };
+
+    if (!snapshot) {
+      return false;
     }
+
+    if (!courseNeedsContentHydration(snapshot)) {
+      return true;
+    }
+
+    const nativeCachedCourse = await readFullCourseFromNativeCache(
+      localUserId,
+      courseId,
+      resolveNativeCourseCacheVersion(snapshot)
+    );
+    if (nativeCachedCourse && !courseNeedsContentHydration(nativeCachedCourse)) {
+      applyHydratedCourseLocally(nativeCachedCourse, snapshot);
+      return true;
+    }
+
+    if (markNodesLoading) {
+      patchCourseById(courseId, (course) => {
+        let changed = false;
+        const nextNodes = course.nodes.map((node) => {
+          const shouldShowLoading = !node.content && (
+            node.type === 'lecture' ||
+            node.type === 'reinforce' ||
+            node.type === 'retention'
+          );
+          if (!shouldShowLoading || node.isLoading) return node;
+          changed = true;
+          return { ...node, isLoading: true };
+        });
+        if (!changed) return course;
+        return { ...course, nodes: nextNodes };
+      }, false);
+    }
+
+    const hydrationPromise = (async () => {
+      let hydrationSucceeded = false;
+      try {
+        if (authUser) {
+          try {
+            await authUser.getIdToken(options?.force === true);
+          } catch {
+            // Continue with best-effort auth state.
+          }
+        }
+
+        const latestSnapshot = savedCoursesRef.current.find((course) => course.id === courseId) || snapshot;
+        let ownerUid = latestSnapshot.userId || authUser?.uid;
+        let packageUrl = latestSnapshot.contentPackageUrl;
+        let packagePath = latestSnapshot.contentPackagePath;
+
+        // Package metadata is now sourced directly from users/{uid}/books list payload.
+
+        const hydrated = await fetchCoursePackageFromStorage(
+          courseId,
+          ownerUid,
+          packageUrl,
+          packagePath,
+          { preferBackend: true, versionHint: latestSnapshot.bundle?.version }
+        );
+
+        if (!hydrated) {
+          console.warn(`[Book Sync] No content found for book ${courseId} (owner=${ownerUid}, path=${packagePath || 'none'}, url=${packageUrl ? 'yes' : 'none'})`);
+          return false;
+        }
+
+        applyHydratedCourseLocally(hydrated, latestSnapshot);
+        hydrationSucceeded = true;
+        return true;
+      } catch (error) {
+        console.warn(`[Book Sync] Hydration failed for book ${courseId}:`, error);
+        if (!isStorageObjectNotFoundError(error) && !isPermissionDeniedError(error)) {
+          console.warn(`Book hydration failed (${courseId}):`, error);
+        }
+        return false;
+      } finally {
+        if (!hydrationSucceeded && markNodesLoading) {
+          patchCourseById(courseId, (course) => {
+            let changed = false;
+            const nextNodes = course.nodes.map((node) => {
+              if (!node.isLoading) return node;
+              changed = true;
+              return { ...node, isLoading: false };
+            });
+            if (!changed) return course;
+            return { ...course, nodes: nextNodes };
+          }, false);
+        }
+        if (courseHydrationPromiseByKeyRef.current.get(inFlightKey) === hydrationPromise) {
+          courseHydrationPromiseByKeyRef.current.delete(inFlightKey);
+        }
+      }
+    })();
+
+    courseHydrationPromiseByKeyRef.current.set(inFlightKey, hydrationPromise);
+    return hydrationPromise;
   };
 
   const openCreditPaywall = (action?: CreditActionType) => {
@@ -2543,22 +3298,7 @@ export default function App() {
 
     try {
       const cloudPayload = { ...pending.payload };
-      if (Array.isArray(cloudPayload.nodes)) {
-        cloudPayload.nodes = await materializeNodesForCloud(
-          pending.uid,
-          pending.courseId,
-          cloudPayload.nodes as TimelineNode[]
-        );
-      }
-      if ('coverImageUrl' in cloudPayload) {
-        cloudPayload.coverImageUrl = await materializeCoverForCloud(
-          pending.uid,
-          pending.courseId,
-          cloudPayload.coverImageUrl
-        );
-      }
-
-      const courseForPackage: CourseData = {
+      let courseForPackage: CourseData = {
         id: pending.courseId,
         topic: resolveCourseTopic(cloudPayload.topic),
         description: typeof cloudPayload.description === 'string' ? cloudPayload.description : undefined,
@@ -2577,30 +3317,65 @@ export default function App() {
           : undefined,
         totalDuration: typeof cloudPayload.totalDuration === 'string' ? cloudPayload.totalDuration : undefined,
         coverImageUrl: typeof cloudPayload.coverImageUrl === 'string' ? cloudPayload.coverImageUrl : undefined,
+        status: normalizeCourseStatus(cloudPayload.status),
         userId: pending.uid,
-        isPublic: false,
         nodes: Array.isArray(cloudPayload.nodes) ? cloudPayload.nodes as TimelineNode[] : [],
         createdAt: cloudPayload.createdAt instanceof Date ? cloudPayload.createdAt : resolveDate(cloudPayload.createdAt),
         lastActivity: cloudPayload.lastActivity instanceof Date ? cloudPayload.lastActivity : resolveDate(cloudPayload.lastActivity)
       };
-      const packageMetadata = await uploadCoursePackageToStorage(pending.uid, pending.courseId, courseForPackage);
+      let packageMetadata: Partial<Pick<CourseData, 'contentPackagePath' | 'contentPackageUrl' | 'contentPackageUpdatedAt'>> = {
+        contentPackagePath: typeof cloudPayload.contentPackagePath === 'string' ? cloudPayload.contentPackagePath : undefined,
+        contentPackageUrl: typeof cloudPayload.contentPackageUrl === 'string' ? cloudPayload.contentPackageUrl : undefined,
+        contentPackageUpdatedAt: cloudPayload.contentPackageUpdatedAt instanceof Date ? cloudPayload.contentPackageUpdatedAt : undefined
+      };
+
+      const shouldUploadBundle = (
+        (!packageMetadata.contentPackagePath || !String(packageMetadata.contentPackagePath).trim()) &&
+        courseForPackage.nodes.length > 0 &&
+        hasPersistableCourseContent(courseForPackage)
+      );
+
+      if (shouldUploadBundle) {
+        const materializedNodes = await materializeNodesForCloud(
+          pending.uid,
+          pending.courseId,
+          courseForPackage.nodes
+        );
+        const materializedCoverImageUrl = await materializeCoverForCloud(
+          pending.uid,
+          pending.courseId,
+          courseForPackage.coverImageUrl
+        );
+        const packageSourceCourse: CourseData = {
+          ...courseForPackage,
+          nodes: materializedNodes,
+          coverImageUrl: materializedCoverImageUrl
+        };
+        packageMetadata = await uploadCoursePackageToStorage(pending.uid, pending.courseId, packageSourceCourse);
+        courseForPackage = packageSourceCourse;
+      }
+
       const cloudCourse = {
         ...courseForPackage,
-        ...packageMetadata
+        ...packageMetadata,
+        status: normalizeCourseStatus(courseForPackage.status) || (packageMetadata.contentPackagePath ? 'ready' : 'processing'),
+        bundle: packageMetadata.contentPackagePath
+          ? {
+            path: packageMetadata.contentPackagePath,
+            version: extractBundleVersionFromPath(packageMetadata.contentPackagePath),
+            includesPodcast: courseForPackage.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim())),
+            generatedAt: packageMetadata.contentPackageUpdatedAt || new Date()
+          }
+          : courseForPackage.bundle
       };
       coursePackageByIdRef.current.set(pending.courseId, cloudCourse);
       applyCloudHydratedCourseLocally(pending.uid, cloudCourse);
 
-      const userProgressPayload = buildUserCourseProgressPayloadFromPartial(
-        pending.uid,
-        pending.courseId,
-        cloudCourse
-      );
-
-      const safeUserProgressPayload = stripUndefinedDeepForFirestore(userProgressPayload);
+      const bookDocPayload = buildBookDocumentPayload(pending.uid, pending.courseId, cloudCourse);
+      const safeBookDocPayload = stripUndefinedDeepForFirestore(bookDocPayload);
       await setDoc(
-        doc(db, 'users', pending.uid, 'courses', pending.courseId),
-        safeUserProgressPayload,
+        doc(db, 'users', pending.uid, 'books', pending.courseId),
+        safeBookDocPayload,
         { merge: true }
       );
       courseCloudWriteRetryCountRef.current = 0;
@@ -2618,10 +3393,10 @@ export default function App() {
         queueCloudFlush(delayMs);
         queuedBackoffRetry = true;
       } else if (isPermissionError) {
-        console.error('Error writing private SmartBook package to Firebase:', error);
+        console.error('Error writing private book package to Firebase:', error);
       } else {
         courseCloudWriteRetryCountRef.current = 0;
-        console.error('Error updating private SmartBook in Firebase:', error);
+        console.error('Error updating private book metadata in Firebase:', error);
       }
     } finally {
       cloudCourseWriteInFlightRef.current = false;
@@ -2640,7 +3415,7 @@ export default function App() {
     if (!cloudSyncEnabled) return;
     const currentCourse = savedCoursesRef.current.find((course) => course.id === courseId);
     const mergedPayload = currentCourse
-      ? { ...buildCourseMetadataPayload(currentCourse), ...payload }
+      ? { ...currentCourse, ...payload }
       : payload;
 
     pendingCloudCourseWriteRef.current = {
@@ -2725,6 +3500,59 @@ export default function App() {
 
   useEffect(() => {
     savedCoursesRef.current = savedCourses;
+  }, [authUser?.uid, savedCourses]);
+
+  useEffect(() => {
+    courseOpenStateByIdRef.current = courseOpenStateById;
+  }, [courseOpenStateById]);
+
+  useEffect(() => {
+    setCourseOpenStateById((prev) => {
+      let changed = false;
+      const next: Record<string, CourseOpenUiState> = {};
+
+      for (const course of savedCourses) {
+        const previous = prev[course.id];
+        const isReady = !courseNeedsContentHydration(course);
+
+        if (isReady) {
+          if (previous?.status === 'ready' && previous.progress === 100) {
+            next[course.id] = previous;
+          } else {
+            next[course.id] = { status: 'ready', progress: 100, updatedAt: Date.now() };
+            changed = true;
+          }
+          continue;
+        }
+
+        // Preserve any explicitly-set state (downloading / ready / failed).
+        // Only reset to idle if there was no previous state at all.
+        // This prevents the effect from overriding a "ready" state set by
+        // ensureCourseReadyForOpen after successful backend hydration.
+        if (previous) {
+          next[course.id] = previous;
+        } else {
+          next[course.id] = { status: 'idle', progress: 0, updatedAt: Date.now() };
+          changed = true;
+        }
+      }
+
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (!changed && prevKeys.length !== nextKeys.length) {
+        changed = true;
+      }
+      if (!changed) {
+        for (const key of nextKeys) {
+          if (prev[key] !== next[key]) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      return changed ? next : prev;
+    });
   }, [savedCourses]);
 
   useEffect(() => {
@@ -2732,19 +3560,25 @@ export default function App() {
     if (!savedCourses.length) return;
 
     const localUserId = authUser.uid;
-    const repairTargets = savedCourses.filter((course) => {
+    const repairTargets = savedCourses.flatMap((course) => {
       const hasStorageBackedCover = typeof course.coverImageUrl === 'string' && (
         isFirebaseStorageDownloadUrl(course.coverImageUrl) ||
         course.coverImageUrl.trim().startsWith('smartbooks/')
       );
       const needsCoverFromPackage = !course.coverImageUrl && Boolean(course.contentPackagePath);
       const needsLegacyCoverLookup = !course.coverImageUrl;
-      if (!hasStorageBackedCover && !needsCoverFromPackage && !needsLegacyCoverLookup) return false;
+      if (!hasStorageBackedCover && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
 
       const repairKey = `${course.id}:${course.coverImageUrl || ''}:${course.contentPackagePath || ''}`;
-      if (coverRepairAttemptedByCourseRef.current.has(repairKey)) return false;
-      coverRepairAttemptedByCourseRef.current.add(repairKey);
-      return true;
+      if (!markRetriableAttemptWithCooldown(
+        coverRepairAttemptedByCourseRef.current,
+        repairKey,
+        SMARTBOOK_COVER_REPAIR_RETRY_COOLDOWN_MS
+      )) {
+        return [];
+      }
+
+      return [{ course, repairKey }];
     });
 
     if (repairTargets.length === 0) return;
@@ -2753,8 +3587,9 @@ export default function App() {
 
     const repairCourseCovers = async () => {
       const resolvedCovers = await Promise.all(
-        repairTargets.map(async (course) => ({
+        repairTargets.map(async ({ course, repairKey }) => ({
           courseId: course.id,
+          repairKey,
           coverImageUrl: await resolveFreshCoverUrlForCourse(course)
         }))
       );
@@ -2764,7 +3599,11 @@ export default function App() {
       const repairedById = new Map(
         resolvedCovers
           .filter((entry) => typeof entry.coverImageUrl === 'string' && entry.coverImageUrl.trim())
-          .map((entry) => [entry.courseId, entry.coverImageUrl!.trim()] as const)
+          .map((entry) => {
+            const repairedCover = entry.coverImageUrl!.trim();
+            coverRepairAttemptedByCourseRef.current.delete(entry.repairKey);
+            return [entry.courseId, repairedCover] as const;
+          })
       );
       if (repairedById.size === 0) return;
 
@@ -2839,150 +3678,18 @@ export default function App() {
 
   useEffect(() => {
     if (!authUser?.uid) return;
-    if (!activeCourseId) return;
-
-    const activeCourse = savedCourses.find((course) => course.id === activeCourseId);
-    if (!activeCourse) return;
-
-    const needsHydration = courseNeedsHydration(activeCourse);
-    if (!needsHydration) return;
-
-    const repairKey = `${authUser.uid}:${activeCourse.id}:${activeCourse.contentPackagePath || ''}:${activeCourse.contentPackageUrl || ''}`;
-    if (courseHydrationRepairAttemptedRef.current.has(repairKey)) return;
-    courseHydrationRepairAttemptedRef.current.add(repairKey);
-
-    let cancelled = false;
-
-    const hydrateActiveCourse = async () => {
-      try {
-        await authUser.getIdToken(true);
-        const storageCourse = await fetchCoursePackageFromStorage(
-          activeCourse.id,
-          authUser.uid,
-          activeCourse.contentPackageUrl,
-          activeCourse.contentPackagePath
-        );
-        if (!storageCourse || cancelled) return;
-
-        const mergedCourse = mergeSharedCourseWithUserProgress(
-          storageCourse,
-          toProgressDocFromCourseSnapshot(activeCourse)
-        );
-
-        setSavedCourses((prev) => {
-          let changed = false;
-          const nextCourses = prev.map((course) => {
-            if (course.id !== activeCourse.id) return course;
-            changed = true;
-            return mergedCourse;
-          });
-          if (!changed) return prev;
-          writeCoursesToLocal(authUser.uid, nextCourses);
-          writeFullCoursesToLocal(authUser.uid, nextCourses);
-          void writeFullCourseToNativeCache(authUser.uid, mergedCourse);
-          return nextCourses;
-        });
-      } catch (error) {
-        if (!isStorageObjectNotFoundError(error)) {
-          console.warn(`Active SmartBook package hydration failed (${activeCourse.id}):`, error);
-        }
-      }
-    };
-
-    void hydrateActiveCourse();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeCourseId, authUser?.uid, savedCourses]);
-
-  useEffect(() => {
-    if (!authUser?.uid) return;
-    if (!savedCourses.length) return;
-
-    const repairCandidates = savedCourses.filter((course) => courseNeedsHydration(course));
-    if (repairCandidates.length === 0) return;
-
-    let cancelled = false;
-
-    const hydrateRepairableCourses = async () => {
-      try {
-        await authUser.getIdToken(true);
-      } catch (tokenError) {
-        console.warn('Auth token refresh skipped before bulk SmartBook hydration:', tokenError);
-      }
-
-      const repairedById = new Map<string, CourseData>();
-
-      for (const course of repairCandidates) {
-        const repairKey = `bulk:${authUser.uid}:${course.id}:${course.contentPackagePath || ''}:${course.contentPackageUrl || ''}`;
-        if (courseHydrationRepairAttemptedRef.current.has(repairKey)) continue;
-        courseHydrationRepairAttemptedRef.current.add(repairKey);
-
-        try {
-          const progressSnapshot = toProgressDocFromCourseSnapshot(course);
-          let sharedCourse = await fetchCoursePackageFromStorage(
-            course.id,
-            authUser.uid,
-            course.contentPackageUrl,
-            course.contentPackagePath
-          );
-
-          if (!sharedCourse) {
-            const sharedDocSnapshot = await getDoc(doc(db, 'courses', course.id));
-            if (sharedDocSnapshot.exists()) {
-              const sharedPayload = sharedDocSnapshot.data() as Record<string, any>;
-              if (sharedPayload.userId === authUser.uid || sharedPayload.isPublic === true) {
-                const firestoreCourse = fromFirestoreCourse(sharedDocSnapshot.id, sharedPayload);
-                if (!isCourseProgressOnly(firestoreCourse)) {
-                  sharedCourse = firestoreCourse;
-                }
-              }
-            }
-          }
-
-          if (!sharedCourse) continue;
-          repairedById.set(course.id, mergeSharedCourseWithUserProgress(sharedCourse, progressSnapshot));
-        } catch (error) {
-          if (!isStorageObjectNotFoundError(error)) {
-            console.warn(`Background SmartBook hydration failed (${course.id}):`, error);
-          }
-        }
-      }
-
-      if (cancelled || repairedById.size === 0) return;
-
-      setSavedCourses((prev) => {
-        let changed = false;
-        const nextCourses = prev.map((course) => {
-          const repairedCourse = repairedById.get(course.id);
-          if (!repairedCourse) return course;
-          changed = true;
-          coursePackageByIdRef.current.set(course.id, repairedCourse);
-          return repairedCourse;
-        });
-        if (!changed) return prev;
-        writeCoursesToLocal(authUser.uid, nextCourses);
-        writeFullCoursesToLocal(authUser.uid, nextCourses);
-        void Promise.allSettled(
-          Array.from(repairedById.values()).map((course) => writeFullCourseToNativeCache(authUser.uid, course))
-        );
-        return nextCourses;
-      });
-    };
-
-    void hydrateRepairableCourses();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authUser?.uid, savedCourses]);
-
-  useEffect(() => {
-    if (!authUser?.uid) return;
     const fullCourses = savedCourses.filter((course) => hasPersistableCourseContent(course));
     if (fullCourses.length === 0) return;
-    void Promise.allSettled(fullCourses.map((course) => writeFullCourseToNativeCache(authUser.uid, course)));
+
+    let cancelled = false;
+    void runTasksWithConcurrency(fullCourses, 2, async (course) => {
+      if (cancelled) return;
+      await writeFullCourseToNativeCache(authUser.uid, course);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [authUser?.uid, savedCourses]);
 
   useEffect(() => {
@@ -3253,7 +3960,7 @@ export default function App() {
               prev.map((course) => {
                 const fullCachedCourse = nativeFullCourseCache.get(course.id);
                 if (!fullCachedCourse) return course;
-                if (!courseNeedsHydration(course)) return course;
+                if (!courseNeedsContentHydration(course)) return course;
 
                 changed = true;
                 const mergedCourse = mergeSharedCourseWithUserProgress(
@@ -3274,7 +3981,6 @@ export default function App() {
           // Ignore native cache read failures during bootstrap.
         }
       };
-
       const stickyNotesBootstrapPromise = (async () => {
         if (!authUser || !cloudSyncEnabled) return;
 
@@ -3313,11 +4019,11 @@ export default function App() {
       });
 
       const localCourses = readCoursesFromLocal(localUserId);
-      const localCourseById = new Map(localCourses.map((course) => [course.id, course] as const));
       const localStickyNotes = readStickyNotesFromLocal(localUserId);
       const localLikedCourseIds = readLikedCourseIdsFromLocal(localUserId);
       const progressOnlyFallbackCourseIds = new Set<string>();
       setSavedCourses(localCourses);
+      savedCoursesRef.current = localCourses;
       setStickyNotes(localStickyNotes);
       setLikedCourseIds(localLikedCourseIds);
       setActiveCourseId((prev) => {
@@ -3347,189 +4053,25 @@ export default function App() {
       }
 
       let backendBootstrapCourses: CourseData[] = [];
+      let didLoadBackendBootstrap = false;
       try {
         setLoadingMessage('Kitaplar senkronize ediliyor...');
         backendBootstrapCourses = await fetchCourseListFromBackend();
+        didLoadBackendBootstrap = true;
       } catch (backendBootstrapError) {
-        console.warn('Server-side SmartBook bootstrap skipped:', backendBootstrapError);
+        console.warn('Server-side book bootstrap skipped:', backendBootstrapError);
       }
 
-      const loadCloudCoursesForOwnerUid = async (ownerUid: string): Promise<{
-        coursesById: Map<string, CourseData>;
-        progressOnlyIds: Set<string>;
-      }> => {
-        const ownerById = new Map<string, CourseData>();
-        const ownerProgressOnlyIds = new Set<string>();
-        const userCoursesCollection = collection(db, 'users', ownerUid, 'courses');
-        let userSnapshot;
-        try {
-          userSnapshot = await getDocs(query(userCoursesCollection, orderBy('lastActivity', 'desc')));
-        } catch {
-          userSnapshot = await getDocs(userCoursesCollection);
-        }
-
-        const userProgressBySharedCourseId = new Map<string, UserCourseProgressDoc>();
-
-        userSnapshot.forEach((courseDoc) => {
-          const data = courseDoc.data() as Record<string, any>;
-          if (looksLikeLegacyFullCourseDoc(data)) {
-            ownerById.set(courseDoc.id, fromFirestoreCourse(courseDoc.id, data));
-            return;
-          }
-
-          const progressDoc = fromFirestoreUserCourseProgress(courseDoc.id, data);
-          const existing = userProgressBySharedCourseId.get(progressDoc.sharedCourseId);
-          if (!existing || progressDoc.lastActivity > existing.lastActivity) {
-            userProgressBySharedCourseId.set(progressDoc.sharedCourseId, progressDoc);
-          }
-        });
-
-        if (userProgressBySharedCourseId.size > 0) {
-          const courseHydrationTasks = Array.from(userProgressBySharedCourseId.entries()).map(async ([sharedCourseId, progressDoc]) => {
-            const localFallbackCourse = localCourseById.get(sharedCourseId);
-            const memoryFallbackCourse = savedCoursesRef.current.find((course) => course.id === sharedCourseId);
-            const packageUpdatedAtMs = progressDoc.contentPackageUpdatedAt?.getTime() ?? 0;
-            const localPackageUpdatedAtMs = localFallbackCourse?.contentPackageUpdatedAt?.getTime() ?? 0;
-            const memoryPackageUpdatedAtMs = memoryFallbackCourse?.contentPackageUpdatedAt?.getTime() ?? 0;
-            const canUseLocalFullCourse = localFallbackCourse
-              && !courseNeedsHydration(localFallbackCourse)
-              && localPackageUpdatedAtMs >= packageUpdatedAtMs;
-            const canUseMemoryFullCourse = memoryFallbackCourse
-              && !courseNeedsHydration(memoryFallbackCourse)
-              && memoryPackageUpdatedAtMs >= packageUpdatedAtMs;
-            const bestFallbackCourse = (
-              canUseLocalFullCourse
-                ? localFallbackCourse
-                : (canUseMemoryFullCourse ? memoryFallbackCourse : null)
-            );
-
-            let courseFromPrivateDoc = buildCourseFromUserProgressDoc(
-              progressDoc,
-              bestFallbackCourse || localFallbackCourse || memoryFallbackCourse || ownerById.get(sharedCourseId) || null
-            );
-
-            const shouldHydrateFromPackage = courseNeedsHydration(courseFromPrivateDoc);
-
-            if (shouldHydrateFromPackage) {
-              try {
-                const storageCourse = await fetchCoursePackageFromStorage(
-                  sharedCourseId,
-                  progressDoc.userId || ownerUid,
-                  progressDoc.contentPackageUrl,
-                  progressDoc.contentPackagePath
-                );
-                if (storageCourse) {
-                  courseFromPrivateDoc = mergeSharedCourseWithUserProgress(storageCourse, progressDoc);
-                }
-              } catch (storageError) {
-                if (!isStorageObjectNotFoundError(storageError)) {
-                  console.warn(`SmartBook package read failed (${sharedCourseId}):`, storageError);
-                }
-              }
-            }
-
-            if (isCourseProgressOnly(courseFromPrivateDoc)) {
-              ownerProgressOnlyIds.add(sharedCourseId);
-            }
-
-            ownerById.set(sharedCourseId, courseFromPrivateDoc);
-          });
-
-          await Promise.allSettled(courseHydrationTasks);
-        }
-
-        try {
-          const legacySnapshot = await getDocs(
-            query(collection(db, 'courses'), where('userId', '==', ownerUid))
-          );
-          legacySnapshot.forEach((courseDoc) => {
-            const data = courseDoc.data();
-            const fullCourse = fromFirestoreCourse(courseDoc.id, data);
-            const existing = ownerById.get(courseDoc.id);
-            if (!existing) {
-              ownerById.set(courseDoc.id, fullCourse);
-              return;
-            }
-            if (courseNeedsHydration(existing)) {
-              ownerById.set(courseDoc.id, mergeSharedCourseWithUserProgress(
-                fullCourse,
-                toProgressDocFromCourseSnapshot(existing)
-              ));
-              ownerProgressOnlyIds.delete(courseDoc.id);
-            }
-          });
-        } catch (legacyError) {
-          console.warn('Legacy course collection read skipped:', legacyError);
-        }
-
-        return {
-          coursesById: ownerById,
-          progressOnlyIds: ownerProgressOnlyIds
-        };
-      };
-
       try {
-        let primaryCloudData: { coursesById: Map<string, CourseData>; progressOnlyIds: Set<string> } | null = null;
         const byId = new Map<string, CourseData>();
 
-        if (backendBootstrapCourses.length > 0) {
+        if (didLoadBackendBootstrap) {
           backendBootstrapCourses.forEach((course) => {
             byId.set(course.id, course);
-            if (courseNeedsHydration(course)) {
+            if (courseNeedsContentHydration(course)) {
               progressOnlyFallbackCourseIds.add(course.id);
             }
           });
-        } else {
-          primaryCloudData = await loadCloudCoursesForOwnerUid(authUser.uid);
-          primaryCloudData.coursesById.forEach((course, courseId) => {
-            byId.set(courseId, course);
-          });
-          primaryCloudData.progressOnlyIds.forEach((courseId) => progressOnlyFallbackCourseIds.add(courseId));
-        }
-
-        if (byId.size === 0 && authUser.email) {
-          try {
-            const claimLegacySmartBookData = httpsCallable<
-              Record<string, never>,
-              ClaimLegacySmartBookDataResponse
-            >(functions, 'claimLegacySmartBookData');
-            await appCheckReady;
-            const claimResult = await claimLegacySmartBookData({});
-            const migratedCourseCount = Number(claimResult.data?.migratedCourseCount || 0);
-            const migratedStickyCount = Number(claimResult.data?.migratedStickyCount || 0);
-
-            if (migratedCourseCount > 0 || migratedStickyCount > 0) {
-              backendBootstrapCourses = [];
-              try {
-                setLoadingMessage('Eski kitaplar senkronize ediliyor...');
-                backendBootstrapCourses = await fetchCourseListFromBackend();
-              } catch (backendBootstrapError) {
-                console.warn('Server-side SmartBook bootstrap retry skipped:', backendBootstrapError);
-              }
-
-              byId.clear();
-              progressOnlyFallbackCourseIds.clear();
-
-              if (backendBootstrapCourses.length > 0) {
-                backendBootstrapCourses.forEach((course) => {
-                  byId.set(course.id, course);
-                  if (courseNeedsHydration(course)) {
-                    progressOnlyFallbackCourseIds.add(course.id);
-                  }
-                });
-              } else {
-                primaryCloudData = await loadCloudCoursesForOwnerUid(authUser.uid);
-                primaryCloudData.coursesById.forEach((course, courseId) => {
-                  byId.set(courseId, course);
-                });
-                primaryCloudData.progressOnlyIds.forEach((courseId) => progressOnlyFallbackCourseIds.add(courseId));
-              }
-
-              console.warn(`Claimed legacy Fortale data for ${authUser.email}. Courses: ${migratedCourseCount}, Sticky notes: ${migratedStickyCount}.`);
-            }
-          } catch (legacyOwnerError) {
-            console.warn('Legacy owner migration skipped:', legacyOwnerError);
-          }
         }
 
         localCourses.forEach((localCourse) => {
@@ -3552,10 +4094,32 @@ export default function App() {
           }
         });
 
+        savedCoursesRef.current
+          .filter((course) => sessionCreatedCourseIdsRef.current.has(course.id))
+          .forEach((memoryCourse) => {
+            const existing = byId.get(memoryCourse.id);
+            if (!existing) {
+              byId.set(memoryCourse.id, memoryCourse);
+              return;
+            }
+
+            if (isCourseProgressOnly(existing) && !isCourseProgressOnly(memoryCourse)) {
+              byId.set(memoryCourse.id, mergeSharedCourseWithUserProgress(
+                memoryCourse,
+                toProgressDocFromCourseSnapshot(existing)
+              ));
+              return;
+            }
+
+            if (memoryCourse.lastActivity > existing.lastActivity && !isCourseProgressOnly(memoryCourse)) {
+              byId.set(memoryCourse.id, memoryCourse);
+            }
+          });
+
         progressOnlyFallbackCourseIdsRef.current = new Set(
           Array.from(progressOnlyFallbackCourseIds).filter((courseId) => {
             const snapshot = byId.get(courseId);
-            return Boolean(snapshot && courseNeedsHydration(snapshot));
+            return Boolean(snapshot && courseNeedsContentHydration(snapshot));
           })
         );
 
@@ -3563,6 +4127,7 @@ export default function App() {
         const sortedCourses = sortCoursesByLastActivity(courses);
         if (sortedCourses.length > 0) {
           setSavedCourses(sortedCourses);
+          savedCoursesRef.current = sortedCourses;
           setActiveCourseId((prev) =>
             prev && sortedCourses.some((course) => course.id === prev)
               ? prev
@@ -3570,24 +4135,27 @@ export default function App() {
           );
           writeCoursesToLocal(localUserId, sortedCourses);
           writeFullCoursesToLocal(localUserId, sortedCourses);
-          void Promise.allSettled(
-            sortedCourses
-              .filter((course) => hasPersistableCourseContent(course))
-              .map((course) => writeFullCourseToNativeCache(localUserId, course))
+          void runTasksWithConcurrency(
+            sortedCourses.filter((course) => hasPersistableCourseContent(course)),
+            2,
+            async (course) => {
+              await writeFullCourseToNativeCache(localUserId, course);
+            }
           );
           setIsLoading(false);
           void mergeNativeFullCoursesIntoState(sortedCourses.map((course) => course.id));
         } else if (localCourses.length === 0) {
           setSavedCourses([]);
+          savedCoursesRef.current = [];
           setActiveCourseId(null);
         }
         await stickyNotesBootstrapPromise;
       } catch (error) {
         progressOnlyFallbackCourseIdsRef.current.clear();
         if (isPermissionDeniedError(error)) {
-          console.error('Error fetching private SmartBook documents from Firebase:', error);
+          console.error('Error fetching private book documents from Firebase:', error);
         } else {
-          console.error("Error fetching courses from Firebase:", error);
+          console.error("Error fetching books from Firebase:", error);
         }
         await stickyNotesBootstrapPromise;
       } finally {
@@ -3601,47 +4169,96 @@ export default function App() {
   }, [authUser, cloudSyncEnabled, isGuestSession]);
 
   useEffect(() => {
-    // Public library is disabled; keep the app on the private user collection as the
-    // single source of truth and avoid top-level course reads during normal usage.
-    setPublicCourses([]);
-  }, [authUser?.uid]);
+    if (!authUser?.uid || !cloudSyncEnabled) return;
 
-  useEffect(() => {
-    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
-    if (!localUserId) return;
-    if (!savedCourses.length || !publicCourses.length) return;
+    const uid = authUser.uid;
+    const userBooksCollection = collection(db, 'users', uid, 'books');
+    let unsubscribe: (() => void) | null = null;
+    let fallbackAttached = false;
 
-    let changed = false;
-    const repairedCourses = savedCourses.map((savedCourse) => {
-      const publicCourse = publicCourses.find((course) => course.id === savedCourse.id);
-      if (!publicCourse) return savedCourse;
+    const applyBooksSnapshot = (snapshot: { docs: Array<{ id: string; data: () => unknown }> }) => {
+      const cloudBooks = snapshot.docs
+        .map((bookDoc) => fromUserBookDocument(
+          bookDoc.id,
+          (bookDoc.data() as Record<string, unknown>) || {},
+          uid
+        ))
+        .filter((course): course is CourseData => course !== null);
 
-      const savedProgressOnly = isCourseProgressOnly(savedCourse);
-      const publicHasFullContent = !isCourseProgressOnly(publicCourse);
-      const needsCoverRepair = !savedCourse.coverImageUrl && Boolean(publicCourse.coverImageUrl);
-      const needsTitleRepair = isPlaceholderCourseTopic(savedCourse.topic) && !isPlaceholderCourseTopic(publicCourse.topic);
-      const needsMetadataRepair = (
-        (!savedCourse.creatorName && Boolean(publicCourse.creatorName)) ||
-        (!savedCourse.bookType && Boolean(publicCourse.bookType)) ||
-        (!savedCourse.subGenre && Boolean(publicCourse.subGenre)) ||
-        (!savedCourse.ageGroup && Boolean(publicCourse.ageGroup)) ||
-        (!savedCourse.totalDuration && Boolean(publicCourse.totalDuration))
+      setSavedCourses((prev) => {
+        const byId = new Map<string, CourseData>();
+
+        for (const cloudBook of cloudBooks) {
+          const localBook = prev.find((course) => course.id === cloudBook.id) || savedCoursesRef.current.find((course) => course.id === cloudBook.id);
+          if (!localBook) {
+            byId.set(cloudBook.id, cloudBook);
+            continue;
+          }
+
+          const mergedBook: CourseData = {
+            ...localBook,
+            ...cloudBook,
+            topic: resolveCourseTopic(cloudBook.topic, localBook.topic),
+            description: cloudBook.description || localBook.description,
+            creatorName: cloudBook.creatorName || localBook.creatorName,
+            language: cloudBook.language || localBook.language,
+            ageGroup: cloudBook.ageGroup || localBook.ageGroup,
+            bookType: cloudBook.bookType || localBook.bookType,
+            subGenre: cloudBook.subGenre || localBook.subGenre,
+            category: cloudBook.category || localBook.category,
+            searchTags: cloudBook.searchTags || localBook.searchTags,
+            totalDuration: cloudBook.totalDuration || localBook.totalDuration,
+            coverImageUrl: cloudBook.coverImageUrl || localBook.coverImageUrl,
+            contentPackagePath: cloudBook.contentPackagePath || localBook.contentPackagePath,
+            contentPackageUrl: cloudBook.contentPackageUrl || localBook.contentPackageUrl,
+            contentPackageUpdatedAt: cloudBook.contentPackageUpdatedAt || localBook.contentPackageUpdatedAt,
+            bundle: cloudBook.bundle || localBook.bundle,
+            cover: cloudBook.cover || localBook.cover,
+            status: normalizeCourseStatus(cloudBook.status) || normalizeCourseStatus(localBook.status),
+            nodes: localBook.nodes.length > 0 ? localBook.nodes : cloudBook.nodes
+          };
+          byId.set(cloudBook.id, mergedBook);
+        }
+
+        for (const localBook of prev) {
+          if (!byId.has(localBook.id) && sessionCreatedCourseIdsRef.current.has(localBook.id)) {
+            byId.set(localBook.id, localBook);
+          }
+        }
+
+        const nextCourses = sortCoursesByLastActivity(Array.from(byId.values()));
+        savedCoursesRef.current = nextCourses;
+        writeCoursesToLocal(uid, nextCourses);
+        writeFullCoursesToLocal(uid, nextCourses);
+        return nextCourses;
+      });
+    };
+
+    const attachFallbackListener = () => {
+      if (fallbackAttached) return;
+      fallbackAttached = true;
+      if (unsubscribe) unsubscribe();
+      unsubscribe = onSnapshot(
+        userBooksCollection,
+        (snapshot) => applyBooksSnapshot(snapshot as unknown as { docs: Array<{ id: string; data: () => unknown }> }),
+        (error) => {
+          console.warn('Book metadata realtime sync error:', error);
+        }
       );
+    };
 
-      if ((!savedProgressOnly || !publicHasFullContent) && !needsCoverRepair && !needsTitleRepair && !needsMetadataRepair) {
-        return savedCourse;
+    unsubscribe = onSnapshot(
+      query(userBooksCollection, orderBy('lastActivity', 'desc')),
+      (snapshot) => applyBooksSnapshot(snapshot as unknown as { docs: Array<{ id: string; data: () => unknown }> }),
+      () => {
+        attachFallbackListener();
       }
+    );
 
-      changed = true;
-      const progressSnapshot = toProgressDocFromCourseSnapshot(savedCourse);
-      return mergeSharedCourseWithUserProgress(publicCourse, progressSnapshot);
-    });
-
-    if (!changed) return;
-    const sorted = sortCoursesByLastActivity(repairedCourses);
-    setSavedCourses(sorted);
-    writeCoursesToLocal(localUserId, sorted);
-  }, [authUser?.uid, isGuestSession, publicCourses, savedCourses]);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [authUser?.uid, cloudSyncEnabled]);
 
   useEffect(() => {
     if (!incomingSharedSmartBookId) return;
@@ -3725,9 +4342,105 @@ export default function App() {
   const allowOpenAutoGenerationForActiveCourse = Boolean(
     activeCourse && sessionCreatedCourseIdsRef.current.has(activeCourse.id)
   );
+
   useEffect(() => {
-    backgroundGenerationSuppressedRef.current = currentView === 'COURSE_FLOW';
+    backgroundGenerationSuppressedRef.current = false;
   }, [currentView]);
+
+  useEffect(() => {
+    if (!activeCourseId || !allowOpenAutoGenerationForActiveCourse) return;
+
+    let retryTimer: number | null = null;
+    const resumeBackgroundPackaging = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      startBackgroundSmartBookPackaging(activeCourseId);
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+      retryTimer = window.setTimeout(() => {
+        startBackgroundSmartBookPackaging(activeCourseId);
+        retryTimer = null;
+      }, 1200);
+    };
+
+    resumeBackgroundPackaging();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resumeBackgroundPackaging();
+      }
+    };
+
+    window.addEventListener('focus', resumeBackgroundPackaging);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', resumeBackgroundPackaging);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, [activeCourseId, allowOpenAutoGenerationForActiveCourse]);
+
+  useEffect(() => {
+    if (savedCourses.length === 0) return;
+    if (backgroundGenerationSuppressedRef.current) return;
+
+    const pendingSessionCourses = sortCoursesByLastActivity(
+      savedCourses.filter((course) => (
+        sessionCreatedCourseIdsRef.current.has(course.id) &&
+        courseNeedsContentHydration(course)
+      ))
+    );
+    if (pendingSessionCourses.length === 0) return;
+
+    let cancelled = false;
+
+    const warmSessionCreatedCourses = async () => {
+      for (const course of pendingSessionCourses) {
+        if (cancelled || backgroundGenerationSuppressedRef.current) return;
+        startBackgroundSmartBookPackaging(course.id);
+        await waitMs(40);
+      }
+    };
+
+    void warmSessionCreatedCourses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [savedCourses]);
+
+  // Eager background hydration: after bootstrap, silently download content for all courses
+  // so that book cards transition to green "Oku" without requiring user taps.
+  const eagerHydrationAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!hasCompletedLocalBootstrap) return;
+    if (eagerHydrationAttemptedRef.current) return;
+    if (savedCourses.length === 0) return;
+
+    eagerHydrationAttemptedRef.current = true;
+
+    const coursesNeedingHydration = savedCourses.filter((course) => {
+      const openState = courseOpenStateByIdRef.current[course.id];
+      return (
+        courseNeedsContentHydration(course) &&
+        (!openState || openState.status === 'idle') &&
+        !courseOpenInFlightByIdRef.current.has(course.id)
+      );
+    });
+
+    if (coursesNeedingHydration.length === 0) return;
+
+    void runTasksWithConcurrency(coursesNeedingHydration.slice(0, 6), 3, async (course) => {
+      try {
+        await ensureCourseReadyForOpen(course.id, course);
+      } catch {
+        // Best-effort background hydration; failures are silently ignored.
+      }
+    });
+  }, [hasCompletedLocalBootstrap, savedCourses]);
 
   const userName = profileNameOverride?.trim()
     || authUser?.displayName?.trim()
@@ -3906,6 +4619,85 @@ export default function App() {
     targetPageCount: course.targetPageCount,
     creativeBrief: course.creativeBrief
   });
+
+  const ensureBackgroundCourseCover = async (courseId: string): Promise<void> => {
+    if (backgroundGenerationSuppressedRef.current) return;
+    if (backgroundCoverGenerationInFlightRef.current.has(courseId)) return;
+
+    const course = getSavedCourseSnapshotById(courseId);
+    if (!course) return;
+    if (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim()) return;
+
+    const lectureNodes = course.nodes.filter((node) => node.type === 'lecture' && Boolean(node.content?.trim()));
+    if (!lectureNodes.length) return;
+
+    backgroundCoverGenerationInFlightRef.current.add(courseId);
+
+    try {
+      const latestCourse = getSavedCourseSnapshotById(courseId) || course;
+      if (typeof latestCourse.coverImageUrl === 'string' && latestCourse.coverImageUrl.trim()) return;
+
+      const compactCoverContextText = (value: string | undefined): string => String(value || '')
+        .replace(/!\[[^\]]*]\(\s*<?(?:data:image\/[^)]+|https?:\/\/[^)]+)>?\s*\)/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const coverContext = latestCourse.nodes
+        .filter((node) => node.type === 'lecture' && Boolean(node.content?.trim()))
+        .map((node) => {
+          const body = compactCoverContextText(node.content).slice(0, 700);
+          return body ? `[${node.title}] ${body}` : '';
+        })
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, 6500);
+
+      const coverImageUrl = await generateCourseCover(
+        latestCourse.topic || '',
+        latestCourse.ageGroup,
+        {
+          bookType: latestCourse.bookType,
+          subGenre: latestCourse.subGenre || undefined,
+          creativeBrief: latestCourse.creativeBrief,
+          coverContext: [
+            latestCourse.bookType ? `Tür: ${latestCourse.bookType}` : '',
+            latestCourse.subGenre ? `Alt Tür: ${latestCourse.subGenre}` : '',
+            latestCourse.description ? `Özet: ${latestCourse.description}` : '',
+            coverContext
+          ]
+            .filter(Boolean)
+            .join('\n\n')
+            .slice(0, 8000)
+        }
+      );
+
+      const normalizedCoverImageUrl = typeof coverImageUrl === 'string' ? coverImageUrl.trim() : '';
+      if (!normalizedCoverImageUrl) return;
+
+      const updatedCourse = patchCourseById(courseId, (currentCourse) => {
+        if (typeof currentCourse.coverImageUrl === 'string' && currentCourse.coverImageUrl.trim()) {
+          return currentCourse;
+        }
+        return {
+          ...currentCourse,
+          coverImageUrl: normalizedCoverImageUrl
+        };
+      });
+
+      if (updatedCourse && authUser && cloudSyncEnabled) {
+        scheduleCourseCloudWrite(authUser.uid, courseId, {
+          coverImageUrl: normalizedCoverImageUrl,
+          lastActivity: updatedCourse.lastActivity
+        }, {
+          allowMasterWrite: !updatedCourse.userId || updatedCourse.userId === authUser.uid
+        });
+      }
+    } catch (error) {
+      console.error('Background book cover generation failed:', error);
+    } finally {
+      backgroundCoverGenerationInFlightRef.current.delete(courseId);
+    }
+  };
 
   const ensureBackgroundNodePackage = async (courseId: string, nodeId: string): Promise<void> => {
     if (backgroundGenerationSuppressedRef.current) return;
@@ -4086,6 +4878,7 @@ export default function App() {
 
   const startBackgroundSmartBookPackaging = (courseId: string) => {
     if (!courseId) return;
+    if (!sessionCreatedCourseIdsRef.current.has(courseId)) return;
     if (backgroundGenerationSuppressedRef.current) return;
     if (backgroundPackagingCourseIdsRef.current.has(courseId)) return;
 
@@ -4124,6 +4917,8 @@ export default function App() {
 
         if (!lectureGenerationFailed) {
           if (backgroundGenerationSuppressedRef.current) return;
+          await ensureBackgroundCourseCover(courseId);
+          if (backgroundGenerationSuppressedRef.current) return;
           await ensureBackgroundRetentionSummary(courseId);
         }
       } finally {
@@ -4134,20 +4929,25 @@ export default function App() {
 
   const openCourseFlow = (courseId: string) => {
     if (!courseId) return;
+    const allowBackgroundPackaging = sessionCreatedCourseIdsRef.current.has(courseId);
+    if (allowBackgroundPackaging) {
+      startBackgroundSmartBookPackaging(courseId);
+    }
     startTransition(() => {
       setActiveCourseId(courseId);
       setCurrentView('COURSE_FLOW');
     });
-    void ensureCourseHydrated(courseId);
   };
 
   const purgeCourseRuntimeState = (courseId: string) => {
     if (!courseId) return;
     coursePackageByIdRef.current.delete(courseId);
     coursePackagePromiseByIdRef.current.delete(courseId);
+    coursePackagePromiseModeByIdRef.current.delete(courseId);
     sessionCreatedCourseIdsRef.current.delete(courseId);
     progressOnlyFallbackCourseIdsRef.current.delete(courseId);
     backgroundPackagingCourseIdsRef.current.delete(courseId);
+    backgroundCoverGenerationInFlightRef.current.delete(courseId);
 
     for (const key of Array.from(backgroundNodeGenerationInFlightRef.current)) {
       if (key.startsWith(`${courseId}:`)) {
@@ -4157,16 +4957,6 @@ export default function App() {
     for (const key of Array.from(packageSyncAttemptedByCourseRef.current)) {
       if (key.startsWith(`${courseId}:`)) {
         packageSyncAttemptedByCourseRef.current.delete(key);
-      }
-    }
-    for (const key of Array.from(courseHydrationRepairAttemptedRef.current)) {
-      if (key.includes(`:${courseId}:`)) {
-        courseHydrationRepairAttemptedRef.current.delete(key);
-      }
-    }
-    for (const key of Array.from(courseHydrationInFlightRef.current)) {
-      if (key.includes(`:${courseId}:`)) {
-        courseHydrationInFlightRef.current.delete(key);
       }
     }
   };
@@ -4188,18 +4978,24 @@ export default function App() {
       };
     const seededCourse: CourseData = {
       ...baseSeededCourse,
-      userId: authUser?.uid ?? baseSeededCourse.userId,
-      isPublic: true
+      status: normalizeCourseStatus(baseSeededCourse.status) || 'processing',
+      userId: authUser?.uid ?? baseSeededCourse.userId
     };
 
     sessionCreatedCourseIdsRef.current.add(seededCourse.id);
 
     setSavedCourses(prev => {
       const nextCourses = sortCoursesByLastActivity([seededCourse, ...prev.filter((course) => course.id !== seededCourse.id)]);
+      savedCoursesRef.current = nextCourses;
       flushCoursesToLocalNow(localUserId, nextCourses);
       return nextCourses;
     });
     openCourseFlow(seededCourse.id);
+    if (seededCourse.nodes.length > 0) {
+      startBackgroundSmartBookPackaging(seededCourse.id);
+    } else {
+      void ensureCourseReadyForOpen(seededCourse.id, seededCourse);
+    }
 
     if (!authUser || !cloudSyncEnabled) return;
 
@@ -4207,35 +5003,47 @@ export default function App() {
       const privatePayload = {
         ...seededCourse,
         userId: authUser.uid,
-        isPublic: false,
         createdAt: seededCourse.createdAt,
         lastActivity: seededCourse.lastActivity
       };
-      const materializedNodes = await materializeNodesForCloud(authUser.uid, seededCourse.id, privatePayload.nodes);
-      const materializedCoverImageUrl = await materializeCoverForCloud(
-        authUser.uid,
-        seededCourse.id,
-        privatePayload.coverImageUrl
-      );
-      const courseForPackage: CourseData = {
-        ...privatePayload,
-        nodes: materializedNodes,
-        coverImageUrl: materializedCoverImageUrl
-      };
-      const packageMetadata = await uploadCoursePackageToStorage(authUser.uid, seededCourse.id, courseForPackage);
-      const cloudCourse = {
-        ...courseForPackage,
-        ...packageMetadata
-      };
+      let cloudCourse: CourseData = privatePayload;
+      if (
+        privatePayload.nodes.length > 0 &&
+        !privatePayload.contentPackagePath &&
+        hasPersistableCourseContent(privatePayload)
+      ) {
+        const materializedNodes = await materializeNodesForCloud(authUser.uid, seededCourse.id, privatePayload.nodes);
+        const materializedCoverImageUrl = await materializeCoverForCloud(
+          authUser.uid,
+          seededCourse.id,
+          privatePayload.coverImageUrl
+        );
+        const courseForPackage: CourseData = {
+          ...privatePayload,
+          nodes: materializedNodes,
+          coverImageUrl: materializedCoverImageUrl
+        };
+        const packageMetadata = await uploadCoursePackageToStorage(authUser.uid, seededCourse.id, courseForPackage);
+        cloudCourse = {
+          ...courseForPackage,
+          ...packageMetadata,
+          status: packageMetadata.contentPackagePath ? 'ready' : (normalizeCourseStatus(courseForPackage.status) || 'processing'),
+          bundle: packageMetadata.contentPackagePath
+            ? {
+              path: packageMetadata.contentPackagePath,
+              version: extractBundleVersionFromPath(packageMetadata.contentPackagePath),
+              includesPodcast: courseForPackage.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim())),
+              generatedAt: packageMetadata.contentPackageUpdatedAt || new Date()
+            }
+            : courseForPackage.bundle
+        };
+      }
       coursePackageByIdRef.current.set(seededCourse.id, cloudCourse);
       applyCloudHydratedCourseLocally(authUser.uid, cloudCourse);
-      const userProgressPayload = buildUserCourseProgressPayloadFromPartial(authUser.uid, seededCourse.id, {
-        ...cloudCourse
-      });
-
+      const bookDocPayload = buildBookDocumentPayload(authUser.uid, seededCourse.id, cloudCourse);
       await setDoc(
-        doc(db, 'users', authUser.uid, 'courses', seededCourse.id),
-        stripUndefinedDeepForFirestore(userProgressPayload),
+        doc(db, 'users', authUser.uid, 'books', seededCourse.id),
+        stripUndefinedDeepForFirestore(bookDocPayload),
         { merge: true }
       );
     } catch (error) {
@@ -4243,15 +5051,14 @@ export default function App() {
         scheduleCourseCloudWrite(authUser.uid, seededCourse.id, {
           ...seededCourse,
           userId: authUser.uid,
-          isPublic: true,
           coverImageUrl: seededCourse.coverImageUrl,
           nodes: seededCourse.nodes,
           lastActivity: seededCourse.lastActivity
         }, { allowMasterWrite: false });
       } else if (isPermissionDeniedError(error)) {
-        console.error("Error saving private SmartBook package to Firebase:", error);
+        console.error("Error saving private book package to Firebase:", error);
       } else {
-        console.error("Error saving SmartBook to Firebase:", error);
+        console.error("Error saving book metadata to Firebase:", error);
       }
     }
   };
@@ -4289,7 +5096,7 @@ export default function App() {
 
     let privateDeleteError: unknown = null;
     try {
-      await deleteDoc(doc(db, 'users', authUser.uid, 'courses', courseId));
+      await deleteDoc(doc(db, 'users', authUser.uid, 'books', courseId));
     } catch (error) {
       if (isPermissionDeniedError(error)) {
         disableCloudSyncForPermission();
@@ -4297,24 +5104,8 @@ export default function App() {
         privateDeleteError = error;
       }
     }
-
-    const ownsCourse = targetCourse.userId === authUser.uid;
-    let publicDeleteError: unknown = null;
-    if (ownsCourse) {
-      try {
-        await deleteDoc(doc(db, 'courses', courseId));
-      } catch (error) {
-        if (isPermissionDeniedError(error)) {
-          // Keep local deletion successful even if public mirror delete is blocked.
-          console.warn('Public SmartBook delete was denied:', error);
-        } else {
-          publicDeleteError = error;
-        }
-      }
-    }
-
-    if (privateDeleteError || publicDeleteError) {
-      throw privateDeleteError || publicDeleteError;
+    if (privateDeleteError) {
+      throw privateDeleteError;
     }
   };
 
@@ -4324,98 +5115,162 @@ export default function App() {
     return !course.userId || course.userId === authUser.uid;
   };
 
-  const handleCourseSelect = (courseId: string) => {
-    const existing = savedCourses.find((course) => course.id === courseId);
-    if (existing) {
-      const publicCourse = publicCourses.find((course) => course.id === courseId);
-      const existingProgressOnly = isCourseProgressOnly(existing);
-      const publicHasFullContent = !isCourseProgressOnly(publicCourse);
-      const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
-      if (publicCourse && (existingProgressOnly && publicHasFullContent || (!existing.coverImageUrl && publicCourse.coverImageUrl)) && localUserId) {
-        const mergedCourse = mergeSharedCourseWithUserProgress(publicCourse, toProgressDocFromCourseSnapshot(existing));
-        setSavedCourses((prev) => {
-          const next = prev.map((course) => (course.id === mergedCourse.id ? mergedCourse : course));
-          writeCoursesToLocal(localUserId, next);
-          return next;
-        });
+  const updateCourseOpenState = (
+    courseId: string,
+    nextState: { status: CourseOpenUiState['status']; progress: number }
+  ) => {
+    const clampedProgress = Math.max(0, Math.min(100, Math.round(nextState.progress)));
+    setCourseOpenStateById((prev) => {
+      const previous = prev[courseId];
+      if (
+        previous &&
+        previous.status === nextState.status &&
+        previous.progress === clampedProgress
+      ) {
+        return prev;
       }
-      const needsProgressMetadataSync = (
+      return {
+        ...prev,
+        [courseId]: {
+          status: nextState.status,
+          progress: clampedProgress,
+          updatedAt: Date.now()
+        }
+      };
+    });
+  };
+
+  const ensureCourseReadyForOpen = async (
+    courseId: string,
+    snapshotHint?: CourseData | null
+  ): Promise<boolean> => {
+    if (!courseId) return false;
+
+    const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || snapshotHint || null;
+    if (!snapshot) return false;
+
+    if (!courseNeedsContentHydration(snapshot)) {
+      updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+      return true;
+    }
+
+    if (courseOpenInFlightByIdRef.current.has(courseId)) {
+      return false;
+    }
+
+    courseOpenInFlightByIdRef.current.add(courseId);
+    let visualProgress = Math.max(6, Math.min(95, courseOpenStateByIdRef.current[courseId]?.progress || 0));
+    updateCourseOpenState(courseId, { status: 'downloading', progress: visualProgress });
+
+    const timer = window.setInterval(() => {
+      const remaining = 99 - visualProgress;
+      if (remaining <= 0) return;
+      const step = remaining > 50 ? 5 : remaining > 25 ? 3 : 1;
+      visualProgress = Math.min(99, visualProgress + step);
+      updateCourseOpenState(courseId, { status: 'downloading', progress: visualProgress });
+    }, 220);
+
+    try {
+      const hydrated = await withPromiseTimeout(
+        ensureCourseHydrated(courseId, { markNodesLoading: false }),
+        SMARTBOOK_OPEN_HYDRATION_TIMEOUT_MS,
+        `Course open hydration timed out (${courseId}).`
+      );
+      window.clearInterval(timer);
+
+      if (!hydrated) {
+        updateCourseOpenState(courseId, { status: 'failed', progress: Math.max(visualProgress, 6) });
+        return false;
+      }
+
+      updateCourseOpenState(courseId, { status: 'downloading', progress: 100 });
+      await waitMs(90);
+      updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+      return true;
+    } catch (error) {
+      console.warn(`Book open hydration failed (${courseId}):`, error);
+      window.clearInterval(timer);
+      updateCourseOpenState(courseId, { status: 'failed', progress: Math.max(visualProgress, 6) });
+      return false;
+    } finally {
+      window.clearInterval(timer);
+      courseOpenInFlightByIdRef.current.delete(courseId);
+    }
+  };
+
+  const handleCourseSelect = (courseId: string) => {
+    void (async () => {
+      const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+      let selectedSnapshot: CourseData | null = null;
+      const existing = savedCoursesRef.current.find((course) => course.id === courseId)
+        || savedCourses.find((course) => course.id === courseId)
+        || null;
+
+      if (!existing) return;
+      selectedSnapshot = existing;
+      const needsMetadataSync = (
         isPlaceholderCourseTopic(existing.topic) ||
         !existing.coverImageUrl ||
+        !existing.contentPackagePath ||
         !existing.bookType ||
         !existing.subGenre ||
         !existing.ageGroup ||
         !existing.creatorName ||
         !existing.totalDuration
       );
-      if (needsProgressMetadataSync && authUser && cloudSyncEnabled) {
-        scheduleCourseCloudWrite(authUser.uid, existing.id, {}, {
-          allowMasterWrite: !existing.userId || existing.userId === authUser.uid
-        });
+      if (needsMetadataSync && authUser && cloudSyncEnabled) {
+        scheduleCourseCloudWrite(authUser.uid, existing.id, {});
       }
-      openCourseFlow(courseId);
-      return;
-    }
 
-    const fromLibrary = publicCourses.find((course) => course.id === courseId);
-    if (!fromLibrary) return;
+      if (!selectedSnapshot) return;
 
-    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
-    if (!localUserId) return;
+      // If course already has nodes and content, open immediately.
+      if (selectedSnapshot.nodes.length > 0 && !courseNeedsContentHydration(selectedSnapshot)) {
+        updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+        openCourseFlow(courseId);
+        return;
+      }
 
-    const selectedCourse: CourseData = {
-      ...fromLibrary,
-      id: fromLibrary.id,
-      userId: fromLibrary.userId,
-      isPublic: true,
-      nodes: fromLibrary.nodes.map((node) => ({ ...node })),
-      createdAt: fromLibrary.createdAt,
-      lastActivity: new Date()
-    };
+      // Course has 0 nodes or missing content — fetch full content from Storage/backend.
+      try {
+        updateCourseOpenState(courseId, { status: 'downloading', progress: 10 });
 
-    setSavedCourses((prev) => {
-      const nextCourses = sortCoursesByLastActivity([
-        selectedCourse,
-        ...prev.filter((course) => course.id !== selectedCourse.id)
-      ]);
-      flushCoursesToLocalNow(localUserId, nextCourses);
-      return nextCourses;
-    });
+        // fetchCoursePackageFromStorage tries: backend → Storage URL → Storage paths → backend fallback
+        const hydrated = await fetchCoursePackageFromStorage(
+          courseId,
+          selectedSnapshot.userId || authUser?.uid,
+          selectedSnapshot.contentPackageUrl,
+          selectedSnapshot.contentPackagePath,
+          { preferBackend: false, versionHint: selectedSnapshot.bundle?.version }
+        );
 
-    if (authUser && cloudSyncEnabled) {
-      const progressPayload = buildUserCourseProgressPayloadFromPartial(authUser.uid, selectedCourse.id, {
-        topic: selectedCourse.topic,
-        description: selectedCourse.description ?? null,
-        creatorName: selectedCourse.creatorName ?? null,
-        language: selectedCourse.language ?? null,
-        ageGroup: selectedCourse.ageGroup ?? null,
-        bookType: selectedCourse.bookType ?? null,
-        subGenre: selectedCourse.subGenre ?? null,
-        creativeBrief: selectedCourse.creativeBrief ?? null,
-        targetPageCount: selectedCourse.targetPageCount ?? null,
-        category: selectedCourse.category ?? null,
-        searchTags: selectedCourse.searchTags ?? null,
-        totalDuration: selectedCourse.totalDuration ?? null,
-        coverImageUrl: selectedCourse.coverImageUrl,
-        nodes: selectedCourse.nodes,
-        createdAt: selectedCourse.createdAt,
-        lastActivity: selectedCourse.lastActivity
-      });
-
-      void setDoc(
-        doc(db, 'users', authUser.uid, 'courses', selectedCourse.id),
-        stripUndefinedDeepForFirestore(progressPayload),
-        { merge: true }
-      ).catch((error) => {
-        if (isPermissionDeniedError(error)) {
-          console.error('Error saving private SmartBook enrollment to Firebase:', error);
+        if (hydrated && hydrated.nodes.length > 0) {
+          const mergedCourse = mergeSharedCourseWithUserProgress(
+            hydrated,
+            toProgressDocFromCourseSnapshot(selectedSnapshot)
+          );
+          setSavedCourses((prev) => {
+            const nextCourses = prev.map((c) => (c.id === courseId ? mergedCourse : c));
+            savedCoursesRef.current = nextCourses;
+            if (localUserId) {
+              writeCoursesToLocal(localUserId, nextCourses);
+              writeFullCoursesToLocal(localUserId, nextCourses);
+            }
+            return nextCourses;
+          });
+          coursePackageByIdRef.current.set(courseId, mergedCourse);
+          updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+          openCourseFlow(courseId);
           return;
         }
-        console.error('Error saving SmartBook progress enrollment:', error);
-      });
-    }
 
-    openCourseFlow(selectedCourse.id);
+        updateCourseOpenState(courseId, { status: 'failed', progress: 0 });
+        openCourseFlow(courseId);
+      } catch (error) {
+        updateCourseOpenState(courseId, { status: 'failed', progress: 0 });
+        openCourseFlow(courseId);
+      }
+    })();
   };
 
   useEffect(() => {
@@ -4424,19 +5279,18 @@ export default function App() {
     if (shareLinkAutoOpenHandledRef.current.has(sharedBookId)) return;
 
     const existsInSaved = savedCourses.some((course) => course.id === sharedBookId);
-    const existsInPublic = publicCourses.some((course) => course.id === sharedBookId);
-    if (!existsInSaved && !existsInPublic) return;
+    if (!existsInSaved) return;
 
     shareLinkAutoOpenHandledRef.current.add(sharedBookId);
     handleCourseSelect(sharedBookId);
     removeSharedSmartBookQueryFromUrl();
     setIncomingSharedSmartBookId(null);
-  }, [incomingSharedSmartBookId, publicCourses, savedCourses]);
+  }, [incomingSharedSmartBookId, savedCourses]);
 
   const handleShareSmartBook = async (course: CourseData) => {
     const shareUrl = buildSmartBookLibraryShareUrl(course.id);
-    const title = `${course.topic} | Fortale SmartBook`;
-    const text = `${course.topic} SmartBook'unu Fortale kütüphanesinde aç.`;
+    const title = `${course.topic} | Fortale`;
+    const text = `${course.topic} kitabını Fortale'de aç.`;
 
     try {
       if (navigator.share) {
@@ -4445,15 +5299,15 @@ export default function App() {
       }
 
       await navigator.clipboard.writeText(shareUrl);
-      console.info('SmartBook share link copied:', shareUrl);
+      console.info('Book share link copied:', shareUrl);
     } catch (error) {
       if ((error as { name?: string } | null)?.name === 'AbortError') return;
 
       try {
         await navigator.clipboard.writeText(shareUrl);
-        console.info('SmartBook share link copied (fallback):', shareUrl);
+        console.info('Book share link copied (fallback):', shareUrl);
       } catch (clipboardError) {
-        console.error('SmartBook share failed:', error, clipboardError);
+        console.error('Book share failed:', error, clipboardError);
       }
     }
   };
@@ -4592,16 +5446,14 @@ export default function App() {
 
     if (authUser && cloudSyncEnabled) {
       try {
-        const [userCoursesSnap, stickySnap, masterCoursesSnap] = await Promise.all([
-          getDocs(collection(db, 'users', authUser.uid, 'courses')),
-          getDocs(collection(db, 'users', authUser.uid, 'stickyNotes')),
-          getDocs(query(collection(db, 'courses'), where('userId', '==', authUser.uid)))
+        const [userBooksSnap, stickySnap] = await Promise.all([
+          getDocs(collection(db, 'users', authUser.uid, 'books')),
+          getDocs(collection(db, 'users', authUser.uid, 'stickyNotes'))
         ]);
 
         await Promise.all([
-          ...userCoursesSnap.docs.map((snapshot) => deleteDoc(snapshot.ref)),
-          ...stickySnap.docs.map((snapshot) => deleteDoc(snapshot.ref)),
-          ...masterCoursesSnap.docs.map((snapshot) => deleteDoc(snapshot.ref))
+          ...userBooksSnap.docs.map((snapshot) => deleteDoc(snapshot.ref)),
+          ...stickySnap.docs.map((snapshot) => deleteDoc(snapshot.ref))
         ]);
       } catch (error) {
         if (isPermissionDeniedError(error)) {
@@ -4827,7 +5679,6 @@ export default function App() {
             onCourseCreate={handleCourseCreate}
             onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
-            publicCourses={publicCourses}
             onCourseSelect={handleCourseSelect}
             canDeleteCourse={canDeleteCourse}
             stickyNotes={stickyNotes}
@@ -4839,16 +5690,17 @@ export default function App() {
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
             bootstrapMessage={loadingMessage}
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
+            courseOpenStates={courseOpenStateById}
           />
         );
-      case 'COURSE_FLOW':
+      case 'COURSE_FLOW': {
         return (
           <CourseFlowView
             onBack={() => setCurrentView('HOME')}
             onNavigate={setCurrentView}
             courseData={activeCourse}
             onUpdateCourse={handleCourseUpdate}
-            onEnsureCourseHydrated={ensureCourseHydrated}
+            onResolveCourseForExport={resolveCourseForExport}
             allowOpenAutoGeneration={allowOpenAutoGenerationForActiveCourse}
             onReadingFullscreenChange={setIsReaderFullscreen}
             onRequireCredit={requireCreditForAction}
@@ -4856,6 +5708,7 @@ export default function App() {
             onRefundCredit={refundCreditForAction}
           />
         );
+      }
       case 'AI_CHAT':
         return (
           <PersonalGrowthView
@@ -4864,17 +5717,28 @@ export default function App() {
             onDeleteCourse={handleCourseDelete}
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
             bootstrapMessage={loadingMessage}
+            courseOpenStates={courseOpenStateById}
           />
         );
       case 'EXPLORE':
         return (
-          <ExploreView
+          <HomeView
+            onNavigate={setCurrentView}
+            onCourseCreate={handleCourseCreate}
+            onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
-            publicCourses={publicCourses}
             onCourseSelect={handleCourseSelect}
-            onShareCourse={handleShareSmartBook}
-            likedCourseIds={likedCourseIds}
-            onToggleCourseLike={handleToggleCourseLike}
+            canDeleteCourse={canDeleteCourse}
+            stickyNotes={stickyNotes}
+            onCreateStickyNote={handleStickyNoteCreate}
+            onUpdateStickyNote={handleStickyNoteUpdate}
+            onDeleteStickyNote={handleStickyNoteDelete}
+            onRequireCredit={requireCreditForAction}
+            onConsumeCredit={consumeCreditForAction}
+            isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
+            bootstrapMessage={loadingMessage}
+            defaultBookLanguage={getAppLanguageLabel(appLanguage)}
+            courseOpenStates={courseOpenStateById}
           />
         );
       case 'PROFILE':
@@ -4900,7 +5764,6 @@ export default function App() {
             onCourseCreate={handleCourseCreate}
             onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
-            publicCourses={publicCourses}
             onCourseSelect={handleCourseSelect}
             canDeleteCourse={canDeleteCourse}
             stickyNotes={stickyNotes}
@@ -4959,74 +5822,74 @@ export default function App() {
       <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
         <div className="fixed inset-0 bg-[#1A1F26] text-text-primary font-sans antialiased flex justify-center">
           <div className="app-shell-width relative h-full overflow-hidden bg-transparent flex flex-col md:border-x md:border-white/5">
-        <CreditPaywallModal
-          isOpen={isCreditPaywallOpen}
-          onClose={() => {
-            setCreditPaywallOpen(false);
-            setCreditPaywallIntent(null);
-          }}
-          wallet={creditWallet}
-          packs={CREDIT_PACKS}
-          insufficientAction={creditPaywallIntent}
-          isPurchasing={isCreditPurchaseBusy}
-          onPurchase={handleCreditPackPurchase}
-        />
+            <CreditPaywallModal
+              isOpen={isCreditPaywallOpen}
+              onClose={() => {
+                setCreditPaywallOpen(false);
+                setCreditPaywallIntent(null);
+              }}
+              wallet={creditWallet}
+              packs={CREDIT_PACKS}
+              insufficientAction={creditPaywallIntent}
+              isPurchasing={isCreditPurchaseBusy}
+              onPurchase={handleCreditPackPurchase}
+            />
 
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          userName={userName}
-          userEmail={authUser?.email || (isGuestSession ? 'Misafir oturumu' : undefined)}
-          isLoggedIn={Boolean(authUser)}
-          credits={creditWallet}
-          appLanguage={appLanguage}
-          onOpenPaywall={() => openCreditPaywall()}
-          onNavigate={setCurrentView}
-          onContact={handleContactSupport}
-          onAppLanguageChange={handleAppLanguageChange}
-          onAuthAction={authUser ? handleLogout : handleOpenLoginScreen}
-        />
+            <SettingsModal
+              isOpen={isSettingsOpen}
+              onClose={() => setSettingsOpen(false)}
+              userName={userName}
+              userEmail={authUser?.email || (isGuestSession ? 'Misafir oturumu' : undefined)}
+              isLoggedIn={Boolean(authUser)}
+              credits={creditWallet}
+              appLanguage={appLanguage}
+              onOpenPaywall={() => openCreditPaywall()}
+              onNavigate={setCurrentView}
+              onContact={handleContactSupport}
+              onAppLanguageChange={handleAppLanguageChange}
+              onAuthAction={authUser ? handleLogout : handleOpenLoginScreen}
+            />
 
-        <LegalConsentModal
-          isOpen={Boolean(authUser && currentView === 'HOME' && legalConsentState === 'required')}
-          isSaving={isLegalConsentSaving}
-          error={legalConsentError}
-          onAccept={handleAcceptLegalConsent}
-        />
+            <LegalConsentModal
+              isOpen={Boolean(authUser && currentView === 'HOME' && legalConsentState === 'required')}
+              isSaving={isLegalConsentSaving}
+              error={legalConsentError}
+              onAccept={handleAcceptLegalConsent}
+            />
 
-        <AppLanguageSetupModal
-          isOpen={Boolean(!isAuthLoading && isAppLanguageSetupOpen)}
-          selectedLanguage={appLanguage}
-          onSelectLanguage={(language) => {
-            setAppLanguage(language);
-            setAppLanguageSource('manual_selection');
-          }}
-          onConfirm={() => handleAppLanguageChange(appLanguage, 'manual_selection')}
-        />
+            <AppLanguageSetupModal
+              isOpen={Boolean(!isAuthLoading && isAppLanguageSetupOpen)}
+              selectedLanguage={appLanguage}
+              onSelectLanguage={(language) => {
+                setAppLanguage(language);
+                setAppLanguageSource('manual_selection');
+              }}
+              onConfirm={() => handleAppLanguageChange(appLanguage, 'manual_selection')}
+            />
 
-        {!isReaderFullscreen && (
-          <GlobalHeader
-            onToggleSettings={handleToggleSettings}
-            isSettingsOpen={isSettingsOpen}
-            credits={creditWallet}
-            onOpenPaywall={() => openCreditPaywall()}
-          />
-        )}
+            {!isReaderFullscreen && (
+              <GlobalHeader
+                onToggleSettings={handleToggleSettings}
+                isSettingsOpen={isSettingsOpen}
+                credits={creditWallet}
+                onOpenPaywall={() => openCreditPaywall()}
+              />
+            )}
 
-        <main className="flex-1 relative overflow-hidden">
-          <div className="absolute inset-0 w-full h-full">
-            <div className="w-full h-full">
-              {renderView()}
-            </div>
-          </div>
-        </main>
+            <main className="flex-1 relative overflow-hidden">
+              <div className="absolute inset-0 w-full h-full">
+                <div className="w-full h-full">
+                  {renderView()}
+                </div>
+              </div>
+            </main>
 
-        {!isReaderFullscreen && (
-          <BottomNav
-            currentView={currentView}
-            onViewChange={setCurrentView}
-          />
-        )}
+            {!isReaderFullscreen && (
+              <BottomNav
+                currentView={currentView}
+                onViewChange={setCurrentView}
+              />
+            )}
           </div>
         </div>
       </Suspense>

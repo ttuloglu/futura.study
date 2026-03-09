@@ -69,7 +69,9 @@ type PageRange = { min: number; max: number; suggested: number };
 
 export function getPageRangeByBookType(bookType: SmartBookBookType, ageGroup: SmartBookAgeGroup = 'general'): PageRange {
   if (bookType === 'fairy_tale') {
-    if (ageGroup === '7-9') return { min: 13, max: 15, suggested: 14 };
+    if (ageGroup === '1-3') return { min: 6, max: 7, suggested: 6 };
+    if (ageGroup === '4-6') return { min: 10, max: 10, suggested: 10 };
+    if (ageGroup === '7-9') return { min: 12, max: 14, suggested: 13 };
     return { min: 10, max: 12, suggested: 11 };
   }
   if (bookType === 'story') return { min: 20, max: 25, suggested: 22 };
@@ -102,4 +104,10 @@ export function buildTargetPageFromBrief(brief?: SmartBookCreativeBrief, ageGrou
     if (clampedMax >= clampedMin) return Math.round((clampedMin + clampedMax) / 2);
   }
   return range.suggested;
+}
+
+export function getEstimatedGenerationMinutes(bookType?: SmartBookBookType): number {
+  if (bookType === 'fairy_tale') return 2;
+  if (bookType === 'story') return 4;
+  return 6;
 }

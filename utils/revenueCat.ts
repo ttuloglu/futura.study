@@ -37,6 +37,26 @@ function normalizeIdentifier(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function tokenizeIdentifier(value: string): string[] {
+  return normalizeIdentifier(value).split(/[^a-z0-9]+/g).filter(Boolean);
+}
+
+function tokenSequenceMatches(sourceTokens: string[], targetTokens: string[]): boolean {
+  if (!sourceTokens.length || !targetTokens.length) return false;
+  if (targetTokens.length > sourceTokens.length) return false;
+  for (let start = 0; start <= sourceTokens.length - targetTokens.length; start += 1) {
+    let allMatch = true;
+    for (let offset = 0; offset < targetTokens.length; offset += 1) {
+      if (sourceTokens[start + offset] !== targetTokens[offset]) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) return true;
+  }
+  return false;
+}
+
 function getRevenueCatApiKey(): string | null {
   const platform = Capacitor.getPlatform();
   if (platform === 'ios') {
@@ -150,10 +170,23 @@ export async function ensureRevenueCatConfigured(options: {
 
 function packageMatchesHints(pkg: PurchasesPackage, hints: string[]): boolean {
   if (!hints.length) return false;
-  const ids = [pkg.identifier, pkg.product?.identifier]
-    .filter(Boolean)
-    .map((value) => normalizeIdentifier(String(value)));
-  return ids.some((id) => hints.some((hint) => id === hint || id.includes(hint)));
+  const ids = [pkg.identifier, pkg.product?.identifier].filter(Boolean).map((value) => normalizeIdentifier(String(value)));
+  const matchesHint = (id: string, hint: string): boolean => {
+    if (!id || !hint) return false;
+    if (id === hint) return true;
+
+    const idTokens = tokenizeIdentifier(id);
+    const hintTokens = tokenizeIdentifier(hint);
+    if (!hintTokens.length) return false;
+
+    if (hintTokens.length === 1) {
+      return idTokens.includes(hintTokens[0]);
+    }
+
+    return tokenSequenceMatches(idTokens, hintTokens);
+  };
+
+  return ids.some((id) => hints.some((hint) => matchesHint(id, hint)));
 }
 
 function collectOfferingCandidates(offerings: { current: PurchasesOffering | null; all: Record<string, PurchasesOffering> }): PurchasesOffering[] {

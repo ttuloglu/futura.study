@@ -20,7 +20,7 @@ export interface Subject {
 
 export type NodeType = 'lecture' | 'podcast' | 'quiz' | 'reinforce' | 'exam' | 'retention';
 
-export type SmartBookAgeGroup = '4-6' | '7-9' | '7-11' | '12-18' | 'general';
+export type SmartBookAgeGroup = '1-3' | '4-6' | '7-9' | '7-11' | '12-18' | 'general';
 
 export type SmartBookBookType = 'fairy_tale' | 'story' | 'novel';
 
@@ -102,6 +102,72 @@ export interface ChatMessage {
   suggestions?: string[];
 }
 
+export interface BookBundleDescriptor {
+  path: string;
+  version: number;
+  checksumSha256?: string;
+  sizeBytes?: number;
+  includesPodcast?: boolean;
+  generatedAt: Date;
+}
+
+export interface BookCoverDescriptor {
+  path?: string;
+  url?: string;
+}
+
+export interface BookMeta {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  creatorName?: string;
+  language?: string;
+  ageGroup?: SmartBookAgeGroup;
+  bookType?: SmartBookBookType;
+  subGenre?: string;
+  targetPageCount?: number;
+  category?: string;
+  searchTags?: string[];
+  totalDuration?: string;
+  cover?: BookCoverDescriptor;
+  bundle?: BookBundleDescriptor;
+  status?: 'processing' | 'ready' | 'failed';
+  createdAt: Date;
+  updatedAt?: Date;
+  lastActivity: Date;
+}
+
+export interface BookBundleManifest {
+  schemaVersion: number;
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  creatorName?: string;
+  language?: string;
+  ageGroup?: SmartBookAgeGroup;
+  bookType?: SmartBookBookType;
+  subGenre?: string;
+  targetPageCount?: number;
+  category?: string;
+  searchTags?: string[];
+  totalDuration?: string;
+  cover?: BookCoverDescriptor;
+  includesPodcast?: boolean;
+  nodes: TimelineNode[];
+  generatedAt: Date;
+  createdAt: Date;
+  lastActivity: Date;
+}
+
+export interface BookDownloadState {
+  status: 'idle' | 'queued' | 'downloading' | 'ready' | 'failed';
+  progress: number;
+  updatedAt: number;
+  error?: string;
+}
+
 export interface CourseData {
   id: string;
   topic: string;
@@ -117,6 +183,9 @@ export interface CourseData {
   searchTags?: string[];
   totalDuration?: string;
   coverImageUrl?: string;
+  bundle?: BookBundleDescriptor;
+  cover?: BookCoverDescriptor;
+  status?: 'processing' | 'ready' | 'failed';
   userId?: string;
   isPublic?: boolean;
   nodes: TimelineNode[];

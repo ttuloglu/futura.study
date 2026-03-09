@@ -8,10 +8,11 @@ import {
   CreditActionType,
   SmartBookBookType,
   SmartBookCreativeBrief,
-  SmartBookEndingStyle
+  SmartBookEndingStyle,
+  CourseOpenUiState
 } from '../types';
 import { Plus, BookOpen, Clock3, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft } from 'lucide-react';
-import { extractDocumentContext, generateCourseCover, generateCourseOutline, generateLectureContent, generateLectureImages } from '../ai';
+import { extractDocumentContext, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
 import { SMARTBOOK_AGE_GROUP_OPTIONS, getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
@@ -21,18 +22,19 @@ import {
   SMARTBOOK_SUBGENRE_OPTIONS,
   SMARTBOOK_ENDING_OPTIONS,
   buildTargetPageFromBrief,
+  getEstimatedGenerationMinutes,
   getPageRangeByBookType
 } from '../utils/bookGeneration';
 import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
-import { normalizeAppLanguageCode } from '../data/appLanguages';
 import { useUiI18n } from '../i18n/uiI18n';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
   onCourseCreate: (data: CourseData) => void;
+  onDeleteCourse: (courseId: string) => Promise<void>;
   savedCourses: CourseData[];
-  publicCourses: CourseData[];
   onCourseSelect: (id: string) => void;
+  canDeleteCourse?: (course: CourseData) => boolean;
   stickyNotes: StickyNoteData[];
   onCreateStickyNote: (payload: { title?: string; text: string; reminderAt?: string | null }) => Promise<StickyNoteData | undefined>;
   onUpdateStickyNote: (noteId: string, payload: { title?: string; text: string; reminderAt?: string | null }) => Promise<StickyNoteData | undefined>;
@@ -42,6 +44,7 @@ interface HomeViewProps {
   isBootstrapping?: boolean;
   bootstrapMessage?: string;
   defaultBookLanguage?: string;
+  courseOpenStates?: Record<string, CourseOpenUiState>;
 }
 
 type StickyModalState = {
@@ -51,6 +54,12 @@ type StickyModalState = {
   text: string;
   reminderAt: string | null;
   createdAt: string;
+};
+
+type CourseDeleteModalState = {
+  isOpen: boolean;
+  courseId: string | null;
+  courseTitle: string;
 };
 
 type StickyTint = {
@@ -72,7 +81,6 @@ const APP_SURFACE_COLOR = '#1A1F26';
 const MAX_SOURCE_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const DOCUMENT_ACCEPT =
   '.pdf,.txt,.md,.markdown,.csv,.json,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const READING_WORDS_PER_MINUTE = 180;
 const CREATION_STEP_COUNT = 9;
 const CREATION_STEP_TITLES = [
   'Kitap Türü',
@@ -83,10 +91,56 @@ const CREATION_STEP_TITLES = [
   'Zaman',
   'Mekan',
   'Kitap Adı',
-  'Kahramanlar ve Oluşturucu'
+  'Kahramanlar ve Kurgulayan'
 ] as const;
+const BOOK_CREATING_LOOP_VIDEO_SRC = '/animations/book-creating-loop.mp4';
+const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation-job';
 
 type StoryInputMode = 'auto' | 'manual' | null;
+type PendingBookGenerationJob = {
+  jobId: string;
+  bookType: SmartBookBookType;
+  topic?: string;
+  startedAt: string;
+};
+
+function readPendingBookGenerationJob(): PendingBookGenerationJob | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_BOOK_GENERATION_JOB_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingBookGenerationJob>;
+    if (typeof parsed.jobId !== 'string' || !parsed.jobId.trim()) return null;
+    if (
+      parsed.bookType !== 'fairy_tale' &&
+      parsed.bookType !== 'story' &&
+      parsed.bookType !== 'novel'
+    ) {
+      return null;
+    }
+    return {
+      jobId: parsed.jobId.trim(),
+      bookType: parsed.bookType,
+      topic: typeof parsed.topic === 'string' ? parsed.topic : undefined,
+      startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : new Date().toISOString()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePendingBookGenerationJob(payload: PendingBookGenerationJob | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!payload) {
+      window.localStorage.removeItem(PENDING_BOOK_GENERATION_JOB_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(PENDING_BOOK_GENERATION_JOB_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore storage failures in constrained runtimes.
+  }
+}
 
 function formatStickyDate(date: Date | string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
@@ -94,6 +148,14 @@ function formatStickyDate(date: Date | string, locale: string): string {
     month: 'short',
     hour: '2-digit',
     minute: '2-digit'
+  }).format(new Date(date));
+}
+
+function formatCourseCreatedDate(date: Date | string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
   }).format(new Date(date));
 }
 
@@ -119,19 +181,6 @@ function toIsoDateTimeValue(value: string): string | null {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString();
-}
-
-function estimateReadingMinutesFromText(text: string): number {
-  const clean = String(text || '')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/!\[[^\]]*\]\(\s*<?(?:data:image\/[^)]+|https?:\/\/[^)]+)>?\s*\)/gi, ' ')
-    .replace(/https?:\/\/\S+/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const wordCount = clean ? clean.split(/\s+/).filter(Boolean).length : 0;
-  if (!wordCount) return 3;
-  return Math.max(1, Math.ceil(wordCount / READING_WORDS_PER_MINUTE));
 }
 
 function buildStickyContent(title: string, text: string): string {
@@ -448,6 +497,8 @@ function isNarrativeBookTitleTooGeneric(
   const normalizedTitle = normalizeTopicForMatch(title);
   if (!normalizedTitle || normalizedTitle.length < 3) return true;
   if (/\b(?:taslak|taslagi|draft)\b/u.test(normalizedTitle)) return true;
+  if (/^(?:[a-z0-9ğüşıöç]+)\s+(?:ve|ile)\s+(?:[a-z0-9ğüşıöç]+)(?:\s|$)/u.test(normalizedTitle)) return true;
+  if (/^(?:[a-z0-9ğüşıöç]+)(?:nin|nın|nun|nün|in|ın|un|ün)\s+/u.test(normalizedTitle)) return true;
 
   const tokens = normalizedTitle.split(' ').filter(Boolean);
   if (tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => GENERIC_NARRATIVE_TITLE_TOKENS.has(token))) {
@@ -649,9 +700,10 @@ function findLibraryMatchesByTopic(queryTopic: string, courses: CourseData[]): C
 export default function HomeView({
   onNavigate: _onNavigate,
   onCourseCreate,
+  onDeleteCourse,
   savedCourses,
-  publicCourses,
   onCourseSelect,
+  canDeleteCourse,
   stickyNotes,
   onCreateStickyNote,
   onUpdateStickyNote,
@@ -660,7 +712,8 @@ export default function HomeView({
   onConsumeCredit,
   isBootstrapping = false,
   bootstrapMessage = 'Kitaplar senkronize ediliyor...',
-  defaultBookLanguage = 'Turkish'
+  defaultBookLanguage = 'Turkish',
+  courseOpenStates = {}
 }: HomeViewProps) {
   const { locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
@@ -671,7 +724,7 @@ export default function HomeView({
   const [selectedEndingStyle, setSelectedEndingStyle] = useState<SmartBookEndingStyle>('happy');
   const [creatorNameInput, setCreatorNameInput] = useState('');
   const [heroNamesInput, setHeroNamesInput] = useState('');
-  const [storyInputMode, setStoryInputMode] = useState<StoryInputMode>(null);
+  const [storyInputMode, setStoryInputMode] = useState<StoryInputMode>('manual');
   const [storyBlueprintInput, setStoryBlueprintInput] = useState('');
   const [settingPlaceInput, setSettingPlaceInput] = useState('');
   const [settingTimeInput, setSettingTimeInput] = useState('');
@@ -680,6 +733,7 @@ export default function HomeView({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
   const [generationProgress, setGenerationProgress] = useState<number>(0);
+  const [activeGeneratingBookType, setActiveGeneratingBookType] = useState<SmartBookBookType | null>(null);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
   const [isStickyRowExpanded, setIsStickyRowExpanded] = useState(false);
   const [isStickySaving, setIsStickySaving] = useState(false);
@@ -692,6 +746,11 @@ export default function HomeView({
   const stickyCopyTimerRef = useRef<number | null>(null);
   const stickyNoticeTimerRef = useRef<number | null>(null);
   const lastDefaultBookLanguageRef = useRef(defaultBookLanguage);
+  const generationJobPollTimerRef = useRef<number | null>(null);
+  const activeGenerationJobIdRef = useRef<string | null>(null);
+  const activeGenerationBookTypeRef = useRef<SmartBookBookType | null>(null);
+  const loggedGenerationUsageEntryKeysRef = useRef<Set<string>>(new Set());
+  const loggedGenerationUsageFinalKeysRef = useRef<Set<string>>(new Set());
   const [stickyModal, setStickyModal] = useState<StickyModalState>({
     isOpen: false,
     noteId: null,
@@ -700,6 +759,221 @@ export default function HomeView({
     reminderAt: null,
     createdAt: new Date().toISOString()
   });
+  const [courseDeleteModal, setCourseDeleteModal] = useState<CourseDeleteModalState>({
+    isOpen: false,
+    courseId: null,
+    courseTitle: ''
+  });
+  const [isCourseDeleting, setIsCourseDeleting] = useState(false);
+
+  function stopBookGenerationPolling(clearActiveJob = false) {
+    if (generationJobPollTimerRef.current !== null) {
+      window.clearTimeout(generationJobPollTimerRef.current);
+      generationJobPollTimerRef.current = null;
+    }
+    if (clearActiveJob) {
+      activeGenerationJobIdRef.current = null;
+      activeGenerationBookTypeRef.current = null;
+      loggedGenerationUsageEntryKeysRef.current.clear();
+      loggedGenerationUsageFinalKeysRef.current.clear();
+    }
+  }
+
+  function logGenerationJobUsage(job: BookGenerationJobResult) {
+    const usageEntries = Array.isArray(job.usageEntries) ? job.usageEntries : [];
+    const seen = loggedGenerationUsageEntryKeysRef.current;
+    let loggedNewEntry = false;
+    for (const entry of usageEntries) {
+      const key = [
+        entry.label,
+        entry.provider,
+        entry.model,
+        entry.inputTokens,
+        entry.outputTokens,
+        entry.totalTokens,
+        entry.estimatedCostUsd
+      ].join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      loggedNewEntry = true;
+      console.info(
+        `[BOOK AI COST] ${entry.label}: ${entry.provider} ${entry.model} in ${entry.inputTokens} out ${entry.outputTokens} total ${entry.totalTokens} price ${Number(entry.estimatedCostUsd || 0).toFixed(6)} usd`
+      );
+    }
+    if (job.status === 'completed' || job.status === 'failed') {
+      const finalKey = [
+        job.jobId,
+        job.usage.inputTokens,
+        job.usage.outputTokens,
+        job.usage.totalTokens,
+        Number(job.usage.estimatedCostUsd || 0).toFixed(6)
+      ].join('|');
+      if (loggedGenerationUsageFinalKeysRef.current.has(finalKey)) return;
+      loggedGenerationUsageFinalKeysRef.current.add(finalKey);
+      console.info(
+        `[BOOK AI COST] final in ${job.usage.inputTokens} out ${job.usage.outputTokens} total ${job.usage.totalTokens} price ${Number(job.usage.estimatedCostUsd || 0).toFixed(6)} usd`
+      );
+      return;
+    }
+
+    if (!loggedNewEntry) return;
+  }
+
+  function resetSmartBookCreationForm() {
+    setSearchTerm('');
+    setHeroNamesInput('');
+    setStoryInputMode('manual');
+    setStoryBlueprintInput('');
+    setSettingPlaceInput('');
+    setSettingTimeInput('');
+    setCreatorNameInput('');
+    setBookLanguageInput(defaultBookLanguage);
+    setCreationStep(1);
+    clearSourceFile();
+  }
+
+  function resolvePreferredBookZipPath(...values: Array<unknown>): string | undefined {
+    const normalized: string[] = [];
+    for (const value of values) {
+      const current = String(value || '').trim().replace(/^\/+/, '');
+      if (!current || normalized.includes(current)) continue;
+      normalized.push(current);
+      if (/\/book\.zip$/i.test(current)) return current;
+      if (/\/package\.json$/i.test(current)) {
+        const withoutFile = current.replace(/\/package\.json$/i, '');
+        if (/\/v\d+$/i.test(withoutFile)) return `${withoutFile}/book.zip`;
+        return `${withoutFile}/v1/book.zip`;
+      }
+    }
+    return normalized[0];
+  }
+
+  function syncGenerationUiFromJob(
+    job: {
+      status: 'queued' | 'processing' | 'completed' | 'failed';
+      totalSections: number;
+      completedSections: number;
+      currentStepLabel: string | null;
+    },
+    fallbackBookType?: SmartBookBookType | null
+  ) {
+    const nextBookType = fallbackBookType || activeGenerationBookTypeRef.current || selectedBookType;
+    activeGenerationBookTypeRef.current = nextBookType;
+    setActiveGeneratingBookType(nextBookType);
+
+    const totalSections = Math.max(1, job.totalSections || 1);
+    const completedSections = Math.max(0, Math.min(totalSections, job.completedSections || 0));
+    const progress = job.status === 'completed'
+      ? 100
+      : job.status === 'queued'
+        ? 10
+        : 18 + Math.round((completedSections / totalSections) * 74);
+
+    setGenerationProgress(progress);
+    setGenerationStatus(
+      job.currentStepLabel?.trim()
+      || (job.status === 'queued'
+        ? 'Kitap üretim sırasına alındı...'
+        : 'Kitap sunucuda hazırlanıyor...')
+    );
+  }
+
+  function completeGeneratedBook(course: CourseData) {
+    writePendingBookGenerationJob(null);
+    stopBookGenerationPolling(true);
+    setGenerationStatus('Kitap açılıyor...');
+    setGenerationProgress(100);
+    setActiveGeneratingBookType(null);
+    resetSmartBookCreationForm();
+    setIsGenerating(false);
+    onCourseCreate(course);
+    window.setTimeout(() => {
+      setGenerationStatus('');
+      setGenerationProgress(0);
+    }, 500);
+  }
+
+  function failGenerationJob(message: string) {
+    writePendingBookGenerationJob(null);
+    stopBookGenerationPolling(true);
+    setIsGenerating(false);
+    setActiveGeneratingBookType(null);
+    setGenerationStatus('');
+    setGenerationProgress(0);
+    setSourceNotice(message);
+  }
+
+  function startBookGenerationPolling(
+    jobId: string,
+    fallbackBookType?: SmartBookBookType | null,
+    immediate = false
+  ) {
+    if (!jobId) return;
+    if (activeGenerationJobIdRef.current !== jobId) {
+      loggedGenerationUsageEntryKeysRef.current.clear();
+      loggedGenerationUsageFinalKeysRef.current.clear();
+    }
+    stopBookGenerationPolling(false);
+    activeGenerationJobIdRef.current = jobId;
+    activeGenerationBookTypeRef.current = fallbackBookType || activeGenerationBookTypeRef.current || selectedBookType;
+    if (fallbackBookType) {
+      setActiveGeneratingBookType(fallbackBookType);
+    }
+
+    const poll = async () => {
+      if (activeGenerationJobIdRef.current !== jobId) return;
+      try {
+        const job = await getBookGenerationJob(jobId);
+        if (activeGenerationJobIdRef.current !== jobId) return;
+
+        syncGenerationUiFromJob(job, fallbackBookType);
+        logGenerationJobUsage(job);
+
+        if (job.status === 'failed') {
+          failGenerationJob(job.error || 'Fortale oluşturulurken bir hata oluştu.');
+          return;
+        }
+
+        if (job.status === 'completed' && job.course) {
+          const preferredPackagePath = resolvePreferredBookZipPath(
+            job.bundle?.path,
+            job.course.bundle?.path,
+            job.course.contentPackagePath
+          );
+          const normalizedCompletedCourse: CourseData = {
+            ...job.course,
+            contentPackagePath: preferredPackagePath,
+            contentPackageUpdatedAt: job.course.contentPackageUpdatedAt || job.bundle?.generatedAt,
+            bundle: job.bundle || job.course.bundle || undefined,
+            status: job.course.status || (job.bundle ? 'ready' : 'processing')
+          };
+          completeGeneratedBook(normalizedCompletedCourse);
+          return;
+        }
+      } catch (error) {
+        if (activeGenerationJobIdRef.current !== jobId) return;
+        const message = getUserFacingError(error, 'Fortale üretim durumu alınamadı.');
+        if (/permission|denied|auth|giriş|login|unauth/i.test(message)) {
+          failGenerationJob(message);
+          return;
+        }
+        setGenerationStatus('Üretim durumu yeniden kontrol ediliyor...');
+      }
+
+      generationJobPollTimerRef.current = window.setTimeout(() => {
+        void poll();
+      }, 1800);
+    };
+
+    if (immediate) {
+      void poll();
+      return;
+    }
+
+    generationJobPollTimerRef.current = window.setTimeout(() => {
+      void poll();
+    }, 1200);
+  }
 
   useEffect(() => {
     setBookLanguageInput((previous) => {
@@ -712,6 +986,45 @@ export default function HomeView({
       return previous;
     });
   }, [defaultBookLanguage]);
+
+  useEffect(() => {
+    const pendingJob = readPendingBookGenerationJob();
+    if (!pendingJob) return;
+
+    setIsGenerating(true);
+    setSourceNotice(null);
+    setActiveGeneratingBookType(pendingJob.bookType);
+    setGenerationStatus('Üretim durumu kontrol ediliyor...');
+    setGenerationProgress(12);
+    startBookGenerationPolling(pendingJob.jobId, pendingJob.bookType, true);
+  }, []);
+
+  useEffect(() => {
+    if (!isGenerating || !activeGenerationJobIdRef.current) return;
+
+    const resumePolling = () => {
+      if (document.visibilityState !== 'hidden' && activeGenerationJobIdRef.current) {
+        startBookGenerationPolling(
+          activeGenerationJobIdRef.current,
+          activeGenerationBookTypeRef.current,
+          true
+        );
+      }
+    };
+
+    window.addEventListener('focus', resumePolling);
+    document.addEventListener('visibilitychange', resumePolling);
+    return () => {
+      window.removeEventListener('focus', resumePolling);
+      document.removeEventListener('visibilitychange', resumePolling);
+    };
+  }, [isGenerating]);
+
+  useEffect(() => {
+    return () => {
+      stopBookGenerationPolling(true);
+    };
+  }, []);
 
   const sortedCourses = useMemo(() => {
     return [...savedCourses].sort((a, b) =>
@@ -740,6 +1053,59 @@ export default function HomeView({
   }, [stickyModal.noteId, stickyTintById]);
 
   const homeShelfCourses = sortedCourses.slice(0, 4);
+  const renderBootstrapShelf = () => (
+    <div
+      className="relative overflow-hidden rounded-[28px] border p-5 text-center"
+      style={{
+        background: 'linear-gradient(160deg, rgba(18,31,48,0.96) 0%, rgba(14,24,38,0.95) 58%, rgba(11,18,29,0.98) 100%)',
+        borderColor: 'rgba(120,171,226,0.24)',
+        boxShadow: '0 24px 60px rgba(4, 10, 18, 0.34), inset 0 1px 0 rgba(205, 231, 255, 0.08)'
+      }}
+    >
+      <div
+        className="pointer-events-none absolute inset-x-[-12%] top-0 h-24 blur-3xl"
+        style={{ background: 'linear-gradient(90deg, rgba(94,151,215,0) 0%, rgba(94,151,215,0.2) 48%, rgba(94,151,215,0) 100%)' }}
+      />
+      <div className="relative flex flex-col items-center gap-4">
+        <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
+          <FaviconSpinner size={26} />
+          <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-[#d5e9ff]">{t('Kitaplar yükleniyor...')}</span>
+        </div>
+
+        <p className="mx-auto max-w-[260px] text-[11px] leading-5 text-[#a8c0db]">{bootstrapMessage}</p>
+
+        <div className="grid w-full grid-cols-3 gap-3">
+          {[0, 1, 2].map((index) => (
+            <div
+              key={`bootstrap-book-${index}`}
+              className="relative overflow-hidden rounded-[22px] border px-3 pb-4 pt-5"
+              style={{
+                background: 'linear-gradient(180deg, rgba(32,52,77,0.92) 0%, rgba(17,29,44,0.92) 100%)',
+                borderColor: 'rgba(122,165,213,0.18)',
+                animation: `smartbook-loading-dot 1.6s ease-in-out ${index * 0.18}s infinite`
+              }}
+            >
+              <div
+                className="absolute inset-x-0 top-0 h-14"
+                style={{ background: 'linear-gradient(180deg, rgba(143,191,245,0.18) 0%, rgba(143,191,245,0) 100%)' }}
+              />
+              <div className="relative mx-auto h-20 w-14 rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(120,171,226,0.34),rgba(53,89,127,0.18))]" />
+              <div className="relative mt-4 space-y-2">
+                <div className="mx-auto h-2.5 w-16 rounded-full bg-white/12" />
+                <div className="mx-auto h-2 w-10 rounded-full bg-white/8" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="smartbook-loading-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     const options = SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || [];
@@ -837,6 +1203,22 @@ export default function HomeView({
   }, []);
 
   useEffect(() => {
+    if (!courseDeleteModal.isOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isCourseDeleting) {
+        setCourseDeleteModal({ isOpen: false, courseId: null, courseTitle: '' });
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [courseDeleteModal.isOpen, isCourseDeleting]);
+
+  useEffect(() => {
     if (!isStickyRowExpanded) return;
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -915,6 +1297,33 @@ export default function HomeView({
     } catch (error) {
       console.error('Sticky note copy failed:', error);
       pushStickyNotice('Kopyalama başarısız.');
+    }
+  };
+
+  const openCourseDeleteModal = (course: CourseData) => {
+    setCourseDeleteModal({
+      isOpen: true,
+      courseId: course.id,
+      courseTitle: course.topic || 'İsimsiz Kitap'
+    });
+  };
+
+  const closeCourseDeleteModal = () => {
+    if (isCourseDeleting) return;
+    setCourseDeleteModal({ isOpen: false, courseId: null, courseTitle: '' });
+  };
+
+  const handleCourseDeleteConfirm = async () => {
+    if (!courseDeleteModal.courseId || isCourseDeleting) return;
+    setIsCourseDeleting(true);
+    try {
+      await onDeleteCourse(courseDeleteModal.courseId);
+      setCourseDeleteModal({ isOpen: false, courseId: null, courseTitle: '' });
+    } catch (error) {
+      console.error('Book delete failed:', error);
+      setSourceNotice('Kitap silinirken bir hata oluştu.');
+    } finally {
+      setIsCourseDeleting(false);
     }
   };
 
@@ -1021,6 +1430,8 @@ export default function HomeView({
     targetPageMin: pageRange.min,
     targetPageMax: pageRange.max
   }, selectedAgeGroup);
+  const estimatedGenerationMinutes = getEstimatedGenerationMinutes(selectedBookType);
+  const displayedGenerationMinutes = getEstimatedGenerationMinutes(activeGeneratingBookType || selectedBookType);
 
   const buildCreativeBriefPayload = (): SmartBookCreativeBrief => {
     const normalizedStoryBlueprint = compactInlineText(storyBlueprintInput);
@@ -1054,11 +1465,6 @@ export default function HomeView({
   const handleCreateSmartBook = async () => {
     const isAutoStoryMode = storyInputMode === 'auto';
     const heroNamesHint = compactInlineText(heroNamesInput);
-    const bookTypeLabel = selectedBookType === 'fairy_tale'
-      ? 'Masal'
-      : selectedBookType === 'story'
-        ? 'Hikaye'
-        : 'Roman';
     const topicHint = searchTerm.trim();
     const detailHint = storyInputMode === 'manual'
       ? compactInlineText(storyBlueprintInput)
@@ -1107,7 +1513,10 @@ export default function HomeView({
       return;
     }
 
+    stopBookGenerationPolling(true);
+    writePendingBookGenerationJob(null);
     setIsGenerating(true);
+    setActiveGeneratingBookType(selectedBookType);
     setGenerationProgress(5);
     setSourceNotice(null);
     try {
@@ -1136,8 +1545,7 @@ export default function HomeView({
           mergedSourceContent
         ]);
         if (extractedViolation) {
-          setSourceNotice(BOOK_CONTENT_SAFETY_MESSAGE);
-          return;
+          throw new Error(BOOK_CONTENT_SAFETY_MESSAGE);
         }
       }
 
@@ -1149,408 +1557,47 @@ export default function HomeView({
         }
       }
 
-      const normalizedTopic = toTitleCaseTr(resolvedTopic);
-      setGenerationStatus('Fortale akışı planlanıyor...');
-      setGenerationProgress(34);
-      const { outline, courseMeta } = await generateCourseOutline(
-        normalizedTopic,
+      const normalizedTopic = isAutoStoryMode
+        ? toTitleCaseTr(resolvedTopic)
+        : compactInlineText(resolvedTopic);
+      setActiveGeneratingBookType(selectedBookType);
+      setGenerationStatus('Sunucuda üretim başlatılıyor...');
+      setGenerationProgress(28);
+
+      const jobState = await startBookGenerationJob({
+        topic: normalizedTopic || undefined,
         sourceContent,
-        selectedAgeGroup,
-        {
-          bookType: selectedBookType,
-          subGenre: selectedSubGenre,
-          targetPageCount: targetPageCountPreview,
-          creativeBrief,
-          allowAiBookTitleGeneration: isAutoStoryMode && !searchTerm.trim()
-        }
-      );
-      const aiTargetPageCount = Number(courseMeta?.targetPageCount);
-      const aiSuggestedBookTitle = toTitleCaseTr(compactInlineText(String(courseMeta?.bookTitle || '')));
-      const outlineLeadTitle = toTitleCaseTr(compactInlineText(String(
-        outline.find((node) => node.type === 'lecture' && String(node.title || '').trim())?.title || ''
-      )));
-      const workingBookTitle = (isAutoStoryMode && !searchTerm.trim())
-        ? (resolveAutoNarrativeBookTitle({
-          bookType: selectedBookType,
-          subGenre: selectedSubGenre,
-          topicTitle: normalizedTopic,
-          aiTitle: aiSuggestedBookTitle,
-          outlineTitle: outlineLeadTitle
-        }) || aiSuggestedBookTitle || outlineLeadTitle)
-        : normalizedTopic;
-      if (isAutoStoryMode && !searchTerm.trim() && !workingBookTitle) {
-        throw new Error('AI kitap adı üretemedi.');
-      }
-      const finalBookType: SmartBookBookType = selectedBookType;
-      const finalSubGenre = selectedSubGenre;
-      const finalPageRange = getPageRangeByBookType(finalBookType, selectedAgeGroup);
-      const targetPageCount = Number.isFinite(aiTargetPageCount)
-        ? Math.max(finalPageRange.min, Math.min(finalPageRange.max, Math.floor(aiTargetPageCount)))
-        : targetPageCountPreview;
-      const rawAiBookDescription = sanitizeSmartBookDescriptionText(String(courseMeta?.bookDescription || ''));
-      const aiBookDescription = !isGenericSmartBookDescription(rawAiBookDescription, workingBookTitle)
-        ? rawAiBookDescription
-        : '';
-      const expectedLectureCount = finalBookType === 'novel' ? 6 : 5;
-      const defaultLectureDuration = finalBookType === 'fairy_tale' ? `4 ${t('dk')}` : finalBookType === 'story' ? `8 ${t('dk')}` : `12 ${t('dk')}`;
-      const fairyStageDescriptions = [
-        'Tekerlemeyle başlayan kapıda masal dünyası açılır.',
-        'Kahraman, mekan ve başlangıç düzeni kurulur.',
-        'Sorun başlar, kötü unsur görünür olur ve ilk engeller kurulur.',
-        'Yolculuk üçleme motifiyle derinleşir, gerilim yükselir.',
-        'Sorun çözülür, ders verilir ve iyi dilek kapanışı yapılır.'
-      ];
-      const storyStageDescriptions = [
-        'Karakter, mekan-zaman ve atmosfer netleşir.',
-        'Düzeni bozan olayla çatışma ve engeller büyür.',
-        'Kahramanın kaybedip kazanacağı kritik doruk yaşanır.',
-        'Doruk sonrası sorular yanıtlanır ve çatışma çözülür.',
-        'Finalde kahramanın ve dünyanın nasıl değiştiği görünür.'
-      ];
-      const novelStageDescriptions = [
-        'Tema, dünya kuralları ve karakterin arzu-korku ekseni kurulur.',
-        'I. Perde kurulumunda sıradan dünya, tetikleyici olay ve eşiği geçiş yazılır.',
-        'II. Perdede müttefik-düşman dengesi ve midpoint kırılması belirginleşir.',
-        'II. Perdede stratejik baskı artar, riskler geri döndürülemez hale gelir.',
-        'Kahraman en alt noktaya iner ve doruk öncesi belirleyici bir karar vermek zorunda kalır.',
-        'III. Perdede doruk hesaplaşma çözülür, yeni denge kurulur.'
-      ];
-      const sanitizeFairySectionTitle = (value: string): string => String(value || '')
-        .replace(/^(?:bölüm|chapter|kısım|kisim|part)\s*\d+\s*[:\-–]?\s*/iu, '')
-        .replace(/^(?:d[öo]şeme|serim|d[üu]ğüm|dugum|ç[öo]züm|cozum|dilek|giriş|introduction|masal)\s*(?:bölümü|bolumu|kısmı|kismi|section)?\s*[:\-–]?\s*/iu, '')
-        .replace(/\s*(?:[-–:]\s*)?(?:d[öo]şeme|serim|d[üu]ğüm|dugum|ç[öo]züm|cozum|dilek)\s*(?:bölümü|bolumu|kısmı|kismi|section)?$/iu, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const sanitizeStorySectionTitle = (value: string): string => String(value || '')
-        .replace(/^(?:bölüm|chapter|kısım|kisim|part)\s*\d+\s*[:\-–]?\s*/iu, '')
-        .replace(/^(?:giriş|serim|geli[şs]me|d[üu]ğ[üu]m|dugum|doruk(?:\s*noktası| noktasi)?|kritik\s*an|ç[öo]z[üu]m|cozum|final|sonu[çc])\s*(?:bölümü|bolumu|kısmı|kismi|section)?\s*[:\-–]?\s*/iu, '')
-        .replace(/\s*(?:[-–:]\s*)?(?:giriş|serim|geli[şs]me|d[üu]ğ[üu]m|dugum|doruk(?:\s*noktası| noktasi)?|kritik\s*an|ç[öo]z[üu]m|cozum|final|sonu[çc])\s*(?:bölümü|bolumu|kısmı|kismi|section)?$/iu, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const sanitizeNovelSectionTitle = (value: string): string => String(value || '')
-        .replace(/^(?:bölüm|chapter|kısım|kisim|part|perde|act)\s*(?:\d+|[ivxlcdm]+)?\s*[:\-–]?\s*/iu, '')
-        .replace(/^(?:hazırlık(?:\s*aşaması)?|hazirlik(?:\s*asamasi)?|dünya\s*inşası|dunya\s*insasi|kurulum|y[üu]zle[şs]me(?:\s*[12iıivx]+)?|midpoint|en\s*alt\s*nokta|doruk(?:\s*noktası| noktasi)?|kritik\s*an|ç[öo]z[üu]m|cozum|final|sonu[çc]|giriş|introduction|roman|novel)\s*(?:bölümü|bolumu|kısmı|kismi|section)?\s*[:\-–]?\s*/iu, '')
-        .replace(/\s*(?:[-–:]\s*)?(?:hazırlık(?:\s*aşaması)?|hazirlik(?:\s*asamasi)?|dünya\s*inşası|dunya\s*insasi|kurulum|y[üu]zle[şs]me(?:\s*[12iıivx]+)?|midpoint|en\s*alt\s*nokta|doruk(?:\s*noktası| noktasi)?|kritik\s*an|ç[öo]z[üu]m|cozum|final|sonu[çc])\s*(?:bölümü|bolumu|kısmı|kismi|section)?$/iu, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const ensureMainBookTitleHeading = (content: string, title: string): string => {
-        const cleanTitle = compactInlineText(title);
-        const cleanContent = String(content || '').trim();
-        if (!cleanTitle) return cleanContent;
-        if (!cleanContent) return `# ${cleanTitle}`;
-        const firstLine = cleanContent.split(/\r?\n/, 1)[0].trim();
-        const headingMatch = firstLine.match(/^#{1,6}\s+(.+)$/);
-        const firstLineText = (headingMatch ? headingMatch[1] : firstLine).replace(/\s+/g, ' ').trim();
-        if (firstLineText.toLocaleLowerCase('tr-TR') === cleanTitle.toLocaleLowerCase('tr-TR')) {
-          return cleanContent;
-        }
-        return `# ${cleanTitle}\n\n${cleanContent}`;
-      };
-      const buildLectureTitle = (index: number, rawTitle?: string): string => {
-        if (finalBookType === 'fairy_tale') {
-          const cleaned = sanitizeFairySectionTitle(rawTitle || '');
-          return cleaned;
-        }
-        if (finalBookType === 'story') {
-          const cleaned = sanitizeStorySectionTitle(rawTitle || '');
-          return cleaned;
-        }
-        const cleaned = sanitizeNovelSectionTitle(rawTitle || '');
-        return cleaned;
-      };
-
-      const lectureOutline = outline.filter((node) => node.type === 'lecture');
-      const normalizedLectureOutline: TimelineNode[] = Array.from({ length: expectedLectureCount }, (_, index) => {
-        const base = lectureOutline[index];
-        const fallbackDescription = finalBookType === 'fairy_tale'
-          ? fairyStageDescriptions[index]
-          : finalBookType === 'story'
-            ? storyStageDescriptions[index]
-            : novelStageDescriptions[index] || 'Anlatı akışı bu bölümde devam ediyor.';
-
-        return {
-          id: base?.id || `lecture-${index + 1}`,
-          type: 'lecture',
-          title: buildLectureTitle(index, base?.title) || compactInlineText(String(base?.title || '')) || '',
-          description: base?.description || fallbackDescription,
-          status: index === 0 ? 'current' : 'locked',
-          duration: base?.duration || defaultLectureDuration
-        };
-      });
-
-      let formattedNodes = normalizedLectureOutline.map((node, index) => ({
-        ...node,
-        status: index === 0 ? 'current' : 'locked',
-      }));
-
-      // Kurgusal eserlerde TÜM bölümleri sırasıyla oluştur (Kullanıcı tamamen yazılmış bir kitap bekliyor)
-      for (let i = 0; i < formattedNodes.length; i++) {
-        const node = formattedNodes[i];
-        if (node.type === 'lecture' && !node.content?.trim()) {
-          try {
-            setGenerationStatus(`${node.title} içeriği hazırlanıyor...`);
-            setGenerationProgress(68 + Math.floor((i / formattedNodes.length) * 20));
-
-            const totalLectures = formattedNodes.filter(n => n.type === 'lecture').length;
-            const currentLectureIndex = formattedNodes.slice(0, i + 1).filter(n => n.type === 'lecture').length;
-
-            const previousLectureNodes = formattedNodes
-              .slice(0, i)
-              .filter((chapter) => chapter.type === 'lecture' && Boolean(chapter.content?.trim()));
-            const normalizeContextChapterText = (value: string | undefined): string => String(value || '')
-              .replace(/!\[[^\]]*]\(\s*<?(?:data:image\/[^)]+|https?:\/\/[^)]+)>?\s*\)/gi, ' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-            const isFairyTaleFlow = finalBookType === 'fairy_tale';
-            const previousChapterContent = previousLectureNodes.length > 0
-              ? (() => {
-                const raw = normalizeContextChapterText(previousLectureNodes[previousLectureNodes.length - 1].content);
-                return isFairyTaleFlow ? raw : raw.slice(-2800);
-              })()
-              : undefined;
-            const storySoFarContent = previousLectureNodes.length > 0
-              ? (() => {
-                const raw = previousLectureNodes
-                  .map((chapter, chapterIndex) => {
-                    const chapterText = normalizeContextChapterText(chapter.content);
-                    if (!chapterText) return '';
-                    return `[Bölüm ${chapterIndex + 1} - ${chapter.title}]\n${isFairyTaleFlow ? chapterText : chapterText.slice(0, 1800)}`;
-                  })
-                  .filter(Boolean)
-                  .join('\n\n')
-                  .trim();
-                return isFairyTaleFlow ? raw : raw.slice(-8200).trim();
-              })()
-              : undefined;
-
-            const chapterContent = await generateLectureContent(
-              workingBookTitle,
-              node.title,
-              selectedAgeGroup,
-              {
-                bookType: finalBookType,
-                subGenre: finalSubGenre || undefined,
-                targetPageCount,
-                creativeBrief: {
-                  ...creativeBrief,
-                  bookType: finalBookType,
-                  subGenre: finalSubGenre || undefined
-                },
-                narrativeContext: {
-                  outlinePositions: { current: currentLectureIndex, total: totalLectures },
-                  previousChapterContent,
-                  storySoFarContent
-                },
-                deferImageGeneration: true
-              }
-            );
-            const chapterContentWithBookTitle = currentLectureIndex === 1
-              ? ensureMainBookTitleHeading(chapterContent, workingBookTitle)
-              : chapterContent;
-            let chapterContentWithImages = chapterContentWithBookTitle;
-            try {
-              setGenerationStatus(`${node.title} görselleri hazırlanıyor...`);
-              chapterContentWithImages = await generateLectureImages(
-                workingBookTitle,
-                node.title,
-                chapterContentWithBookTitle,
-                selectedAgeGroup,
-                {
-                  bookType: finalBookType,
-                  subGenre: finalSubGenre || undefined,
-                  targetPageCount,
-                  creativeBrief: {
-                    ...creativeBrief,
-                    bookType: finalBookType,
-                    subGenre: finalSubGenre || undefined
-                  },
-                  narrativeContext: {
-                    outlinePositions: { current: currentLectureIndex, total: totalLectures },
-                    previousChapterContent,
-                    storySoFarContent
-                  }
-                }
-              );
-            } catch (imageError) {
-              console.warn(`Bölüm ${i + 1} image generation failed:`, imageError);
-            }
-            const chapterMinutes = Math.max(1, Math.min(15, estimateReadingMinutesFromText(chapterContentWithImages)));
-            formattedNodes[i] = {
-              ...node,
-              content: chapterContentWithImages,
-              duration: `${chapterMinutes} ${t('dk')}`,
-              status: 'current'
-            };
-          } catch (error) {
-            console.warn(`Bölüm ${i + 1} generation failed:`, error);
-          }
-        }
-      }
-      const generatedSectionTitleHints = formattedNodes
-        .filter((item) => item.type === 'lecture')
-        .map((item) => compactInlineText(item.title))
-        .filter(Boolean);
-      const finalBookTitle = (() => {
-        const aiResolvedTitle = resolveAutoNarrativeBookTitle({
-          bookType: finalBookType,
-          subGenre: finalSubGenre,
-          topicTitle: normalizedTopic,
-          aiTitle: aiSuggestedBookTitle,
-          outlineTitle: outlineLeadTitle,
-          generatedSectionTitles: generatedSectionTitleHints
-        });
-        if (isAutoStoryMode && !searchTerm.trim()) {
-          if (!aiResolvedTitle) {
-            throw new Error('AI son kitap adını üretemedi.');
-          }
-          return aiResolvedTitle;
-        }
-
-        const userTitleCandidate = toTitleCaseTr(compactInlineText(normalizedTopic));
-        const userTitleIsGeneric = isNarrativeBookTitleTooGeneric(userTitleCandidate, {
-          bookType: finalBookType,
-          subGenre: finalSubGenre,
-          topic: ''
-        });
-        return userTitleIsGeneric ? (aiResolvedTitle || userTitleCandidate) : userTitleCandidate;
-      })();
-      const firstLectureWithContentIndex = formattedNodes.findIndex(
-        (item) => item.type === 'lecture' && Boolean(item.content?.trim())
-      );
-      if (firstLectureWithContentIndex >= 0) {
-        const firstLectureNode = formattedNodes[firstLectureWithContentIndex];
-        formattedNodes[firstLectureWithContentIndex] = {
-          ...firstLectureNode,
-          content: ensureMainBookTitleHeading(String(firstLectureNode.content || ''), finalBookTitle)
-        };
-      }
-      setGenerationProgress(88);
-
-      const courseDescription = aiBookDescription || deriveSmartBookDescription(
-        finalBookTitle,
-        formattedNodes,
-        finalBookType,
-        finalSubGenre
-      );
-      const languageProbe = [
-        compactInlineText(bookLanguageInput),
-        finalBookTitle,
-        courseDescription,
-        typeof sourceContent === 'string' ? sourceContent.slice(0, 1800) : ''
-      ]
-        .filter(Boolean)
-        .join(' ');
-      const detectedCourseLanguage = detectLikelyLanguage(languageProbe);
-      const requestedCourseLanguage = normalizeAppLanguageCode(compactInlineText(bookLanguageInput));
-      const courseLanguage = requestedCourseLanguage || (detectedCourseLanguage !== 'unknown' ? detectedCourseLanguage : undefined);
-
-      const totalMinutes = formattedNodes.reduce((sum, node) => {
-        const match = node.duration?.match(/\d+/);
-        return sum + (match ? parseInt(match[0], 10) : 0);
-      }, 0);
-
-      const hours = Math.floor(totalMinutes / 60);
-      const mins = totalMinutes % 60;
-      const durationStr = hours > 0
-        ? `${hours} ${t('saat')} ${mins > 0 ? `${mins} ${t('dk')} ` : ''}${t('toplam çalışma')}`
-        : `${totalMinutes} ${t('dk')} ${t('toplam çalışma')}`;
-
-      const derivedCategory = 'Edebiyat';
-      const searchTags = buildSmartBookSearchTags({
-        topic: finalBookTitle,
-        description: courseDescription,
-        category: derivedCategory,
-        aiTags: courseMeta?.searchTags,
-        nodes: formattedNodes as TimelineNode[]
-      });
-      if (finalSubGenre) {
-        searchTags.unshift(finalSubGenre);
-      }
-
-      const coverContextText = formattedNodes
-        .filter((node) => node.type === 'lecture')
-        .map((node) => {
-          const body = compactInlineText(String(node.content || '')).slice(0, 700);
-          return body ? `[${node.title}] ${body}` : '';
-        })
-        .filter(Boolean)
-        .join('\n\n')
-        .slice(0, 6500);
-
-      setGenerationStatus('Kapak görseli içerikten üretiliyor...');
-      setGenerationProgress(90);
-      const coverImageUrl = await generateCourseCover(
-        finalBookTitle,
-        selectedAgeGroup,
-        {
-          bookType: finalBookType,
-          subGenre: finalSubGenre || undefined,
-          creativeBrief: {
-            ...creativeBrief,
-            bookType: finalBookType,
-            subGenre: finalSubGenre || undefined
-          },
-          coverContext: [
-            `Tür: ${finalBookType}`,
-            finalSubGenre ? `Alt Tür: ${finalSubGenre}` : '',
-            `Özet: ${courseDescription}`,
-            coverContextText,
-            typeof sourceContent === 'string' ? sourceContent.slice(0, 1200) : ''
-          ]
-            .filter(Boolean)
-            .join('\n\n')
-            .slice(0, 8000)
-        }
-      );
-
-      setGenerationStatus('Fortale paketleniyor...');
-      setGenerationProgress(92);
-      onCourseCreate({
-        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : Date.now().toString(),
-        topic: finalBookTitle,
-        description: courseDescription,
         creatorName: compactInlineText(creatorNameInput) || undefined,
-        language: courseLanguage,
         ageGroup: selectedAgeGroup,
-        bookType: finalBookType,
-        subGenre: finalSubGenre || undefined,
-        creativeBrief: {
-          ...creativeBrief,
-          bookType: finalBookType,
-          subGenre: finalSubGenre || undefined
-        },
-        targetPageCount,
-        category: derivedCategory,
-        searchTags,
-        totalDuration: durationStr,
-        coverImageUrl,
-        isPublic: true,
-        nodes: formattedNodes as any,
-        createdAt: new Date(),
-        lastActivity: new Date()
+        bookType: selectedBookType,
+        subGenre: selectedSubGenre || undefined,
+        targetPageCount: targetPageCountPreview,
+        creativeBrief,
+        allowAiBookTitleGeneration: isAutoStoryMode
       });
-      setGenerationProgress(100);
-      setSearchTerm('');
-      setHeroNamesInput('');
-      setStoryInputMode(null);
-      setStoryBlueprintInput('');
-      setSettingPlaceInput('');
-      setSettingTimeInput('');
-      setCreatorNameInput('');
-      setBookLanguageInput(defaultBookLanguage);
-      setCreationStep(1);
-      clearSourceFile();
+
+      writePendingBookGenerationJob({
+        jobId: jobState.jobId,
+        bookType: selectedBookType,
+        topic: normalizedTopic || undefined,
+        startedAt: new Date().toISOString()
+      });
+
+      syncGenerationUiFromJob(jobState, selectedBookType);
+
+      if (jobState.status === 'failed') {
+        throw new Error(jobState.error || 'Fortale oluşturulurken bir hata oluştu.');
+      }
+
+      if (jobState.status === 'completed' && jobState.course) {
+        completeGeneratedBook(jobState.course);
+        return;
+      }
+
+      startBookGenerationPolling(jobState.jobId, selectedBookType);
     } catch (error) {
-      console.error('Course generation failed', error);
-      setSourceNotice(getUserFacingError(error, 'Fortale oluşturulurken bir hata oluştu.'));
-    } finally {
-      setIsGenerating(false);
-      window.setTimeout(() => {
-        setGenerationStatus('');
-        setGenerationProgress(0);
-      }, 500);
+      console.error('Book generation failed', error);
+      failGenerationJob(getUserFacingError(error, 'Fortale oluşturulurken bir hata oluştu.'));
     }
   };
 
@@ -1565,15 +1612,6 @@ export default function HomeView({
     const rawProgress = Math.round((completed / nodes.length) * 100);
     if (!Number.isFinite(rawProgress)) return 0;
     return Math.max(0, Math.min(100, rawProgress));
-  };
-
-  const formatTimeAgo = (date: Date) => {
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - new Date(date).getTime()) / 1000);
-    if (diffInSeconds < 60) return t('Az önce');
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} ${t('dk önce')}`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} ${t('saat önce')}`;
-    return `${Math.floor(diffInSeconds / 86400)} ${t('gün önce')}`;
   };
 
   const renderStickyCard = (note: StickyNoteData, fullWidth = false) => {
@@ -1612,16 +1650,75 @@ export default function HomeView({
   const renderHomeCourseCard = (course: CourseData) => {
     const progress = getProgress(course);
     const nextStep = getNextStep(course);
+    const canDelete = canDeleteCourse ? canDeleteCourse(course) : true;
+    const openState = courseOpenStates[course.id] || { status: 'idle', progress: 0, updatedAt: 0 };
+    const isOpenDownloading = openState.status === 'downloading';
+    const isOpenReady = openState.status === 'ready';
+    const isOpenFailed = openState.status === 'failed';
+    const isOpenIdle = !isOpenDownloading && !isOpenReady && !isOpenFailed;
+    const openProgress = Math.max(0, Math.min(100, Math.round(openState.progress || 0)));
+
+    const actionLabel = isOpenReady
+      ? t('Oku')
+      : isOpenDownloading
+        ? `${t('İndiriliyor')} %${openProgress}`
+        : isOpenFailed
+          ? t('Tekrar dene')
+          : t('İndir');
+
+    const actionIcon = isOpenReady
+      ? <Check size={11} className="mr-1" />
+      : isOpenDownloading
+        ? null
+        : isOpenFailed
+          ? null
+          : <Download size={11} className="mr-1" />;
+
+    const actionButtonStyle: React.CSSProperties = isOpenReady
+      ? {
+        borderColor: 'rgba(110, 231, 183, 0.55)',
+        background: 'linear-gradient(135deg, rgba(16,72,46,0.85) 0%, rgba(12,58,36,0.82) 100%)',
+        boxShadow: 'inset 0 0 0 1px rgba(110,231,183,0.18), 0 0 10px rgba(52,211,153,0.15)'
+      }
+      : isOpenDownloading
+        ? {
+          borderColor: 'rgba(96, 165, 250, 0.5)',
+          background: 'linear-gradient(135deg, rgba(29,78,216,0.55) 0%, rgba(30,64,175,0.5) 100%)',
+          boxShadow: 'inset 0 0 0 1px rgba(96,165,250,0.2), 0 0 10px rgba(59,130,246,0.15)'
+        }
+        : isOpenFailed
+          ? {
+            borderColor: 'rgba(248, 113, 113, 0.45)',
+            background: 'rgba(127, 29, 29, 0.75)'
+          }
+          : {
+            borderColor: 'rgba(148, 163, 184, 0.4)',
+            background: 'rgba(23, 38, 58, 0.78)'
+          };
 
     return (
-      <button
+      <div
         key={course.id}
+        role="button"
+        tabIndex={0}
         onClick={() => onCourseSelect(course.id)}
-        className="group h-full rounded-[24px] border border-dashed p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onCourseSelect(course.id);
+          }
+        }}
+        className="group h-full cursor-pointer rounded-[24px] border border-dashed p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
         style={{
-          background: 'rgba(17, 22, 29, 0.42)',
-          borderColor: 'rgba(188, 194, 203, 0.1)',
-          boxShadow: 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
+          background: isOpenReady
+            ? 'rgba(12, 38, 24, 0.25)'
+            : 'rgba(17, 22, 29, 0.3)',
+          borderColor: isOpenReady
+            ? 'rgba(110, 231, 183, 0.15)'
+            : 'rgba(188, 194, 203, 0.1)',
+          boxShadow: isOpenReady
+            ? 'inset 0 0 0 1px rgba(110, 231, 183, 0.08)'
+            : 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
         }}
       >
         <div className="flex items-start gap-3.5">
@@ -1629,7 +1726,7 @@ export default function HomeView({
             className="relative shrink-0 h-[92px] w-[69px] overflow-hidden rounded-[4px] md:h-[104px] md:w-[78px]"
             style={course.coverImageUrl
               ? { background: 'transparent' }
-              : { background: 'rgba(44, 48, 53, 0.86)' }}
+              : { background: 'rgba(44, 48, 53, 0.72)' }}
           >
             {course.coverImageUrl ? (
               <img
@@ -1642,61 +1739,65 @@ export default function HomeView({
                 <BookOpen size={20} className="text-zinc-500" />
               </div>
             )}
+            {/* Download progress overlay on cover */}
+            {isOpenDownloading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-end" style={{ background: 'rgba(15,23,42,0.55)' }}>
+                <div className="w-full px-1 pb-1">
+                  <div className="h-[3px] w-full overflow-hidden rounded-full bg-blue-950/60">
+                    <div
+                      className="h-full rounded-full transition-all duration-200"
+                      style={{
+                        width: `${openProgress}%`,
+                        background: 'linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%)'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Ready checkmark badge on cover */}
+            {isOpenReady && (
+              <div
+                className="absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
+                style={{ background: 'rgba(16,72,46,0.92)', boxShadow: '0 0 6px rgba(52,211,153,0.35)' }}
+              >
+                <Check size={10} className="text-emerald-300" />
+              </div>
+            )}
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="line-clamp-2 text-[13px] font-bold leading-[1.25] text-white">
-                  {course.topic}
-                </p>
-                <p className="mt-1 line-clamp-1 text-[10px] text-zinc-300">
-                  {nextStep?.title || t('Fortale Tamamlandı')}
-                </p>
-              </div>
-
-              <div className="relative flex h-[42px] w-[42px] shrink-0 items-center justify-center md:h-[46px] md:w-[46px]">
-                <svg className="h-full w-full -rotate-90 transform">
-                  <circle cx="21" cy="21" r="16" stroke="rgba(79,107,141,0.28)" strokeWidth="3" fill="transparent" />
-                  <circle
-                    cx="21"
-                    cy="21"
-                    r="16"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    fill="transparent"
-                    strokeDasharray={2 * Math.PI * 16}
-                    strokeDashoffset={2 * Math.PI * 16 * (1 - progress / 100)}
-                    className="text-accent-green transition-all duration-700 ease-out"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span className="absolute text-[8px] font-black text-accent-green">%{progress}</span>
-              </div>
+            <div className="min-w-0">
+              <p className="line-clamp-2 text-[13px] font-bold leading-[1.25] text-white">
+                {course.topic}
+              </p>
+              <p className="mt-1 line-clamp-1 text-[10px] text-zinc-300">
+                {nextStep?.title || t('Fortale Tamamlandı')}
+              </p>
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span
                 className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                style={{ background: 'rgba(23, 38, 58, 0.9)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
+                style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
               >
                 {t(bookTypeToLabel(course.bookType))}
               </span>
               {course.subGenre?.trim() && (
                 <span
                   className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                  style={{ background: 'rgba(23, 38, 58, 0.9)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
+                  style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
                 >
                   {t(course.subGenre.trim())}
                 </span>
               )}
               <span
                 className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                style={{ background: 'rgba(23, 38, 58, 0.9)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
+                style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
               >
                 {t(getSmartBookAgeGroupLabel(course.ageGroup))}
               </span>
-              <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#17263a] px-2 py-1" title={t('Tahmini okuma süresi')}>
+              <div className="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(23,38,58,0.68)] px-2 py-1" title={t('Tahmini okuma süresi')}>
                 <Clock3 size={10} className="text-[#7fb1ec]" />
                 <span className="text-[10px] text-[#b9cde8]">
                   {estimateCourseReadingDuration(course, t)}
@@ -1705,7 +1806,7 @@ export default function HomeView({
             </div>
 
             <div className="mt-3">
-              <div className="h-1.5 overflow-hidden rounded-full bg-[#233246]">
+              <div className="h-1.5 overflow-hidden rounded-full bg-[rgba(35,50,70,0.72)]">
                 <div
                   className="h-full rounded-full"
                   style={{
@@ -1715,16 +1816,52 @@ export default function HomeView({
                 />
               </div>
 
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-[#9cb9d7]">{formatTimeAgo(course.lastActivity)}</span>
-                <span className="inline-flex items-center rounded-xl border border-dashed border-[#7da9d7]/35 bg-[#163052] px-2.5 py-1 text-[10px] font-bold text-white transition-transform group-active:scale-95">
-                  {t('Devam Et')}
+              <div
+                className="mt-2 flex items-center justify-between gap-2 border-t border-dashed pt-2"
+                style={{ borderColor: 'rgba(96, 129, 164, 0.3)' }}
+              >
+                <span className="text-[10px] text-[#9cb9d7]">
+                  {formatCourseCreatedDate(course.createdAt || course.lastActivity, locale)}
                 </span>
+                <div className="flex items-center gap-2">
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openCourseDeleteModal(course);
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-xl text-[#fca5a5] transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fecaca]"
+                      title={t('Sil')}
+                      aria-label={t('Sil')}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (isOpenDownloading) return;
+                      onCourseSelect(course.id);
+                    }}
+                    disabled={isOpenDownloading}
+                    data-no-ui-translate="true"
+                    className={`inline-flex items-center rounded-xl border border-dashed px-2.5 py-1 text-[10px] font-bold transition-all group-active:scale-95 disabled:cursor-not-allowed disabled:opacity-80 ${isOpenReady ? 'text-emerald-200' : isOpenDownloading ? 'text-blue-200' : 'text-white'
+                      }`}
+                    style={actionButtonStyle}
+                  >
+                    {actionIcon}
+                    {actionLabel}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </button>
+      </div>
     );
   };
 
@@ -1760,21 +1897,21 @@ export default function HomeView({
   const wizardFieldClass = 'mt-1 h-10 w-full rounded-xl border border-dashed px-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] focus:outline-none';
   const wizardFieldStyle = {
     borderColor: 'rgba(118,170,226,0.48)',
-    background: 'linear-gradient(180deg, rgba(21,35,54,0.92) 0%, rgba(17,27,40,0.95) 100%)',
+    background: 'linear-gradient(180deg, rgba(21,35,54,0.74) 0%, rgba(17,27,40,0.78) 100%)',
     boxShadow: 'inset 0 0 0 1px rgba(88,123,163,0.24)'
   };
   const wizardTextareaClass = 'mt-1 w-full rounded-xl border border-dashed px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] resize-none focus:outline-none';
-  const wizardOptionPanelStyle = {
-    background: 'linear-gradient(160deg, rgba(19,33,50,0.76) 0%, rgba(16,24,35,0.86) 100%)',
-    borderColor: 'rgba(104,152,205,0.3)',
-    boxShadow: 'inset 0 0 0 1px rgba(86,130,181,0.16)'
-  };
   const wizardOptionButtonStyle = (isSelected: boolean) => ({
-    background: isSelected ? 'linear-gradient(135deg, rgba(35,67,103,0.98) 0%, rgba(25,47,72,0.96) 100%)' : 'rgba(14,21,31,0.42)',
+    background: isSelected ? 'linear-gradient(135deg, rgba(35,67,103,0.84) 0%, rgba(25,47,72,0.82) 100%)' : 'rgba(14,21,31,0.3)',
     boxShadow: isSelected
       ? 'inset 0 0 0 1px rgba(165,207,255,0.45), 0 0 16px rgba(95,141,197,0.24)'
       : 'inset 0 0 0 1px rgba(86,133,190,0.22)'
   });
+  const loginPrimaryButtonStyle: React.CSSProperties = {
+    borderColor: 'rgba(146,194,246,0.42)',
+    background: 'linear-gradient(135deg, rgba(35,67,103,0.95) 0%, rgba(24,44,70,0.92) 100%)',
+    boxShadow: 'inset 0 0 0 1px rgba(165,207,255,0.3), 0 0 14px rgba(94,141,198,0.22)'
+  };
   const showStickyNotes = false;
   const stickyModalTop =
     stickyRowContainerRef.current
@@ -1786,7 +1923,7 @@ export default function HomeView({
       className="view-container"
       style={{
         background:
-          'radial-gradient(circle at 12% 7%, rgba(154, 172, 191, 0.11), transparent 44%), radial-gradient(circle at 88% 11%, rgba(118, 132, 148, 0.1), transparent 42%), linear-gradient(180deg, #2d353d 0%, #232a31 100%)'
+          'radial-gradient(circle at 12% 7%, rgba(182, 223, 255, 0.24), transparent 44%), radial-gradient(circle at 88% 11%, rgba(143, 206, 255, 0.2), transparent 42%), linear-gradient(180deg, #1f3a57 0%, #162b42 100%)'
       }}
     >
       <div className="app-content-width space-y-6">
@@ -1839,27 +1976,6 @@ export default function HomeView({
           </section>
         )}
 
-        {isBootstrapping && savedCourses.length === 0 && (
-          <section>
-            <div
-              className="rounded-2xl border border-dashed p-4 text-center"
-              style={{
-                background: 'rgba(17, 22, 29, 0.42)',
-                borderColor: 'rgba(120,171,226,0.28)',
-                boxShadow: 'inset 0 0 0 1px rgba(54,79,108,0.18)'
-              }}
-            >
-              <div className="flex flex-col items-center gap-3">
-                <FaviconSpinner size={28} />
-                <div>
-                  <h3 className="text-[13px] font-bold text-white">{t('Kitaplar senkronize ediliyor')}</h3>
-                  <p className="mt-1 text-[11px] text-text-secondary">{bootstrapMessage}</p>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
         <section className="relative">
           <input
             ref={sourceFileInputRef}
@@ -1876,7 +1992,7 @@ export default function HomeView({
             <div
               className="rounded-2xl border border-dashed p-2.5 overflow-hidden"
               style={{
-                background: 'linear-gradient(160deg, rgba(24,38,57,0.94) 0%, rgba(17,22,29,0.94) 55%, rgba(14,24,38,0.95) 100%)',
+                background: 'linear-gradient(160deg, rgba(24,38,57,0.78) 0%, rgba(17,22,29,0.78) 55%, rgba(14,24,38,0.8) 100%)',
                 borderColor: 'rgba(120,171,226,0.34)',
                 boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18)'
               }}
@@ -1884,7 +2000,7 @@ export default function HomeView({
               <div className="px-1.5 pb-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[12px] font-semibold tracking-wide text-[#d4e6fa]">{t('Kitabınızı Oluşturun')}</span>
-                  <span className="text-[11px] font-semibold text-[#afcbed]">{t('Adım')} {creationStep}/{CREATION_STEP_COUNT}</span>
+                  <span className="text-[11px] font-semibold text-[#afcbed]">{creationStep}/{CREATION_STEP_COUNT}</span>
                 </div>
                 <p className="mt-1 text-[15px] font-bold text-white">{currentStepTitle}</p>
                 <div className="mt-2 h-1.5 rounded-full bg-[#152131] overflow-hidden">
@@ -1920,12 +2036,12 @@ export default function HomeView({
                           : isDone
                             ? {
                               borderColor: `${stepAccent}aa`,
-                              background: 'rgba(18,31,45,0.92)',
+                              background: 'rgba(18,31,45,0.74)',
                               boxShadow: `inset 0 0 0 1px ${stepAccent}66, 0 0 12px ${stepAccent}33`
                             }
                             : {
                               borderColor: 'rgba(70,95,124,0.34)',
-                              background: 'rgba(18,28,40,0.65)'
+                              background: 'rgba(18,28,40,0.5)'
                             }}
                       >
                         {stepNo}
@@ -1941,7 +2057,7 @@ export default function HomeView({
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Kitap Türünü Seç')}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-dashed p-1" style={wizardOptionPanelStyle}>
+                    <div className="grid grid-cols-3 gap-1.5">
                       {SMARTBOOK_BOOK_TYPE_OPTIONS.map((option) => {
                         const isSelected = selectedBookType === option.value;
                         const createCost = getBookTypeCreateCreditCost(option.value);
@@ -1954,19 +2070,19 @@ export default function HomeView({
                               if (option.value === 'fairy_tale') {
                                 setSelectedEndingStyle('happy');
                               }
-                              if (option.value === 'fairy_tale' && !['4-6', '7-9'].includes(selectedAgeGroup)) {
+                              if (option.value === 'fairy_tale' && !['1-3', '4-6', '7-9'].includes(selectedAgeGroup)) {
                                 setSelectedAgeGroup('4-6');
-                              } else if (option.value !== 'fairy_tale' && ['4-6', '7-9'].includes(selectedAgeGroup)) {
+                              } else if (option.value !== 'fairy_tale' && ['1-3', '4-6', '7-9'].includes(selectedAgeGroup)) {
                                 setSelectedAgeGroup('general');
                               }
                             }}
-                            className="rounded-xl px-2 py-1.5 text-left transition-colors"
+                            className="rounded-xl px-2 py-1.5 text-center transition-colors"
                             style={wizardOptionButtonStyle(isSelected)}
                             aria-pressed={isSelected}
                             title={t(option.hint)}
                           >
-                            <span className="block text-[12px] font-bold text-white">{t(option.label)}</span>
-                            <span className="mt-0.5 block text-[10px] font-semibold text-[#b9d2f1]/95">{createCost} {t('kredi')}</span>
+                            <span className="block text-[12px] font-bold text-white text-center">{t(option.label)}</span>
+                            <span className="mt-0.5 block text-[10px] font-semibold text-[#b9d2f1]/95 text-center">{createCost} {t('kredi')}</span>
                           </button>
                         );
                       })}
@@ -1977,20 +2093,20 @@ export default function HomeView({
                 {creationStep === 3 && (
                   <div>
                     <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Yaş Grubunu Seç')}</p>
-                    <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-dashed p-1" style={wizardOptionPanelStyle}>
-                      {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['4-6', '7-9'].includes(opt.value) : !['4-6', '7-9'].includes(opt.value)).map((option) => {
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-3', '4-6', '7-9'].includes(opt.value) : !['1-3', '4-6', '7-9'].includes(opt.value)).map((option) => {
                         const isSelected = selectedAgeGroup === option.value;
                         return (
                           <button
                             key={option.value}
                             type="button"
                             onClick={() => setSelectedAgeGroup(option.value)}
-                            className="rounded-xl px-2 py-1.5 text-left transition-colors"
+                            className="rounded-xl px-1.5 py-1.5 text-center transition-colors"
                             style={wizardOptionButtonStyle(isSelected)}
                             aria-pressed={isSelected}
                             title={t(option.hint)}
                           >
-                            <span className="block text-[12px] font-bold text-white">{t(option.label)}</span>
+                            <span className="block text-[11px] font-bold text-white">{t(option.label)}</span>
                           </button>
                         );
                       })}
@@ -2015,7 +2131,7 @@ export default function HomeView({
                 {creationStep === 2 && (
                   <div>
                     <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Alt Tür Seç')}</p>
-                    <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-dashed p-1" style={wizardOptionPanelStyle}>
+                    <div className="grid grid-cols-2 gap-1.5">
                       {(SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || []).map((sub) => {
                         const isSelected = selectedSubGenre === sub;
                         return (
@@ -2038,7 +2154,7 @@ export default function HomeView({
                     {selectedBookType !== 'fairy_tale' && (
                       <>
                         <p className="mt-2 mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Final Tercihi')}</p>
-                        <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-dashed p-1" style={wizardOptionPanelStyle}>
+                        <div className="grid grid-cols-3 gap-1.5">
                           {SMARTBOOK_ENDING_OPTIONS.map((option) => {
                             const isSelected = selectedEndingStyle === option.value;
                             return (
@@ -2067,7 +2183,18 @@ export default function HomeView({
                   <div className="space-y-2">
                     <div>
                       <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Kurgu Modu')}</p>
-                      <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-dashed p-1" style={wizardOptionPanelStyle}>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setStoryInputMode('manual')}
+                          className="rounded-xl px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                          style={{
+                            color: storyInputMode === 'manual' ? '#ffffff' : '#c6d9ef',
+                            ...wizardOptionButtonStyle(storyInputMode === 'manual')
+                          }}
+                        >
+                          {t('Detay Gireceğim')}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -2082,17 +2209,6 @@ export default function HomeView({
                         >
                           {t('Otomatik Oluştur')}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setStoryInputMode('manual')}
-                          className="rounded-xl px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
-                          style={{
-                            color: storyInputMode === 'manual' ? '#ffffff' : '#c6d9ef',
-                            ...wizardOptionButtonStyle(storyInputMode === 'manual')
-                          }}
-                        >
-                          {t('Detay Gireceğim')}
-                        </button>
                       </div>
                     </div>
 
@@ -2105,14 +2221,14 @@ export default function HomeView({
                             onChange={(event) => setStoryBlueprintInput(event.target.value)}
                             maxLength={1600}
                             rows={5}
-                            placeholder={t('Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın')}
+                            placeholder={t('Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın')}
                             className={wizardTextareaClass}
                             style={wizardFieldStyle}
                           />
                         </>
                       ) : (
                         <p className="text-[12px] text-[#a8c4e6]">
-                          {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Seçimden sonra doğrudan Oluşturucu adımına geçilir.')}
+                          {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Seçimden sonra doğrudan Kurgulayan adımına geçilir.')}
                         </p>
                       )}
                     </div>
@@ -2175,7 +2291,7 @@ export default function HomeView({
                       className={wizardFieldClass}
                       style={wizardFieldStyle}
                     />
-                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
+                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kurgulayan')}</label>
                     <input
                       value={creatorNameInput}
                       onChange={(event) => setCreatorNameInput(event.target.value)}
@@ -2196,13 +2312,22 @@ export default function HomeView({
 
               {isGenerating ? (
                 <div className="mt-3 rounded-2xl border border-dashed border-[#6c90ba]/35 bg-[rgba(19,33,51,0.86)] p-3">
-                  <div className="mx-auto fortale-book-shell">
-                    <div className="fortale-book-silhouette" />
-                    <div className="fortale-book-sheen" />
-                    <div className="fortale-book-scan-line" />
+                  <div className="mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border border-dashed border-[#7da3cf]/40 bg-[#0f1b2a]">
+                    <video
+                      className="h-auto w-full"
+                      src={BOOK_CREATING_LOOP_VIDEO_SRC}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="auto"
+                    />
                   </div>
                   <p className="mt-2 text-center text-[11px] font-bold text-white">
                     {generationStatus || t('Fortale oluşturuluyor...')}
+                  </p>
+                  <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
+                    {t('Tahmini üretim süresi')}: {displayedGenerationMinutes} {t('dk')}
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-[#102033] overflow-hidden">
                     <div
@@ -2211,9 +2336,6 @@ export default function HomeView({
                     />
                   </div>
                   <p className="mt-1 text-center text-[10px] text-[#b6cde8]">%{Math.max(4, Math.min(100, Math.round(generationProgress || 0)))}</p>
-                  <div className="mt-1 flex items-center justify-center">
-                    <FaviconSpinner size={26} />
-                  </div>
                 </div>
               ) : (
                 <div className={`mt-3 flex items-center gap-2 ${creationStep === 1 ? 'justify-end' : 'justify-between'}`}>
@@ -2234,9 +2356,10 @@ export default function HomeView({
                       onClick={() => setCreationStep((prev) => getNextCreationStep(prev))}
                       disabled={!canMoveNext}
                       className={`h-10 px-4 rounded-2xl border border-dashed text-[12px] font-bold inline-flex items-center gap-1.5 ${canMoveNext
-                        ? 'border-[#8cc9ff]/50 text-white bg-gradient-to-r from-[#1b4f86] via-[#2a67a4] to-[#2c5a9a] active:scale-95'
+                        ? 'text-white active:scale-95'
                         : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
                         }`}
+                      style={canMoveNext ? loginPrimaryButtonStyle : undefined}
                     >
                       {t('İleri')}
                       <ArrowRight size={14} />
@@ -2247,9 +2370,10 @@ export default function HomeView({
                       onClick={() => void handleCreateSmartBook()}
                       disabled={!canCreateOnFinalStep}
                       className={`h-10 px-4 rounded-2xl border border-dashed text-[12px] font-bold inline-flex items-center gap-1.5 ${canCreateOnFinalStep
-                        ? 'border-[#ffd97a]/82 text-white bg-gradient-to-r from-[#1f5c97] via-[#2f70b4] to-[#3a87ca] active:scale-95'
+                        ? 'text-white active:scale-95'
                         : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
                         }`}
+                      style={canCreateOnFinalStep ? loginPrimaryButtonStyle : undefined}
                     >
                       <BookPlus size={15} />
                       {`${t('Fortale Oluştur')} (${selectedCreateCreditCost} ${t('kredi')})`}
@@ -2280,13 +2404,7 @@ export default function HomeView({
         ) : (
           <div className="glass-panel p-6 rounded-2xl border-white/10 flex flex-col items-center text-center space-y-4">
             {isBootstrapping ? (
-              <>
-                <FaviconSpinner size={28} />
-                <div>
-                  <h3 className="text-sm font-bold text-white">{t('Kitaplar senkronize ediliyor')}</h3>
-                  <p className="text-[10px] text-text-secondary max-w-[240px] mt-1">{bootstrapMessage}</p>
-                </div>
-              </>
+              renderBootstrapShelf()
             ) : (
               <>
                 <div className="w-12 h-12 glass-icon text-accent-green">
@@ -2303,6 +2421,47 @@ export default function HomeView({
         )}
 
       </div>
+
+      {courseDeleteModal.isOpen && (
+        <div className="fixed inset-0 z-[65]">
+          <button
+            type="button"
+            aria-label={t('Vazgeç')}
+            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+            onClick={closeCourseDeleteModal}
+          />
+          <div className="absolute inset-x-0 bottom-0 p-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
+            <div className="mx-auto w-full max-w-md">
+              <div className="rounded-[26px] border border-white/10 bg-[#171f29]/95 p-4 text-center shadow-[0_24px_64px_rgba(0,0,0,0.45)]">
+                <p className="text-[15px] font-semibold text-white">
+                  {t('Bu kitabı silmek istediğine emin misin?')}
+                </p>
+                <p className="mt-1 text-[12px] text-[#b8d0ea] line-clamp-2">
+                  {courseDeleteModal.courseTitle}
+                </p>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={closeCourseDeleteModal}
+                  disabled={isCourseDeleting}
+                  className="h-12 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[14px] font-semibold text-[#d6e5f4] disabled:opacity-60"
+                >
+                  {t('Vazgeç')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCourseDeleteConfirm()}
+                  disabled={isCourseDeleting}
+                  className="h-12 rounded-2xl border border-red-300/30 bg-[rgba(220,38,38,0.9)] text-[14px] font-bold text-white disabled:opacity-60"
+                >
+                  {isCourseDeleting ? t('İşleniyor...') : t('Sil')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showStickyNotes && stickyModal.isOpen && (
         <div className="fixed inset-0 z-50">

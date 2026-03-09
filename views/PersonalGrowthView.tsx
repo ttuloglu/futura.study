@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CourseData, TimelineNode } from '../types';
+import { CourseData, TimelineNode, CourseOpenUiState } from '../types';
 import { BookOpen, Clock3, Trash2 } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
@@ -10,9 +10,11 @@ interface PersonalGrowthViewProps {
   onDeleteCourse?: (courseId: string) => Promise<void> | void;
   isBootstrapping?: boolean;
   bootstrapMessage?: string;
+  courseOpenStates?: Record<string, CourseOpenUiState>;
 }
 
 type CourseFilter = 'ongoing' | 'completed';
+type CourseViewMode = 'card' | 'cover';
 type SuccessScore = number | null;
 
 type CourseStatusMeta = {
@@ -74,17 +76,12 @@ function getCourseMeta(course: CourseData): CourseStatusMeta {
   };
 }
 
-function formatTimeAgo(date: Date, t: (value: string) => string): string {
-  const now = Date.now();
-  const diffMs = Math.max(0, now - new Date(date).getTime());
-  const minutes = Math.floor(diffMs / (1000 * 60));
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) return `${days} ${t('gün önce')}`;
-  if (hours > 0) return `${hours} ${t('saat önce')}`;
-  if (minutes > 0) return `${minutes} ${t('dk önce')}`;
-  return t('Az önce');
+function formatCourseCreatedDate(date: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).format(new Date(date));
 }
 
 function bookTypeLabel(bookType?: CourseData['bookType']): string {
@@ -148,10 +145,12 @@ export default function PersonalGrowthView({
   onCourseSelect,
   onDeleteCourse,
   isBootstrapping = false,
-  bootstrapMessage
+  bootstrapMessage,
+  courseOpenStates = {}
 }: PersonalGrowthViewProps) {
-  const { t } = useUiI18n();
+  const { locale, t } = useUiI18n();
   const [filter, setFilter] = useState<CourseFilter>('ongoing');
+  const [viewMode, setViewMode] = useState<CourseViewMode>('cover');
   const [courseDeleteModal, setCourseDeleteModal] = useState<{ isOpen: boolean; courseId: string | null; courseTitle: string }>({
     isOpen: false,
     courseId: null,
@@ -200,6 +199,22 @@ export default function PersonalGrowthView({
       }
       : {};
 
+  const viewModeButtonClass = (kind: CourseViewMode) =>
+    `h-8 rounded-xl px-3 text-[10px] font-bold transition-all ${viewMode === kind
+      ? 'text-white'
+      : 'text-[#b7cbe0] hover:text-white'
+    }`;
+
+  const viewModeButtonStyle = (kind: CourseViewMode): React.CSSProperties =>
+    viewMode === kind
+      ? {
+        background: 'linear-gradient(135deg, rgba(35,67,103,0.95) 0%, rgba(24,44,70,0.92) 100%)',
+        boxShadow: 'inset 0 0 0 1px rgba(165,207,255,0.3), 0 0 14px rgba(94,141,198,0.18)'
+      }
+      : {
+        background: 'transparent'
+      };
+
   const openCourseDeleteModal = (course: CourseData) => {
     if (!onDeleteCourse) return;
     setCourseDeleteModal({
@@ -236,6 +251,22 @@ export default function PersonalGrowthView({
   const getNextStep = (course: CourseData): TimelineNode | undefined =>
     course.nodes.find((node) => node.status === 'current') || course.nodes.find((node) => node.status === 'locked');
 
+  const getCourseOpenUi = (courseId: string) => {
+    const state = courseOpenStates[courseId] || { status: 'idle' as const, progress: 0, updatedAt: 0 };
+    const progress = Math.max(0, Math.min(100, Math.round(state.progress || 0)));
+    const isDownloading = state.status === 'downloading';
+    const isReady = state.status === 'ready';
+    const isFailed = state.status === 'failed';
+    const label = isReady
+      ? t('Oku')
+      : isDownloading
+        ? `${t('İndiriliyor')} %${progress}`
+        : isFailed
+          ? t('Tekrar dene')
+          : t('Aç');
+    return { state, progress, isDownloading, isReady, isFailed, label };
+  };
+
   return (
     <div
       className="view-container"
@@ -270,6 +301,43 @@ export default function PersonalGrowthView({
             </button>
           </div>
 
+          {savedCourses.length > 0 && (
+            <div
+              className="flex items-center justify-between gap-3 rounded-2xl border border-dashed px-3 py-2.5"
+              style={{
+                background: 'rgba(17, 22, 29, 0.3)',
+                borderColor: 'rgba(188, 194, 203, 0.1)',
+                boxShadow: 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
+              }}
+            >
+              <p className="text-[11px] font-bold text-[#d9e9f8]">{t('Görünüm değiştir')}</p>
+              <div
+                className="inline-flex items-center gap-1 rounded-xl border border-dashed p-1"
+                style={{
+                  background: 'rgba(15, 24, 36, 0.62)',
+                  borderColor: 'rgba(135, 164, 197, 0.18)'
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setViewMode('card')}
+                  className={viewModeButtonClass('card')}
+                  style={viewModeButtonStyle('card')}
+                >
+                  {t('Kart')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cover')}
+                  className={viewModeButtonClass('cover')}
+                  style={viewModeButtonStyle('cover')}
+                >
+                  {t('Kapak')}
+                </button>
+              </div>
+            </div>
+          )}
+
           {filteredCourses.length === 0 ? (
             <div
               className="rounded-2xl border border-dashed p-5 text-center"
@@ -286,55 +354,137 @@ export default function PersonalGrowthView({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {filteredCourses.map(({ course, meta }) => (
-                <div
-                  key={course.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onCourseSelect(course.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onCourseSelect(course.id);
-                    }
-                  }}
-                  className="group h-full rounded-[24px] border border-dashed p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
-                  style={{
-                    background: 'rgba(17, 22, 29, 0.3)',
-                    borderColor: 'rgba(188, 194, 203, 0.1)',
-                    boxShadow: 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
-                  }}
-                >
-                  <div className="flex items-start gap-3.5">
-                    <div
-                      className="relative shrink-0 h-[92px] w-[69px] overflow-hidden rounded-[4px] md:h-[104px] md:w-[78px]"
-                      style={course.coverImageUrl
-                        ? { background: 'transparent' }
-                        : { background: 'rgba(44, 48, 53, 0.72)' }}
-                    >
-                      {course.coverImageUrl ? (
-                        <>
+            <div className={viewMode === 'cover' ? 'grid grid-cols-2 gap-3 md:grid-cols-3' : 'grid grid-cols-1 gap-3 md:grid-cols-2'}>
+              {filteredCourses.map(({ course, meta }) => {
+                const openUi = getCourseOpenUi(course.id);
+                const openButtonClass = 'inline-flex items-center rounded-xl border border-dashed px-2.5 py-1 text-[10px] font-bold text-white transition-transform group-active:scale-95 disabled:cursor-not-allowed disabled:opacity-80';
+                return viewMode === 'cover' ? (
+                  <div
+                    key={course.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onCourseSelect(course.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onCourseSelect(course.id);
+                      }
+                    }}
+                    className="group cursor-pointer rounded-[24px] border border-dashed p-2.5 text-left transition-all active:scale-[0.99]"
+                    style={{
+                      background: 'rgba(17, 22, 29, 0.3)',
+                      borderColor: 'rgba(188, 194, 203, 0.1)',
+                      boxShadow: 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
+                    }}
+                  >
+                    <div className="overflow-hidden rounded-[20px]">
+                      <div
+                        className="aspect-[3/4] overflow-hidden rounded-[20px]"
+                        style={course.coverImageUrl
+                          ? { background: 'rgba(10, 16, 24, 0.78)' }
+                          : { background: 'linear-gradient(160deg, rgba(33,51,77,0.96) 0%, rgba(18,29,44,0.94) 100%)' }}
+                      >
+                        {course.coverImageUrl ? (
+                          <img
+                            src={course.coverImageUrl}
+                            alt={`${course.topic} ${t('Fortale kapağı')}`}
+                            className="h-full w-full object-contain object-center"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <BookOpen size={28} className="text-zinc-500" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 min-w-0">
+                      <div
+                        className="flex items-center justify-between gap-2 border-t border-dashed pt-2"
+                        style={{ borderColor: 'rgba(96, 129, 164, 0.3)' }}
+                      >
+                        <p className="text-[10px] text-[#d2e3f3]">
+                          {formatCourseCreatedDate(course.createdAt || course.lastActivity, locale)}
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (openUi.isDownloading) return;
+                              onCourseSelect(course.id);
+                            }}
+                            disabled={openUi.isDownloading}
+                            className={openButtonClass}
+                            style={
+                              openUi.isReady
+                                ? {
+                                  borderColor: 'rgba(110, 231, 183, 0.55)',
+                                  background: 'linear-gradient(135deg, rgba(16,72,46,0.85) 0%, rgba(12,58,36,0.82) 100%)'
+                                }
+                                : openUi.isDownloading
+                                  ? {
+                                    borderColor: 'rgba(96, 165, 250, 0.5)',
+                                    background: 'linear-gradient(135deg, rgba(29,78,216,0.55) 0%, rgba(30,64,175,0.5) 100%)'
+                                  }
+                                  : openUi.isFailed
+                                    ? {
+                                      borderColor: 'rgba(248, 113, 113, 0.45)',
+                                      background: 'rgba(127, 29, 29, 0.75)'
+                                    }
+                                    : {
+                                      borderColor: 'rgba(148, 163, 184, 0.4)',
+                                      background: 'rgba(23, 38, 58, 0.78)'
+                                    }
+                            }
+                          >
+                            {openUi.label}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    key={course.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onCourseSelect(course.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onCourseSelect(course.id);
+                      }
+                    }}
+                    className="group h-full cursor-pointer rounded-[24px] border border-dashed p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
+                    style={{
+                      background: 'rgba(17, 22, 29, 0.3)',
+                      borderColor: 'rgba(188, 194, 203, 0.1)',
+                      boxShadow: 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
+                    }}
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className="relative shrink-0 h-[92px] w-[69px] overflow-hidden rounded-[4px] md:h-[104px] md:w-[78px]"
+                        style={course.coverImageUrl
+                          ? { background: 'transparent' }
+                          : { background: 'rgba(44, 48, 53, 0.72)' }}
+                      >
+                        {course.coverImageUrl ? (
                           <img
                             src={course.coverImageUrl}
                             alt={`${course.topic} ${t('Fortale kapağı')}`}
                             className="h-full w-full object-contain object-center border-0"
                           />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-1.5 pb-1.5 pt-5">
-                            <p className="line-clamp-3 text-[8px] font-black leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
-                              {course.topic}
-                            </p>
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <BookOpen size={20} className="text-zinc-500" />
                           </div>
-                        </>
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <BookOpen size={20} className="text-zinc-500" />
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
                         <div className="min-w-0">
                           <p className="line-clamp-2 text-[13px] font-bold leading-[1.25] text-white">
                             {course.topic}
@@ -344,94 +494,111 @@ export default function PersonalGrowthView({
                           </p>
                         </div>
 
-                        <div className="relative flex h-[42px] w-[42px] shrink-0 items-center justify-center md:h-[46px] md:w-[46px]">
-                          <svg className="h-full w-full -rotate-90 transform">
-                            <circle cx="21" cy="21" r="16" stroke="rgba(79,107,141,0.28)" strokeWidth="3" fill="transparent" />
-                            <circle
-                              cx="21"
-                              cy="21"
-                              r="16"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                              fill="transparent"
-                              strokeDasharray={2 * Math.PI * 16}
-                              strokeDashoffset={2 * Math.PI * 16 * (1 - meta.progress / 100)}
-                              className="text-accent-green transition-all duration-700 ease-out"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                          <span className="absolute text-[8px] font-black text-accent-green">%{meta.progress}</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span
-                          className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                          style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
-                        >
-                          {t(bookTypeLabel(course.bookType))}
-                        </span>
-                        {course.subGenre?.trim() && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <span
                             className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
                             style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
                           >
-                            {t(course.subGenre.trim())}
+                            {t(bookTypeLabel(course.bookType))}
                           </span>
-                        )}
-                        <span
-                          className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                          style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
-                        >
-                          {t(getSmartBookAgeGroupLabel(course.ageGroup))}
-                        </span>
-                        <div className="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(23,38,58,0.68)] px-2 py-1" title={t('Tahmini okuma süresi')}>
-                          <Clock3 size={10} className="text-[#7fb1ec]" />
-                          <span className="text-[10px] text-[#b9cde8]">
-                            {estimateCourseReadingDuration(course, t)}
+                          {course.subGenre?.trim() && (
+                            <span
+                              className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
+                              style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
+                            >
+                              {t(course.subGenre.trim())}
+                            </span>
+                          )}
+                          <span
+                            className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
+                            style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
+                          >
+                            {t(getSmartBookAgeGroupLabel(course.ageGroup))}
                           </span>
+                          <div className="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(23,38,58,0.68)] px-2 py-1" title={t('Tahmini okuma süresi')}>
+                            <Clock3 size={10} className="text-[#7fb1ec]" />
+                            <span className="text-[10px] text-[#b9cde8]">
+                              {estimateCourseReadingDuration(course, t)}
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="mt-3">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-[rgba(35,50,70,0.72)]">
+                        <div className="mt-3">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-[rgba(35,50,70,0.72)]">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${meta.progress}%`,
+                                background: 'linear-gradient(90deg, #5aa9ff 0%, #3b82f6 100%)'
+                              }}
+                            />
+                          </div>
+
                           <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${meta.progress}%`,
-                              background: 'linear-gradient(90deg, #5aa9ff 0%, #3b82f6 100%)'
-                            }}
-                          />
-                        </div>
-
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-[#9cb9d7]">{formatTimeAgo(course.lastActivity, t)}</span>
-                          <div className="flex items-center gap-1.5">
-                            {onDeleteCourse && (
+                            className="mt-2 flex items-center justify-between gap-2 border-t border-dashed pt-2"
+                            style={{ borderColor: 'rgba(96, 129, 164, 0.3)' }}
+                          >
+                            <span className="text-[10px] text-[#9cb9d7]">
+                              {formatCourseCreatedDate(course.createdAt || course.lastActivity, locale)}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {onDeleteCourse && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    openCourseDeleteModal(course);
+                                  }}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-xl text-[#fca5a5] transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fecaca]"
+                                  title={t('Sil')}
+                                  aria-label={t('Sil')}
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
-                                  openCourseDeleteModal(course);
+                                  if (openUi.isDownloading) return;
+                                  onCourseSelect(course.id);
                                 }}
-                                className="inline-flex items-center gap-1 rounded-xl border border-dashed border-[#ef4444]/50 bg-[rgba(127,29,29,0.35)] px-2 py-1 text-[10px] font-bold text-[#fecaca] transition-colors hover:bg-[rgba(127,29,29,0.55)]"
-                                title={t('Sil')}
+                                disabled={openUi.isDownloading}
+                                className={openButtonClass}
+                                style={
+                                  openUi.isReady
+                                    ? {
+                                      borderColor: 'rgba(110, 231, 183, 0.55)',
+                                      background: 'linear-gradient(135deg, rgba(16,72,46,0.85) 0%, rgba(12,58,36,0.82) 100%)'
+                                    }
+                                    : openUi.isDownloading
+                                      ? {
+                                        borderColor: 'rgba(96, 165, 250, 0.5)',
+                                        background: 'linear-gradient(135deg, rgba(29,78,216,0.55) 0%, rgba(30,64,175,0.5) 100%)'
+                                      }
+                                      : openUi.isFailed
+                                        ? {
+                                          borderColor: 'rgba(248, 113, 113, 0.45)',
+                                          background: 'rgba(127, 29, 29, 0.75)'
+                                        }
+                                        : {
+                                          borderColor: 'rgba(148, 163, 184, 0.4)',
+                                          background: 'rgba(23, 38, 58, 0.78)'
+                                        }
+                                }
                               >
-                                <Trash2 size={11} />
-                                {t('Sil')}
+                                {openUi.label}
                               </button>
-                            )}
-                            <span className="inline-flex items-center rounded-xl border border-dashed border-[#7da9d7]/35 bg-[rgba(22,48,82,0.76)] px-2.5 py-1 text-[10px] font-bold text-white transition-transform group-active:scale-95">
-                              {t('Devam Et')}
-                            </span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

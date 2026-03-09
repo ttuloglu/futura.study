@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { Download } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import { downloadFile } from '../utils/fileDownload';
 import 'katex/dist/katex.min.css';
 
@@ -14,6 +14,7 @@ interface StyledMarkdownProps {
   variant?: 'card' | 'inline';
   quoteFirstParagraph?: boolean;
   enableImageLightbox?: boolean;
+  readerMode?: 'default' | 'fairytale-fullscreen';
 }
 
 const MATH_COMMAND_RE = /\\(?:sum|prod|vec|frac|sqrt|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|phi|omega|Delta|Sigma|Pi|Omega|times|cdot|div|pm|mp|neq|ne|leq|geq|approx|sim|to|rightarrow|leftarrow|infty|in|notin|subseteq|subset|supseteq|cup|cap|forall|exists|therefore|because)\b/;
@@ -291,12 +292,101 @@ function normalizeGenericVisualCaptions(markdown: string): string {
     .replace(/visualization of a practical real-life application scenario\./gi, 'Scientific scene depicting a realistic practical application context.');
 }
 
+const SYSTEM_IMAGE_CAPTION_LINE_RE = /^\s*[*_~`]*\s*g[öo]rsel\s+\d+\s*\/\s*\d+\s*(?:-\s*.+?)?\s*[*_~`]*\s*$/iu;
+const SYSTEM_IMAGE_META_LINE_RE = /^\s*[*_~`]*\s*(?:global sequence index|scene excerpt for this specific image|previous scene cue|narrative timeline lock|visual structure requirement|panel-to-grid mapping)\b.*$/iu;
+
+type MarkdownImageSection = {
+  imageSrc: string;
+  imageAlt: string;
+  markdown: string;
+};
+
+function stripSystemImageCaptionLines(markdown: string): string {
+  if (!markdown) return '';
+  return markdown
+    .split(/\r?\n/)
+    .filter((line) => {
+      const plain = String(line || '').trim();
+      if (!plain) return true;
+      if (SYSTEM_IMAGE_CAPTION_LINE_RE.test(plain)) return false;
+      if (SYSTEM_IMAGE_META_LINE_RE.test(plain)) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function parseStandaloneMarkdownImageLine(line: string): { src: string; alt: string } | null {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^!\[([^\]]*)\]\((.+)\)$/);
+  if (!match) return null;
+  const rawAlt = String(match[1] || '').trim();
+  let rawTarget = String(match[2] || '').trim();
+  rawTarget = rawTarget
+    .replace(/\s+"[^"]*"\s*$/, '')
+    .replace(/\s+'[^']*'\s*$/, '')
+    .trim();
+  if (rawTarget.startsWith('<') && rawTarget.endsWith('>')) {
+    rawTarget = rawTarget.slice(1, -1).trim();
+  }
+  if (!rawTarget) return null;
+  return {
+    src: rawTarget,
+    alt: rawAlt || 'İçerik görseli'
+  };
+}
+
+function extractMarkdownImageSections(markdown: string): MarkdownImageSection[] {
+  if (!markdown) return [];
+  const lines = markdown.split(/\r?\n/);
+  const sections: MarkdownImageSection[] = [];
+  let buffer: string[] = [];
+
+  for (const line of lines) {
+    const parsedImage = parseStandaloneMarkdownImageLine(line);
+    if (!parsedImage) {
+      buffer.push(line);
+      continue;
+    }
+
+    const bufferedMarkdown = buffer.join('\n').trim();
+    buffer = [];
+
+    if (!sections.length) {
+      sections.push({
+        imageSrc: parsedImage.src,
+        imageAlt: parsedImage.alt,
+        markdown: bufferedMarkdown
+      });
+      continue;
+    }
+
+    const previousSection = sections[sections.length - 1];
+    previousSection.markdown = [previousSection.markdown, bufferedMarkdown].filter(Boolean).join('\n\n').trim();
+    sections.push({
+      imageSrc: parsedImage.src,
+      imageAlt: parsedImage.alt,
+      markdown: ''
+    });
+  }
+
+  if (!sections.length) return [];
+
+  const trailingMarkdown = buffer.join('\n').trim();
+  const lastSection = sections[sections.length - 1];
+  lastSection.markdown = [lastSection.markdown, trailingMarkdown].filter(Boolean).join('\n\n').trim();
+  return sections;
+}
+
 export default function StyledMarkdown({
   content,
   className = '',
   variant = 'card',
   quoteFirstParagraph = false,
-  enableImageLightbox = true
+  enableImageLightbox = true,
+  readerMode = 'default'
 }: StyledMarkdownProps) {
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [lightboxScale, setLightboxScale] = useState(1);
@@ -322,7 +412,9 @@ export default function StyledMarkdown({
           stripImageTableCaptionRows(
             normalizeGenericVisualCaptions(
               normalizeHtmlImagesToMarkdown(
-                escapeFalseOrderedListMarkers(content)
+                stripSystemImageCaptionLines(
+                  escapeFalseOrderedListMarkers(content)
+                )
               )
             )
           )
@@ -330,6 +422,10 @@ export default function StyledMarkdown({
       )
     ),
     [content]
+  );
+  const imageSections = useMemo(
+    () => (readerMode === 'fairytale-fullscreen' ? extractMarkdownImageSections(safeContent) : []),
+    [readerMode, safeContent]
   );
 
   useEffect(() => {
@@ -528,7 +624,7 @@ export default function StyledMarkdown({
     await downloadFile({ url: lightboxImage.src, fileName });
   };
 
-  const markdownContent = useMemo(() => {
+  const renderMarkdownBlock = (markdown: string, shouldQuoteFirstParagraph: boolean) => {
     let paragraphRenderCount = 0;
     return (
       <ReactMarkdown
@@ -562,7 +658,7 @@ export default function StyledMarkdown({
           p: ({ children }) => {
             const isFirstParagraph = paragraphRenderCount === 0;
             paragraphRenderCount += 1;
-            if (quoteFirstParagraph && isFirstParagraph) {
+            if (shouldQuoteFirstParagraph && isFirstParagraph) {
               return (
                 <p className="my-4 text-[14px] leading-[1.8] tracking-wide text-white/85 italic text-center first:mt-0">
                   <span aria-hidden className="opacity-85">“</span>
@@ -652,10 +748,64 @@ export default function StyledMarkdown({
           }
         }}
       >
-        {safeContent}
+        {markdown}
       </ReactMarkdown>
     );
-  }, [safeContent, quoteFirstParagraph, enableImageLightbox]);
+  };
+
+  const renderInlineImage = (src: string, alt: string, heightClass: string, options?: { bare?: boolean }) => (
+    <div className={options?.bare ? '' : 'overflow-hidden rounded-[24px] border border-white/10 bg-black/20 shadow-[0_18px_40px_rgba(0,0,0,0.24)]'}>
+      <img
+        src={src}
+        alt={alt}
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+        onClick={() => {
+          if (!enableImageLightbox) return;
+          setLightboxImage({ src, alt });
+        }}
+        title={enableImageLightbox ? 'Tam ekran aç' : undefined}
+        className={`w-full object-contain ${options?.bare ? '' : 'bg-black/20'} ${heightClass} transition-opacity ${
+          enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
+        }`}
+      />
+    </div>
+  );
+
+  const markdownContent = useMemo(() => {
+    if (readerMode === 'fairytale-fullscreen' && imageSections.length > 0) {
+      let didQuoteLeadParagraph = false;
+      return (
+        <div className="space-y-8">
+          {imageSections.map((section, index) => {
+            const hasMarkdown = Boolean(section.markdown.trim());
+            const shouldQuoteLeadParagraph = quoteFirstParagraph && hasMarkdown && !didQuoteLeadParagraph;
+            if (shouldQuoteLeadParagraph) didQuoteLeadParagraph = true;
+            return (
+              <section key={`${section.imageSrc}-${index}`} className="relative">
+                <div
+                  className="sticky z-10 pb-2"
+                  style={{ top: 'calc(env(safe-area-inset-top, 0px) + 4px)' }}
+                >
+                  {renderInlineImage(section.imageSrc, section.imageAlt, 'h-[30vh] min-h-[220px] max-h-[360px]', { bare: true })}
+                </div>
+                {hasMarkdown ? (
+                  <div className="px-0.5">
+                    {renderMarkdownBlock(section.markdown, shouldQuoteLeadParagraph)}
+                  </div>
+                ) : (
+                  <div className="h-2" />
+                )}
+              </section>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return renderMarkdownBlock(safeContent, quoteFirstParagraph);
+  }, [readerMode, imageSections, quoteFirstParagraph, safeContent]);
 
   return (
     <article
@@ -669,26 +819,39 @@ export default function StyledMarkdown({
           className="fixed inset-0 z-[1200] bg-black/55 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4"
           onClick={() => setLightboxImage(null)}
         >
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              void (async () => {
-                try {
-                  await downloadLightboxImage();
-                } catch (error) {
-                  console.error('Image download failed:', error);
-                  alert('Görsel indirilemedi.');
-                }
-              })();
-            }}
-            className="absolute right-4 h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+          <div
+            className="absolute right-4 flex items-center gap-2"
             style={{ top: LIGHTBOX_ACTION_TOP }}
-            aria-label="Görseli indir"
-            title="Görseli indir"
+            onClick={(event) => event.stopPropagation()}
           >
-            <Download size={18} />
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await downloadLightboxImage();
+                  } catch (error) {
+                    console.error('Image download failed:', error);
+                    alert('Görsel indirilemedi.');
+                  }
+                })();
+              }}
+              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              aria-label="Görseli indir"
+              title="Görseli indir"
+            >
+              <Download size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              aria-label="Kapat"
+              title="Kapat"
+            >
+              <X size={18} />
+            </button>
+          </div>
           <img
             ref={lightboxImageRef}
             src={lightboxImage.src}

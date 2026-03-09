@@ -19,6 +19,7 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
   'image/webp': 'webp',
   'text/plain': 'txt'
 };
+const NATIVE_DOWNLOAD_FOLDER = 'downloads';
 
 function isCapacitorNativeRuntime(): boolean {
   try {
@@ -119,9 +120,20 @@ function blobToBase64Content(blob: Blob): Promise<string> {
 async function shareNativeFileUri(uri: string): Promise<void> {
   const safeUri = String(uri || '').trim();
   if (!safeUri) throw new Error('Paylaşılacak dosya yolu bulunamadı.');
-  const canShare = await Share.canShare().catch(() => ({ value: false }));
-  if (!canShare.value) return;
-  await Share.share({ files: [safeUri] });
+  try {
+    await Share.share({ files: [safeUri] });
+    return;
+  } catch (fileShareError) {
+    try {
+      await Share.share({ url: safeUri });
+      return;
+    } catch (urlShareError) {
+      console.warn('Native file share unavailable; file kept in Documents directory.', {
+        fileShareError,
+        urlShareError
+      });
+    }
+  }
 }
 
 async function tryNativeDownloadAndShareFromUrl(url: string, fileName: string): Promise<boolean> {
@@ -129,13 +141,13 @@ async function tryNativeDownloadAndShareFromUrl(url: string, fileName: string): 
   if (typeof Filesystem.downloadFile !== 'function') return false;
 
   const finalFileName = sanitizeFileName(fileName);
-  const targetPath = `share/${Date.now()}-${finalFileName}`;
+  const targetPath = `${NATIVE_DOWNLOAD_FOLDER}/${Date.now()}-${finalFileName}`;
 
   try {
     const downloadResult = await Filesystem.downloadFile({
       url,
       path: targetPath,
-      directory: Directory.Temporary,
+      directory: Directory.Documents,
       recursive: true
     });
 
@@ -143,7 +155,7 @@ async function tryNativeDownloadAndShareFromUrl(url: string, fileName: string): 
       ? String(downloadResult.path || '').trim()
       : (await Filesystem.getUri({
         path: targetPath,
-        directory: Directory.Temporary
+        directory: Directory.Documents
       })).uri;
 
     await shareNativeFileUri(resolvedUri);
@@ -178,13 +190,19 @@ export async function saveBlobAsFile({
   }
 
   const encodedData = await blobToBase64Content(blob);
+  const targetPath = `${NATIVE_DOWNLOAD_FOLDER}/${Date.now()}-${finalFileName}`;
   const fileWriteResult = await Filesystem.writeFile({
-    path: `share/${Date.now()}-${finalFileName}`,
+    path: targetPath,
     data: encodedData,
-    directory: Directory.Temporary,
+    directory: Directory.Documents,
     recursive: true
   });
-  await shareNativeFileUri(fileWriteResult.uri);
+  const resolvedUri = String(fileWriteResult.uri || '').trim()
+    || (await Filesystem.getUri({
+      path: targetPath,
+      directory: Directory.Documents
+    })).uri;
+  await shareNativeFileUri(resolvedUri);
 }
 
 export async function downloadFile({
