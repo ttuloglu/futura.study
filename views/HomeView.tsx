@@ -81,22 +81,75 @@ const APP_SURFACE_COLOR = '#1A1F26';
 const MAX_SOURCE_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const DOCUMENT_ACCEPT =
   '.pdf,.txt,.md,.markdown,.csv,.json,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const CREATION_STEP_COUNT = 9;
 const CREATION_STEP_TITLES = [
   'Kitap Türü',
   'Alt Tür',
-  'Yaş Grubu',
-  'Dil (Yazın)',
-  'Kurgu Modu',
-  'Zaman',
-  'Mekan',
-  'Kitap Adı',
+  'Yaş ve Dil',
+  'Kurgu Detayı',
+  'Mekan, Zaman ve Kitap Adı',
   'Kahramanlar ve Kurgulayan'
 ] as const;
 const BOOK_CREATING_LOOP_VIDEO_SRC = '/animations/book-creating-loop.mp4';
 const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation-job';
 
 type StoryInputMode = 'auto' | 'manual' | null;
+type WizardTone = {
+  border: string;
+  fill: string;
+  glow: string;
+};
+
+type BookTypeTheme = {
+  tone: WizardTone;
+  progress: string;
+  actionBackground: string;
+  actionBorder: string;
+  actionGlow: string;
+};
+
+const WIZARD_TONES: WizardTone[] = [
+  { border: 'rgba(245, 158, 11, 0.62)', fill: 'rgba(245, 158, 11, 0.16)', glow: 'rgba(245, 158, 11, 0.22)' },
+  { border: 'rgba(16, 185, 129, 0.62)', fill: 'rgba(16, 185, 129, 0.16)', glow: 'rgba(16, 185, 129, 0.22)' },
+  { border: 'rgba(56, 189, 248, 0.62)', fill: 'rgba(56, 189, 248, 0.16)', glow: 'rgba(56, 189, 248, 0.22)' },
+  { border: 'rgba(244, 63, 94, 0.62)', fill: 'rgba(244, 63, 94, 0.16)', glow: 'rgba(244, 63, 94, 0.22)' },
+  { border: 'rgba(168, 85, 247, 0.62)', fill: 'rgba(168, 85, 247, 0.16)', glow: 'rgba(168, 85, 247, 0.22)' },
+  { border: 'rgba(59, 130, 246, 0.62)', fill: 'rgba(59, 130, 246, 0.16)', glow: 'rgba(59, 130, 246, 0.22)' }
+];
+
+const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
+  fairy_tale: {
+    tone: { border: 'rgba(245, 158, 11, 0.68)', fill: 'rgba(245, 158, 11, 0.2)', glow: 'rgba(245, 158, 11, 0.28)' },
+    progress: 'linear-gradient(90deg, #f59e0b 0%, #facc15 100%)',
+    actionBackground: 'linear-gradient(135deg, rgba(168,104,22,0.94) 0%, rgba(133,79,14,0.94) 100%)',
+    actionBorder: 'rgba(251, 191, 36, 0.7)',
+    actionGlow: 'rgba(245, 158, 11, 0.28)'
+  },
+  story: {
+    tone: { border: 'rgba(16, 185, 129, 0.68)', fill: 'rgba(16, 185, 129, 0.2)', glow: 'rgba(16, 185, 129, 0.28)' },
+    progress: 'linear-gradient(90deg, #10b981 0%, #22d3ee 100%)',
+    actionBackground: 'linear-gradient(135deg, rgba(18,126,102,0.94) 0%, rgba(14,101,91,0.94) 100%)',
+    actionBorder: 'rgba(16, 185, 129, 0.7)',
+    actionGlow: 'rgba(16, 185, 129, 0.28)'
+  },
+  novel: {
+    tone: { border: 'rgba(59, 130, 246, 0.68)', fill: 'rgba(59, 130, 246, 0.2)', glow: 'rgba(59, 130, 246, 0.28)' },
+    progress: 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)',
+    actionBackground: 'linear-gradient(135deg, rgba(35,67,123,0.94) 0%, rgba(25,51,97,0.94) 100%)',
+    actionBorder: 'rgba(96, 165, 250, 0.72)',
+    actionGlow: 'rgba(59, 130, 246, 0.28)'
+  }
+};
+
+function resolveWizardTone(index: number): WizardTone {
+  return WIZARD_TONES[((index % WIZARD_TONES.length) + WIZARD_TONES.length) % WIZARD_TONES.length];
+}
+
+function resolveBookTypeTheme(bookType?: SmartBookBookType): BookTypeTheme {
+  if (bookType === 'fairy_tale') return BOOK_TYPE_THEMES.fairy_tale;
+  if (bookType === 'story') return BOOK_TYPE_THEMES.story;
+  return BOOK_TYPE_THEMES.novel;
+}
+
 type PendingBookGenerationJob = {
   jobId: string;
   bookType: SmartBookBookType;
@@ -1472,11 +1525,6 @@ export default function HomeView({
     const selectedFile = sourceFile;
     const creativeBrief = buildCreativeBriefPayload();
 
-    if (!topicHint && !isAutoStoryMode) {
-      setSourceNotice('Kitabın adını yazın.');
-      return;
-    }
-
     if (
       !isAutoStoryMode &&
       !detailHint &&
@@ -1549,17 +1597,12 @@ export default function HomeView({
         }
       }
 
-      if (!resolvedTopic) {
-        if (isAutoStoryMode) {
-          resolvedTopic = '';
-        } else {
-          throw new Error('Konu çıkarılamadı.');
-        }
-      }
+      if (!resolvedTopic) resolvedTopic = '';
 
       const normalizedTopic = isAutoStoryMode
         ? toTitleCaseTr(resolvedTopic)
         : compactInlineText(resolvedTopic);
+      const allowAiBookTitleGeneration = !topicHint;
       setActiveGeneratingBookType(selectedBookType);
       setGenerationStatus('Sunucuda üretim başlatılıyor...');
       setGenerationProgress(28);
@@ -1573,7 +1616,7 @@ export default function HomeView({
         subGenre: selectedSubGenre || undefined,
         targetPageCount: targetPageCountPreview,
         creativeBrief,
-        allowAiBookTitleGeneration: isAutoStoryMode
+        allowAiBookTitleGeneration
       });
 
       writePendingBookGenerationJob({
@@ -1866,51 +1909,67 @@ export default function HomeView({
   };
 
   const hasStickyContent = Boolean(stickyModal.title.trim() || stickyModal.text.trim());
+  const selectedBookTheme = resolveBookTypeTheme(selectedBookType);
+  const activeProgressTheme = resolveBookTypeTheme(activeGeneratingBookType || selectedBookType);
+  const visibleCreationSteps = useMemo<number[]>(
+    () => (storyInputMode === 'auto' ? [1, 2, 3, 4, 6] : [1, 2, 3, 4, 5, 6]),
+    [storyInputMode]
+  );
+  const currentVisibleStepIndexRaw = visibleCreationSteps.indexOf(creationStep);
+  const currentVisibleStepIndex = currentVisibleStepIndexRaw >= 0 ? currentVisibleStepIndexRaw : 0;
+  const currentVisibleStepNumber = currentVisibleStepIndex + 1;
+  const totalVisibleStepCount = Math.max(1, visibleCreationSteps.length);
+
+  useEffect(() => {
+    if (currentVisibleStepIndexRaw !== -1) return;
+    const nextVisibleStep = visibleCreationSteps.find((step) => step > creationStep);
+    const previousVisibleStep = [...visibleCreationSteps].reverse().find((step) => step < creationStep);
+    setCreationStep(nextVisibleStep ?? previousVisibleStep ?? visibleCreationSteps[0] ?? 1);
+  }, [creationStep, currentVisibleStepIndexRaw, visibleCreationSteps]);
+
   const isCreationStepComplete = (step: number): boolean => {
     if (step === 1) return Boolean(selectedBookType);
     if (step === 2) return Boolean(selectedSubGenre);
-    if (step === 3) return Boolean(selectedAgeGroup);
-    if (step === 4) return Boolean(bookLanguageInput.trim());
-    if (step === 5) return storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
-    if (storyInputMode === 'auto' && [6, 7, 8].includes(step)) return true;
-    if (step === 6) return Boolean(settingTimeInput.trim());
-    if (step === 7) return Boolean(settingPlaceInput.trim());
-    if (step === 8) return Boolean(searchTerm.trim());
-    if (step === 9) return Boolean(creatorNameInput.trim());
+    if (step === 3) return Boolean(selectedAgeGroup) && Boolean(bookLanguageInput.trim());
+    if (step === 4) return storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
+    if (step === 5) return true;
+    if (step === 6) return true;
     return false;
   };
   const getNextCreationStep = (step: number): number => {
-    if (step === 5 && storyInputMode === 'auto') return 9;
-    return Math.min(CREATION_STEP_COUNT, step + 1);
+    const index = visibleCreationSteps.indexOf(step);
+    if (index === -1) return visibleCreationSteps[0] ?? 1;
+    return visibleCreationSteps[Math.min(visibleCreationSteps.length - 1, index + 1)] ?? step;
   };
   const getPreviousCreationStep = (step: number): number => {
-    if (step === 9 && storyInputMode === 'auto') return 5;
-    return Math.max(1, step - 1);
+    const index = visibleCreationSteps.indexOf(step);
+    if (index === -1) return visibleCreationSteps[0] ?? 1;
+    return visibleCreationSteps[Math.max(0, index - 1)] ?? step;
   };
   const isCurrentStepComplete = isCreationStepComplete(creationStep);
-  const isAllStepsComplete = Array.from({ length: CREATION_STEP_COUNT }, (_, index) => isCreationStepComplete(index + 1)).every(Boolean);
-  const stepProgressPercent = Math.round((creationStep / CREATION_STEP_COUNT) * 100);
-  const currentStepTitle = t(CREATION_STEP_TITLES[Math.max(0, Math.min(CREATION_STEP_COUNT - 1, creationStep - 1))]);
-  const canMoveNext = creationStep < CREATION_STEP_COUNT && isCurrentStepComplete && !isGenerating;
-  const canCreateOnFinalStep = creationStep === CREATION_STEP_COUNT && isAllStepsComplete && !isGenerating;
-  const creationStepPalette = ['#f3d156', '#82d96a', '#67d6ff', '#7fa8ff', '#c8a4ff', '#f08d7f', '#f7d37b', '#78e0c3', '#9ec4ff'];
+  const isAllStepsComplete = visibleCreationSteps.every((step) => isCreationStepComplete(step));
+  const stepProgressPercent = Math.round((currentVisibleStepNumber / totalVisibleStepCount) * 100);
+  const currentStepTitle = t(CREATION_STEP_TITLES[Math.max(0, Math.min(CREATION_STEP_TITLES.length - 1, creationStep - 1))]);
+  const canMoveNext = currentVisibleStepIndex < totalVisibleStepCount - 1 && isCurrentStepComplete && !isGenerating;
+  const canCreateOnFinalStep = currentVisibleStepIndex === totalVisibleStepCount - 1 && isAllStepsComplete && !isGenerating;
   const wizardFieldClass = 'mt-1 h-10 w-full rounded-xl border border-dashed px-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] focus:outline-none';
-  const wizardFieldStyle = {
-    borderColor: 'rgba(118,170,226,0.48)',
+  const wizardFieldStyle = (tone: WizardTone = selectedBookTheme.tone): React.CSSProperties => ({
+    borderColor: tone.border,
     background: 'linear-gradient(180deg, rgba(21,35,54,0.74) 0%, rgba(17,27,40,0.78) 100%)',
-    boxShadow: 'inset 0 0 0 1px rgba(88,123,163,0.24)'
-  };
-  const wizardTextareaClass = 'mt-1 w-full rounded-xl border border-dashed px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] resize-none focus:outline-none';
-  const wizardOptionButtonStyle = (isSelected: boolean) => ({
-    background: isSelected ? 'linear-gradient(135deg, rgba(35,67,103,0.84) 0%, rgba(25,47,72,0.82) 100%)' : 'rgba(14,21,31,0.3)',
-    boxShadow: isSelected
-      ? 'inset 0 0 0 1px rgba(165,207,255,0.45), 0 0 16px rgba(95,141,197,0.24)'
-      : 'inset 0 0 0 1px rgba(86,133,190,0.22)'
+    boxShadow: `inset 0 0 0 1px ${tone.fill}`
   });
-  const loginPrimaryButtonStyle: React.CSSProperties = {
-    borderColor: 'rgba(146,194,246,0.42)',
-    background: 'linear-gradient(135deg, rgba(35,67,103,0.95) 0%, rgba(24,44,70,0.92) 100%)',
-    boxShadow: 'inset 0 0 0 1px rgba(165,207,255,0.3), 0 0 14px rgba(94,141,198,0.22)'
+  const wizardTextareaClass = 'mt-1 w-full rounded-xl border border-dashed px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] resize-none focus:outline-none';
+  const wizardOptionButtonStyle = (isSelected: boolean, tone: WizardTone = selectedBookTheme.tone): React.CSSProperties => ({
+    borderColor: tone.border,
+    background: isSelected ? `linear-gradient(135deg, ${tone.fill} 0%, rgba(18,31,45,0.88) 100%)` : 'rgba(14,21,31,0.3)',
+    boxShadow: isSelected
+      ? `inset 0 0 0 1px ${tone.border}, 0 0 16px ${tone.glow}`
+      : `inset 0 0 0 1px ${tone.fill}`
+  });
+  const primaryActionButtonStyle: React.CSSProperties = {
+    borderColor: selectedBookTheme.actionBorder,
+    background: selectedBookTheme.actionBackground,
+    boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 14px ${selectedBookTheme.actionGlow}`
   };
   const showStickyNotes = false;
   const stickyModalTop =
@@ -1993,74 +2052,85 @@ export default function HomeView({
               className="rounded-2xl border border-dashed p-2.5 overflow-hidden"
               style={{
                 background: 'linear-gradient(160deg, rgba(24,38,57,0.78) 0%, rgba(17,22,29,0.78) 55%, rgba(14,24,38,0.8) 100%)',
-                borderColor: 'rgba(120,171,226,0.34)',
-                boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18)'
+                borderColor: selectedBookTheme.tone.border,
+                boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.fill}`
               }}
             >
               <div className="px-1.5 pb-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[12px] font-semibold tracking-wide text-[#d4e6fa]">{t('Kitabınızı Oluşturun')}</span>
-                  <span className="text-[11px] font-semibold text-[#afcbed]">{creationStep}/{CREATION_STEP_COUNT}</span>
+                  {!isGenerating && (
+                    <span
+                      className="text-[11px] font-semibold"
+                      style={{ color: selectedBookTheme.actionBorder }}
+                    >
+                      {currentVisibleStepNumber}/{totalVisibleStepCount}
+                    </span>
+                  )}
                 </div>
-                <p className="mt-1 text-[15px] font-bold text-white">{currentStepTitle}</p>
+                <p className="mt-1 text-[15px] font-bold text-white">
+                  {isGenerating ? t('Fortale Oluşturuluyor') : currentStepTitle}
+                </p>
                 <div className="mt-2 h-1.5 rounded-full bg-[#152131] overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${stepProgressPercent}%`,
-                      background: 'linear-gradient(90deg, #f3d156 0%, #82d96a 35%, #67d6ff 70%, #7fa8ff 100%)'
+                      width: `${isGenerating ? Math.max(4, Math.min(100, generationProgress || 0)) : stepProgressPercent}%`,
+                      background: isGenerating ? activeProgressTheme.progress : selectedBookTheme.progress
                     }}
                   />
                 </div>
-                <div className="mt-2 grid grid-cols-9 gap-1">
-                  {Array.from({ length: CREATION_STEP_COUNT }, (_, index) => {
-                    const stepNo = index + 1;
-                    const isDone = stepNo < creationStep;
-                    const isCurrent = stepNo === creationStep;
-                    const stepAccent = creationStepPalette[index % creationStepPalette.length];
-                    return (
-                      <span
-                        key={stepNo}
-                        className={`h-7 rounded-md border border-dashed flex items-center justify-center text-[11px] font-bold ${isCurrent
-                          ? 'text-white'
-                          : isDone
-                            ? 'text-[#e7f3ff]'
-                            : 'text-[#7f97b3]'
-                          }`}
-                        style={isCurrent
-                          ? {
-                            borderColor: 'rgba(172,208,243,0.56)',
-                            background: 'linear-gradient(135deg, rgba(36,68,104,0.95) 0%, rgba(24,44,70,0.92) 100%)',
-                            boxShadow: 'inset 0 0 0 1px rgba(165,207,255,0.38), 0 0 12px rgba(100,151,214,0.2)'
-                          }
-                          : isDone
+                {!isGenerating && (
+                  <div className="mt-2 grid gap-1" style={{ gridTemplateColumns: `repeat(${totalVisibleStepCount}, minmax(0, 1fr))` }}>
+                    {visibleCreationSteps.map((_, index) => {
+                      const stepNo = index + 1;
+                      const isDone = index < currentVisibleStepIndex;
+                      const isCurrent = index === currentVisibleStepIndex;
+                      const tone = resolveWizardTone(index);
+                      return (
+                        <span
+                          key={stepNo}
+                          className="h-7 rounded-md border border-dashed flex items-center justify-center text-[11px] font-bold"
+                          style={isCurrent
                             ? {
-                              borderColor: `${stepAccent}aa`,
-                              background: 'rgba(18,31,45,0.74)',
-                              boxShadow: `inset 0 0 0 1px ${stepAccent}66, 0 0 12px ${stepAccent}33`
+                              color: selectedBookTheme.actionBorder,
+                              borderColor: selectedBookTheme.tone.border,
+                              background: `linear-gradient(135deg, ${selectedBookTheme.tone.fill} 0%, rgba(24,44,70,0.92) 100%)`,
+                              boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.border}, 0 0 12px ${selectedBookTheme.actionGlow}`
                             }
-                            : {
-                              borderColor: 'rgba(70,95,124,0.34)',
-                              background: 'rgba(18,28,40,0.5)'
-                            }}
-                      >
-                        {stepNo}
-                      </span>
-                    );
-                  })}
-                </div>
+                            : isDone
+                              ? {
+                                color: selectedBookTheme.actionBorder,
+                                borderColor: selectedBookTheme.tone.border,
+                                background: 'rgba(18,31,45,0.74)',
+                                boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 12px ${selectedBookTheme.actionGlow}`
+                              }
+                              : {
+                                color: selectedBookTheme.actionBorder,
+                                borderColor: tone.border,
+                                background: 'rgba(18,28,40,0.5)'
+                              }}
+                        >
+                          {stepNo}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              <fieldset disabled={isGenerating} className="px-1.5 pb-1">
+              {!isGenerating && (
+              <fieldset className="px-1.5 pb-1">
                 {creationStep === 1 && (
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Kitap Türünü Seç')}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="space-y-1.5">
                       {SMARTBOOK_BOOK_TYPE_OPTIONS.map((option) => {
                         const isSelected = selectedBookType === option.value;
                         const createCost = getBookTypeCreateCreditCost(option.value);
+                        const optionTheme = resolveBookTypeTheme(option.value);
                         return (
                           <button
                             key={option.value}
@@ -2076,55 +2146,24 @@ export default function HomeView({
                                 setSelectedAgeGroup('general');
                               }
                             }}
-                            className="rounded-xl px-2 py-1.5 text-center transition-colors"
-                            style={wizardOptionButtonStyle(isSelected)}
+                            className="w-full rounded-xl border border-dashed px-3 py-2 text-left transition-colors"
+                            style={wizardOptionButtonStyle(isSelected, optionTheme.tone)}
                             aria-pressed={isSelected}
                             title={t(option.hint)}
                           >
-                            <span className="block text-[12px] font-bold text-white text-center">{t(option.label)}</span>
-                            <span className="mt-0.5 block text-[10px] font-semibold text-[#b9d2f1]/95 text-center">{createCost} {t('kredi')}</span>
+                            <span className="flex items-start justify-between gap-2">
+                              <span className="min-w-0">
+                                <span className="block text-[13px] font-bold text-white">{t(option.label)}</span>
+                                <span className="mt-0.5 block text-[10px] text-[#bfd6f1]">{t(option.hint)}</span>
+                              </span>
+                              <span className="shrink-0 rounded-lg border border-dashed px-2 py-0.5 text-[10px] font-semibold text-[#d7e9ff]" style={{ borderColor: optionTheme.tone.border }}>
+                                {createCost} {t('kredi')}
+                              </span>
+                            </span>
                           </button>
                         );
                       })}
                     </div>
-                  </div>
-                )}
-
-                {creationStep === 3 && (
-                  <div>
-                    <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Yaş Grubunu Seç')}</p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-3', '4-6', '7-9'].includes(opt.value) : !['1-3', '4-6', '7-9'].includes(opt.value)).map((option) => {
-                        const isSelected = selectedAgeGroup === option.value;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setSelectedAgeGroup(option.value)}
-                            className="rounded-xl px-1.5 py-1.5 text-center transition-colors"
-                            style={wizardOptionButtonStyle(isSelected)}
-                            aria-pressed={isSelected}
-                            title={t(option.hint)}
-                          >
-                            <span className="block text-[11px] font-bold text-white">{t(option.label)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {creationStep === 4 && (
-                  <div>
-                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitap Dili')}</label>
-                    <input
-                      value={bookLanguageInput}
-                      onChange={(event) => setBookLanguageInput(event.target.value)}
-                      maxLength={64}
-                      placeholder={t('Örn: Türkçe, English, Español')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle}
-                    />
                   </div>
                 )}
 
@@ -2132,17 +2171,17 @@ export default function HomeView({
                   <div>
                     <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Alt Tür Seç')}</p>
                     <div className="grid grid-cols-2 gap-1.5">
-                      {(SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || []).map((sub) => {
+                      {(SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || []).map((sub, index) => {
                         const isSelected = selectedSubGenre === sub;
                         return (
                           <button
                             key={sub}
                             type="button"
                             onClick={() => setSelectedSubGenre(sub)}
-                            className="rounded-xl px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                            className="rounded-xl border border-dashed px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                             style={{
                               color: isSelected ? '#ffffff' : '#c6d9ef',
-                              ...wizardOptionButtonStyle(isSelected)
+                              ...wizardOptionButtonStyle(isSelected, resolveWizardTone(index))
                             }}
                           >
                             {t(sub)}
@@ -2155,17 +2194,17 @@ export default function HomeView({
                       <>
                         <p className="mt-2 mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Final Tercihi')}</p>
                         <div className="grid grid-cols-3 gap-1.5">
-                          {SMARTBOOK_ENDING_OPTIONS.map((option) => {
+                          {SMARTBOOK_ENDING_OPTIONS.map((option, index) => {
                             const isSelected = selectedEndingStyle === option.value;
                             return (
                               <button
                                 key={option.value}
                                 type="button"
                                 onClick={() => setSelectedEndingStyle(option.value)}
-                                className="rounded-xl px-2 py-1.5 text-[12px] font-bold transition-colors"
+                                className="rounded-xl border border-dashed px-2 py-1.5 text-[12px] font-bold transition-colors"
                                 style={{
                                   color: isSelected ? '#ffffff' : '#c6d9ef',
-                                  ...wizardOptionButtonStyle(isSelected)
+                                  ...wizardOptionButtonStyle(isSelected, resolveWizardTone(index + 2))
                                 }}
                                 title={t(option.hint)}
                               >
@@ -2179,7 +2218,40 @@ export default function HomeView({
                   </div>
                 )}
 
-                {creationStep === 5 && (
+                {creationStep === 3 && (
+                  <div>
+                    <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Yaş Grubunu Seç')}</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-3', '4-6', '7-9'].includes(opt.value) : !['1-3', '4-6', '7-9'].includes(opt.value)).map((option, index) => {
+                        const isSelected = selectedAgeGroup === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setSelectedAgeGroup(option.value)}
+                            className="rounded-xl border border-dashed px-1.5 py-1.5 text-center transition-colors"
+                            style={wizardOptionButtonStyle(isSelected, resolveWizardTone(index))}
+                            aria-pressed={isSelected}
+                            title={t(option.hint)}
+                          >
+                            <span className="block text-[11px] font-bold text-white">{t(option.label)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitap Dili')}</label>
+                    <input
+                      value={bookLanguageInput}
+                      onChange={(event) => setBookLanguageInput(event.target.value)}
+                      maxLength={64}
+                      placeholder={t('Örn: Türkçe, English, Español')}
+                      className={wizardFieldClass}
+                      style={wizardFieldStyle(resolveWizardTone(4))}
+                    />
+                  </div>
+                )}
+
+                {creationStep === 4 && (
                   <div className="space-y-2">
                     <div>
                       <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Kurgu Modu')}</p>
@@ -2187,24 +2259,21 @@ export default function HomeView({
                         <button
                           type="button"
                           onClick={() => setStoryInputMode('manual')}
-                          className="rounded-xl px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                          className="rounded-xl border border-dashed px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                           style={{
                             color: storyInputMode === 'manual' ? '#ffffff' : '#c6d9ef',
-                            ...wizardOptionButtonStyle(storyInputMode === 'manual')
+                            ...wizardOptionButtonStyle(storyInputMode === 'manual', resolveWizardTone(0))
                           }}
                         >
                           {t('Detay Gireceğim')}
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setStoryInputMode('auto');
-                            setCreationStep(9);
-                          }}
-                          className="rounded-xl px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                          onClick={() => setStoryInputMode('auto')}
+                          className="rounded-xl border border-dashed px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                           style={{
                             color: storyInputMode === 'auto' ? '#ffffff' : '#c6d9ef',
-                            ...wizardOptionButtonStyle(storyInputMode === 'auto')
+                            ...wizardOptionButtonStyle(storyInputMode === 'auto', resolveWizardTone(1))
                           }}
                         >
                           {t('Otomatik Oluştur')}
@@ -2223,49 +2292,39 @@ export default function HomeView({
                             rows={5}
                             placeholder={t('Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın')}
                             className={wizardTextareaClass}
-                            style={wizardFieldStyle}
+                            style={wizardFieldStyle(resolveWizardTone(2))}
                           />
                         </>
                       ) : (
                         <p className="text-[12px] text-[#a8c4e6]">
-                          {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Seçimden sonra doğrudan Kurgulayan adımına geçilir.')}
+                          {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Bu modda mekan, zaman ve kitap adı soruları gösterilmez.')}
                         </p>
                       )}
                     </div>
                   </div>
                 )}
 
-                {creationStep === 6 && (
-                  <div>
-                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Zamanı')}</label>
+                {creationStep === 5 && (
+                  <div className="space-y-2">
+                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Zamanı (Opsiyonel)')}</label>
                     <input
                       value={settingTimeInput}
                       onChange={(event) => setSettingTimeInput(event.target.value)}
                       maxLength={120}
                       placeholder={t("Örn: 1800'ler, günümüz, 2090 sonrası")}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle}
+                      style={wizardFieldStyle(resolveWizardTone(0))}
                     />
-                  </div>
-                )}
-
-                {creationStep === 7 && (
-                  <div>
-                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Mekanı')}</label>
+                    <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Mekanı (Opsiyonel)')}</label>
                     <input
                       value={settingPlaceInput}
                       onChange={(event) => setSettingPlaceInput(event.target.value)}
                       maxLength={120}
                       placeholder={t('Örn: İstanbul, antik kent, Mars kolonisi')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle}
+                      style={wizardFieldStyle(resolveWizardTone(1))}
                     />
-                  </div>
-                )}
-
-                {creationStep === 8 && (
-                  <div>
-                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitabın Adı')}</label>
+                    <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitabın Adı (Opsiyonel)')}</label>
                     <input
                       value={searchTerm}
                       onChange={(event) => {
@@ -2275,12 +2334,12 @@ export default function HomeView({
                       maxLength={140}
                       placeholder={t('Örn: Albert Einstein ve Kuramları')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle}
+                      style={wizardFieldStyle(resolveWizardTone(2))}
                     />
                   </div>
                 )}
 
-                {creationStep === 9 && (
+                {creationStep === 6 && (
                   <div>
                     <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
                     <input
@@ -2289,25 +2348,20 @@ export default function HomeView({
                       maxLength={180}
                       placeholder={t('Örn: Elara, Aras, Mira')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle}
+                      style={wizardFieldStyle(resolveWizardTone(3))}
                     />
-                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kurgulayan')}</label>
+                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kurgulayan (Opsiyonel)')}</label>
                     <input
                       value={creatorNameInput}
                       onChange={(event) => setCreatorNameInput(event.target.value)}
                       maxLength={90}
                       placeholder={t('Örn: Ayşe Demir')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle}
+                      style={wizardFieldStyle(resolveWizardTone(4))}
                     />
                   </div>
                 )}
               </fieldset>
-
-              {sourceNotice && (
-                <div className="mt-2 px-1">
-                  <p className="text-[11px] text-red-300">{sourceNotice}</p>
-                </div>
               )}
 
               {isGenerating ? (
@@ -2331,15 +2385,24 @@ export default function HomeView({
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-[#102033] overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-[#4b82bc] transition-all duration-300"
-                      style={{ width: `${Math.max(4, Math.min(100, generationProgress || 0))}%` }}
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.max(4, Math.min(100, generationProgress || 0))}%`,
+                        background: activeProgressTheme.progress
+                      }}
                     />
                   </div>
                   <p className="mt-1 text-center text-[10px] text-[#b6cde8]">%{Math.max(4, Math.min(100, Math.round(generationProgress || 0)))}</p>
                 </div>
               ) : (
-                <div className={`mt-3 flex items-center gap-2 ${creationStep === 1 ? 'justify-end' : 'justify-between'}`}>
-                  {creationStep > 1 && (
+                <>
+                {sourceNotice && (
+                  <div className="mt-2 px-1">
+                    <p className="text-[11px] text-red-300">{sourceNotice}</p>
+                  </div>
+                )}
+                <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'}`}>
+                  {currentVisibleStepIndex > 0 && (
                     <button
                       type="button"
                       onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
@@ -2350,7 +2413,7 @@ export default function HomeView({
                     </button>
                   )}
 
-                  {creationStep < CREATION_STEP_COUNT ? (
+                  {currentVisibleStepIndex < totalVisibleStepCount - 1 ? (
                     <button
                       type="button"
                       onClick={() => setCreationStep((prev) => getNextCreationStep(prev))}
@@ -2359,7 +2422,7 @@ export default function HomeView({
                         ? 'text-white active:scale-95'
                         : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
                         }`}
-                      style={canMoveNext ? loginPrimaryButtonStyle : undefined}
+                      style={canMoveNext ? primaryActionButtonStyle : undefined}
                     >
                       {t('İleri')}
                       <ArrowRight size={14} />
@@ -2373,13 +2436,14 @@ export default function HomeView({
                         ? 'text-white active:scale-95'
                         : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
                         }`}
-                      style={canCreateOnFinalStep ? loginPrimaryButtonStyle : undefined}
+                      style={canCreateOnFinalStep ? primaryActionButtonStyle : undefined}
                     >
                       <BookPlus size={15} />
                       {`${t('Fortale Oluştur')} (${selectedCreateCreditCost} ${t('kredi')})`}
                     </button>
                   )}
                 </div>
+                </>
               )}
             </div>
           </form>

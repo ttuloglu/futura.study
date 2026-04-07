@@ -79,6 +79,7 @@ const READING_WORDS_PER_MINUTE = 180;
 const QUIZ_FEEDBACK_DELAY_MS = 2000;
 const PODCAST_CREATING_LOOP_VIDEO_SRC = '/animations/podcast-creating-loop.mp4';
 const PDF_BACKGROUND_PRESETS = [
+  { id: 'milk-white', label: 'Süt beyaz', color: '#fffaf0' },
   { id: 'candy-blue', label: 'Şeker mavi', color: '#d9f2ff' },
   { id: 'candy-pink', label: 'Şeker pembe', color: '#ffd9ec' },
   { id: 'candy-green', label: 'Şeker yeşil', color: '#ddf7d8' },
@@ -129,6 +130,13 @@ function resolveBookTypeLabel(bookType: CourseData['bookType'] | undefined, t: (
   if (bookType === 'story') return t('Hikaye');
   if (bookType === 'novel') return t('Roman');
   return t('Roman');
+}
+
+function resolveBookTypeAccentColor(bookType: CourseData['bookType'] | undefined): string {
+  if (bookType === 'fairy_tale') return '#f59e0b';
+  if (bookType === 'story') return '#10b981';
+  if (bookType === 'novel') return '#3b82f6';
+  return '#67d6ff';
 }
 
 function isFairyTaleBookType(bookType: CourseData['bookType'] | undefined): boolean {
@@ -582,10 +590,10 @@ function InlineQuizMarkdown({ content }: { content: string }) {
   );
 }
 
-function DownloadCircleSpinner({ size = 14 }: { size?: number }) {
+function DownloadCircleSpinner({ size = 14, accentColor = '#67d6ff' }: { size?: number; accentColor?: string }) {
   const normalizedSize = Math.max(12, Math.round(size));
   const ringBorder = Math.max(2, Math.round(normalizedSize * 0.18));
-  const innerSize = Math.max(8, normalizedSize - 4);
+  const innerSize = Math.max(8, normalizedSize - ringBorder * 2 - 1);
 
   return (
     <span
@@ -596,7 +604,7 @@ function DownloadCircleSpinner({ size = 14 }: { size?: number }) {
       <span
         className="absolute inset-0 rounded-full"
         style={{
-          background: 'radial-gradient(circle, rgba(103,214,255,0.32) 0%, rgba(103,214,255,0) 70%)',
+          background: `radial-gradient(circle, ${accentColor}4d 0%, rgba(103,214,255,0) 72%)`,
           filter: 'blur(0.8px)'
         }}
       />
@@ -605,19 +613,31 @@ function DownloadCircleSpinner({ size = 14 }: { size?: number }) {
         style={{
           width: normalizedSize,
           height: normalizedSize,
-          border: `${ringBorder}px solid rgba(157,214,255,0.38)`,
+          border: `${ringBorder}px solid ${accentColor}66`,
           borderTopColor: 'rgba(255,255,255,0.98)',
-          boxShadow: '0 0 10px rgba(103,214,255,0.46)'
+          boxShadow: `0 0 10px ${accentColor}73`
         }}
       />
       <span
-        className="absolute rounded-full"
+        className="absolute inline-flex items-center justify-center rounded-full overflow-hidden"
         style={{
           width: innerSize,
           height: innerSize,
-          border: '1px solid rgba(255,255,255,0.18)'
+          border: '1px solid rgba(255,255,255,0.26)',
+          background: 'rgba(10, 16, 26, 0.72)'
         }}
-      />
+      >
+        <img
+          src="/favicon-red.svg"
+          alt=""
+          draggable={false}
+          className="select-none pointer-events-none animate-spin"
+          style={{
+            width: Math.max(7, innerSize - 3),
+            height: Math.max(7, innerSize - 3)
+          }}
+        />
+      </span>
     </span>
   );
 }
@@ -2208,6 +2228,7 @@ export default function CourseFlowView({
 
   if (!courseData) return null;
   const isFairyTaleBook = isFairyTaleBookType(courseData.bookType);
+  const downloadSpinnerAccentColor = resolveBookTypeAccentColor(courseData.bookType);
   const headerPodcastNode = getPodcastCarrierNode(courseData.nodes);
   const effectiveHeaderPodcastLanguage = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
   const effectiveHeaderPodcastLanguageLabel = getAppLanguageLabel(
@@ -2572,7 +2593,7 @@ export default function CourseFlowView({
                           aria-label={canDownloadFullSmartBook ? t('Fortale PDF') : t('Fortale PDF kilitli')}
                         >
                           {isFullPdfExporting ? (
-                            <DownloadCircleSpinner size={16} />
+                            <DownloadCircleSpinner size={16} accentColor={downloadSpinnerAccentColor} />
                           ) : canDownloadFullSmartBook ? (
                             <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
                           ) : (
@@ -2601,7 +2622,7 @@ export default function CourseFlowView({
                           aria-label={canDownloadFullSmartBook ? t('Fortale ePub') : t('Fortale ePub kilitli')}
                         >
                           {isFullEpubExporting ? (
-                            <DownloadCircleSpinner size={16} />
+                            <DownloadCircleSpinner size={16} accentColor={downloadSpinnerAccentColor} />
                           ) : canDownloadFullSmartBook ? (
                             <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
                           ) : (
@@ -2627,7 +2648,7 @@ export default function CourseFlowView({
                             aria-label={hasHeaderPodcastAudio ? t('Masalı Seslendir') : t('Masalı Seslendir')}
                           >
                             {isPodcastExporting ? (
-                              <DownloadCircleSpinner size={16} />
+                              <DownloadCircleSpinner size={16} accentColor={downloadSpinnerAccentColor} />
                             ) : (
                               <AudioLines size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
                             )}
@@ -2771,6 +2792,7 @@ export default function CourseFlowView({
                               audio={{ audioUrl: headerPodcastAudioUrl, segments: headerPodcastSegments }}
                               onDownload={handleHeaderPodcastAudioDownload}
                               isDownloadBusy={isPodcastDownloadExporting || isExportBusy}
+                              spinnerAccentColor={downloadSpinnerAccentColor}
                               onDurationResolved={(seconds) => {
                                 if (!headerPodcastNode) return;
                                 const formatted = formatPodcastDurationFromSeconds(seconds, t);
@@ -2821,7 +2843,7 @@ export default function CourseFlowView({
                                       background: 'rgba(12,28,48,0.22)'
                                     }}
                                   >
-                                    {isExportBusy ? <DownloadCircleSpinner size={13} /> : <AudioLines size={13} className="text-white" />}
+                                    {isExportBusy ? <DownloadCircleSpinner size={13} accentColor={downloadSpinnerAccentColor} /> : <AudioLines size={13} className="text-white" />}
                                   </span>
                                   <span className="min-w-0 text-left leading-tight">
                                     <span className="block text-[13px] font-black tracking-[0.01em] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.72)' }}>
@@ -2919,7 +2941,7 @@ export default function CourseFlowView({
                                             }}
                                           >
                                             {isLoadingPreview ? (
-                                              <DownloadCircleSpinner size={12} />
+                                              <DownloadCircleSpinner size={12} accentColor={downloadSpinnerAccentColor} />
                                             ) : isPlayingPreview ? (
                                               <PauseCircle size={13} className="text-white" />
                                             ) : (
@@ -2943,7 +2965,7 @@ export default function CourseFlowView({
                                       boxShadow: 'inset 0 0 0 1px rgba(225,240,255,0.06), 0 8px 16px rgba(18,44,74,0.22)'
                                     }}
                                   >
-                                    {isExportBusy ? <DownloadCircleSpinner size={14} /> : <AudioLines size={14} className="text-white" />}
+                                    {isExportBusy ? <DownloadCircleSpinner size={14} accentColor={downloadSpinnerAccentColor} /> : <AudioLines size={14} className="text-white" />}
                                     <span className="text-[12px] font-black">{t('Seçili sesle podcast oluştur')}</span>
                                   </button>
                                 </div>
@@ -3014,6 +3036,12 @@ export default function CourseFlowView({
                   !isGen &&
                   node.isLoading
                 );
+                const isBookLoadingPlaceholder = Boolean(
+                  isNarrativeBook &&
+                  !node.content &&
+                  !isReadingFullscreen &&
+                  (isLocked || isBackgroundPreparing || isNarrativeHydrationPlaceholder)
+                );
                 const showNodeSubtitle = !isNarrativeBook && Boolean(node.title && !isSameSectionHeading(node.title, sectionTitle));
                 const isContentHydrated = !node.content || hydratedContentNodeIds.includes(node.id);
                 const displayContent = isContentHydrated && node.content
@@ -3046,7 +3074,18 @@ export default function CourseFlowView({
                       </header>
                     )}
 
-                    {isLocked && !isReadingFullscreen && (
+                    {isBookLoadingPlaceholder && (
+                      <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
+                        <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
+                          <DownloadCircleSpinner size={30} accentColor={downloadSpinnerAccentColor} />
+                        </div>
+                        <p className="text-[12px] font-semibold text-white/88">
+                          {t('Kitabınız yükleniyor')}
+                        </p>
+                      </div>
+                    )}
+
+                    {isLocked && !isReadingFullscreen && !isNarrativeBook && (
                       <div
                         className="rounded-xl border border-dashed px-3 py-3 text-[12px] leading-relaxed text-white/70"
                         style={{ background: 'rgba(17,22,29,0.66)', borderColor: 'rgba(173,149,124,0.12)' }}
@@ -3055,7 +3094,7 @@ export default function CourseFlowView({
                       </div>
                     )}
 
-                    {!isLocked && !isReadingFullscreen && (isGen || isBackgroundPreparing || isNarrativeHydrationPlaceholder) && (
+                    {!isLocked && !isReadingFullscreen && !isBookLoadingPlaceholder && (isGen || isBackgroundPreparing || isNarrativeHydrationPlaceholder) && (
                       <div className="space-y-4 py-6 max-w-[300px] mx-auto text-center">
                         <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
                           <FaviconSpinner size={30} />
@@ -3232,6 +3271,7 @@ interface PodcastInlinePlayerProps {
   };
   onDownload: (e: React.MouseEvent) => void;
   isDownloadBusy?: boolean;
+  spinnerAccentColor?: string;
   onCompleted?: () => void;
   onDurationResolved?: (seconds: number) => void;
 }
@@ -3240,6 +3280,7 @@ function PodcastInlinePlayer({
   audio,
   onDownload,
   isDownloadBusy = false,
+  spinnerAccentColor = '#67d6ff',
   onCompleted,
   onDurationResolved
 }: PodcastInlinePlayerProps) {
@@ -3359,7 +3400,7 @@ function PodcastInlinePlayer({
           aria-label={t('Podcast indir')}
           title={t('Podcast indir')}
         >
-          {isDownloadBusy ? <DownloadCircleSpinner size={13} /> : <Download size={13} />}
+          {isDownloadBusy ? <DownloadCircleSpinner size={13} accentColor={spinnerAccentColor} /> : <Download size={13} />}
           {t('Podcast indir')}
         </button>
       </div>

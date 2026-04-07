@@ -18,6 +18,11 @@ export default function GlobalHeader({
   onOpenPaywall
 }: GlobalHeaderProps) {
   const { t } = useUiI18n();
+  const isIosClient = typeof window !== 'undefined' && (() => {
+    const ua = window.navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return true;
+    return window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1;
+  })();
   const createCredits = credits?.createCredits ?? 0;
   const groupShellStyle: React.CSSProperties = {
     background: 'rgba(17, 22, 29, 0.26)',
@@ -31,7 +36,7 @@ export default function GlobalHeader({
   return (
     <header
       className="fixed left-0 right-0 z-40 pointer-events-none transition-opacity duration-300"
-      style={{ top: '0' }}
+      style={{ top: isIosClient ? '-5px' : '0' }}
     >
       <div
         className="w-full pointer-events-none relative pb-8"

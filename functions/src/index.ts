@@ -1995,33 +1995,15 @@ function buildNarrativeTitleDirection(
   subGenre: string | undefined,
   isEn: boolean
 ): string {
-  const key = normalizeStoryPathKey(subGenre);
-  const base = isEn
-    ? "Title direction: generate a literary, memorable, professional book title and chapter titles that express image, tension, theme, or emotional promise; never use mechanical stock formulas or simply repeat character names/topic."
-    : "Baslik yonu: gorsel imgeyi, gerilimi, temayi veya duygusal vaadi tasiyan edebi, akilda kalici ve profesyonel kitap/bölüm başlıkları üret; mekanik stok formüller veya karakter adlarını tekrarlama.";
-
-  if (bookType === "story") {
-    if (key.includes("komedi")) return `${base} ${isEn ? "Comedy titles should feel witty, agile, and specific rather than childish." : "Komedi basliklari kıvrak, zeki ve spesifik his vermeli; cocuksu slogan gibi durmamali."}`;
-    if (key.includes("distopik")) return `${base} ${isEn ? "Dystopian titles should suggest system pressure, fracture, or resistance." : "Distopik basliklar sistem baskisi, kirilma veya direnis hissi vermeli."}`;
-    if (key.includes("gizem")) return `${base} ${isEn ? "Mystery titles should imply absence, clue, silence, trace, or concealed truth." : "Gizem basliklari eksiklik, ipucu, sessizlik, iz veya sakli gercek hissi vermeli."}`;
-    if (key.includes("romantik")) return `${base} ${isEn ? "Romantic titles should imply relational tension, longing, or emotional magnetism without cliche sweetness." : "Romantik basliklar klişe şirinliğe kaçmadan ilişki gerilimi, özlem veya duygusal çekim taşımalı."}`;
-  }
-  if (bookType === "novel") {
-    if (key.includes("tarihsel")) return `${base} ${isEn ? "Historical titles should carry era texture and social atmosphere." : "Tarihsel başlıklar dönem dokusu ve toplumsal atmosfer taşımalı."}`;
-    if (key.includes("psikolojik")) return `${base} ${isEn ? "Psychological titles should imply fracture, memory, perception, guilt, obsession, or identity pressure." : "Psikolojik başlıklar çatlak, hafıza, algı, suçluluk, saplantı veya kimlik baskısı ima etmeli."}`;
-    if (key.includes("fantastik")) return `${base} ${isEn ? "Fantasy titles should suggest world-myth, power, relic, prophecy, or impossible geography." : "Fantastik başlıklar dünya miti, güç, kadim nesne, kehanet veya imkansiz cografya hissi vermeli."}`;
-  }
-  return base;
+  return isEn
+    ? "Title direction: create an original, concise, natural-sounding book title (and chapter titles) only from the story content and brief. Do not use suggested/example words, stock formulas, or repeated character-name patterns."
+    : "Baslik yonu: kitap adi (ve bolum basliklari) yalnizca hikaye icerigi ve brief'ten uretilen ozgun, kisa ve dogal bir yapiya sahip olmali. Ornek/tavsiye kelime, hazir kalip veya karakter adlarini tekrar eden mekanik formatlar kullanma.";
 }
 
-function buildNarrativeAutomaticTopicDirective(
-  bookType: SmartBookBookType,
-  subGenre: string | undefined,
-  isEn: boolean
-): string {
+function buildNarrativeContentAutonomyDirective(isEn: boolean): string {
   return isEn
-    ? `Automatic-topic rule: if the user did not provide a concrete topic, invent an ORIGINAL topic premise strictly from the selected ${bookType} and subgenre path. Do not fall back to generic forest/house/friendship placeholders. Selected subgenre only: ${subGenre || "default"}.`
-    : `Otomatik konu kuralı: kullanıcı somut konu vermediyse, konuyu sadece seçilen ${bookType} ve alt tür yolundan OZGUN biçimde türet. Jenerik orman/ev/arkadaslik placeholderlarına düşme. Sadece seçilen alt türü kullan: ${subGenre || "varsayilan"}.`;
+    ? "Content autonomy: never force a preset topic from system/backend text. Build the narrative only from selected type/subgenre/page goals and user-provided inputs; if details are sparse, choose an original topic freely."
+    : "Icerik ozerkligi: sistem/backend tarafindan onceden belirlenmis bir konu dayatma. Anlatiyi sadece secilen tur/alt tur/sayfa hedefi ve kullanici girdileriyle kur; detay azsa konuyu ozgun bicimde serbest sec.";
 }
 
 function buildNarrativeSubGenreLiteraryDirective(
@@ -2286,17 +2268,17 @@ function inferNarrativeMissingFieldInstruction(
   const isEn = usesEnglishPromptScaffold(language);
   if (field === "characters") {
     return isEn
-      ? "Characters: if not specified, invent ORIGINAL and path-faithful characters from the selected type/subgenre/topic/details; avoid generic stock duos, random princes/princesses, or default child stereotypes."
-      : "Karakterler: verilmediyse seçilen tür/alt tür/konu/detaydan yola çıkarak OZGUN ve path'e sadık karakterler kur; jenerik çocuk ikilisi, rastgele prens/prenses ya da stok karakter klişelerine düşme.";
+      ? "Characters: if not specified, create original characters aligned with the selected type/subgenre and user inputs."
+      : "Karakterler: verilmediyse secilen tur/alt tur ve kullanici girdileriyle uyumlu, ozgun karakterler kur.";
   }
   if (field === "settingPlace") {
     return isEn
-      ? "Setting place: if not specified, infer an ORIGINAL setting from the selected path and topic details; avoid default forest/castle/classroom fallback worlds unless the topic truly needs them."
-      : "Mekan: verilmediyse seçilen yol ve konu detaylarından OZGUN bir mekan türet; konu gerçekten gerektirmedikçe varsayılan orman/sato/sinif dünyalarina düşme.";
+      ? "Setting place: if not specified, infer an original place consistent with the selected type/subgenre and user inputs."
+      : "Mekan: verilmediyse secilen tur/alt tur ve kullanici girdileriyle tutarli, ozgun bir mekan sec.";
   }
   return isEn
-    ? "Setting time: if not specified, infer the most fitting time period or temporal mood from the selected path and topic details; avoid vague generic timelessness unless stylistically necessary."
-    : "Zaman: verilmediyse seçilen yol ve konu detaylarından en uygun dönem/zaman hissini türet; stil gerektirmedikçe belirsiz jenerik zamansızlığa kaçma.";
+    ? "Setting time: if not specified, infer a fitting time period or temporal mood from the selected type/subgenre and user inputs."
+    : "Zaman: verilmediyse secilen tur/alt tur ve kullanici girdilerine gore uygun donem veya zaman hissini kur.";
 }
 
 function buildNarrativeVisualStyleDirective(
@@ -2627,8 +2609,8 @@ function buildNarrativeBriefBlock(
       isEn ? `Ending preference: ${endingStyleLabelForPrompt(brief.endingStyle, true)}` : `Final tercihi: ${endingStyleLabelForPrompt(brief.endingStyle, false)}`
     ];
   lines.push(buildNarrativePedagogyDirective(brief.bookType, audienceLevel, isEn ? "en" : "tr"));
-  lines.push(buildNarrativeAutomaticTopicDirective(brief.bookType, brief.subGenre, isEn));
   lines.push(buildNarrativeTitleDirection(brief.bookType, brief.subGenre, isEn));
+  lines.push(buildNarrativeContentAutonomyDirective(isEn));
   lines.push(buildNarrativeSubGenreLiteraryDirective(brief.bookType, brief.subGenre, isEn));
   if (isFairyTale) {
     lines.push(buildFairyTaleSinglePathDirective(brief, audienceLevel, isEn));
@@ -2704,9 +2686,8 @@ function buildNarrativeCraftInstruction(
 
   const subGenreLine = buildNarrativeSubGenreLiteraryDirective(type, brief.subGenre, isEn);
   const titleLine = buildNarrativeTitleDirection(type, brief.subGenre, isEn);
-  const topicLine = buildNarrativeAutomaticTopicDirective(type, brief.subGenre, isEn);
-
-  return `${stageLine}\n${typeLine}\n${subGenreLine}\n${titleLine}\n${topicLine}\n${endingLine}`;
+  const contentAutonomyLine = buildNarrativeContentAutonomyDirective(isEn);
+  return `${stageLine}\n${typeLine}\n${subGenreLine}\n${titleLine}\n${contentAutonomyLine}\n${endingLine}`;
 }
 
 function getSectionWordTargets(
@@ -6380,9 +6361,9 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
   const bookTitleRule = lockUserProvidedBookTitle
     ? "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını aynen koru."
     : isNarrativePrompt
-      ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün, edebi ve profesyonel bir kitap adı üretmeli; kullanıcı konusunu olduğu gibi tekrar etme. Karakter adlarını başlığa zorla yapıştırma. 'Ayşe ile Mehmet'in ...', 'Ali ve Zeynep ...' gibi isimleri yan yana dizen çocuk kitabı klişeleri YASAK. Kategori/alt tür adı tek başına başlık olamaz (ör: 'Dram', 'Roman', 'Edebiyat', 'Bilim Kurgu')."
+      ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün, doğal ve profesyonel bir kitap adı üretmeli. Kısa ve kitap adı formatında olmalı. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
       : allowAiBookTitleGeneration
-        ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün ve profesyonel bir kitap adı üretmeli; karakter adlarını başlığa zorla yapıştırma. 'Ayşe ile Mehmet'in ...', 'Ali ve Zeynep ...' gibi isimleri yan yana dizen çocuk kitabı klişeleri YASAK. Kategori/alt tür adı tek başına başlık olamaz (ör: 'Dram', 'Roman', 'Edebiyat', 'Bilim Kurgu')."
+        ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün ve profesyonel bir kitap adı üretmeli. Kısa ve kitap adı formatında olmalı. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
         : "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını koru.";
 
   const prompt = `
@@ -6631,58 +6612,11 @@ ${statusRules}
     index: number,
     bookType: SmartBookBookType
   ): string => {
-    const trTitlesByType: Record<Exclude<SmartBookBookType, "academic">, string[]> = {
-      fairy_tale: [
-        "Gümüş Yolun Çağrısı",
-        "Rüzgarın Getirdiği İz",
-        "Kalpte Saklı Anahtar",
-        "Ayışığındaki Sınav",
-        "Işığa Açılan Dönüş"
-      ],
-      story: [
-        "Sessiz Başlangıç",
-        "Kırılan Denge",
-        "Eşik Anı",
-        "Çözülen Düğüm",
-        "Kalan İz"
-      ],
-      novel: [
-        "Uyanan Dünya",
-        "Eşiği Geçerken",
-        "Değişen Hat",
-        "Derinleşen Gölge",
-        "Son Kırılma",
-        "Yeni Düzen"
-      ]
-    };
-    const enTitlesByType: Record<Exclude<SmartBookBookType, "academic">, string[]> = {
-      fairy_tale: [
-        "The Silver Road Calls",
-        "The Trace in the Wind",
-        "The Key Hidden in the Heart",
-        "The Moonlit Trial",
-        "The Return to Light"
-      ],
-      story: [
-        "A Quiet Beginning",
-        "The Broken Balance",
-        "At the Threshold",
-        "The Knot Loosens",
-        "What Remains"
-      ],
-      novel: [
-        "The Waking World",
-        "Crossing the Threshold",
-        "The Shifting Line",
-        "The Deepening Shadow",
-        "The Final Break",
-        "A New Order"
-      ]
-    };
-    const titlePool = useEnglishScaffold
-      ? enTitlesByType[bookType === "academic" ? "story" : bookType]
-      : trTitlesByType[bookType === "academic" ? "story" : bookType];
-    return titlePool[index] || (useEnglishScaffold ? `Chapter ${index + 1}` : `Bölüm ${index + 1}`);
+    const safeBookType = bookType === "academic" ? "story" : bookType;
+    const prefix = useEnglishScaffold
+      ? (safeBookType === "novel" ? "Part" : "Chapter")
+      : (safeBookType === "novel" ? "Kısım" : "Bölüm");
+    return `${prefix} ${index + 1}`;
   };
   const buildNarrativeChapterTitle = (
     index: number,
@@ -6759,8 +6693,8 @@ Kurallar:
 1) Yalnızca JSON döndür.
 2) Bu mevcut kitabı YENIDEN KURMA; sadece kitap adı, kısa kitap açıklaması ve bölüm adlarını üret/düzelt.
 3) bookTitle mutlaka özgün, edebi ve konuya/brief'e sadık olsun.
-4) bookTitle ASLA kategori/alt tür adı, teknik etiket veya sabit klişe isim olmasın.
-4.1) "Ayşe ile Mehmet'in ...", "Ali ve Zeynep ...", "<karakter adı>'nın macerası" gibi mekanik çocuk kitabı formülleri YASAK.
+4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket, karakter adı listesi veya hazır klişe kalıp olmasın.
+4.1) bookTitle kısa ve gerçek bir kitap adı formatında olsun; örnek/tavsiye kelime kullanma.
 5) bookDescription tam olarak 1-2 cümlelik, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
 6) bookDescription generic, öğretici şablon, uygulama içi placeholder veya "bu kitap ..." diye mekanik tanıtım metni gibi durmamalı.
 7) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
@@ -7006,8 +6940,13 @@ JSON şeması:
   )
     .replace(/\s+/g, " ")
     .trim();
+  const isTechnicalChapterFallbackTitle = /^(?:b[öo]l[üu]m|k[ıi]s[ıi]m|chapter|part)\s*\d+$/iu.test(firstLectureTitleCandidate);
   const fallbackNarrativeTitleFromOutline = isNarrativeBookType
-    ? ensureNarrativeChapterTitle(0, firstLectureTitleCandidate, normalizedBrief.bookType)
+    ? (
+      isTechnicalChapterFallbackTitle
+        ? ""
+        : ensureNarrativeChapterTitle(0, firstLectureTitleCandidate, normalizedBrief.bookType)
+    )
     : "";
   const deterministicNarrativeBookTitle = isNarrativeBookType
     ? (
@@ -8104,8 +8043,6 @@ async function generateLectureContent(
     try {
       const continuityPrompt = `
 ${isStory ? "Aşağıdaki hikaye bölümlerini sıradaki bölümü yazdırmak için DEVAMLILIK ÖZETİNE dönüştür." : "Aşağıdaki roman bölümlerini sıradaki bölümü yazdırmak için DEVAMLILIK ÖZETİNE dönüştür."}
-
-Kitap: "${topic}"
 Şu an yazılacak bölüm: "${nodeTitle}"
 Tür: ${isStory ? "Hikaye" : "Roman"}
 ${normalizedBrief.subGenre ? `Alt tür: ${normalizedBrief.subGenre}` : ""}
@@ -8252,7 +8189,7 @@ ${previousChapterSnippet ? `- SON BÖLÜMÜN KALDIĞI YER (Bu noktadan KESİNTİ
     ? (isFairyTale
       ? (isSinglePartFairyTale
         ? `
-"${topic}" için TEK PARÇA bir masal yaz.
+Secili brief icin TEK PARCA bir masal yaz.
 Bu kitap bölümleme içermez; tek akışlı masal metni üret.
 
 Kitap brief:
@@ -8280,7 +8217,7 @@ Masal kuralları (ZORUNLU):
 Markdown formatında döndür.
 `
         : `
-"${topic}" masalı için "${nodeTitle}" adımını yaz.
+Secili masal icin "${nodeTitle}" adimini yaz.
 Bu metin sadece masal türünde olmalı.
 
 Kitap brief:
@@ -8311,7 +8248,7 @@ Markdown formatında döndür.
 `)
       : isStory
         ? `
-"${topic}" hikayesi için "${nodeTitle}" bölümünü yaz.
+Secili hikaye icin "${nodeTitle}" bolumunu yaz.
 Bu metin 5 bölümlük tek bir hikayenin parçasıdır; önceki bölümlerle bağ kopmadan devam etmelidir.
 
 Kitap brief:
@@ -8340,7 +8277,7 @@ Markdown formatında döndür.
 `
         : isNovel
           ? `
-"${topic}" romanı için "${nodeTitle}" bölümünü yaz.
+Secili roman icin "${nodeTitle}" bolumunu yaz.
 Bu metin ${NOVEL_CHAPTER_COUNT} bölümlük tek bir romanın parçasıdır; önceki bölümlerle bağ kopmadan devam etmelidir.
 
 Kitap brief:
@@ -8367,7 +8304,7 @@ Roman kuralları (ZORUNLU):
 Markdown formatında döndür.
 `
         : `
-"${topic}" kitabı için "${nodeTitle}" bölümünü yaz.
+Secili kitap icin "${nodeTitle}" bolumunu yaz.
 Bu bölüm romanın organik bir parçasıdır. Olay örgüsünü anlatı kuralları çerçevesinde işle ve geliştir.
 
 Kitap brief:

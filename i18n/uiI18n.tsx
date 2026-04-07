@@ -517,6 +517,7 @@ for (const [language, translations] of Object.entries(PDF_PALETTE_UI_FALLBACK_TR
 const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
   ar: {
     'Şeker siyah': 'أسود حلوى',
+    'Kitabınız yükleniyor': 'يتم تحميل كتابك',
     'Podcast oluştur': 'أنشئ البودكاست',
     'Önce sesi test et, sonra oluştur.': 'اختبر الصوت أولاً ثم أنشئه.',
     'Podcast sesini seç': 'اختر صوت البودكاست',
@@ -531,6 +532,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   da: {
     'Şeker siyah': 'Sliksort',
+    'Kitabınız yükleniyor': 'Din bog indlaeses',
     'Podcast oluştur': 'Opret podcast',
     'Önce sesi test et, sonra oluştur.': 'Test stemmen først, opret derefter.',
     'Podcast sesini seç': 'Vaelg podcaststemme',
@@ -545,6 +547,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   de: {
     'Şeker siyah': 'Bonbonschwarz',
+    'Kitabınız yükleniyor': 'Dein Buch wird geladen',
     'Podcast oluştur': 'Podcast erstellen',
     'Önce sesi test et, sonra oluştur.': 'Teste zuerst die Stimme und erstelle dann den Podcast.',
     'Podcast sesini seç': 'Podcast-Stimme waehlen',
@@ -559,6 +562,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   el: {
     'Şeker siyah': 'Mavro karamela',
+    'Kitabınız yükleniyor': 'To vivlio sas fortonetai',
     'Podcast oluştur': 'Dimiourgise podcast',
     'Önce sesi test et, sonra oluştur.': 'Dokimase prota ti foni kai meta dimiourgise.',
     'Podcast sesini seç': 'Epilogi fonis podcast',
@@ -573,6 +577,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   en: {
     'Şeker siyah': 'Candy black',
+    'Kitabınız yükleniyor': 'Your book is loading',
     'Podcast oluştur': 'Create podcast',
     'Önce sesi test et, sonra oluştur.': 'Test the voice first, then create it.',
     'Podcast sesini seç': 'Choose podcast voice',
@@ -587,6 +592,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   es: {
     'Şeker siyah': 'Negro dulce',
+    'Kitabınız yükleniyor': 'Tu libro se esta cargando',
     'Podcast oluştur': 'Crear podcast',
     'Önce sesi test et, sonra oluştur.': 'Primero prueba la voz y luego crealo.',
     'Podcast sesini seç': 'Elige la voz del podcast',
@@ -601,6 +607,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   fi: {
     'Şeker siyah': 'Karkkimusta',
+    'Kitabınız yükleniyor': 'Kirjaasi ladataan',
     'Podcast oluştur': 'Luo podcast',
     'Önce sesi test et, sonra oluştur.': 'Testaa aani ensin ja luo sitten.',
     'Podcast sesini seç': 'Valitse podcast-aani',
@@ -615,6 +622,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   fr: {
     'Şeker siyah': 'Noir bonbon',
+    'Kitabınız yükleniyor': 'Votre livre se charge',
     'Podcast oluştur': 'Creer le podcast',
     'Önce sesi test et, sonra oluştur.': 'Testez d abord la voix, puis creez le podcast.',
     'Podcast sesini seç': 'Choisir la voix du podcast',
@@ -629,6 +637,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   hi: {
     'Şeker siyah': 'Candy kala',
+    'Kitabınız yükleniyor': 'Aapki kitab load ho rahi hai',
     'Podcast oluştur': 'Podcast banaen',
     'Önce sesi test et, sonra oluştur.': 'Pehle awaaz test karein, phir banaen.',
     'Podcast sesini seç': 'Podcast ki awaaz chunen',
@@ -643,6 +652,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   id: {
     'Şeker siyah': 'Hitam permen',
+    'Kitabınız yükleniyor': 'Bukumu sedang dimuat',
     'Podcast oluştur': 'Buat podcast',
     'Önce sesi test et, sonra oluştur.': 'Tes suaranya dulu, lalu buat.',
     'Podcast sesini seç': 'Pilih suara podcast',
@@ -657,6 +667,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   it: {
     'Şeker siyah': 'Nero zucchero',
+    'Kitabınız yükleniyor': 'Il tuo libro si sta caricando',
     'Podcast oluştur': 'Crea podcast',
     'Önce sesi test et, sonra oluştur.': 'Prova prima la voce, poi crea.',
     'Podcast sesini seç': 'Scegli la voce del podcast',
@@ -671,6 +682,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   ja: {
     'Şeker siyah': 'キャンディーブラック',
+    'Kitabınız yükleniyor': 'あなたの本を読み込み中',
     'Podcast oluştur': 'ポッドキャストを作成',
     'Önce sesi test et, sonra oluştur.': 'まず声を試してから作成します。',
     'Podcast sesini seç': 'ポッドキャストの声を選択',
@@ -685,6 +697,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   ko: {
     'Şeker siyah': '캔디 블랙',
+    'Kitabınız yükleniyor': '책을 불러오는 중입니다',
     'Podcast oluştur': '팟캐스트 만들기',
     'Önce sesi test et, sonra oluştur.': '먼저 목소리를 들어 보고 만든다.',
     'Podcast sesini seç': '팟캐스트 목소리 선택',
@@ -699,6 +712,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   nl: {
     'Şeker siyah': 'Snoepzwart',
+    'Kitabınız yükleniyor': 'Je boek wordt geladen',
     'Podcast oluştur': 'Podcast maken',
     'Önce sesi test et, sonra oluştur.': 'Test eerst de stem en maak daarna de podcast.',
     'Podcast sesini seç': 'Kies podcaststem',
@@ -713,6 +727,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   no: {
     'Şeker siyah': 'Godtesvart',
+    'Kitabınız yükleniyor': 'Boken din lastes inn',
     'Podcast oluştur': 'Lag podcast',
     'Önce sesi test et, sonra oluştur.': 'Test stemmen forst, og lag den deretter.',
     'Podcast sesini seç': 'Velg podcaststemme',
@@ -727,6 +742,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   pl: {
     'Şeker siyah': 'Cukierkowa czerń',
+    'Kitabınız yükleniyor': 'Twoja ksiazka sie laduje',
     'Podcast oluştur': 'Utwórz podcast',
     'Önce sesi test et, sonra oluştur.': 'Najpierw przetestuj głos, potem utwórz podcast.',
     'Podcast sesini seç': 'Wybierz głos podcastu',
@@ -741,6 +757,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   'pt-BR': {
     'Şeker siyah': 'Preto doce',
+    'Kitabınız yükleniyor': 'Seu livro esta carregando',
     'Podcast oluştur': 'Criar podcast',
     'Önce sesi test et, sonra oluştur.': 'Teste a voz primeiro e depois crie.',
     'Podcast sesini seç': 'Escolha a voz do podcast',
@@ -755,6 +772,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   sv: {
     'Şeker siyah': 'Godissvart',
+    'Kitabınız yükleniyor': 'Din bok laddas',
     'Podcast oluştur': 'Skapa podcast',
     'Önce sesi test et, sonra oluştur.': 'Testa rosten forst och skapa sedan.',
     'Podcast sesini seç': 'Valj podcastrost',
@@ -769,6 +787,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   th: {
     'Şeker siyah': 'ดำลูกกวาด',
+    'Kitabınız yükleniyor': 'กำลังโหลดหนังสือของคุณ',
     'Podcast oluştur': 'สร้างพอดแคสต์',
     'Önce sesi test et, sonra oluştur.': 'ลองฟังเสียงก่อน แล้วค่อยสร้าง',
     'Podcast sesini seç': 'เลือกเสียงพอดแคสต์',
@@ -783,6 +802,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   tr: {
     'Şeker siyah': 'Şeker siyah',
+    'Kitabınız yükleniyor': 'Kitabınız yükleniyor',
     'Podcast oluştur': 'Podcast oluştur',
     'Önce sesi test et, sonra oluştur.': 'Önce sesi test et, sonra oluştur.',
     'Podcast sesini seç': 'Podcast sesini seç',
