@@ -5691,6 +5691,8 @@ export default function App() {
             bootstrapMessage={loadingMessage}
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
             courseOpenStates={courseOpenStateById}
+            isLoggedIn={Boolean(authUser && !isGuestSession)}
+            onRequestLogin={handleOpenLoginScreen}
           />
         );
       case 'COURSE_FLOW': {
@@ -5739,6 +5741,8 @@ export default function App() {
             bootstrapMessage={loadingMessage}
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
             courseOpenStates={courseOpenStateById}
+            isLoggedIn={Boolean(authUser && !isGuestSession)}
+            onRequestLogin={handleOpenLoginScreen}
           />
         );
       case 'PROFILE':
@@ -5775,6 +5779,8 @@ export default function App() {
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
             bootstrapMessage={loadingMessage}
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
+            isLoggedIn={Boolean(authUser && !isGuestSession)}
+            onRequestLogin={handleOpenLoginScreen}
           />
         );
     }

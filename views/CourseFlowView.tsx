@@ -2244,12 +2244,14 @@ export default function CourseFlowView({
   if (!orderedTabNodes.length) {
     return (
       <div className="view-container">
-        <div className="app-content-width px-4 pt-6">
-          <div
-            className="rounded-2xl border border-dashed px-4 py-4 text-[12px]"
-            style={{ background: 'rgba(17,22,29,0.84)', borderColor: 'rgba(173,149,124,0.12)', color: 'rgba(255,255,255,0.78)' }}
-          >
-            Bu kitap için görüntülenecek bölüm bulunamadı.
+        <div className="app-content-width px-4 pt-8">
+          <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
+            <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
+              <FaviconSpinner size={30} />
+            </div>
+            <p className="text-[12px] font-semibold text-white/88">
+              {t('Kitabınız yükleniyor')}
+            </p>
           </div>
         </div>
       </div>
@@ -3077,7 +3079,7 @@ export default function CourseFlowView({
                     {isBookLoadingPlaceholder && (
                       <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
                         <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
-                          <DownloadCircleSpinner size={30} accentColor={downloadSpinnerAccentColor} />
+                          <FaviconSpinner size={30} />
                         </div>
                         <p className="text-[12px] font-semibold text-white/88">
                           {t('Kitabınız yükleniyor')}

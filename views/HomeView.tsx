@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ViewState,
   CourseData,
@@ -45,6 +46,8 @@ interface HomeViewProps {
   bootstrapMessage?: string;
   defaultBookLanguage?: string;
   courseOpenStates?: Record<string, CourseOpenUiState>;
+  isLoggedIn?: boolean;
+  onRequestLogin?: () => void;
 }
 
 type StickyModalState = {
@@ -758,7 +761,9 @@ export default function HomeView({
   isBootstrapping = false,
   bootstrapMessage = 'Kitaplar senkronize ediliyor...',
   defaultBookLanguage = 'Turkish',
-  courseOpenStates = {}
+  courseOpenStates = {},
+  isLoggedIn = true,
+  onRequestLogin
 }: HomeViewProps) {
   const { locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
@@ -794,6 +799,7 @@ export default function HomeView({
   const generationJobPollTimerRef = useRef<number | null>(null);
   const activeGenerationJobIdRef = useRef<string | null>(null);
   const activeGenerationBookTypeRef = useRef<SmartBookBookType | null>(null);
+  const generationProgressRef = useRef<number>(0);
   const loggedGenerationUsageEntryKeysRef = useRef<Set<string>>(new Set());
   const loggedGenerationUsageFinalKeysRef = useRef<Set<string>>(new Set());
   const [stickyModal, setStickyModal] = useState<StickyModalState>({
@@ -810,6 +816,26 @@ export default function HomeView({
     courseTitle: ''
   });
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
+  const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
+
+  const requireLoginForGeneration = (): boolean => {
+    if (isLoggedIn) return false;
+    setLoginRequiredModalOpen(true);
+    return true;
+  };
+
+  const resetGenerationProgress = (next: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(next)));
+    generationProgressRef.current = clamped;
+    setGenerationProgress(clamped);
+  };
+
+  const raiseGenerationProgress = (next: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(next)));
+    const monotonic = Math.max(generationProgressRef.current, clamped);
+    generationProgressRef.current = monotonic;
+    setGenerationProgress(monotonic);
+  };
 
   function stopBookGenerationPolling(clearActiveJob = false) {
     if (generationJobPollTimerRef.current !== null) {
@@ -911,10 +937,10 @@ export default function HomeView({
     const progress = job.status === 'completed'
       ? 100
       : job.status === 'queued'
-        ? 10
-        : 18 + Math.round((completedSections / totalSections) * 74);
+        ? 6
+        : 10 + Math.round((completedSections / totalSections) * 86);
 
-    setGenerationProgress(progress);
+    raiseGenerationProgress(progress);
     setGenerationStatus(
       job.currentStepLabel?.trim()
       || (job.status === 'queued'
@@ -927,14 +953,14 @@ export default function HomeView({
     writePendingBookGenerationJob(null);
     stopBookGenerationPolling(true);
     setGenerationStatus('Kitap açılıyor...');
-    setGenerationProgress(100);
+    raiseGenerationProgress(100);
     setActiveGeneratingBookType(null);
     resetSmartBookCreationForm();
     setIsGenerating(false);
     onCourseCreate(course);
     window.setTimeout(() => {
       setGenerationStatus('');
-      setGenerationProgress(0);
+      resetGenerationProgress(0);
     }, 500);
   }
 
@@ -944,7 +970,7 @@ export default function HomeView({
     setIsGenerating(false);
     setActiveGeneratingBookType(null);
     setGenerationStatus('');
-    setGenerationProgress(0);
+    resetGenerationProgress(0);
     setSourceNotice(message);
   }
 
@@ -1040,7 +1066,7 @@ export default function HomeView({
     setSourceNotice(null);
     setActiveGeneratingBookType(pendingJob.bookType);
     setGenerationStatus('Üretim durumu kontrol ediliyor...');
-    setGenerationProgress(12);
+    resetGenerationProgress(1);
     startBookGenerationPolling(pendingJob.jobId, pendingJob.bookType, true);
   }, []);
 
@@ -1523,6 +1549,8 @@ export default function HomeView({
   };
 
   const handleCreateSmartBook = async () => {
+    if (requireLoginForGeneration()) return;
+
     const isAutoStoryMode = storyInputMode === 'auto';
     const heroNamesHint = compactInlineText(heroNamesInput);
     const topicHint = searchTerm.trim();
@@ -1572,7 +1600,7 @@ export default function HomeView({
     writePendingBookGenerationJob(null);
     setIsGenerating(true);
     setActiveGeneratingBookType(selectedBookType);
-    setGenerationProgress(5);
+    resetGenerationProgress(1);
     setSourceNotice(null);
     try {
       let resolvedTopic = topicHint;
@@ -1580,7 +1608,7 @@ export default function HomeView({
 
       if (selectedFile) {
         setGenerationStatus('Doküman analiz ediliyor...');
-        setGenerationProgress(18);
+        raiseGenerationProgress(4);
         const base64 = await readFileAsBase64(selectedFile);
         const context = await extractDocumentContext(
           base64,
@@ -1612,7 +1640,7 @@ export default function HomeView({
       const allowAiBookTitleGeneration = !topicHint;
       setActiveGeneratingBookType(selectedBookType);
       setGenerationStatus('Sunucuda üretim başlatılıyor...');
-      setGenerationProgress(28);
+      raiseGenerationProgress(6);
 
       const jobState = await startBookGenerationJob({
         topic: normalizedTopic || undefined,
@@ -2090,7 +2118,7 @@ export default function HomeView({
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${isGenerating ? Math.max(4, Math.min(100, generationProgress || 0)) : stepProgressPercent}%`,
+                      width: `${isGenerating ? Math.max(1, Math.min(100, generationProgress || 0)) : stepProgressPercent}%`,
                       background: isGenerating ? activeProgressTheme.progress : selectedBookTheme.progress
                     }}
                   />
@@ -2422,12 +2450,12 @@ export default function HomeView({
                     <div
                       className="h-full rounded-full transition-all duration-300"
                       style={{
-                        width: `${Math.max(4, Math.min(100, generationProgress || 0))}%`,
+                        width: `${Math.max(1, Math.min(100, generationProgress || 0))}%`,
                         background: activeProgressTheme.progress
                       }}
                     />
                   </div>
-                  <p className="mt-1 text-center text-[10px] text-[#b6cde8]">%{Math.max(4, Math.min(100, Math.round(generationProgress || 0)))}</p>
+                  <p className="mt-1 text-center text-[10px] text-[#b6cde8]">%{Math.max(1, Math.min(100, Math.round(generationProgress || 0)))}</p>
                 </div>
               ) : (
                 <>
@@ -2451,7 +2479,10 @@ export default function HomeView({
                   {currentVisibleStepIndex < totalVisibleStepCount - 1 ? (
                     <button
                       type="button"
-                      onClick={() => setCreationStep((prev) => getNextCreationStep(prev))}
+                      onClick={() => {
+                        if (requireLoginForGeneration()) return;
+                        setCreationStep((prev) => getNextCreationStep(prev));
+                      }}
                       disabled={!canMoveNext}
                       className={`h-10 px-4 rounded-2xl border border-dashed text-[12px] font-bold inline-flex items-center gap-1.5 ${canMoveNext
                         ? 'text-white active:scale-95'
@@ -2483,6 +2514,47 @@ export default function HomeView({
             </div>
           </form>
         </section>
+
+        {isLoginRequiredModalOpen && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[120]">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+              onClick={() => setLoginRequiredModalOpen(false)}
+              aria-label={t('Vazgeç')}
+            />
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#171f29]/95 p-4 text-center shadow-[0_24px_64px_rgba(0,0,0,0.45)]">
+                <p className="text-[15px] font-semibold text-white">
+                  {t('Üretim için giriş gerekli')}
+                </p>
+                <p className="mt-1 text-[12px] text-[#b8d0ea]">
+                  {t('Üretime devam etmek için lütfen giriş yapın.')}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLoginRequiredModalOpen(false)}
+                    className="h-12 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[14px] font-semibold text-[#d6e5f4]"
+                  >
+                    {t('Vazgeç')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginRequiredModalOpen(false);
+                      onRequestLogin?.();
+                    }}
+                    className="h-12 rounded-2xl border border-[#7eb3ef]/38 bg-[linear-gradient(135deg,rgba(35,87,152,0.95),rgba(29,72,128,0.95))] text-[14px] font-bold text-white"
+                  >
+                    {t('Giriş Yap')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {homeShelfCourses.length > 0 ? (
           <section className="pb-4">

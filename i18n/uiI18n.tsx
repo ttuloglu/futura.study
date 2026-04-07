@@ -517,6 +517,8 @@ for (const [language, translations] of Object.entries(PDF_PALETTE_UI_FALLBACK_TR
 const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
   ar: {
     'Geri': 'رجوع',
+    'Üretim için giriş gerekli': 'تسجيل الدخول مطلوب للإنتاج',
+    'Üretime devam etmek için lütfen giriş yapın.': 'يرجى تسجيل الدخول للمتابعة في الإنتاج.',
     'Şeker siyah': 'أسود حلوى',
     'Kitabınız yükleniyor': 'يتم تحميل كتابك',
     'Podcast oluştur': 'أنشئ البودكاست',
@@ -533,6 +535,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   da: {
     'Geri': 'Tilbage',
+    'Üretim için giriş gerekli': 'Login kraeves for oprettelse',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Log ind for at fortsaette med oprettelsen.',
     'Şeker siyah': 'Sliksort',
     'Kitabınız yükleniyor': 'Din bog indlaeses',
     'Podcast oluştur': 'Opret podcast',
@@ -549,6 +553,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   de: {
     'Geri': 'Zurueck',
+    'Üretim için giriş gerekli': 'Anmeldung fuer die Erstellung erforderlich',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Bitte melde dich an, um mit der Erstellung fortzufahren.',
     'Şeker siyah': 'Bonbonschwarz',
     'Kitabınız yükleniyor': 'Dein Buch wird geladen',
     'Podcast oluştur': 'Podcast erstellen',
@@ -565,6 +571,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   el: {
     'Geri': 'Πίσω',
+    'Üretim için giriş gerekli': 'Απαιτείται σύνδεση για δημιουργία',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Συνδεθείτε για να συνεχίσετε τη δημιουργία.',
     'Şeker siyah': 'Mavro karamela',
     'Kitabınız yükleniyor': 'To vivlio sas fortonetai',
     'Podcast oluştur': 'Dimiourgise podcast',
@@ -581,6 +589,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   en: {
     'Geri': 'Back',
+    'Üretim için giriş gerekli': 'Login required for generation',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Please log in to continue generating.',
     'Şeker siyah': 'Candy black',
     'Kitabınız yükleniyor': 'Your book is loading',
     'Podcast oluştur': 'Create podcast',
@@ -597,6 +607,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   es: {
     'Geri': 'Atras',
+    'Üretim için giriş gerekli': 'Se requiere inicio de sesion para generar',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Inicia sesion para continuar con la generacion.',
     'Şeker siyah': 'Negro dulce',
     'Kitabınız yükleniyor': 'Tu libro se esta cargando',
     'Podcast oluştur': 'Crear podcast',
@@ -613,6 +625,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   fi: {
     'Geri': 'Takaisin',
+    'Üretim için giriş gerekli': 'Luonti vaatii kirjautumisen',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Kirjaudu sisaan jatkaaksesi luontia.',
     'Şeker siyah': 'Karkkimusta',
     'Kitabınız yükleniyor': 'Kirjaasi ladataan',
     'Podcast oluştur': 'Luo podcast',
@@ -629,6 +643,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   fr: {
     'Geri': 'Retour',
+    'Üretim için giriş gerekli': 'Connexion requise pour la generation',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Connectez-vous pour continuer la generation.',
     'Şeker siyah': 'Noir bonbon',
     'Kitabınız yükleniyor': 'Votre livre se charge',
     'Podcast oluştur': 'Creer le podcast',
@@ -645,6 +661,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   hi: {
     'Geri': 'वापस',
+    'Üretim için giriş gerekli': 'उत्पादन के लिए लॉगिन आवश्यक है',
+    'Üretime devam etmek için lütfen giriş yapın.': 'उत्पादन जारी रखने के लिए कृपया लॉगिन करें।',
     'Şeker siyah': 'Candy kala',
     'Kitabınız yükleniyor': 'Aapki kitab load ho rahi hai',
     'Podcast oluştur': 'Podcast banaen',
@@ -661,6 +679,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   id: {
     'Geri': 'Kembali',
+    'Üretim için giriş gerekli': 'Login diperlukan untuk produksi',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Silakan login untuk melanjutkan produksi.',
     'Şeker siyah': 'Hitam permen',
     'Kitabınız yükleniyor': 'Bukumu sedang dimuat',
     'Podcast oluştur': 'Buat podcast',
@@ -677,6 +697,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   it: {
     'Geri': 'Indietro',
+    'Üretim için giriş gerekli': 'Accesso richiesto per la generazione',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Effettua il login per continuare la generazione.',
     'Şeker siyah': 'Nero zucchero',
     'Kitabınız yükleniyor': 'Il tuo libro si sta caricando',
     'Podcast oluştur': 'Crea podcast',
@@ -693,6 +715,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   ja: {
     'Geri': '戻る',
+    'Üretim için giriş gerekli': '生成にはログインが必要です',
+    'Üretime devam etmek için lütfen giriş yapın.': '生成を続けるにはログインしてください。',
     'Şeker siyah': 'キャンディーブラック',
     'Kitabınız yükleniyor': 'あなたの本を読み込み中',
     'Podcast oluştur': 'ポッドキャストを作成',
@@ -709,6 +733,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   ko: {
     'Geri': '뒤로',
+    'Üretim için giriş gerekli': '생성을 하려면 로그인이 필요합니다',
+    'Üretime devam etmek için lütfen giriş yapın.': '생성을 계속하려면 로그인해 주세요.',
     'Şeker siyah': '캔디 블랙',
     'Kitabınız yükleniyor': '책을 불러오는 중입니다',
     'Podcast oluştur': '팟캐스트 만들기',
@@ -725,6 +751,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   nl: {
     'Geri': 'Terug',
+    'Üretim için giriş gerekli': 'Inloggen is vereist voor genereren',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Log in om door te gaan met genereren.',
     'Şeker siyah': 'Snoepzwart',
     'Kitabınız yükleniyor': 'Je boek wordt geladen',
     'Podcast oluştur': 'Podcast maken',
@@ -741,6 +769,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   no: {
     'Geri': 'Tilbake',
+    'Üretim için giriş gerekli': 'Innlogging kreves for generering',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Logg inn for a fortsette genereringen.',
     'Şeker siyah': 'Godtesvart',
     'Kitabınız yükleniyor': 'Boken din lastes inn',
     'Podcast oluştur': 'Lag podcast',
@@ -757,6 +787,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   pl: {
     'Geri': 'Wstecz',
+    'Üretim için giriş gerekli': 'Logowanie wymagane do generowania',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Zaloguj sie, aby kontynuowac generowanie.',
     'Şeker siyah': 'Cukierkowa czerń',
     'Kitabınız yükleniyor': 'Twoja ksiazka sie laduje',
     'Podcast oluştur': 'Utwórz podcast',
@@ -773,6 +805,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   'pt-BR': {
     'Geri': 'Voltar',
+    'Üretim için giriş gerekli': 'Login necessario para gerar',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Faca login para continuar a geracao.',
     'Şeker siyah': 'Preto doce',
     'Kitabınız yükleniyor': 'Seu livro esta carregando',
     'Podcast oluştur': 'Criar podcast',
@@ -789,6 +823,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   sv: {
     'Geri': 'Tillbaka',
+    'Üretim için giriş gerekli': 'Inloggning kravs for generering',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Logga in for att fortsatta genereringen.',
     'Şeker siyah': 'Godissvart',
     'Kitabınız yükleniyor': 'Din bok laddas',
     'Podcast oluştur': 'Skapa podcast',
@@ -805,6 +841,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   th: {
     'Geri': 'ย้อนกลับ',
+    'Üretim için giriş gerekli': 'ต้องเข้าสู่ระบบเพื่อสร้าง',
+    'Üretime devam etmek için lütfen giriş yapın.': 'โปรดเข้าสู่ระบบเพื่อสร้างต่อ',
     'Şeker siyah': 'ดำลูกกวาด',
     'Kitabınız yükleniyor': 'กำลังโหลดหนังสือของคุณ',
     'Podcast oluştur': 'สร้างพอดแคสต์',
@@ -821,6 +859,8 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
   },
   tr: {
     'Geri': 'Geri',
+    'Üretim için giriş gerekli': 'Üretim için giriş gerekli',
+    'Üretime devam etmek için lütfen giriş yapın.': 'Üretime devam etmek için lütfen giriş yapın.',
     'Şeker siyah': 'Şeker siyah',
     'Kitabınız yükleniyor': 'Kitabınız yükleniyor',
     'Podcast oluştur': 'Podcast oluştur',
