@@ -14,6 +14,10 @@ const EXPORT_NATIVE_ASSET_TIMEOUT_MS = 15000;
 const MAX_PDF_INLINE_IMAGES = 8;
 const MAX_EPUB_IMAGE_ASSETS = 10;
 const DEFAULT_PDF_PAGE_BACKGROUND_COLOR = '#d9f2ff';
+const EXPORT_IMAGE_OPTIMIZE_MAX_DIMENSION_PX = 1800;
+const EXPORT_IMAGE_JPEG_QUALITY = 0.9;
+const EXPORT_IMAGE_MIN_BYTES_FOR_OPTIMIZATION = 280 * 1024;
+const EXPORT_IMAGE_MIN_SAVINGS_RATIO = 0.97;
 const PDF_PAGE_WIDTH_PT = 595.28;
 const PDF_PAGE_HORIZONTAL_MARGIN_PT = 40;
 const PDF_TEXT_BLOCK_WIDTH_PT = PDF_PAGE_WIDTH_PT - PDF_PAGE_HORIZONTAL_MARGIN_PT * 2;
@@ -150,14 +154,17 @@ const fetchImageAsBase64 = async (url: string): Promise<string | null> => {
 
     try {
         if (/^data:image\//i.test(normalizedUrl)) {
-            return ensurePdfCompatibleImageDataUrl(normalizedUrl);
+            const optimizedInlineImage = await optimizeImageDataUrlForExport(normalizedUrl);
+            const candidate = optimizedInlineImage || normalizedUrl;
+            return ensurePdfCompatibleImageDataUrl(candidate);
         }
 
         const blob = await fetchAssetBlob(normalizedUrl);
         if (!blob) {
             throw new Error('Blob could not be loaded');
         }
-        const dataUrl = await blobToDataUrl(blob);
+        const optimizedBlob = await optimizeImageBlobForExport(blob);
+        const dataUrl = await blobToDataUrl(optimizedBlob);
         if (!dataUrl) return null;
         const compatibleDataUrl = await ensurePdfCompatibleImageDataUrl(dataUrl);
         if (!compatibleDataUrl) {
@@ -1764,6 +1771,91 @@ const ensureBlobMediaType = async (blob: Blob, url?: string): Promise<Blob> => {
     return blob;
 };
 
+const isOptimizableImageMediaType = (mediaType: string): boolean => {
+    const normalized = String(mediaType || '').toLowerCase();
+    return normalized === 'image/jpeg'
+        || normalized === 'image/jpg'
+        || normalized === 'image/png'
+        || normalized === 'image/webp';
+};
+
+const loadImageFromBlob = (blob: Blob): Promise<HTMLImageElement | null> =>
+    new Promise((resolve) => {
+        if (typeof document === 'undefined' || typeof URL === 'undefined') {
+            resolve(null);
+            return;
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        const image = new Image();
+        image.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(image);
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(null);
+        };
+        image.src = objectUrl;
+    });
+
+const optimizeImageBlobForExport = async (blob: Blob): Promise<Blob> => {
+    if (typeof document === 'undefined') return blob;
+
+    const sourceType = String(blob.type || '').split(';')[0].trim().toLowerCase();
+    if (!isOptimizableImageMediaType(sourceType)) return blob;
+
+    const image = await loadImageFromBlob(blob);
+    if (!image) return blob;
+
+    const sourceWidth = image.naturalWidth || image.width || 0;
+    const sourceHeight = image.naturalHeight || image.height || 0;
+    if (!sourceWidth || !sourceHeight) return blob;
+
+    const longestSide = Math.max(sourceWidth, sourceHeight);
+    const shouldResize = longestSide > EXPORT_IMAGE_OPTIMIZE_MAX_DIMENSION_PX;
+    const shouldReencode = shouldResize || blob.size >= EXPORT_IMAGE_MIN_BYTES_FOR_OPTIMIZATION || sourceType !== 'image/jpeg';
+    if (!shouldReencode) return blob;
+
+    const scale = shouldResize ? (EXPORT_IMAGE_OPTIMIZE_MAX_DIMENSION_PX / longestSide) : 1;
+    const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+    const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return blob;
+
+    // Flatten image onto white to safely convert png/webp inputs into compact jpeg output.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const optimizedBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(
+            (result) => resolve(result),
+            'image/jpeg',
+            EXPORT_IMAGE_JPEG_QUALITY
+        );
+    });
+    if (!optimizedBlob) return blob;
+
+    if (!shouldResize && sourceType === 'image/jpeg' && optimizedBlob.size >= blob.size * EXPORT_IMAGE_MIN_SAVINGS_RATIO) {
+        return blob;
+    }
+    if (!shouldResize && optimizedBlob.size >= blob.size) {
+        return blob;
+    }
+    return optimizedBlob;
+};
+
+const optimizeImageDataUrlForExport = async (dataUrl: string): Promise<string | null> => {
+    const inlineBlob = dataUrlToBlob(dataUrl);
+    if (!inlineBlob) return null;
+    const normalizedBlob = await ensureBlobMediaType(inlineBlob, dataUrl);
+    const optimizedBlob = await optimizeImageBlobForExport(normalizedBlob);
+    return blobToDataUrl(optimizedBlob);
+};
+
 const fetchAssetBlobViaNativeFilesystem = async (url: string): Promise<Blob | null> => {
     if (!isNativeExportRuntime()) return null;
     if (!/^https?:\/\//i.test(String(url || '').trim())) return null;
@@ -2064,6 +2156,8 @@ class EpubAssetCollector {
         let blob = rawBlob;
         if (kind === 'audio') {
             blob = await maybeCompressAudioForEpub(rawBlob, url);
+        } else if (kind === 'image') {
+            blob = await optimizeImageBlobForExport(rawBlob);
         }
 
         const mediaType = inferMediaType(blob, url);

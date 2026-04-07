@@ -127,11 +127,11 @@ const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
     actionGlow: 'rgba(16, 185, 129, 0.28)'
   },
   novel: {
-    tone: { border: 'rgba(59, 130, 246, 0.68)', fill: 'rgba(59, 130, 246, 0.2)', glow: 'rgba(59, 130, 246, 0.28)' },
-    progress: 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(35,67,123,0.94) 0%, rgba(25,51,97,0.94) 100%)',
-    actionBorder: 'rgba(96, 165, 250, 0.72)',
-    actionGlow: 'rgba(59, 130, 246, 0.28)'
+    tone: { border: 'rgba(239, 68, 68, 0.68)', fill: 'rgba(239, 68, 68, 0.2)', glow: 'rgba(239, 68, 68, 0.28)' },
+    progress: 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
+    actionBackground: 'linear-gradient(135deg, rgba(127,29,29,0.94) 0%, rgba(153,27,27,0.94) 100%)',
+    actionBorder: 'rgba(248, 113, 113, 0.72)',
+    actionGlow: 'rgba(239, 68, 68, 0.28)'
   }
 };
 

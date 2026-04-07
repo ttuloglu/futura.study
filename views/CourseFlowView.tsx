@@ -627,6 +627,7 @@ export default function CourseFlowView({
   const [pulseTabNodeId, setPulseTabNodeId] = useState<string | null>(null);
   const [progressPulse, setProgressPulse] = useState(false);
   const [isReadingFullscreen, setIsReadingFullscreen] = useState(false);
+  const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
   const [podcastGenerationVisualProgress, setPodcastGenerationVisualProgress] = useState(6);
   const [hydratedContentNodeIds, setHydratedContentNodeIds] = useState<string[]>([]);
   const podcastGenerationProgressRef = useRef<{
@@ -766,6 +767,17 @@ export default function CourseFlowView({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isReadingFullscreen]);
+
+  useEffect(() => {
+    if (!coverPreviewImageUrl) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setCoverPreviewImageUrl(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [coverPreviewImageUrl]);
 
   useEffect(() => {
     const isGeneratingPodcast = activeExportKey === 'podcast-generate';
@@ -2448,6 +2460,31 @@ export default function CourseFlowView({
           </div>
         </div>
       )}
+      {coverPreviewImageUrl && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/78 backdrop-blur-[3px] flex items-center justify-center p-4"
+          onClick={() => setCoverPreviewImageUrl(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-[calc(env(safe-area-inset-top,0px)+14px)] z-[71] rounded-full border border-dashed p-2 text-white/90"
+            style={{ background: 'rgba(17,22,29,0.82)', borderColor: 'rgba(173,149,124,0.22)' }}
+            onClick={(event) => {
+              event.stopPropagation();
+              setCoverPreviewImageUrl(null);
+            }}
+            aria-label={t('Kapat')}
+          >
+            <X size={18} />
+          </button>
+          <img
+            src={coverPreviewImageUrl}
+            alt={`${courseData.topic} ${t('Kitap kapağı')}`}
+            className="max-h-[92vh] max-w-[95vw] object-contain rounded-md shadow-[0_22px_40px_-24px_rgba(0,0,0,0.95)]"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
       <div className="app-content-width">
         {!isReadingFullscreen && (
           <header className="pt-0 pb-6">
@@ -2471,7 +2508,11 @@ export default function CourseFlowView({
                         <img
                           src={courseData.coverImageUrl}
                           alt={`${courseData.topic} ${t('Kitap kapağı')}`}
-                          className="absolute inset-0 w-full h-full object-contain object-center border-0"
+                          className="absolute inset-0 w-full h-full object-contain object-center border-0 cursor-zoom-in"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCoverPreviewImageUrl(courseData.coverImageUrl || null);
+                          }}
                         />
                       </>
                     )}

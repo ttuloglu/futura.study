@@ -90,9 +90,10 @@ const OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_TTS_API_URL = "https://api.openai.com/v1/audio/speech";
 const XAI_IMAGE_API_URL = "https://api.x.ai/v1/images/generations";
 const CONTENT_COMPLETION_MARKER = "[[SMARTBOOK_END]]";
-const FAIRY_TALE_TOTAL_IMAGE_COUNT = 5;
+const FAIRY_TALE_TOTAL_IMAGE_COUNT = 4;
 const STORY_TOTAL_IMAGE_COUNT = 4;
 const NOVEL_TOTAL_IMAGE_COUNT = 5;
+const XAI_IMAGE_PROMPT_MAX_CHARS = 7_500;
 const PODCAST_VOICE_OPTIONS = [
   "Kore",
   "Leda",
@@ -1659,6 +1660,92 @@ function getImageCountPlanByBookType(bookType: SmartBookBookType): { lecture: nu
   return { lecture: 1, remedial: 0, total: NOVEL_TOTAL_IMAGE_COUNT };
 }
 
+function getNarrativeFourPanelImageCountByBookType(bookType: SmartBookBookType): number {
+  if (bookType === "fairy_tale") return 0;
+  if (bookType === "story") return 2;
+  if (bookType === "novel") return 2;
+  return 0;
+}
+
+function pickEvenlySpacedSectionIndexes(totalSections: number, desiredCount: number): number[] {
+  const total = Math.max(1, Math.floor(totalSections || 1));
+  const count = Math.max(0, Math.min(total, Math.floor(desiredCount || 0)));
+  if (count <= 0) return [];
+  if (count >= total) {
+    return Array.from({ length: total }, (_, index) => index + 1);
+  }
+
+  const out: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const raw = count === 1
+      ? 1
+      : Math.round((i * (total - 1)) / (count - 1)) + 1;
+    const minAllowed = i === 0 ? 1 : out[i - 1] + 1;
+    const maxAllowed = total - ((count - 1) - i);
+    out.push(Math.max(minAllowed, Math.min(maxAllowed, raw)));
+  }
+  return out;
+}
+
+function pickEvenlySpacedFromOrdered(values: number[], desiredCount: number): number[] {
+  if (!Array.isArray(values) || values.length === 0) return [];
+  const unique = Array.from(new Set(values.map((value) => Math.max(1, Math.floor(value))))).sort((a, b) => a - b);
+  const count = Math.max(0, Math.min(unique.length, Math.floor(desiredCount || 0)));
+  if (count <= 0) return [];
+  if (count >= unique.length) return unique;
+
+  const picked: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const rawIndex = count === 1
+      ? 0
+      : Math.round((i * (unique.length - 1)) / (count - 1));
+    const index = Math.max(0, Math.min(unique.length - 1, rawIndex));
+    const value = unique[index];
+    if (!picked.includes(value)) {
+      picked.push(value);
+    }
+  }
+  if (picked.length >= count) return picked.sort((a, b) => a - b);
+
+  for (const value of unique) {
+    if (!picked.includes(value)) picked.push(value);
+    if (picked.length >= count) break;
+  }
+  return picked.sort((a, b) => a - b);
+}
+
+function resolveNarrativeSectionVisualPlan(
+  bookType: SmartBookBookType,
+  narrativeContext?: { outlinePositions: { current: number; total: number } }
+): { imageCount: number; useFourPanelComposite: boolean } {
+  if (!narrativeContext) {
+    return { imageCount: 1, useFourPanelComposite: false };
+  }
+
+  const sectionIndex = Math.max(1, Math.floor(Number(narrativeContext.outlinePositions.current) || 1));
+  const totalSections = Math.max(1, Math.floor(Number(narrativeContext.outlinePositions.total) || 1));
+  const totalVisualCount = getImageCountPlanByBookType(bookType).total;
+  const visualSections = pickEvenlySpacedSectionIndexes(totalSections, totalVisualCount);
+  if (!visualSections.includes(sectionIndex)) {
+    return { imageCount: 0, useFourPanelComposite: false };
+  }
+
+  const desiredCompositeCount = Math.min(
+    getNarrativeFourPanelImageCountByBookType(bookType),
+    Math.max(0, totalVisualCount - 1)
+  );
+  const interiorVisualSections = visualSections.filter((value, index) => index > 0 && index < visualSections.length - 1);
+  const compositeCandidates = interiorVisualSections.length >= desiredCompositeCount
+    ? interiorVisualSections
+    : visualSections;
+  const compositeSections = pickEvenlySpacedFromOrdered(compositeCandidates, desiredCompositeCount);
+
+  return {
+    imageCount: 1,
+    useFourPanelComposite: compositeSections.includes(sectionIndex)
+  };
+}
+
 function getNarrativeInteriorVisualTargetForBookType(bookType: SmartBookBookType): number {
   if (bookType === "fairy_tale") return FAIRY_TALE_TOTAL_IMAGE_COUNT;
   if (bookType === "story") return STORY_TOTAL_IMAGE_COUNT;
@@ -1670,25 +1757,8 @@ function getNarrativeLectureImageCount(
   audienceLevel: SmartBookAudienceLevel,
   narrativeContext?: { outlinePositions: { current: number; total: number } }
 ): number {
-  if (!narrativeContext) return 1;
-  const sectionIndex = Math.max(1, Math.floor(Number(narrativeContext.outlinePositions.current) || 1));
-  const totalSections = Math.max(1, Math.floor(Number(narrativeContext.outlinePositions.total) || 1));
-
-  if (bookType === "fairy_tale") {
-    if (audienceLevel === "1-3" && sectionIndex >= totalSections) {
-      return 0;
-    }
-    return 1;
-  }
-
-  if (bookType === "story" || bookType === "novel") {
-    const middleLeft = Math.max(1, Math.floor(totalSections / 2));
-    const middleRight = Math.min(totalSections, middleLeft + 1);
-    const isMiddleBand = sectionIndex === middleLeft || sectionIndex === middleRight;
-    return isMiddleBand ? 2 : 1;
-  }
-
-  return 1;
+  void audienceLevel;
+  return resolveNarrativeSectionVisualPlan(bookType, narrativeContext).imageCount;
 }
 
 function buildTargetPageCount(
@@ -3157,6 +3227,11 @@ async function requestLowQualityLessonImages(
     modelOverride?: string;
   }
 ): Promise<ImageGenerationResult> {
+  const normalizedPrompt = String(prompt || "")
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, XAI_IMAGE_PROMPT_MAX_CHARS);
   const requestedModel = String(options?.modelOverride || "").trim();
   const requestedModelAllowed =
     requestedModel &&
@@ -3181,22 +3256,14 @@ async function requestLowQualityLessonImages(
     return [
       {
         model,
-        prompt,
-        n: count,
-        aspect_ratio: aspectRatio,
-        resolution: "2k",
-        response_format: "b64_json"
-      },
-      {
-        model,
-        prompt,
+        prompt: normalizedPrompt,
         n: count,
         aspect_ratio: aspectRatio,
         response_format: "b64_json"
       },
       {
         model,
-        prompt,
+        prompt: normalizedPrompt,
         n: count,
         aspect_ratio: aspectRatio
       }
@@ -3221,16 +3288,35 @@ async function requestLowQualityLessonImages(
           signal: controller.signal
         });
 
-        const json = (await response.json()) as {
+        const rawBody = await response.text();
+        let json: {
           data?: Array<Record<string, unknown>>;
           error?: { message?: string };
-        };
+          usage?: unknown;
+        } = {};
+        try {
+          json = rawBody ? JSON.parse(rawBody) as typeof json : {};
+        } catch {
+          json = {};
+        }
 
         if (!response.ok) {
+          const rawBodyPreview = rawBody.replace(/\s+/g, " ").trim().slice(0, 220);
           lastErrorMessage =
             typeof json.error?.message === "string" && json.error.message.trim()
               ? json.error.message.trim()
+              : rawBodyPreview
+                ? `xAI image API error: ${response.status} - ${rawBodyPreview}`
               : `xAI image API error: ${response.status}`;
+          if (response.status === 400) {
+            logger.warn("xAI image request rejected", {
+              model,
+              aspectRatio,
+              count,
+              promptChars: normalizedPrompt.length,
+              error: lastErrorMessage.slice(0, 220)
+            });
+          }
           continue;
         }
 
@@ -3264,9 +3350,9 @@ async function requestLowQualityLessonImages(
         if (images.length >= count) {
           const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
           const finalUsage: TokenUsageMetrics = {
-            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt),
+            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
             outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt))
+            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
           };
           return { images: images.slice(0, count), model, usage: finalUsage };
         }
@@ -3274,9 +3360,9 @@ async function requestLowQualityLessonImages(
         if (images.length > 0) {
           const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
           const finalUsage: TokenUsageMetrics = {
-            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt),
+            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
             outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt))
+            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
           };
           return { images, model, usage: finalUsage };
         }
@@ -3310,6 +3396,11 @@ async function requestAcademicPosterImagesWithXai(
   prompt: string,
   count: number
 ): Promise<ImageGenerationResult> {
+  const normalizedPrompt = String(prompt || "")
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, XAI_IMAGE_PROMPT_MAX_CHARS);
   const modelCandidates = Array.from(
     new Set([XAI_VISUAL_MODEL, "grok-imagine-image"].filter((model) => model.length > 0))
   );
@@ -3317,15 +3408,14 @@ async function requestAcademicPosterImagesWithXai(
   const buildPayloadVariants = (model: string): Array<Record<string, unknown>> => [
     {
       model,
-      prompt,
+      prompt: normalizedPrompt,
       n: count,
       aspect_ratio: "16:9",
-      resolution: "2k",
       response_format: "b64_json"
     },
     {
       model,
-      prompt,
+      prompt: normalizedPrompt,
       n: count,
       aspect_ratio: "16:9"
     }
@@ -3349,16 +3439,34 @@ async function requestAcademicPosterImagesWithXai(
           signal: controller.signal
         });
 
-        const json = (await response.json()) as {
+        const rawBody = await response.text();
+        let json: {
           data?: Array<Record<string, unknown>>;
           error?: { message?: string };
-        };
+          usage?: unknown;
+        } = {};
+        try {
+          json = rawBody ? JSON.parse(rawBody) as typeof json : {};
+        } catch {
+          json = {};
+        }
 
         if (!response.ok) {
+          const rawBodyPreview = rawBody.replace(/\s+/g, " ").trim().slice(0, 220);
           lastErrorMessage =
             typeof json.error?.message === "string" && json.error.message.trim()
               ? json.error.message.trim()
+              : rawBodyPreview
+                ? `xAI image API error: ${response.status} - ${rawBodyPreview}`
               : `xAI image API error: ${response.status}`;
+          if (response.status === 400) {
+            logger.warn("xAI academic image request rejected", {
+              model,
+              count,
+              promptChars: normalizedPrompt.length,
+              error: lastErrorMessage.slice(0, 220)
+            });
+          }
           continue;
         }
 
@@ -3393,9 +3501,9 @@ async function requestAcademicPosterImagesWithXai(
         if (images.length >= count) {
           const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
           const finalUsage: TokenUsageMetrics = {
-            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt),
+            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
             outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt))
+            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
           };
           return { images: images.slice(0, count), model, usage: finalUsage };
         }
@@ -3403,9 +3511,9 @@ async function requestAcademicPosterImagesWithXai(
         if (images.length > 0) {
           const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
           const finalUsage: TokenUsageMetrics = {
-            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt),
+            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
             outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(prompt))
+            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
           };
           return { images, model, usage: finalUsage };
         }
@@ -3561,14 +3669,83 @@ function buildNarrativeSceneCues(content: string | undefined, imageCount: number
   return cues;
 }
 
-function buildCharacterContinuityLock(characters: string): string {
+const CHARACTER_SPECIES_LOCK_RULES: Array<{ canonical: string; pattern: RegExp }> = [
+  { canonical: "rabbit", pattern: /\b(tavşan|rabbit|bunny|hare)\b/iu },
+  { canonical: "cat", pattern: /\b(kedi|cat|kitten|feline)\b/iu },
+  { canonical: "dog", pattern: /\b(köpek|kopek|dog|puppy|canine)\b/iu },
+  { canonical: "fox", pattern: /\b(tilki|fox)\b/iu },
+  { canonical: "wolf", pattern: /\b(kurt|wolf)\b/iu },
+  { canonical: "bear", pattern: /\b(ayı|ayi|bear)\b/iu },
+  { canonical: "deer", pattern: /\b(geyik|deer|doe|stag)\b/iu },
+  { canonical: "mouse", pattern: /\b(fare|mouse|mice)\b/iu },
+  { canonical: "bird", pattern: /\b(kuş|kus|bird|sparrow|owl|crow)\b/iu },
+  { canonical: "dragon", pattern: /\b(ejderha|dragon)\b/iu }
+];
+
+function extractSpeciesIdentityLocks(inputs: Array<string | undefined>): string[] {
+  const combined = inputs
+    .map((value) => String(value || ""))
+    .join("\n")
+    .replace(/\s+/g, " ");
+  if (!combined.trim()) return [];
+
+  const locks: string[] = [];
+  for (const rule of CHARACTER_SPECIES_LOCK_RULES) {
+    if (rule.pattern.test(combined)) {
+      locks.push(rule.canonical);
+    }
+  }
+  return locks;
+}
+
+function buildFourPanelActionVariationGuide(): string {
+  return `
+Panel diversity lock (hard):
+- Panel 1 must show setup/intent before major movement.
+- Panel 2 must show progression/motion (a clearly different action).
+- Panel 3 must show obstacle/turning point (new spatial relation).
+- Panel 4 must show consequence/result after the turning point.
+- Use a different dominant action verb per panel; repeating the same chase/pose/action loop across all panels is forbidden.
+- At least two panels must differ in camera distance (e.g., wide vs medium/close) and character pose.
+  `.trim();
+}
+
+function buildNarrativeFourPanelCues(content: string | undefined): string[] {
+  const baseCues = buildNarrativeSceneCues(content, 4);
+  const phasePrefix = [
+    "Setup beat:",
+    "Progression beat:",
+    "Turning beat:",
+    "Result beat:"
+  ];
+  return baseCues.map((cue, index) => `${phasePrefix[index] || `Beat ${index + 1}:`} ${cue}`.slice(0, 740));
+}
+
+function buildCharacterContinuityLock(
+  characters: string,
+  options?: {
+    sectionContent?: string;
+    storySoFarContent?: string;
+  }
+): string {
   const safeCharacters = compactInline(characters, 320) || "Ana karakter seti";
+  const speciesLocks = extractSpeciesIdentityLocks([
+    characters,
+    options?.storySoFarContent,
+    options?.sectionContent
+  ]);
+  const speciesLockLine = speciesLocks.length
+    ? `- Species identity lock: ${speciesLocks.join(", ")}. If a recurring character is one of these, NEVER replace it with another species.`
+    : "- Species identity lock: if the protagonist species was established earlier, keep it unchanged in all later visuals.";
   return `
 Character continuity lock (mandatory):
 - Keep recurring characters IDENTICAL across all visuals in this book sequence.
 - Preserve the same facial identity (face shape, eyes, nose, mouth proportions), hair color/style, skin tone, and body proportions.
 - Keep signature outfit colors and key accessories stable unless the section explicitly changes them.
 - Only pose, expression, and camera angle may change between scenes.
+- HARD ban: never swap identity class (example: rabbit -> cat, cat -> rabbit, fox -> wolf).
+- If the current section omits species/name details, inherit the established identity from previous sections.
+${speciesLockLine}
 - Character roster reference: ${safeCharacters}
   `.trim();
 }
@@ -3581,19 +3758,26 @@ function buildFairyTaleSectionImagePrompt(
   audienceLevel: SmartBookAudienceLevel,
   sectionIndex: number,
   totalSections: number,
-  previousSectionContent?: string
+  previousSectionContent?: string,
+  storySoFarContent?: string,
+  useFourPanelCompositeForSection: boolean = false
 ): string {
   const characters = compactInline(creativeBrief?.characters, 320) || "Masalın ana karakterleri";
   const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Masalın geçtiği ana mekan";
   const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Belirsiz masal zamanı";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || "Masal";
   const styleLine = buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, subGenre, false);
-  const continuityLock = buildCharacterContinuityLock(characters);
-  const sectionExcerpt = String(sectionContent || "").trim().slice(0, 5000);
-  const previousExcerpt = String(previousSectionContent || "").replace(/\s+/g, " ").trim().slice(-1200);
+  const continuityLock = buildCharacterContinuityLock(characters, {
+    sectionContent,
+    storySoFarContent
+  });
+  const panelVariationGuide = buildFourPanelActionVariationGuide();
+  const sectionExcerpt = String(sectionContent || "").replace(/\s+/g, " ").trim().slice(0, 2_400);
+  const previousExcerpt = String(previousSectionContent || "").replace(/\s+/g, " ").trim().slice(-650);
+  const storySoFarExcerpt = String(storySoFarContent || "").replace(/\s+/g, " ").trim().slice(-700);
 
-  if (sectionIndex >= 2 && sectionIndex <= 4) {
-    const panelCues = buildNarrativeSceneCues(sectionContent, 4);
+  if (useFourPanelCompositeForSection) {
+    const panelCues = buildNarrativeFourPanelCues(sectionContent);
     const panelBlock = panelCues
       .map((cue, index) => `${index + 1}) ${cue}`)
       .join("\n");
@@ -3621,6 +3805,12 @@ Previous section recap (scene ${Math.max(1, sectionIndex - 1)}):
 ${previousExcerpt}
 """
 ` : ""}
+${storySoFarExcerpt ? `
+Story-so-far continuity hint (for identity lock):
+"""
+${storySoFarExcerpt}
+"""
+` : ""}
 
 Visual structure requirement:
 - The output must be ONE single image.
@@ -3642,6 +3832,7 @@ Panel-to-grid mapping (mandatory):
 
 ${styleLine}
 ${continuityLock}
+${panelVariationGuide}
 
 Rules:
 1) Horizontal 16:9 only.
@@ -3679,6 +3870,12 @@ ${previousExcerpt ? `
 Previous section recap (scene ${Math.max(1, sectionIndex - 1)}):
 """
 ${previousExcerpt}
+"""
+` : ""}
+${storySoFarExcerpt ? `
+Story-so-far continuity hint (for identity lock):
+"""
+${storySoFarExcerpt}
 """
 ` : ""}
 
@@ -3810,19 +4007,32 @@ ${brainAllowed
   const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Konuya uygun dönem";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
   const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
-  const continuityLock = buildCharacterContinuityLock(characters);
+  const continuityLock = buildCharacterContinuityLock(characters, {
+    sectionContent: languageEvidenceText,
+    storySoFarContent: narrativeContext?.storySoFarContent
+  });
   const sceneCues = buildNarrativeSceneCues(languageEvidenceText, imageCount);
+  const activeSectionExcerpt = String(languageEvidenceText || "").replace(/\s+/g, " ").trim().slice(0, 2_400);
+  const panelVariationGuide = buildFourPanelActionVariationGuide();
   const totalSections = Math.max(1, narrativeContext?.outlinePositions.total || 1);
   const activeSectionIndex = Math.max(1, Math.min(totalSections, narrativeContext?.outlinePositions.current || 1));
+  const sectionVisualPlan = isNarrative
+    ? resolveNarrativeSectionVisualPlan(bookType, narrativeContext)
+    : { imageCount: imageCount, useFourPanelComposite: false };
+  const useFourPanelCompositeForSection =
+    isNarrative &&
+    bookType !== "fairy_tale" &&
+    sectionVisualPlan.useFourPanelComposite;
+  if (isNarrative && useFourPanelCompositeForSection && imageCount > 1) {
+    imageCount = 1;
+  }
   const previousChapterSnippet = String(narrativeContext?.previousChapterContent || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(-1200);
-  const targetInteriorVisualCount = getNarrativeInteriorVisualTargetForBookType(bookType);
   const narrativeImageCountForSection = (section: number): number => {
     if (!isNarrative) return imageCount;
     if (section < 1 || section > totalSections) return 0;
-    if (section > targetInteriorVisualCount) return 0;
     return getNarrativeLectureImageCount(bookType, audienceLevel, {
       outlinePositions: { current: section, total: totalSections }
     });
@@ -3850,7 +4060,9 @@ ${brainAllowed
       audienceLevel,
       activeSectionIndex,
       totalSections,
-      previousChapterSnippet
+      previousChapterSnippet,
+      narrativeContext?.storySoFarContent,
+      useFourPanelCompositeForSection
     );
     let fairyImageGenerated = false;
     let lastFairyImageError: unknown = null;
@@ -3886,7 +4098,7 @@ ${brainAllowed
     }
   } else if (isNarrative && imageCount > 1) {
     const hintsPerImage = Math.max(1, Math.ceil(storyHints.length / imageCount));
-    const sectionFourPanelCues = buildNarrativeSceneCues(languageEvidenceText, 4);
+    const sectionFourPanelCues = buildNarrativeFourPanelCues(languageEvidenceText);
     for (let i = 0; i < imageCount; i++) {
       const chunkHints = storyHints.slice(i * hintsPerImage, (i + 1) * hintsPerImage);
       const chunkBlock = chunkHints.length ? chunkHints.map((item) => `- ${item}`).join("\n") : "";
@@ -3899,8 +4111,8 @@ ${brainAllowed
       const sequenceTotal = Math.max(sequenceIndex, narrativeSequenceTotal || imageCount);
       const shouldUseFourPanelComposite =
         (bookType === "story" || bookType === "novel") &&
-        imageCount > 1 &&
-        i === imageCount - 1;
+        useFourPanelCompositeForSection &&
+        i === Math.max(0, imageCount - 1);
 
       const chunkPromptBase = shouldUseFourPanelComposite
         ? `
@@ -3917,7 +4129,7 @@ Scene index in section: ${i + 1}/${imageCount}
 Global sequence index in book timeline: ${sequenceIndex}/${sequenceTotal}
 Active section excerpt:
 """
-${String(languageEvidenceText || "").slice(0, 4500)}
+${activeSectionExcerpt}
 """
 ${previousSceneCue ? `Previous scene cue (must not be repeated):\n"""\n${previousSceneCue}\n"""` : ""}
 
@@ -3940,6 +4152,7 @@ Panel-to-grid mapping (mandatory):
 
 ${styleLine}
 ${continuityLock}
+${panelVariationGuide}
 
 Rules:
 1) Horizontal 16:9 only.
@@ -4112,8 +4325,8 @@ Rules:
     const sequenceTotal = isNarrative
       ? Math.max(sequenceIndex, resolvedNarrativeSequenceTotal)
       : imageCount;
-    const isFourPanelFairy = bookType === "fairy_tale" && imageCount === 1 && activeSectionIndex >= 2 && activeSectionIndex <= 4;
-    const isFourPanelNarrative = (bookType === "story" || bookType === "novel") && imageCount > 1 && index === imageCount - 1;
+    const isFourPanelFairy = bookType === "fairy_tale" && useFourPanelCompositeForSection && index === 0;
+    const isFourPanelNarrative = (bookType === "story" || bookType === "novel") && useFourPanelCompositeForSection && index === Math.max(0, imageCount - 1);
     const panelHint = isFourPanelFairy || isFourPanelNarrative ? " - 4 panel: 1->2->3->4 olay akışı" : "";
     return {
       dataUrl,
@@ -7378,9 +7591,14 @@ async function generateLongFormMarkdown(
   const allowEmergencyGeneration = options.allowEmergencyGeneration !== false;
 
   if (options.singlePass) {
-    const response = await ai.models.generateContent({
-      model: GEMINI_CONTENT_MODEL,
-      contents: `
+    const singlePassAttempts = isNarrativeProfile ? 3 : 2;
+    let normalized = "";
+    let responseForUsage: { usageMetadata?: unknown } | null = null;
+
+    for (let attempt = 1; attempt <= singlePassAttempts; attempt += 1) {
+      const response = await ai.models.generateContent({
+        model: GEMINI_CONTENT_MODEL,
+        contents: `
 ${basePrompt}
 
 Çıkış kuralları:
@@ -7388,22 +7606,35 @@ ${basePrompt}
 2) ${grammarInstruction}
 3) Kullanıcıya hitap eden asistan tonu kullanma.
 4) ${isNarrativeProfile
-          ? `İçerik tamamen kurmaca anlatı formatında olmalı; teknik/akademik dile kayma. Sadece düzyazı paragraf üret; şiir gibi satır satır kırma. Bölüm içine ek başlık koyma.${isFairyTaleBook ? " Masalda aşırı '-mış/-muş' zinciri kurma; doğal Türkçe zaman akışı kullan." : ""}`
-          : "İçerik doğrudan ders anlatımıyla ilerlesin."}
+            ? `İçerik tamamen kurmaca anlatı formatında olmalı; teknik/akademik dile kayma. Sadece düzyazı paragraf üret; şiir gibi satır satır kırma. Bölüm içine ek başlık koyma.${isFairyTaleBook ? " Masalda aşırı '-mış/-muş' zinciri kurma; doğal Türkçe zaman akışı kullan." : ""}`
+            : "İçerik doğrudan ders anlatımıyla ilerlesin."}
+${attempt > 1 ? "5) Önceki denemede boş içerik döndü. Bu kez eksiksiz ve dolu içerik üret." : ""}
 `.trim(),
-      config: {
-        systemInstruction: getSystemInstructionForBookType(options.bookType),
-        temperature: options.temperature ?? 1,
-        maxOutputTokens: options.maxOutputTokens
-      }
-    });
+        config: {
+          systemInstruction: getSystemInstructionForBookType(options.bookType),
+          temperature: options.temperature ?? 1,
+          maxOutputTokens: options.maxOutputTokens
+        }
+      });
 
-    const raw = response.text?.trim() || "";
-    const cleanedRaw = stripCompletionMarker(raw);
-    let normalized = stripAssistantStyleLead(normalizeMarkdownListsAndHeadings(cleanedRaw)).trim();
-    if (isNarrativeProfile) {
-      normalized = paragraphizeNarrativeText(normalized);
+      responseForUsage = response as unknown as { usageMetadata?: unknown };
+      const raw = response.text?.trim() || "";
+      const cleanedRaw = stripCompletionMarker(raw);
+      normalized = stripAssistantStyleLead(normalizeMarkdownListsAndHeadings(cleanedRaw)).trim();
+      if (isNarrativeProfile) {
+        normalized = paragraphizeNarrativeText(normalized);
+      }
+      if (normalized) break;
+
+      logger.warn("Single-pass generation returned empty content", {
+        usageLabel: options.usageLabel,
+        attempt,
+        maxAttempts: singlePassAttempts,
+        bookType: options.bookType || "academic",
+        topicHint: options.topicHint ? String(options.topicHint).slice(0, 120) : undefined
+      });
     }
+
     if (!normalized) {
       throw new HttpsError("internal", "İçerik üretilemedi. Lütfen tekrar deneyin.");
     }
@@ -7444,7 +7675,7 @@ Görev:
     const usageEntry = buildGeminiUsageEntry(
       options.usageLabel,
       GEMINI_CONTENT_MODEL,
-      (response as unknown as { usageMetadata?: unknown }).usageMetadata,
+      responseForUsage?.usageMetadata,
       basePrompt,
       normalized
     );
@@ -7989,8 +8220,10 @@ async function generateLectureContent(
   const storySoFarRaw = sanitizeNarrativeContextText(narrativeContext?.storySoFarContent);
   const previousChapterRaw = sanitizeNarrativeContextText(narrativeContext?.previousChapterContent);
   const continuityUsageEntries: UsageReportEntry[] = [];
-  let storySoFarSnippet = isFairyTale ? storySoFarRaw : storySoFarRaw.slice(-9_500);
-  const previousChapterSnippet = isFairyTale ? previousChapterRaw : previousChapterRaw.slice(-3_200);
+  const storySoFarContextLimit = isFairyTale ? 6_000 : 9_500;
+  const previousChapterContextLimit = isFairyTale ? 1_800 : 3_200;
+  let storySoFarSnippet = storySoFarRaw.slice(-storySoFarContextLimit);
+  const previousChapterSnippet = previousChapterRaw.slice(-previousChapterContextLimit);
   if (!isFairyTale && storySoFarRaw.trim()) {
     try {
       const continuityPrompt = `
@@ -8376,13 +8609,7 @@ Markdown formatında döndür.
   if (deferImageGeneration) {
     return { content: lectureContent, usageEntries: lectureUsageEntries };
   }
-  const targetInteriorVisualCount = getNarrativeInteriorVisualTargetForBookType(normalizedBrief.bookType);
-  const shouldGenerateLectureImage = !isNarrative
-    || !narrativeContext
-    || narrativeContext.outlinePositions.current <= targetInteriorVisualCount;
-  const lectureImageCount = shouldGenerateLectureImage
-    ? getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext)
-    : 0;
+  const lectureImageCount = getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
   if (lectureImageCount <= 0) {
     return { content: lectureContent, usageEntries: lectureUsageEntries };
   }
@@ -8433,15 +8660,10 @@ async function generateLectureImages(
   }
 
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, creativeBrief?.bookType, creativeBrief?.subGenre, targetPageCountRaw);
-  const isNarrative = normalizedBrief.bookType !== "academic";
-  const shouldGenerateLectureImage = !isNarrative
-    || !narrativeContext
-    || narrativeContext.outlinePositions.current <= getNarrativeInteriorVisualTargetForBookType(normalizedBrief.bookType);
-  if (!shouldGenerateLectureImage) {
+  const lectureImageCount = getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
+  if (lectureImageCount <= 0) {
     return { content: cleanContent, usageEntries: [] };
   }
-
-  const lectureImageCount = getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
   const imageResult = await generateLessonImages(
     topic,
     nodeTitle,

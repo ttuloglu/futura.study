@@ -218,6 +218,109 @@ type LocalCourseCoverCacheEntry = {
 const DATA_IMAGE_URL_PREFIX_RE = /^data:image\//i;
 const MARKDOWN_DATA_IMAGE_RE = /!\[[^\]]*]\(\s*data:image\/[^)]+\)\s*/gi;
 const MARKDOWN_DATA_IMAGE_CAPTURE_RE = /!\[([^\]]*)\]\(\s*(data:image\/[^)\s]+)\s*\)/gi;
+const SMARTBOOK_IMAGE_OPTIMIZE_MAX_DIMENSION_PX = 1800;
+const SMARTBOOK_IMAGE_JPEG_QUALITY = 0.9;
+const SMARTBOOK_IMAGE_MIN_BYTES_FOR_OPTIMIZATION = 280 * 1024;
+const SMARTBOOK_IMAGE_MIN_SAVINGS_RATIO = 0.97;
+
+function blobToDataUrlInApp(blob: Blob): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function isOptimizableSmartbookImageMimeType(mimeType: string): boolean {
+  const normalized = String(mimeType || '').toLowerCase();
+  return (
+    normalized === 'image/jpeg' ||
+    normalized === 'image/jpg' ||
+    normalized === 'image/png' ||
+    normalized === 'image/webp'
+  );
+}
+
+function loadImageFromBlobInApp(blob: Blob): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined' || typeof URL === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(null);
+    };
+    image.src = objectUrl;
+  });
+}
+
+async function optimizeImageBlobForSmartbook(blob: Blob): Promise<Blob> {
+  if (typeof document === 'undefined') return blob;
+  const sourceType = String(blob.type || '').split(';')[0].trim().toLowerCase();
+  if (!isOptimizableSmartbookImageMimeType(sourceType)) return blob;
+
+  const image = await loadImageFromBlobInApp(blob);
+  if (!image) return blob;
+
+  const sourceWidth = image.naturalWidth || image.width || 0;
+  const sourceHeight = image.naturalHeight || image.height || 0;
+  if (!sourceWidth || !sourceHeight) return blob;
+
+  const longestEdge = Math.max(sourceWidth, sourceHeight);
+  const shouldResize = longestEdge > SMARTBOOK_IMAGE_OPTIMIZE_MAX_DIMENSION_PX;
+  const shouldReencode = shouldResize || blob.size >= SMARTBOOK_IMAGE_MIN_BYTES_FOR_OPTIMIZATION || sourceType !== 'image/jpeg';
+  if (!shouldReencode) return blob;
+
+  const scale = shouldResize ? SMARTBOOK_IMAGE_OPTIMIZE_MAX_DIMENSION_PX / longestEdge : 1;
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return blob;
+
+  // Flatten to white background to preserve predictable output when source has alpha.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+  ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+  const optimized = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((value) => resolve(value), 'image/jpeg', SMARTBOOK_IMAGE_JPEG_QUALITY);
+  });
+  if (!optimized) return blob;
+
+  if (!shouldResize && sourceType === 'image/jpeg' && optimized.size >= blob.size * SMARTBOOK_IMAGE_MIN_SAVINGS_RATIO) {
+    return blob;
+  }
+  if (!shouldResize && optimized.size >= blob.size) {
+    return blob;
+  }
+  return optimized;
+}
+
+async function optimizeDataImageUrlForSmartbook(dataUrl: string): Promise<string> {
+  const normalized = String(dataUrl || '').trim();
+  if (!DATA_IMAGE_URL_PREFIX_RE.test(normalized)) return normalized;
+  try {
+    const response = await fetch(normalized);
+    if (!response.ok) return normalized;
+    const blob = await response.blob();
+    const optimizedBlob = await optimizeImageBlobForSmartbook(blob);
+    const optimizedDataUrl = await blobToDataUrlInApp(optimizedBlob);
+    return optimizedDataUrl || normalized;
+  } catch {
+    return normalized;
+  }
+}
 const pendingLocalCourseWrites = new Map<string, CourseData[]>();
 const localCourseWriteTimers = new Map<string, number>();
 const localCourseCacheWarned = new Set<string>();
@@ -954,9 +1057,14 @@ async function hydrateCourseFromBundleBlob(
     if (cached) return cached;
     const assetFile = zip.file(normalizedPath);
     if (!assetFile) return undefined;
-    const base64 = await assetFile.async('base64');
     const mimeType = inferMimeTypeFromAssetPath(normalizedPath);
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    const blob = await assetFile.async('blob');
+    const typedBlob = (blob.type || '').trim()
+      ? blob
+      : new Blob([blob], { type: mimeType });
+    const optimizedBlob = await optimizeImageBlobForSmartbook(typedBlob);
+    const dataUrl = await blobToDataUrlInApp(optimizedBlob);
+    if (!dataUrl) return undefined;
     imageAssetCache.set(normalizedPath, dataUrl);
     return dataUrl;
   };
@@ -2199,7 +2307,8 @@ export default function App() {
       throw new Error('Missing owner uid for smartbook storage path.');
     }
 
-    const cacheKey = `${safeOwnerId}:${courseId}:${simpleStableHash(relativePath)}:${simpleStableHash(dataUrl)}`;
+    const optimizedDataUrl = await optimizeDataImageUrlForSmartbook(dataUrl);
+    const cacheKey = `${safeOwnerId}:${courseId}:${simpleStableHash(relativePath)}:${simpleStableHash(optimizedDataUrl)}`;
     const cached = uploadedStorageAssetUrlByKeyRef.current.get(cacheKey);
     if (cached) return cached;
 
@@ -2207,7 +2316,7 @@ export default function App() {
     if (inFlight) return inFlight;
 
     const promise = (async () => {
-      const { ext, mimeType } = inferImageExtensionFromDataUrl(dataUrl);
+      const { ext, mimeType } = inferImageExtensionFromDataUrl(optimizedDataUrl);
       const safeCourseId = String(courseId).replace(/[^a-zA-Z0-9_-]/g, '_');
       const safeRelative = String(relativePath)
         .replace(/[^a-zA-Z0-9/_-]/g, '_')
@@ -2215,7 +2324,7 @@ export default function App() {
         .replace(/^\/+|\/+$/g, '');
       const path = `smartbooks/${safeOwnerId}/${safeCourseId}/${safeRelative}.${ext}`;
       const fileRef = storageRef(getStorage(), path);
-      await uploadString(fileRef, dataUrl, 'data_url', { contentType: mimeType });
+      await uploadString(fileRef, optimizedDataUrl, 'data_url', { contentType: mimeType });
       const downloadUrl = await getDownloadURL(fileRef);
       uploadedStorageAssetUrlByKeyRef.current.set(cacheKey, downloadUrl);
       return downloadUrl;
@@ -2336,14 +2445,15 @@ export default function App() {
     const safeCourseId = String(courseId).replace(/[^a-zA-Z0-9_-]/g, '_');
 
     const uploadBlobCoverToStorage = async (blob: Blob): Promise<string> => {
-      const mimeTypeRaw = String(blob.type || '').toLowerCase();
+      const optimizedBlob = await optimizeImageBlobForSmartbook(blob);
+      const mimeTypeRaw = String(optimizedBlob.type || blob.type || '').toLowerCase();
       const mimeType = mimeTypeRaw.startsWith('image/') ? mimeTypeRaw : 'image/png';
       const inferredExt = inferFileExtensionFromMimeType(mimeType);
       const ext = inferredExt === 'jpg' || inferredExt === 'png' || inferredExt === 'webp' || inferredExt === 'gif'
         ? inferredExt
         : 'png';
       const fileRef = storageRef(getStorage(), `smartbooks/${safeOwnerId}/${safeCourseId}/cover.${ext}`);
-      await uploadBytes(fileRef, blob, { contentType: mimeType });
+      await uploadBytes(fileRef, optimizedBlob, { contentType: mimeType });
       return await getDownloadURL(fileRef);
     };
 
