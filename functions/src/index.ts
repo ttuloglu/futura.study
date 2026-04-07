@@ -3157,116 +3157,61 @@ async function requestLowQualityLessonImages(
     modelOverride?: string;
   }
 ): Promise<ImageGenerationResult> {
-  const modelCandidates = options?.modelOverride
-    ? [String(options.modelOverride).trim()].filter(Boolean)
-    : Array.from(
-      new Set(
-        [OPENAI_COVER_MODEL, OPENAI_IMAGE_FALLBACK_MODEL]
-          .map((value) => String(value || "").trim())
-          .filter(Boolean)
-      )
-    );
+  const requestedModel = String(options?.modelOverride || "").trim();
+  const requestedModelAllowed =
+    requestedModel &&
+    !/gpt-image|openai/i.test(requestedModel);
+  const modelCandidates = Array.from(
+    new Set(
+      [
+        requestedModelAllowed ? requestedModel : "",
+        XAI_VISUAL_MODEL,
+        "grok-imagine-image"
+      ].filter((value) => String(value || "").trim().length > 0)
+    )
+  );
   const sizeMode = options?.sizeMode || "cover-3x4";
+  const aspectRatio = sizeMode === "poster-16x9"
+    ? "16:9"
+    : sizeMode === "square-1x1"
+      ? "1:1"
+      : "3:4";
 
   const buildPayloadVariants = (model: string): Array<Record<string, unknown>> => {
-    if (sizeMode === "poster-16x9") {
-      return [
-        {
-          model,
-          prompt,
-          n: count,
-          size: "1536x1024",
-          quality: "low",
-          output_format: "jpeg"
-        },
-        {
-          model,
-          prompt,
-          n: count,
-          size: "1536x1024",
-          quality: "low"
-        },
-        {
-          model,
-          prompt,
-          n: count,
-          size: "1024x1024",
-          quality: "low",
-          output_format: "jpeg"
-        },
-        {
-          model,
-          prompt,
-          n: count,
-          size: "1024x1024",
-          quality: "low"
-        }
-      ];
-    }
-
-    if (sizeMode === "square-1x1") {
-      return [
-        {
-          model,
-          prompt,
-          n: count,
-          size: "1024x1024",
-          quality: "low",
-          output_format: "jpeg"
-        },
-        {
-          model,
-          prompt,
-          n: count,
-          size: "1024x1024",
-          quality: "low"
-        }
-      ];
-    }
-
     return [
       {
         model,
         prompt,
         n: count,
-        size: "1024x1536",
-        quality: "low",
-        output_format: "jpeg"
+        aspect_ratio: aspectRatio,
+        resolution: "2k",
+        response_format: "b64_json"
       },
       {
         model,
         prompt,
         n: count,
-        size: "1024x1536",
-        quality: "low"
+        aspect_ratio: aspectRatio,
+        response_format: "b64_json"
       },
       {
         model,
         prompt,
         n: count,
-        size: "1024x1024",
-        quality: "low",
-        output_format: "jpeg"
-      },
-      {
-        model,
-        prompt,
-        n: count,
-        size: "1024x1024",
-        quality: "low"
+        aspect_ratio: aspectRatio
       }
     ];
   };
 
-  let lastErrorMessage = "Ders görselleri üretilemedi.";
+  let lastErrorMessage = "Grok görsel üretimi başarısız oldu.";
 
   for (const model of modelCandidates) {
     for (const payload of buildPayloadVariants(model)) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
       try {
-        const response = await fetch(OPENAI_IMAGE_API_URL, {
+        const response = await fetch(XAI_IMAGE_API_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -3285,7 +3230,7 @@ async function requestLowQualityLessonImages(
           lastErrorMessage =
             typeof json.error?.message === "string" && json.error.message.trim()
               ? json.error.message.trim()
-              : `OpenAI image API error: ${response.status}`;
+              : `xAI image API error: ${response.status}`;
           continue;
         }
 
@@ -3298,13 +3243,21 @@ async function requestLowQualityLessonImages(
               : typeof item.b64 === "string"
                 ? item.b64
                 : "";
-          if (!b64) continue;
-          const dataUrl = toDataImageUrlFromPayload(
-            b64,
-            item.mime_type ?? item.mimeType ?? item.content_type ?? item.contentType ?? item.format
-          );
-          if (!dataUrl) continue;
-          images.push(dataUrl);
+
+          if (b64) {
+            const dataUrl = toDataImageUrlFromPayload(
+              b64,
+              item.mime_type ?? item.mimeType ?? item.content_type ?? item.contentType ?? item.format
+            );
+            if (dataUrl) {
+              images.push(dataUrl);
+            }
+          } else {
+            const imageUrl = typeof item.url === "string" ? item.url : "";
+            const dataUrl = await convertImageUrlToDataUrl(imageUrl);
+            if (dataUrl) images.push(dataUrl);
+          }
+
           if (images.length >= count) break;
         }
 
@@ -3329,7 +3282,7 @@ async function requestLowQualityLessonImages(
         }
       } catch (error) {
         lastErrorMessage =
-          error instanceof Error ? error.message : "Ders görselleri üretilemedi.";
+          error instanceof Error ? error.message : "Grok görsel üretimi başarısız oldu.";
       } finally {
         clearTimeout(timeoutId);
       }
@@ -3840,7 +3793,7 @@ ${brainAllowed
   }
 
   if (!openAiApiKey) {
-    throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+    throw new HttpsError("failed-precondition", "XAI_API_KEY is not configured.");
   }
 
   const storyHints = Array.from(
@@ -3886,6 +3839,7 @@ ${brainAllowed
   let finalImages: string[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let resolvedImageModel = XAI_VISUAL_MODEL;
 
   if (bookType === "fairy_tale" && isNarrative && imageCount === 1) {
     const prompt = buildFairyTaleSectionImagePrompt(
@@ -3910,6 +3864,7 @@ ${brainAllowed
           finalImages = imageResult.images;
           totalInputTokens += imageResult.usage.inputTokens;
           totalOutputTokens += imageResult.usage.outputTokens;
+          resolvedImageModel = imageResult.model || resolvedImageModel;
           fairyImageGenerated = true;
         } else {
           lastFairyImageError = new Error("No fairy tale image returned.");
@@ -4045,6 +4000,7 @@ Rules:
             finalImages.push(chunkResult.images[0]);
             totalInputTokens += chunkResult.usage.inputTokens;
             totalOutputTokens += chunkResult.usage.outputTokens;
+            resolvedImageModel = chunkResult.model || resolvedImageModel;
             generatedScene = true;
           }
         } catch (error) {
@@ -4117,6 +4073,7 @@ Rules:
     finalImages = imageResult.images;
     totalInputTokens = imageResult.usage.inputTokens;
     totalOutputTokens = imageResult.usage.outputTokens;
+    resolvedImageModel = imageResult.model || resolvedImageModel;
   }
 
   if (finalImages.length === 0) {
@@ -4166,12 +4123,12 @@ Rules:
 
   const usageEntry: UsageReportEntry = {
     label: `${nodeTitle}: Bölüm görselleri`,
-    provider: "openai",
-    model: OPENAI_LECTURE_IMAGE_MODEL,
+    provider: "xai",
+    model: resolvedImageModel,
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
     totalTokens: totalInputTokens + totalOutputTokens,
-    estimatedCostUsd: costForOpenAiGptImageLow(assets.length, totalInputTokens, "poster-16x9", OPENAI_LECTURE_IMAGE_MODEL)
+    estimatedCostUsd: costForXaiImage(assets.length)
   };
   return { images: assets, usageEntry };
 }
@@ -4261,7 +4218,7 @@ ${brainAllowed
   }
 
   if (!openAiApiKey) {
-    throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+    throw new HttpsError("failed-precondition", "XAI_API_KEY is not configured.");
   }
 
   const characters = compactInline(creativeBrief?.characters, 320) || "Infer an original, path-faithful cast from the selected type, sub-genre, topic, and scene clues. Do not use stock placeholder protagonists.";
@@ -4314,17 +4271,12 @@ Rules:
 
   const usageEntry: UsageReportEntry = {
     label: "Detaylar görselleri",
-    provider: "openai",
-    model: OPENAI_REMEDIAL_IMAGE_MODEL,
+    provider: "xai",
+    model: imageResult.model || XAI_VISUAL_MODEL,
     inputTokens: imageResult.usage.inputTokens,
     outputTokens: imageResult.usage.outputTokens,
     totalTokens: imageResult.usage.totalTokens,
-    estimatedCostUsd: costForOpenAiGptImageLow(
-      assets.length,
-      imageResult.usage.inputTokens,
-      "poster-16x9",
-      OPENAI_REMEDIAL_IMAGE_MODEL
-    )
+    estimatedCostUsd: costForXaiImage(assets.length)
   };
 
   return { images: assets, usageEntry };
@@ -4339,7 +4291,7 @@ async function generateCourseCover(
   coverContext?: string
 ): Promise<{ coverImageUrl: string; usageEntry: UsageReportEntry }> {
   if (!openAiApiKey) {
-    throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+    throw new HttpsError("failed-precondition", "XAI_API_KEY is not configured.");
   }
 
   const brainAllowed = isBrainRelatedTopic(topic);
@@ -4427,12 +4379,12 @@ ${brainAllowed && !isFairyTale
   const imageCount = imageResult.images.length;
   const usageEntry: UsageReportEntry = {
     label: "Kitap kapağı",
-    provider: "openai",
-    model: imageResult.model || OPENAI_COVER_MODEL,
+    provider: "xai",
+    model: imageResult.model || XAI_VISUAL_MODEL,
     inputTokens: imageResult.usage.inputTokens,
     outputTokens: imageResult.usage.outputTokens,
     totalTokens: imageResult.usage.totalTokens,
-    estimatedCostUsd: costForOpenAiGptImageLow(imageCount, imageResult.usage.inputTokens, "cover-3x4")
+    estimatedCostUsd: costForXaiImage(imageCount)
   };
 
   return { coverImageUrl: imageResult.images[0], usageEntry };
@@ -11596,7 +11548,7 @@ export const aiGateway = onCall(
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 8,
-    secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
+    secrets: [GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY]
   },
   async (request): Promise<AiGatewayResponse> => {
     const { operation, payload } = parseRequest(request.data);
@@ -11612,7 +11564,7 @@ export const aiGateway = onCall(
     const spendReservation = await reserveAiSpendBudget(uid, operation);
 
     const ai = createGoogleGenAiClient();
-    const openAiApiKey = resolveOpenAiApiKey();
+    const imageApiKey = resolveXaiApiKey();
 
     const executeOperation = async (): Promise<AiGatewayResponse> => {
       switch (operation) {
@@ -11693,7 +11645,7 @@ export const aiGateway = onCall(
             bookType,
             subGenre
           );
-          const coverResult = await generateCourseCover(topic, bookType, openAiApiKey, ageGroup, creativeBrief, coverContext);
+          const coverResult = await generateCourseCover(topic, bookType, imageApiKey, ageGroup, creativeBrief, coverContext);
           return {
             coverImageUrl: coverResult.coverImageUrl,
             usage: buildUsageReport(operation, [coverResult.usageEntry])
@@ -11732,7 +11684,7 @@ export const aiGateway = onCall(
             ai,
             topic,
             nodeTitle,
-            openAiApiKey,
+            imageApiKey,
             ageGroup,
             creativeBrief,
             targetPageCountRaw,
@@ -11778,7 +11730,7 @@ export const aiGateway = onCall(
             topic,
             nodeTitle,
             sourceContent,
-            openAiApiKey,
+            imageApiKey,
             ageGroup,
             creativeBrief,
             targetPageCountRaw,
@@ -11888,7 +11840,7 @@ export const aiGateway = onCall(
           const remedialResult = await generateRemedialContent(
             ai,
             topic,
-            openAiApiKey,
+            imageApiKey,
             ageGroup,
             sourceContent,
             creativeBrief,
@@ -12321,9 +12273,9 @@ async function runBookGenerationJobTask(
   ]);
   assertSafeBookBrief(creativeBrief);
 
-  const openAiApiKey = resolveOpenAiApiKey();
-  if (!openAiApiKey) {
-    throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+  const imageApiKey = resolveXaiApiKey();
+  if (!imageApiKey) {
+    throw new HttpsError("failed-precondition", "XAI_API_KEY is not configured.");
   }
 
   const ai = createGoogleGenAiClient();
@@ -12392,7 +12344,7 @@ async function runBookGenerationJobTask(
       ai,
       bookTitle,
       node.title,
-      openAiApiKey,
+      imageApiKey,
       ageGroup,
       creativeBrief,
       finalTargetPageCount,
@@ -12444,7 +12396,7 @@ async function runBookGenerationJobTask(
   const coverResult = await generateCourseCover(
     bookTitle,
     bookType,
-    openAiApiKey,
+    imageApiKey,
     ageGroup,
     creativeBrief,
     buildBookJobCoverContext(generatedNodes)
@@ -12523,7 +12475,7 @@ export const processBookGenerationJobTask = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 4,
-    secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
+    secrets: [GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY]
   },
   async (event) => {
     const snapshot = event.data;
