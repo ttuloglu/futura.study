@@ -516,6 +516,7 @@ for (const [language, translations] of Object.entries(PDF_PALETTE_UI_FALLBACK_TR
 
 const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
   ar: {
+    'Geri': 'رجوع',
     'Şeker siyah': 'أسود حلوى',
     'Kitabınız yükleniyor': 'يتم تحميل كتابك',
     'Podcast oluştur': 'أنشئ البودكاست',
@@ -531,6 +532,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'ستجعل التفاصيل التي تدخلها بناء الكتاب مخصصًا لك. اكتب الشخصيات والموضوع الرئيسي والصراع والحبكة والتفاصيل التي تريد التركيز عليها معًا.'
   },
   da: {
+    'Geri': 'Tilbage',
     'Şeker siyah': 'Sliksort',
     'Kitabınız yükleniyor': 'Din bog indlaeses',
     'Podcast oluştur': 'Opret podcast',
@@ -546,6 +548,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'De detaljer, du indtaster, gor bogens plot personligt for dig. Skriv karaktererne, bogens hovedtema, konflikten, handlingsforlobet og de detaljer, du vil fokusere pa, samlet.'
   },
   de: {
+    'Geri': 'Zurueck',
     'Şeker siyah': 'Bonbonschwarz',
     'Kitabınız yükleniyor': 'Dein Buch wird geladen',
     'Podcast oluştur': 'Podcast erstellen',
@@ -561,6 +564,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Die eingegebenen Details sorgen fuer einen auf dich zugeschnittenen Buchplot. Schreibe die Figuren, das Hauptthema des Buches, den Konflikt, den Handlungsverlauf und die Details, auf die du dich konzentrieren moechtest, zusammen auf.'
   },
   el: {
+    'Geri': 'Πίσω',
     'Şeker siyah': 'Mavro karamela',
     'Kitabınız yükleniyor': 'To vivlio sas fortonetai',
     'Podcast oluştur': 'Dimiourgise podcast',
@@ -576,6 +580,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Oi leptomeries pou eisagete tha voithisoun sti dimiourgia enos bibliou prosarmosenou se esas. Grapste mazi tous charaktires, to kyrio thema tou vivliou, ti sygkrousi, tin ploti kai tis leptomeries stis opoies thelete na estiasete.'
   },
   en: {
+    'Geri': 'Back',
     'Şeker siyah': 'Candy black',
     'Kitabınız yükleniyor': 'Your book is loading',
     'Podcast oluştur': 'Create podcast',
@@ -591,6 +596,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'The details you enter will help create a book plot tailored to you. Write the characters, the book main theme, the conflict, the plotline, and the details you want to emphasize together.'
   },
   es: {
+    'Geri': 'Atras',
     'Şeker siyah': 'Negro dulce',
     'Kitabınız yükleniyor': 'Tu libro se esta cargando',
     'Podcast oluştur': 'Crear podcast',
@@ -606,6 +612,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Los detalles que ingreses ayudaran a crear una trama del libro adaptada a ti. Escribe juntos los personajes, el tema principal del libro, el conflicto, la trama y los detalles en los que quieres centrarte.'
   },
   fi: {
+    'Geri': 'Takaisin',
     'Şeker siyah': 'Karkkimusta',
     'Kitabınız yükleniyor': 'Kirjaasi ladataan',
     'Podcast oluştur': 'Luo podcast',
@@ -621,6 +628,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Kirjoittamasi yksityiskohdat auttavat rakentamaan sinulle oman kirjan juonen. Kirjoita yhdessa hahmot, kirjan paateema, ristiriita, juoni ja yksityiskohdat, joihin haluat keskittya.'
   },
   fr: {
+    'Geri': 'Retour',
     'Şeker siyah': 'Noir bonbon',
     'Kitabınız yükleniyor': 'Votre livre se charge',
     'Podcast oluştur': 'Creer le podcast',
@@ -636,6 +644,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Les details que vous saisissez aideront a creer une intrigue de livre adaptee a vous. Ecrivez ensemble les personnages, le theme principal du livre, le conflit, l intrigue et les details sur lesquels vous voulez vous concentrer.'
   },
   hi: {
+    'Geri': 'वापस',
     'Şeker siyah': 'Candy kala',
     'Kitabınız yükleniyor': 'Aapki kitab load ho rahi hai',
     'Podcast oluştur': 'Podcast banaen',
@@ -651,6 +660,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Jo vivaran aap dete hain, ve aapke liye khas kitab ki kahani banane mein madad karenge. Kirdaron, kitab ke mukhya vishay, takraav, plot aur jin baton par dhyan dena hai unhen saath mein likhen.'
   },
   id: {
+    'Geri': 'Kembali',
     'Şeker siyah': 'Hitam permen',
     'Kitabınız yükleniyor': 'Bukumu sedang dimuat',
     'Podcast oluştur': 'Buat podcast',
@@ -666,6 +676,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Detail yang kamu masukkan akan membantu membentuk alur buku yang khusus untukmu. Tulis bersama tokoh, tema utama buku, konflik, alur cerita, dan detail yang ingin kamu tonjolkan.'
   },
   it: {
+    'Geri': 'Indietro',
     'Şeker siyah': 'Nero zucchero',
     'Kitabınız yükleniyor': 'Il tuo libro si sta caricando',
     'Podcast oluştur': 'Crea podcast',
@@ -681,6 +692,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'I dettagli che inserisci aiuteranno a creare una trama del libro su misura per te. Scrivi insieme i personaggi, il tema principale del libro, il conflitto, la trama e i dettagli su cui vuoi concentrarti.'
   },
   ja: {
+    'Geri': '戻る',
     'Şeker siyah': 'キャンディーブラック',
     'Kitabınız yükleniyor': 'あなたの本を読み込み中',
     'Podcast oluştur': 'ポッドキャストを作成',
@@ -696,6 +708,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': '入力した詳細は、あなた向けの本のプロット作りに役立ちます。登場人物、本の中心テーマ、対立、筋書き、強調したい詳細をまとめて書いてください。'
   },
   ko: {
+    'Geri': '뒤로',
     'Şeker siyah': '캔디 블랙',
     'Kitabınız yükleniyor': '책을 불러오는 중입니다',
     'Podcast oluştur': '팟캐스트 만들기',
@@ -711,6 +724,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': '입력한 디테일은 당신만의 책 줄거리를 만드는 데 도움이 됩니다. 등장인물, 책의 핵심 주제, 갈등, 전개, 그리고 강조하고 싶은 디테일을 함께 적어 주세요.'
   },
   nl: {
+    'Geri': 'Terug',
     'Şeker siyah': 'Snoepzwart',
     'Kitabınız yükleniyor': 'Je boek wordt geladen',
     'Podcast oluştur': 'Podcast maken',
@@ -726,6 +740,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'De details die je invoert helpen een boekplot te maken dat bij jou past. Schrijf samen de personages, het hoofdthema van het boek, het conflict, de verhaallijn en de details waarop je je wilt richten.'
   },
   no: {
+    'Geri': 'Tilbake',
     'Şeker siyah': 'Godtesvart',
     'Kitabınız yükleniyor': 'Boken din lastes inn',
     'Podcast oluştur': 'Lag podcast',
@@ -741,6 +756,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Detaljene du skriver inn hjelper med a lage et bokplot som passer for deg. Skriv sammen karakterene, bokas hovedtema, konflikten, handlingsforlopet og detaljene du vil fokusere pa.'
   },
   pl: {
+    'Geri': 'Wstecz',
     'Şeker siyah': 'Cukierkowa czerń',
     'Kitabınız yükleniyor': 'Twoja ksiazka sie laduje',
     'Podcast oluştur': 'Utwórz podcast',
@@ -756,6 +772,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Wprowadzone szczegoly pomoga stworzyc fabule ksiazki dopasowana do Ciebie. Napisz razem bohaterow, glowny temat ksiazki, konflikt, przebieg fabuly i szczegoly, na ktorych chcesz sie skupic.'
   },
   'pt-BR': {
+    'Geri': 'Voltar',
     'Şeker siyah': 'Preto doce',
     'Kitabınız yükleniyor': 'Seu livro esta carregando',
     'Podcast oluştur': 'Criar podcast',
@@ -771,6 +788,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Os detalhes que voce inserir ajudarao a criar uma trama de livro feita para voce. Escreva juntos os personagens, o tema principal do livro, o conflito, a trama e os detalhes em que voce quer se concentrar.'
   },
   sv: {
+    'Geri': 'Tillbaka',
     'Şeker siyah': 'Godissvart',
     'Kitabınız yükleniyor': 'Din bok laddas',
     'Podcast oluştur': 'Skapa podcast',
@@ -786,6 +804,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'Detaljerna du skriver in hjalper till att skapa en bokintrig som passar dig. Skriv tillsammans karaktarerna, bokens huvudtema, konflikten, handlingen och de detaljer du vill fokusera pa.'
   },
   th: {
+    'Geri': 'ย้อนกลับ',
     'Şeker siyah': 'ดำลูกกวาด',
     'Kitabınız yükleniyor': 'กำลังโหลดหนังสือของคุณ',
     'Podcast oluştur': 'สร้างพอดแคสต์',
@@ -801,6 +820,7 @@ const UI_EXTRA_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, str
     'Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın': 'รายละเอียดที่คุณกรอกจะช่วยสร้างโครงเรื่องหนังสือที่เหมาะกับคุณ เขียนตัวละคร ธีมหลักของหนังสือ ความขัดแย้ง โครงเรื่อง และรายละเอียดที่คุณอยากเน้นรวมกันได้เลย'
   },
   tr: {
+    'Geri': 'Geri',
     'Şeker siyah': 'Şeker siyah',
     'Kitabınız yükleniyor': 'Kitabınız yükleniyor',
     'Podcast oluştur': 'Podcast oluştur',

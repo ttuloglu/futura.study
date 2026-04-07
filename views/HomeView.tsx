@@ -81,14 +81,6 @@ const APP_SURFACE_COLOR = '#1A1F26';
 const MAX_SOURCE_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const DOCUMENT_ACCEPT =
   '.pdf,.txt,.md,.markdown,.csv,.json,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const CREATION_STEP_TITLES = [
-  'Kitap Türü',
-  'Alt Tür',
-  'Yaş ve Dil',
-  'Kurgu Detayı',
-  'Mekan, Zaman ve Kitap Adı',
-  'Kahramanlar ve Kurgulayan'
-] as const;
 const BOOK_CREATING_LOOP_VIDEO_SRC = '/animations/book-creating-loop.mp4';
 const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation-job';
 
@@ -1492,12 +1484,27 @@ export default function HomeView({
     const manualStoryBlueprint = storyInputMode === 'manual' ? normalizedStoryBlueprint : '';
     const normalizedPlace = compactInlineText(settingPlaceInput);
     const normalizedTime = compactInlineText(settingTimeInput);
+    const normalizedCreatorName = compactInlineText(creatorNameInput);
+    const normalizedBookTitleInput = compactInlineText(searchTerm);
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
     const characterHints = [
       normalizedHeroNames ? `Kahraman isimleri: ${normalizedHeroNames}.` : undefined,
       manualStoryBlueprint || undefined
     ].filter(Boolean) as string[];
+    const promptFacts = [
+      `Tur: ${selectedBookType}`,
+      selectedSubGenre ? `Alt tur: ${selectedSubGenre}` : undefined,
+      normalizedBookTitleInput ? `Kitap adi: ${normalizedBookTitleInput}` : undefined,
+      normalizedHeroNames ? `Kahraman isimleri: ${normalizedHeroNames}` : undefined,
+      normalizedPlace ? `Mekan: ${normalizedPlace}` : undefined,
+      normalizedTime ? `Zaman: ${normalizedTime}` : undefined,
+      normalizedCreatorName ? `Kurgulayan: ${normalizedCreatorName}` : undefined
+    ].filter(Boolean) as string[];
+    const promptFactsBlock = promptFacts.length > 0
+      ? `Kullanici baglami (zorunlu): ${promptFacts.join(' | ')}.`
+      : undefined;
     const customInstructionParts = [
+      promptFactsBlock,
       manualStoryBlueprint || undefined,
       normalizedLanguageText ? `Üretim dili zorunluluğu: ${normalizedLanguageText}.` : undefined
     ].filter(Boolean) as string[];
@@ -1912,7 +1919,7 @@ export default function HomeView({
   const selectedBookTheme = resolveBookTypeTheme(selectedBookType);
   const activeProgressTheme = resolveBookTypeTheme(activeGeneratingBookType || selectedBookType);
   const visibleCreationSteps = useMemo<number[]>(
-    () => (storyInputMode === 'auto' ? [1, 2, 3, 4, 6] : [1, 2, 3, 4, 5, 6]),
+    () => (storyInputMode === 'auto' ? [1, 2, 3, 4] : [1, 2, 3, 4, 5, 6]),
     [storyInputMode]
   );
   const currentVisibleStepIndexRaw = visibleCreationSteps.indexOf(creationStep);
@@ -1949,7 +1956,15 @@ export default function HomeView({
   const isCurrentStepComplete = isCreationStepComplete(creationStep);
   const isAllStepsComplete = visibleCreationSteps.every((step) => isCreationStepComplete(step));
   const stepProgressPercent = Math.round((currentVisibleStepNumber / totalVisibleStepCount) * 100);
-  const currentStepTitle = t(CREATION_STEP_TITLES[Math.max(0, Math.min(CREATION_STEP_TITLES.length - 1, creationStep - 1))]);
+  const currentStepTitle = (() => {
+    const safeStep = Math.max(1, Math.min(6, creationStep));
+    if (safeStep === 1) return t('Kitap Türü');
+    if (safeStep === 2) return t('Alt Tür');
+    if (safeStep === 3) return `${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
+    if (safeStep === 4) return t('Kurgu Modu');
+    if (safeStep === 5) return `${t('Hikayenin Mekanı')} + ${t('Hikayenin Zamanı')} + ${t('Kitabın Adı')}`;
+    return t('Kahramanlar ve Oluşturucu');
+  })();
   const canMoveNext = currentVisibleStepIndex < totalVisibleStepCount - 1 && isCurrentStepComplete && !isGenerating;
   const canCreateOnFinalStep = currentVisibleStepIndex === totalVisibleStepCount - 1 && isAllStepsComplete && !isGenerating;
   const wizardFieldClass = 'mt-1 h-10 w-full rounded-xl border border-dashed px-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] focus:outline-none';
@@ -2069,7 +2084,7 @@ export default function HomeView({
                   )}
                 </div>
                 <p className="mt-1 text-[15px] font-bold text-white">
-                  {isGenerating ? t('Fortale Oluşturuluyor') : currentStepTitle}
+                  {isGenerating ? t('Fortale oluşturuluyor...') : currentStepTitle}
                 </p>
                 <div className="mt-2 h-1.5 rounded-full bg-[#152131] overflow-hidden">
                   <div
@@ -2296,9 +2311,29 @@ export default function HomeView({
                           />
                         </>
                       ) : (
-                        <p className="text-[12px] text-[#a8c4e6]">
-                          {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Bu modda mekan, zaman ve kitap adı soruları gösterilmez.')}
-                        </p>
+                        <div className="space-y-2">
+                          <p className="text-[12px] text-[#a8c4e6]">
+                            {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Seçimden sonra doğrudan Oluşturucu adımına geçilir.')}
+                          </p>
+                          <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
+                          <input
+                            value={heroNamesInput}
+                            onChange={(event) => setHeroNamesInput(event.target.value)}
+                            maxLength={180}
+                            placeholder={t('Örn: Elara, Aras, Mira')}
+                            className={wizardFieldClass}
+                            style={wizardFieldStyle(resolveWizardTone(3))}
+                          />
+                          <label className="mt-1 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
+                          <input
+                            value={creatorNameInput}
+                            onChange={(event) => setCreatorNameInput(event.target.value)}
+                            maxLength={90}
+                            placeholder={t('Örn: Ayşe Demir')}
+                            className={wizardFieldClass}
+                            style={wizardFieldStyle(resolveWizardTone(4))}
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2306,7 +2341,7 @@ export default function HomeView({
 
                 {creationStep === 5 && (
                   <div className="space-y-2">
-                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Zamanı (Opsiyonel)')}</label>
+                    <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Zamanı')}</label>
                     <input
                       value={settingTimeInput}
                       onChange={(event) => setSettingTimeInput(event.target.value)}
@@ -2315,7 +2350,7 @@ export default function HomeView({
                       className={wizardFieldClass}
                       style={wizardFieldStyle(resolveWizardTone(0))}
                     />
-                    <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Mekanı (Opsiyonel)')}</label>
+                    <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Mekanı')}</label>
                     <input
                       value={settingPlaceInput}
                       onChange={(event) => setSettingPlaceInput(event.target.value)}
@@ -2324,7 +2359,7 @@ export default function HomeView({
                       className={wizardFieldClass}
                       style={wizardFieldStyle(resolveWizardTone(1))}
                     />
-                    <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitabın Adı (Opsiyonel)')}</label>
+                    <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitabın Adı')}</label>
                     <input
                       value={searchTerm}
                       onChange={(event) => {
@@ -2350,7 +2385,7 @@ export default function HomeView({
                       className={wizardFieldClass}
                       style={wizardFieldStyle(resolveWizardTone(3))}
                     />
-                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kurgulayan (Opsiyonel)')}</label>
+                    <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
                     <input
                       value={creatorNameInput}
                       onChange={(event) => setCreatorNameInput(event.target.value)}
@@ -2381,7 +2416,7 @@ export default function HomeView({
                     {generationStatus || t('Fortale oluşturuluyor...')}
                   </p>
                   <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
-                    {t('Tahmini üretim süresi')}: {displayedGenerationMinutes} {t('dk')}
+                    {t('Tahmini okuma süresi')}: {displayedGenerationMinutes} {t('dk')}
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-[#102033] overflow-hidden">
                     <div
