@@ -6,7 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Download, X } from 'lucide-react';
 import { downloadFile } from '../utils/fileDownload';
-import { normalizeMarkdownNarrativeLayout } from '../utils/markdownLayout';
+import { extractStandaloneMarkdownImages, normalizeMarkdownNarrativeLayout } from '../utils/markdownLayout';
 import 'katex/dist/katex.min.css';
 
 interface StyledMarkdownProps {
@@ -303,36 +303,23 @@ type MarkdownImageSection = {
   markdown: string;
 };
 
-function stripSystemImageCaptionLines(markdown: string): string {
-  if (!markdown) return '';
-  return markdown
-    .split(/\r?\n/)
-    .filter((line) => {
-      const plain = String(line || '').trim();
-      if (!plain) return true;
-      if (SYSTEM_IMAGE_CAPTION_LINE_RE.test(plain)) return false;
-      if (SYSTEM_IMAGE_META_LINE_RE.test(plain)) return false;
-      return true;
-    })
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 function parseStandaloneMarkdownImageLine(line: string): { src: string; alt: string } | null {
   const trimmed = String(line || '').trim();
   if (!trimmed) return null;
   const match = trimmed.match(/^!\[([^\]]*)\]\((.+)\)$/);
   if (!match) return null;
+
   const rawAlt = String(match[1] || '').trim();
   let rawTarget = String(match[2] || '').trim();
   rawTarget = rawTarget
     .replace(/\s+"[^"]*"\s*$/, '')
     .replace(/\s+'[^']*'\s*$/, '')
     .trim();
+
   if (rawTarget.startsWith('<') && rawTarget.endsWith('>')) {
     rawTarget = rawTarget.slice(1, -1).trim();
   }
+
   if (!rawTarget) return null;
   return {
     src: rawTarget,
@@ -380,6 +367,22 @@ function extractMarkdownImageSections(markdown: string): MarkdownImageSection[] 
   const lastSection = sections[sections.length - 1];
   lastSection.markdown = [lastSection.markdown, trailingMarkdown].filter(Boolean).join('\n\n').trim();
   return sections;
+}
+
+function stripSystemImageCaptionLines(markdown: string): string {
+  if (!markdown) return '';
+  return markdown
+    .split(/\r?\n/)
+    .filter((line) => {
+      const plain = String(line || '').trim();
+      if (!plain) return true;
+      if (SYSTEM_IMAGE_CAPTION_LINE_RE.test(plain)) return false;
+      if (SYSTEM_IMAGE_META_LINE_RE.test(plain)) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export default function StyledMarkdown({
@@ -431,7 +434,11 @@ export default function StyledMarkdown({
     ),
     [content]
   );
-  const imageSections = useMemo(
+  const extractedStandaloneImages = useMemo(
+    () => extractStandaloneMarkdownImages(safeContent),
+    [safeContent]
+  );
+  const fullscreenImageSections = useMemo(
     () => (readerMode === 'fairytale-fullscreen' ? extractMarkdownImageSections(safeContent) : []),
     [readerMode, safeContent]
   );
@@ -814,11 +821,11 @@ export default function StyledMarkdown({
   );
 
   const markdownContent = useMemo(() => {
-    if (readerMode === 'fairytale-fullscreen' && imageSections.length > 0) {
+    if (readerMode === 'fairytale-fullscreen' && fullscreenImageSections.length > 0) {
       let didQuoteLeadParagraph = false;
       return (
         <div className="space-y-8">
-          {imageSections.map((section, index) => {
+          {fullscreenImageSections.map((section, index) => {
             const hasMarkdown = Boolean(section.markdown.trim());
             const shouldQuoteLeadParagraph = quoteFirstParagraph && hasMarkdown && !didQuoteLeadParagraph;
             if (shouldQuoteLeadParagraph) didQuoteLeadParagraph = true;
@@ -844,8 +851,25 @@ export default function StyledMarkdown({
       );
     }
 
+    if (extractedStandaloneImages.images.length > 0) {
+      return (
+        <div className="space-y-4">
+          <section className="space-y-3">
+            {extractedStandaloneImages.images.map((image, index) => (
+              <div key={`${image.src}-${index}`}>
+                {renderInlineImage(image.src, image.alt, 'h-auto max-h-[460px]')}
+              </div>
+            ))}
+          </section>
+          {extractedStandaloneImages.markdown.trim()
+            ? renderMarkdownBlock(extractedStandaloneImages.markdown, quoteFirstParagraph)
+            : null}
+        </div>
+      );
+    }
+
     return renderMarkdownBlock(safeContent, quoteFirstParagraph);
-  }, [readerMode, imageSections, quoteFirstParagraph, safeContent]);
+  }, [readerMode, extractedStandaloneImages, fullscreenImageSections, quoteFirstParagraph, safeContent]);
 
   return (
     <article

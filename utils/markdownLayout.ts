@@ -118,6 +118,59 @@ function restoreMediaBlocks(input: string, mediaTokens: string[]): string {
   });
 }
 
+function parseStandaloneMarkdownImageLine(line: string): { src: string; alt: string } | null {
+  const trimmed = String(line || "").trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^!\[([^\]]*)\]\((.+)\)$/);
+  if (!match) return null;
+
+  const rawAlt = String(match[1] || "").trim();
+  let rawTarget = String(match[2] || "").trim();
+  rawTarget = rawTarget
+    .replace(/\s+"[^"]*"\s*$/, "")
+    .replace(/\s+'[^']*'\s*$/, "")
+    .trim();
+
+  if (rawTarget.startsWith("<") && rawTarget.endsWith(">")) {
+    rawTarget = rawTarget.slice(1, -1).trim();
+  }
+
+  if (!rawTarget) return null;
+  return {
+    src: rawTarget,
+    alt: rawAlt || "İçerik görseli"
+  };
+}
+
+export function extractStandaloneMarkdownImages(markdown: string): {
+  images: Array<{ src: string; alt: string }>;
+  markdown: string;
+} {
+  if (!markdown) {
+    return { images: [], markdown: "" };
+  }
+
+  const lines = String(markdown || "").split(/\r?\n/);
+  const images: Array<{ src: string; alt: string }> = [];
+  const contentLines: string[] = [];
+
+  for (const line of lines) {
+    const parsedImage = parseStandaloneMarkdownImageLine(line);
+    if (!parsedImage) {
+      contentLines.push(line);
+      continue;
+    }
+    images.push(parsedImage);
+  }
+
+  const remainingMarkdown = contentLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
+  return {
+    images,
+    markdown: remainingMarkdown ? normalizeMarkdownNarrativeLayout(remainingMarkdown) : ""
+  };
+}
+
 function isStructuralMarkdownLine(line: string): boolean {
   const trimmed = String(line || "").trim();
   if (!trimmed) return false;

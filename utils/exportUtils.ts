@@ -8,6 +8,7 @@ import { app as firebaseApp } from '../firebaseConfig';
 import { CourseData, TimelineNode } from '../types';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
 import { saveBlobAsFile } from './fileDownload';
+import { extractStandaloneMarkdownImages } from './markdownLayout';
 
 const EXPORT_ASSET_TIMEOUT_MS = 7000;
 const EXPORT_NATIVE_ASSET_TIMEOUT_MS = 15000;
@@ -961,10 +962,6 @@ export const exportCourseToPdf = async (
         }
         else if (node.type === 'retention') nodeHeader = isNarrativeBook ? `SONUÇ` : `ÖZET`;
 
-        // Keep sections in continuous flow; use a simple dashed line before the new heading.
-        if (nodeIndex > 0) {
-            pdfContent.push(getDashedLineCompact());
-        }
         pdfContent.push({
             text: nodeHeader,
             fontSize: 14,
@@ -1001,6 +998,10 @@ export const exportCourseToPdf = async (
             });
         }
 
+        const extractedStandaloneImages = extractStandaloneMarkdownImages(rawText);
+        const leadingStandaloneImages = extractedStandaloneImages.images;
+        rawText = extractedStandaloneImages.markdown;
+
         const lines = rawText.split('\n');
         let inList = false;
         let listItems: any[] = [];
@@ -1027,13 +1028,30 @@ export const exportCourseToPdf = async (
             paragraphBlocksSinceLastHeading += count;
             flushPendingImageBlocks();
         };
-        const queueOrRenderImageBlock = (block: any) => {
-            if (paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
+        const queueOrRenderImageBlock = (block: any, immediate = false) => {
+            if (immediate || paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
                 pdfContent.push(block);
                 return;
             }
             pendingImageBlocks.push(block);
         };
+
+        for (const image of leadingStandaloneImages) {
+            if (embeddedPdfImageCount >= MAX_PDF_INLINE_IMAGES) break;
+            const cleanUrl = extractMarkdownImageUrl(image.src);
+            const base64Data = await fetchImageAsBase64(cleanUrl);
+            if (base64Data) {
+                embeddedPdfImageCount += 1;
+                const imageBlock = await buildAdaptiveFullWidthPdfImageBlock(base64Data);
+                queueOrRenderImageBlock(imageBlock, true);
+            } else {
+                queueOrRenderImageBlock({
+                    text: `[Görsel İndirilemedi: ${cleanUrl}]`,
+                    color: '#999999',
+                    italics: true
+                }, true);
+            }
+        }
         // Push accumulated list before switching context.
         const flushList = () => {
             if (inList) {
@@ -2282,13 +2300,14 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
         nodeTitle: options.sectionTitle,
         contentTitle: options.contentTitle
     });
+    const extractedStandaloneImages = extractStandaloneMarkdownImages(normalizedText);
     const duplicateHeadingKeys = buildDuplicateHeadingKeySet({
         nodeType: options.nodeType,
         courseTopic: options.topic,
         nodeTitle: options.sectionTitle,
         contentTitle: options.contentTitle
     });
-    const lines = normalizedText.split('\n');
+    const lines = extractedStandaloneImages.markdown.split('\n');
     const htmlParts: string[] = [];
     let inCodeFence = false;
     let codeFenceLines: string[] = [];
@@ -2307,13 +2326,27 @@ const renderMarkdownToEpubHtml = async (rawText: string, options: RenderMarkdown
         paragraphBlocksSinceLastHeading += 1;
         flushPendingImageHtmlBlocks();
     };
-    const queueOrRenderImageHtml = (html: string) => {
-        if (paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
+    const queueOrRenderImageHtml = (html: string, immediate = false) => {
+        if (immediate || paragraphBlocksSinceLastHeading >= MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE) {
             htmlParts.push(html);
             return;
         }
         pendingImageHtmlBlocks.push(html);
     };
+
+    for (const image of extractedStandaloneImages.images) {
+        const cleanUrl = extractMarkdownImageUrl(image.src || '');
+        const assetRef = await options.collector.addRemoteAsset(cleanUrl, 'image', `${options.sectionBaseName}_img`);
+        if (assetRef) {
+            queueOrRenderImageHtml(`
+              <figure class="hero-image">
+                <img src="${escapeXml(toTextSectionRelativeHref(assetRef.href))}" alt="${escapeXml(image.alt || 'Görsel')}" loading="lazy" />
+              </figure>
+            `, true);
+        } else {
+            queueOrRenderImageHtml('<p class="body-text muted">[Görsel yüklenemedi]</p>', true);
+        }
+    }
 
     const flushList = () => {
         if (!currentListType || !currentListItems.length) return;

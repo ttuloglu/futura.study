@@ -1554,18 +1554,18 @@ function fairyTaleAudienceInstruction(
   const isEn = usesEnglishPromptScaffold(language);
   if (audienceLevel === "1-3") {
     return isEn
-      ? `Fairy-tale age path (1-3): keep it emotionally safe, very warm, and ultra-simple with roughly 5-6 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Use short but natural sentence flow, one clear action at a time, familiar daily words, and gentle repetition only when needed. Avoid choppy telegraph style, heavy metaphor, complex layered conflict, and abstract moral speeches.`
-      : `Masal yaş yolu (1-3): duygusal olarak güvenli, çok sıcak ve ultra basit bir tonda yaklaşık 5-6 sayfa${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} kurgula. Kısa ama doğal akan cümleler kur, her anda tek net eylem ilerlet, gündelik ve tanıdık kelimeler kullan; tekrar yalnızca gerçekten gerekiyorsa gelsin. Telgraf gibi kopuk cümleler, ağır metaforlar, katmanlı çatışma ve soyut ders anlatımı kullanma.`;
+      ? `Fairy-tale age path (1-3): keep it emotionally safe, very warm, and ultra-simple. Produce exactly 5 content pages excluding illustration-only pages${targetPageCount ? ` (even if system target says about ${targetPageCount} pages)` : ""}. Use short but natural sentence flow, one clear action at a time, familiar daily words, and gentle repetition only when needed. Avoid choppy telegraph style, heavy metaphor, complex layered conflict, and abstract moral speeches.`
+      : `Masal yaş yolu (1-3): duygusal olarak güvenli, çok sıcak ve ultra basit bir tonda yaz. Görsel sayfaları hariç tam 5 içerik sayfası üret${targetPageCount ? ` (sistem hedefi yaklaşık ${targetPageCount} sayfa gelse bile)` : ""}. Kısa ama doğal akan cümleler kur, her anda tek net eylem ilerlet, gündelik ve tanıdık kelimeler kullan; tekrar yalnızca gerçekten gerekiyorsa gelsin. Telgraf gibi kopuk cümleler, ağır metaforlar, katmanlı çatışma ve soyut ders anlatımı kullanma.`;
   }
   if (audienceLevel === "4-6") {
     return isEn
-      ? `Fairy-tale age path (4-6): aim for a warm, positive, and straightforward tale that fits about 8-9 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Keep conflict gentle and quickly resolvable, keep sentence length short, and use concrete scene language with simple cause-effect links.`
-      : `Masal yaş yolu (4-6): yaklaşık 8-9 sayfa${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} sıcak, olumlu ve doğrudan bir anlatım kur. Çatışmayı yumuşak ve hızlı çözülebilir tut; cümleleri kısa tut; sahneleri somut ve basit neden-sonuç bağlarıyla ilerlet.`;
+      ? `Fairy-tale age path (4-6): aim for a warm, positive, and straightforward tale. Produce exactly 7 content pages${targetPageCount ? ` (even if system target says about ${targetPageCount} pages)` : ""}. Keep conflict gentle and quickly resolvable, keep sentence length short, and use concrete scene language with simple cause-effect links.`
+      : `Masal yaş yolu (4-6): sıcak, olumlu ve doğrudan bir anlatım kur. Tam 7 içerik sayfası üret${targetPageCount ? ` (sistem hedefi yaklaşık ${targetPageCount} sayfa gelse bile)` : ""}. Çatışmayı yumuşak ve hızlı çözülebilir tut; cümleleri kısa tut; sahneleri somut ve basit neden-sonuç bağlarıyla ilerlet.`;
   }
   if (audienceLevel === "7-9") {
     return isEn
-      ? `Fairy-tale age path (7-9): aim for a clear yet richer tale that fits roughly 11-12 pages${targetPageCount ? ` (target about ${targetPageCount} pages)` : ""}. Keep language child-friendly but allow slightly deeper scene and feeling detail, while preserving hopeful tone and emotional safety.`
-      : `Masal yaş yolu (7-9): yaklaşık 11-12 sayfalık${targetPageCount ? ` (hedef yaklaşık ${targetPageCount} sayfa)` : ""} açık ama daha zengin bir anlatım kur. Dil çocuk dostu kalsın; sahne ve duygu derinliğini bir miktar artır; umutlu ton ve duygusal güvenliği koru.`;
+      ? `Fairy-tale age path (7-9): aim for a clear yet richer tale. Produce exactly 9 content pages${targetPageCount ? ` (even if system target says about ${targetPageCount} pages)` : ""}. Keep language child-friendly but allow slightly deeper scene and feeling detail, while preserving hopeful tone and emotional safety.`
+      : `Masal yaş yolu (7-9): açık ama daha zengin bir anlatım kur. Tam 9 içerik sayfası üret${targetPageCount ? ` (sistem hedefi yaklaşık ${targetPageCount} sayfa gelse bile)` : ""}. Dil çocuk dostu kalsın; sahne ve duygu derinliğini bir miktar artır; umutlu ton ve duygusal güvenliği koru.`;
   }
   return isEn
     ? "Fairy-tale age path: keep the tone warm, clear, child-friendly, and emotionally safe."
