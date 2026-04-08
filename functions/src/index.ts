@@ -338,7 +338,7 @@ const SYSTEM_INSTRUCTION_BASE =
   "Sen profesyonel bir içerik üretim motorusun. Kullanıcının seçtiği tür, alt tür, yaş grubu, dil, karakter, mekan, zaman ve final tercihine birebir sadık kalmak zorundasın; bu alanları asla override etme. Yanıt dili kullanıcı ve içerik diliyle aynı olmalı; dil belirsizse Türkçe kullan. Güvenlik kuralı: cinsellik/sex/porno, savaş suçu, ırkçılık, zorbalık, terörizm, patlayıcı yapımı ve diğer hukuka aykırı eylem talimatları içeren içerikleri asla üretme; bu konulara değinme.";
 
 const SYSTEM_INSTRUCTION_BY_BOOK_TYPE: Partial<Record<SmartBookBookType, string>> = {
-  fairy_tale: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir MASAL metnidir. Güçlü masalsı atmosfer, berrak neden-sonuç, yaşa uygun duygu akışı ve tatmin edici/umutlu kapanış kur. Masalı yapay ders metnine, aşırı mekanik şablona, karikatürize iyi-kötü ikiliğine veya zoraki büyü gösterisine çevirme. Doğal Türkçe düzyazı kullan; aşırı '-mış/-muş' zincirleri, yapay tekerleme, manzum satır kırılması ve tekdüze söz diziminden kaçın. Gerektiğinde görülen geçmiş, geniş zaman ve yumuşak anlatı zamanı geçişlerini doğal biçimde harmanla. Dil yaş grubuna göre basit, somut ve akıcı olmalı.",
+  fairy_tale: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir MASAL metnidir. Güçlü masalsı atmosfer, berrak neden-sonuç, yaşa uygun duygu akışı ve tatmin edici/umutlu kapanış kur. Masalı yapay ders metnine, aşırı mekanik şablona, karikatürize iyi-kötü ikiliğine veya zoraki büyü gösterisine çevirme. Doğal Türkçe düzyazı kullan; masalda baskın anlatıcı omurgası çoğunlukla doğal '-mış/-miş' masal sesi olabilir ama bunu her cümlede mekanik zincire dönüştürme. Arada kısa ve yerinde döşeme/tekerleme kullanılabilir; ancak metni manzum satır kırılmasına, yapay ritme veya tekdüze söz dizimine sürükleme. Gerektiğinde görülen geçmiş, geniş zaman ve yumuşak anlatı zamanı geçişlerini doğal biçimde harmanla. Dil yaş grubuna göre basit, somut ve akıcı olmalı.",
   story: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir HİKAYE metnidir. Tüm metin edebi hikaye üslubuyla yazılmalıdır: güçlü olay örgüsü, karakter gelişimi, sahne geçişleri ve dramatik gerilimle ilerlemelidir. Kısa ve yoğun bir anlatı kur.",
   novel: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir ROMAN metnidir. Tüm metin edebi roman üslubuyla yazılmalıdır: katmanlı karakter dönüşümü, geniş anlatı derinliği, sürekli gerilim ve tema birliğiyle ilerlemelidir. Zengin ve derin bir anlatım kur."
 };
@@ -2014,8 +2014,8 @@ function buildStorySinglePathDirective(
 function buildFairyTaleSubGenrePathDirective(subGenre: string | undefined, isEn: boolean): string {
   const key = normalizeStoryPathKey(subGenre);
   const languageLock = isEn
-    ? " Language lock: keep the prose natural and fluid; do not overload every sentence with evidential '-miş' style cadence or nursery-rhyme stiffness."
-    : " Dil kilidi: düzyazıyı doğal ve akıcı tut; her cümleyi '-mış/-muş' zincirine veya tekerleme sertliğine boğma.";
+    ? " Language lock: keep the prose natural and fluid; let the tale use a natural fairy-tale '-miş' narrator voice as the main spine when appropriate, but never as a mechanical cadence in every sentence. Occasional short rhyme/riddle style openings are allowed if they feel organic."
+    : " Dil kilidi: düzyazıyı doğal ve akıcı tut; gerektiğinde doğal masal anlatıcısı olarak '-mış/-miş' omurgasını kullan ama bunu her cümlede mekanik zincire dönüştürme. Arada kısa ve doğal döşeme/tekerleme olabilir.";
 
   if (key.includes("klasik")) {
     return (isEn
@@ -2112,8 +2112,8 @@ function buildNarrativeSubGenreLiteraryDirective(
       ? "Literary craft: lesson must emerge through scene consequence, not preachy explanation; emotional safety remains primary."
       : "Edebi işçilik: mesaj sahne sonuçlarından doğmalı, vaaz gibi açıklanmamalı; duygusal güvenlik birinci öncelik kalmalı.";
     return isEn
-      ? "Literary craft: write in natural, flowing prose; vary tense organically when it helps oral storytelling; avoid overloading the whole tale with evidential '-miş' cadence or verse-like lineation."
-      : "Edebi işçilik: doğal ve akıcı düzyazı kur; sözlü anlatı tadını güçlendirmek için zamanı gerektiğinde doğal biçimde çeşitlendir; bütün masalı '-mış/-muş' yüküne veya şiir gibi satır kırılmasına boğma.";
+      ? "Literary craft: write in natural, flowing prose; let a natural fairy-tale '-miş' narrator voice lead when it helps, vary tense organically for oral storytelling, and allow occasional short rhyme-like lines only when they genuinely serve the tale. Do not make the whole text mechanically sing-song or verse-like."
+      : "Edebi işçilik: doğal ve akıcı düzyazı kur; gerektiğinde doğal masal anlatıcısı olarak '-mış/-miş' sesi öne çıkabilir, sözlü anlatı tadını güçlendirmek için zamanı organik biçimde çeşitlendir, arada hikayeye gerçekten hizmet eden kısa döşeme/tekerleme kullanabilirsin. Ama bütün metni mekanik ritme, şiir gibi satır kırılmasına veya tek tip eke boğma.";
   }
 
   if (bookType === "story") {
@@ -2372,6 +2372,11 @@ function buildNarrativeVisualStyleDirective(
   const cue = buildNarrativeSubGenreVisualCue(subGenre);
   const key = normalizeStoryPathKey(subGenre);
   if (bookType === "story") {
+    if (audienceLevel === "general") {
+      return isCover
+        ? `Style: adult story cover language with cinematic realism, believable rendering, premium lighting, and grounded dramatic atmosphere. Avoid cartoon, anime, comic, or child-book aesthetics. Visual cue: ${cue}.`
+        : `Style: adult story visual language with cinematic realism, grounded believable rendering, natural textures/materials, and strong filmic lighting. STRICTLY avoid cartoon, anime, comic, illustrated storybook, or child-book aesthetics. Visual cue: ${cue}.`;
+    }
     if (key.includes("komedi")) {
       return isCover
         ? `Style: bold comedic illustrated cover language with elastic posing, upbeat rhythm, bright controlled palette, and expressive character acting. No dystopian heaviness. Visual cue: ${cue}.`
@@ -2414,6 +2419,11 @@ function buildNarrativeVisualStyleDirective(
   }
 
   if (bookType === "novel") {
+    if (audienceLevel === "general") {
+      return isCover
+        ? `Style: adult novel cover language with cinematic realism, premium composition, believable anatomy/materials, and mature atmosphere. Avoid cartoon, anime, comic, or child-book aesthetics. Visual cue: ${cue}.`
+        : `Style: adult novel visual language with cinematic realism, believable anatomy, grounded textures, mature atmosphere, and strong filmic lighting. STRICTLY avoid cartoon, anime, comic, graphic-novel, or child-book aesthetics. Visual cue: ${cue}.`;
+    }
     if (key.includes("komedi") || key.includes("mizah")) {
       return isCover
         ? `Style: literary-comedic cover language with smart visual wit, memorable character silhouette, elegant color contrast, and long-form narrative personality. Visual cue: ${cue}.`
@@ -2571,8 +2581,8 @@ function buildCreativeBriefInstruction(
     return buildNarrativeBriefBlock(brief, isEn, lockedLanguage, targetPageCount, {
       typeLabel: isEn ? "Fairy Tale" : "Masal",
       styleDirective: isEn
-        ? "Write this entirely as a literary fairy tale for the chosen age group: warm, memorable, image-rich, emotionally clear, and naturally flowing. Keep the prose natural rather than sing-song; do not overload every sentence with evidential '-miş' cadence. Do not force an explicit lesson, rigid good-vs-evil binary, decorative magic, or nursery-rhyme framing that does not serve the story."
-        : "Bu metni seçilen yaş grubuna uygun, edebi bir masal olarak yaz: sıcak, akılda kalan, imge gücü olan, duygusu net ve doğal akan bir anlatı kur. Dil düzyazı gibi aksın; her cümleyi '-mış/-muş' zinciriyle ve tekerleme sertliğiyle kurma. Açık ders verme, katı iyi-kötü ikiliğine yaslanma ve hikayeye hizmet etmeyen süs büyüler kullanma."
+        ? "Write this entirely as a literary fairy tale for the chosen age group: warm, memorable, image-rich, emotionally clear, and naturally flowing. A natural '-miş' fairy-tale narrator voice may lead the tale, but not as a mechanical cadence in every sentence. Occasional short rhyme/riddle-like lines are allowed when they feel organic. Do not force an explicit lesson, rigid good-vs-evil binary, decorative magic, or rhyme framing that does not serve the story."
+        : "Bu metni seçilen yaş grubuna uygun, edebi bir masal olarak yaz: sıcak, akılda kalan, imge gücü olan, duygusu net ve doğal akan bir anlatı kur. Doğal masal anlatıcısı olarak '-mış/-miş' sesi ana omurga olabilir ama bunu her cümlede mekanik zincire dönüştürme. Arada kısa ve doğal döşeme/tekerleme olabilir. Açık ders verme, katı iyi-kötü ikiliğine yaslanma ve hikayeye hizmet etmeyen süs büyüler kullanma."
     });
   }
 
@@ -2653,8 +2663,8 @@ function buildNarrativeBriefBlock(
         ? "Language must be simple, concrete, and child-friendly."
         : "Dil basit, somut ve çocuk dostu olmalı.",
       isEn
-        ? "Write in prose paragraphs. Do not turn the tale into verse, line-by-line chant, or nursery-rhyme formatting. Do not repeat the chapter title inside the chapter body."
-        : "Metni düzyazı paragraflarıyla kur. Masalı şiire, alt alta tek cümle dizimine veya tekerleme formatına çevirme. Bölüm başlığını bölüm metninin içinde tekrar yazma.",
+        ? "Write in prose paragraphs. Do not turn the whole tale into verse or line-by-line chant. Occasional short opening-rhyme / riddle-like flourishes are allowed if brief and organic. Do not repeat the chapter title inside the chapter body."
+        : "Metni düzyazı paragraflarıyla kur. Bütün masalı şiire veya alt alta tek cümle dizimine çevirme. Kısa ve doğal döşeme/tekerleme dokunuşları olabilir ama metnin ana biçimi düzyazı kalsın. Bölüm başlığını bölüm metninin içinde tekrar yazma.",
       fairyTaleAudienceInstruction(audienceLevel, isEn ? "en" : "tr", targetPageCount),
       isEn
         ? "Ending rule: give a satisfying, emotionally safe, hopeful closure; do not force a preachy moral paragraph."
@@ -2747,14 +2757,14 @@ function buildNarrativeCraftInstruction(
   const typeLine = isEn
     ? (
       type === "fairy_tale"
-        ? "Fairy-tale craft: create a warm, memorable, child-readable tale with clear emotional stakes, simple but vivid scenes, and natural prose. Extraordinary elements may exist if the chosen path needs them, but do not force them. Keep the tale focused without flattening it into a mechanical moral. Avoid sing-song repetition and heavy '-miş' overuse. CRITICAL RULE: 'Show, Don't Tell'." + kidsRuleEn + fairyAgeRule
+        ? "Fairy-tale craft: create a warm, memorable, child-readable tale with clear emotional stakes, simple but vivid scenes, and natural prose. Let a natural fairy-tale '-miş' narrator voice guide the tale when it fits, but never let it become a mechanical cadence in every sentence. Occasional short rhyme-like openings are allowed if they genuinely serve the tale. Keep the tale focused without flattening it into a mechanical moral. CRITICAL RULE: 'Show, Don't Tell'." + kidsRuleEn + fairyAgeRule
         : type === "story"
           ? "Story craft: realistic or fantastical is allowed, but keep one dominant conflict line, a focused time span, and a controlled cast. Ending does not have to be happy. CRITICAL RULE: 'Show, Don't Tell'. Limit internal monologue." + kidsRuleEn
           : "Novel craft: layered character arc, deep narrative world, sustained tension. CRITICAL RULE: 'Show, Don't Tell'. Avoid info-dumping."
     )
     : (
       type === "fairy_tale"
-        ? "Masal kurgusu: sıcak, akılda kalan ve çocuk tarafından izlenebilir bir olay akışı kur; güçlü merak ve duygusal yönelim yarat; dili basit, somut ve doğal tut. Olağanüstü öğeler seçilen yol gerçekten gerektiriyorsa kullan; zorla ekleme. Masalı odaklı yürüt ama mekanik ders metnine çevirme. Aşırı '-mış/-muş' tekrarına, tekerleme sertliğine ve şiir gibi satır kırılmasına kaçma. KRITIK KURAL 'Anlatma, Goster': Karakterlerin hislerini düz açıklama yerine sahnede yaşat." + kidsRuleTr + fairyAgeRule
+        ? "Masal kurgusu: sıcak, akılda kalan ve çocuk tarafından izlenebilir bir olay akışı kur; güçlü merak ve duygusal yönelim yarat; dili basit, somut ve doğal tut. Olağanüstü öğeler seçilen yol gerçekten gerektiriyorsa kullan; zorla ekleme. Masalı odaklı yürüt ama mekanik ders metnine çevirme. Doğal masal anlatıcısı olarak '-mış/-miş' sesi baskın omurga olabilir; fakat bunu her cümlede mekanik tekrar yapma. Arada hikayeye hizmet eden kısa döşeme/tekerleme olabilir. Bütün metni şiir gibi satır kırılmasına veya tek tip ritme sürükleme. KRITIK KURAL 'Anlatma, Goster': Karakterlerin hislerini düz açıklama yerine sahnede yaşat." + kidsRuleTr + fairyAgeRule
         : type === "story"
           ? "Hikaye kurgusu: gercekci veya fantastik olabilir; tek baskin catisma hatti, kontrollu karakter sayisi ve odakli zaman araligi kullan. Final mutlu olmak zorunda degildir. KRITIK KURAL 'Anlatma, Goster': Okuyucuyu sahnede yasat." + kidsRuleTr
           : "Roman kurgusu: katmanlı karakter dönüşümü, anlatı derinliği, güçlü gerilim (tension). KRİTİK KURAL 'Anlatma, Göster': Olguları ansiklopedik özetleme; olayları tamamen aktif ses kullanarak hissettir."
@@ -3739,12 +3749,20 @@ function buildNarrativeSceneCues(content: string | undefined, imageCount: number
 }
 
 const CHARACTER_SPECIES_LOCK_RULES: Array<{ canonical: string; pattern: RegExp }> = [
+  { canonical: "sheep", pattern: /\b(kuzu|koyun|koç|koc|sheep|lamb|ewe|ram)\b/iu },
   { canonical: "rabbit", pattern: /\b(tavşan|rabbit|bunny|hare)\b/iu },
   { canonical: "cat", pattern: /\b(kedi|cat|kitten|feline)\b/iu },
   { canonical: "dog", pattern: /\b(köpek|kopek|dog|puppy|canine)\b/iu },
   { canonical: "fox", pattern: /\b(tilki|fox)\b/iu },
   { canonical: "wolf", pattern: /\b(kurt|wolf)\b/iu },
   { canonical: "bear", pattern: /\b(ayı|ayi|bear)\b/iu },
+  { canonical: "squirrel", pattern: /\b(sincap|squirrel)\b/iu },
+  { canonical: "bee", pattern: /\b(arı|ari|bee)\b/iu },
+  { canonical: "butterfly", pattern: /\b(kelebek|butterfly)\b/iu },
+  { canonical: "hedgehog", pattern: /\b(kirpi|kirpı|hedgehog)\b/iu },
+  { canonical: "frog", pattern: /\b(kurbağa|kurbaga|frog|toad)\b/iu },
+  { canonical: "duck", pattern: /\b(ördek|ordek|duck)\b/iu },
+  { canonical: "turtle", pattern: /\b(kaplumbağa|kaplumbaga|turtle|tortoise)\b/iu },
   { canonical: "deer", pattern: /\b(geyik|deer|doe|stag)\b/iu },
   { canonical: "mouse", pattern: /\b(fare|mouse|mice)\b/iu },
   { canonical: "bird", pattern: /\b(kuş|kus|bird|sparrow|owl|crow)\b/iu },
@@ -3804,15 +3822,18 @@ function buildCharacterContinuityLock(
     options?.sectionContent
   ]);
   const speciesLockLine = speciesLocks.length
-    ? `- Species identity lock: ${speciesLocks.join(", ")}. If a recurring character is one of these, NEVER replace it with another species.`
-    : "- Species identity lock: if the protagonist species was established earlier, keep it unchanged in all later visuals.";
+    ? `- Locked species actually present in this book context: ${speciesLocks.join(", ")}. If a recurring character belongs to one of these, NEVER replace it with another species.`
+    : "- Species identity lock: use only the species actually established by the character roster, current section, and story-so-far context; do not invent a new substitute animal.";
   return `
 Character continuity lock (mandatory):
 - Keep recurring characters IDENTICAL across all visuals in this book sequence.
+- Treat the protagonist defined in the character roster as a LOCKED anchor identity; do not reinterpret, replace, or morph that character into another animal or another character.
+- Character roster authority: if a named character is introduced with a species/type, that exact name-species pairing is LOCKED for the whole book sequence.
 - Preserve the same facial identity (face shape, eyes, nose, mouth proportions), hair color/style, skin tone, and body proportions.
 - Keep signature outfit colors and key accessories stable unless the section explicitly changes them.
 - Only pose, expression, and camera angle may change between scenes.
-- HARD ban: never swap identity class (example: rabbit -> cat, cat -> rabbit, fox -> wolf).
+- HARD ban: never swap identity class or replace a named/main character with another animal or another character.
+- Use only the identities explicitly supported by the real book inputs: character roster, current section text, and story-so-far continuity.
 - If the current section omits species/name details, inherit the established identity from previous sections.
 ${speciesLockLine}
 - Character roster reference: ${safeCharacters}
@@ -3912,9 +3933,14 @@ Rules:
 6) If two panels are too similar, change action, framing, and spatial beat so they become clearly different.
 7) Scene progression lock: this image is scene ${sectionIndex}/${totalSections}; it must advance the story timeline and must not repeat the previous scene.
 8) Do not draw a generic cover. Draw concrete section events from the provided section text.
-9) Keep the mood child-friendly, vivid, readable, and visually coherent for a fairy tale book.
-10) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
-11) Absolutely no prompt/system/backend/meta text in visuals.
+9) Render the exact scene details from the section: visible actions, emotional expressions, important props, spatial relations, and setting clues should all appear clearly.
+10) If the section centers on a named/main character, that character must be visually prominent and recognizable in the panel where the action belongs.
+11) Use rich visual storytelling quality: expressive character acting, strong environment detail, readable staging, and vivid but coherent lighting.
+12) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, book pages, or decorative typography.
+13) Keep the mood child-friendly, vivid, readable, and visually coherent for a fairy tale book.
+14) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
+15) Do not invent substitute animals. The protagonist species and identity from the character roster/story continuity are locked.
+16) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
   }
 
@@ -3953,12 +3979,17 @@ ${continuityLock}
 
 Rules:
 1) Horizontal 16:9 only.
-2) No text, no captions, no logos, no watermark, no UI panels.
+2) No text, no captions, no logos, no watermark, no UI panels, no speech bubbles, no comic balloons, no dialogue callouts.
 3) Draw the single most important and emotionally clear moment from this active section.
 4) Scene progression lock: this image is scene ${sectionIndex}/${totalSections}; it must depict a NEW event step and must not be a duplicate of earlier scene actions.
 5) The image must directly depict the events of this section, not a generic book cover.
-6) Keep character/world continuity strong and child-friendly.
-7) Absolutely no prompt/system/backend/meta text in visuals.
+6) Show the exact scene with concrete actions, emotional expressions, props, and setting details that this section describes; do not summarize symbolically.
+7) If the section centers on a named/main character, that character must be visually prominent and immediately recognizable.
+8) Keep character/world continuity strong and child-friendly.
+9) Use rich visual storytelling quality: expressive faces/poses, clear staging, detailed environment, and coherent lighting.
+10) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
+11) Do not invent substitute animals. The protagonist species and identity from the character roster/story continuity are locked.
+12) Absolutely no prompt/system/backend/meta text in visuals.
   `.trim();
 }
 
@@ -4225,14 +4256,18 @@ ${panelVariationGuide}
 
 Rules:
 1) Horizontal 16:9 only.
-2) No text, no captions, no logos, no watermark, no UI panels.
+2) No text, no captions, no logos, no watermark, no UI panels, no speech bubbles, no comic balloons, no dialogue callouts.
 3) Same characters/world continuity is mandatory (same face identity, same key outfit signals, same props).
 4) Each panel must depict a distinct action beat; no panel may repeat another panel's action.
 5) Do not reuse the same camera distance or pose across panels.
 6) Timeline lock: this 4-panel image must move the story forward from previous scenes.
 7) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
-8) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
-9) Absolutely no prompt/system/backend/meta text in visuals.
+8) Every panel must render concrete scene details from the section excerpt: visible actions, emotional acting, props, spatial relations, and setting clues.
+9) If the section centers on a named/main character, that character must stay visually prominent and recognizable across the relevant panels.
+10) Use rich visual storytelling quality: expressive character acting, detailed environments, readable staging, and strong cinematic clarity.
+11) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
+12) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+13) Absolutely no prompt/system/backend/meta text in visuals.
       `.trim()
         : `
 Create exactly 1 horizontal 16:9 story scene illustration dedicated specifically to the active narrative scene.
@@ -4259,15 +4294,19 @@ ${continuityLock}
 
 Rules:
 1) Horizontal 16:9 only.
-2) No text, no captions, no logos, no watermark, no UI panels.
+2) No text, no captions, no logos, no watermark, no UI panels, no speech bubbles, no comic balloons, no dialogue callouts.
 3) Must belong to the SAME visual world: consistent characters, faces, costumes, props, environment palette, and lighting language.
 4) The visual MUST tightly match the scene excerpt and narrative clues. Do not draw a generic cover. Visualize the exact action occurring in this specific moment.
 5) Visuals must directly depict the given story events and concrete actions; do not create generic decorative backgrounds.
 6) Progression lock: this image must represent the NEXT event step, not a repeated action from the previous scene cue.
 7) Distinctness lock: use different action beat, camera framing, and character pose compared to adjacent scene indices.
 8) Keep details coherent across images (same objects remain recognizable).
-9) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
-10) Absolutely no prompt/system/backend/meta text in visuals.
+9) Render the scene fully and specifically: show the key characters clearly, include the important props and setting details, and make the emotion/action readable at a glance.
+10) If the section centers on a named/main character, that character must be visually prominent and immediately recognizable.
+11) Use rich visual storytelling quality: expressive faces/poses, detailed environment, coherent lighting, and strong cinematic staging.
+12) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
+13) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+14) Absolutely no prompt/system/backend/meta text in visuals.
       `.trim();
 
       let generatedScene = false;
@@ -4337,15 +4376,19 @@ ${narrativeTimelineLock}
 
 Rules:
 1) Horizontal 16:9 only.
-2) No text, no captions, no logos, no watermark, no UI panels.
+2) No text, no captions, no logos, no watermark, no UI panels, no speech bubbles, no comic balloons, no dialogue callouts.
 3) All images must belong to the SAME visual world: consistent characters, faces, costumes, props, environment palette, and lighting language.
 4) The visual MUST tightly match the 'Section' and 'Narrative clues'. Do not draw a generic cover or introduction. Visualize the exact action occurring in this specific scene.
 5) Visuals must directly depict the given story events and concrete actions; do not create generic decorative backgrounds.
 6) Keep details coherent across images (same objects remain recognizable across scenes).
 7) Progression lock: this section must advance the story timeline; do not repeat the previous scene event.
 7.1) If multiple images are requested, each image must move to the next event step and must not repeat earlier scene actions.
-8) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
-9) Absolutely no prompt/system/backend/meta text in visuals.
+8) Render the scene(s) fully and specifically: show key characters clearly, include important props and environment details, and make action/emotion readable at a glance.
+9) If the section centers on a named/main character, that character must be visually prominent and immediately recognizable.
+10) Use rich visual storytelling quality: expressive character acting, detailed environment, coherent lighting, and strong cinematic staging.
+11) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
+12) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+13) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
 
     const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, imageCount, {
@@ -4523,13 +4566,16 @@ ${styleLine}
 
 Rules:
 1) Horizontal 16:9 only.
-2) No visible text, no logos, no watermark, no UI.
+2) No visible text, no logos, no watermark, no UI, no speech bubbles, no comic balloons, no dialogue callouts.
 3) Keep continuity with earlier scenes: same characters, objects, environment logic, and color language.
 4) Each image should depict a distinct narrative beat that advances understanding of the storyline.
 5) Visuals must illustrate concrete actions/events tied to the topic and section details.
 6) Avoid repetitive framing and avoid random unrelated scenery.
-7) ${bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not generate anime/chibi style unless explicitly requested by the selected path."}
-8) Never render prompt/system/backend/meta text.
+7) Render the scene(s) fully and specifically: show key characters clearly, include important props and environment details, and make action/emotion readable at a glance.
+8) Use rich visual storytelling quality: expressive character acting, detailed environment, coherent lighting, and strong cinematic staging.
+9) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
+10) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not generate anime/chibi style unless explicitly requested by the selected path."}
+11) Never render prompt/system/backend/meta text.
     `.trim();
 
   const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, imageCount, {
@@ -6852,6 +6898,66 @@ ${statusRules}
       : (safeBookType === "novel" ? "Kısım" : "Bölüm");
     return `${prefix} ${index + 1}`;
   };
+  const buildNarrativeTitleFragment = (
+    value: string,
+    maxWords: number
+  ): string => {
+    const cleaned = String(value || "")
+      .replace(/\b(adında|adli|isimli|named|called|bir|ve|ile|the|a|an|of|in|at)\b/giu, " ")
+      .replace(/[^a-z0-9ğüşıöç\s]/giu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) return "";
+    const words = cleaned.split(" ").filter(Boolean).slice(0, maxWords);
+    return words
+      .map((word) => word.charAt(0).toLocaleUpperCase("tr-TR") + word.slice(1))
+      .join(" ")
+      .trim();
+  };
+  const buildDeterministicNarrativeBookTitleFromBrief = (
+    bookType: SmartBookBookType,
+    params: {
+      topic: string;
+      subGenre?: string;
+      characters?: string;
+      settingPlace?: string;
+      settingTime?: string;
+      chapterTitle?: string;
+    }
+  ): string => {
+    const characterSeed = buildNarrativeTitleFragment(params.characters || "", 3);
+    const placeSeed = buildNarrativeTitleFragment(params.settingPlace || "", 3);
+    const timeSeed = buildNarrativeTitleFragment(params.settingTime || "", 2);
+    const chapterSeed = buildNarrativeTitleFragment(params.chapterTitle || "", 4);
+    const subGenreSeed = buildNarrativeTitleFragment(params.subGenre || "", 2);
+    const candidatePool = [
+      [characterSeed, placeSeed].filter(Boolean).join(" "),
+      [characterSeed, timeSeed].filter(Boolean).join(" "),
+      [placeSeed, timeSeed].filter(Boolean).join(" "),
+      [characterSeed, chapterSeed].filter(Boolean).join(" "),
+      [placeSeed, chapterSeed].filter(Boolean).join(" "),
+      [characterSeed, subGenreSeed].filter(Boolean).join(" "),
+      chapterSeed,
+      characterSeed,
+      placeSeed
+    ]
+      .map((item) => item.replace(/\s+/g, " ").trim())
+      .filter((item) => item.length >= 3);
+
+    for (const candidate of candidatePool) {
+      if (!isNarrativeBookTitleTooGeneric(candidate, {
+        topic: params.topic,
+        subGenre: params.subGenre,
+        bookType
+      })) {
+        return candidate;
+      }
+    }
+
+    return useEnglishScaffold
+      ? (bookType === "fairy_tale" ? "Moonlit Path" : bookType === "novel" ? "Hidden Passage" : "Quiet Crossing")
+      : (bookType === "fairy_tale" ? "Ay Işıklı Yol" : bookType === "novel" ? "Saklı Geçit" : "Sessiz Geçit");
+  };
   const buildNarrativeChapterTitle = (
     index: number,
     rawTitle: string,
@@ -6938,7 +7044,7 @@ Kurallar:
 11) Dil, kullanıcının diliyle aynı olsun.
 
 Mevcut kitap adı:
-"${rawBookTitleValue || normalizedTopic || (useEnglishScaffold ? "Untitled Book" : "Adsız Kitap")}"
+"${rawBookTitleValue || normalizedTopic || "[BOS]"}"
 
 Mevcut kısa açıklama:
 "${rawBookDescriptionValue || "[BOS]"}"
@@ -7204,19 +7310,16 @@ JSON şeması:
     : "";
   const deterministicNarrativeBookTitle = isNarrativeBookType
     ? (
-      normalizedTopic ||
+      (topicLooksUsableForNarrative ? normalizedTopic : "") ||
       fallbackNarrativeTitleFromOutline ||
-      (useEnglishScaffold
-        ? (normalizedBrief.bookType === "fairy_tale"
-          ? "Untitled Fairy Tale"
-          : normalizedBrief.bookType === "novel"
-            ? "Untitled Novel"
-            : "Untitled Story")
-        : (normalizedBrief.bookType === "fairy_tale"
-          ? "Adsız Masal"
-          : normalizedBrief.bookType === "novel"
-            ? "Adsız Roman"
-            : "Adsız Hikaye"))
+      buildDeterministicNarrativeBookTitleFromBrief(normalizedBrief.bookType, {
+        topic: normalizedTopic,
+        subGenre: normalizedBrief.subGenre,
+        characters: normalizedBrief.characters,
+        settingPlace: normalizedBrief.settingPlace,
+        settingTime: normalizedBrief.settingTime,
+        chapterTitle: firstLectureTitleCandidate
+      })
     )
     : normalizedTopic;
   const safeNarrativeFallbackTitle = isNarrativeBookType
@@ -7731,7 +7834,7 @@ ${basePrompt}
 2) ${grammarInstruction}
 3) Kullanıcıya hitap eden asistan tonu kullanma.
 4) ${isNarrativeProfile
-            ? `İçerik tamamen kurmaca anlatı formatında olmalı; teknik/akademik dile kayma. Sadece düzyazı paragraf üret; şiir gibi satır satır kırma. Bölüm içine ek başlık koyma.${isFairyTaleBook ? " Masalda aşırı '-mış/-muş' zinciri kurma; doğal Türkçe zaman akışı kullan." : ""}`
+            ? `İçerik tamamen kurmaca anlatı formatında olmalı; teknik/akademik dile kayma. Sadece düzyazı paragraf üret; şiir gibi satır satır kırma. Bölüm içine ek başlık koyma.${isFairyTaleBook ? " Masalda doğal anlatıcı omurgası olarak '-mış/-miş' sesi baskın olabilir; ancak bunu her cümlede mekanik zincire çevirme. 'Ederdi, yapardı, giderdi' ritmini gereksiz yere çoğaltma. Arada kısa ve doğal döşeme/tekerleme kullanılabilir." : ""}`
             : "İçerik doğrudan ders anlatımıyla ilerlesin."}
 ${attempt > 1 ? `5) DÜZELTME: ${singlePassRetryHint || "Önceki denemede eksik/yarım içerik döndü. Bu kez eksiksiz ve dolu içerik üret."}` : ""}
 `.trim(),
@@ -7862,7 +7965,7 @@ ${basePrompt}
 4) ${grammarInstruction}
 5) Kullanıcıya hitap eden sohbetçi/asistan üslubu kullanma. ("Harika bir konu seçimi", "İşte içerik taslağı", "senin için", "Sevgili Öğrencimiz" vb. YASAK)
 6) ${isNarrativeProfile
-          ? `Doğrudan anlatı sahnesiyle başla. Sahne, karakter eylemi ve olay örgüsüyle ilerle. İçerik tamamen kurmaca anlatı formatında olmalı.${isFairyTaleBook ? " Masalda aşırı '-mış/-muş' zinciri kurma; doğal Türkçe düzyazı ve doğal zaman geçişi kullan." : ""}`
+          ? `Doğrudan anlatı sahnesiyle başla. Sahne, karakter eylemi ve olay örgüsüyle ilerle. İçerik tamamen kurmaca anlatı formatında olmalı.${isFairyTaleBook ? " Masalda doğal anlatıcı omurgası olarak '-mış/-miş' sesi baskın olabilir; ancak bunu her cümlede mekanik zincire çevirme. 'Ederdi, yapardı, giderdi' ritmini gereksiz yere çoğaltma. Arada kısa ve doğal döşeme/tekerleme kullanılabilir; ama metnin ana biçimi düzyazı kalsın." : ""}`
           : "Doğrudan ders içeriğine başla; meta açıklama veya etkileşimli yanıt tonu kullanma."}
 ${retryHint ? `7) DÜZELTME: ${retryHint}` : ""}
 `.trim(),

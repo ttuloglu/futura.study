@@ -145,6 +145,39 @@ function getPodcastVoicePreviewText(languageCode: string): string {
   return PODCAST_VOICE_PREVIEW_TEXTS[normalized] || PODCAST_VOICE_PREVIEW_TEXTS.en;
 }
 
+function detectLikelyBookLanguageFromText(value: string): ReturnType<typeof normalizeAppLanguageCode> {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  if (/[\u3040-\u30FF]/.test(raw)) return 'ja';
+  if (/[\uAC00-\uD7AF]/.test(raw)) return 'ko';
+  if (/[\u0600-\u06FF]/.test(raw)) return 'ar';
+
+  const text = raw.toLocaleLowerCase('tr-TR').trim();
+  if (!text) return null;
+
+  const trChars = (text.match(/[çğıöşüı]/g) || []).length;
+  const trHits = (text.match(/\b(ve|ile|için|ama|çünkü|gibi|bir|bu|şimdi|masal|orman|kuş|küçük)\b/g) || []).length;
+  const esChars = (text.match(/[ñáéíóúü]/g) || []).length;
+  const esHits = (text.match(/\b(de|la|el|los|las|para|con|como|qué|un|una)\b/g) || []).length;
+  const frChars = (text.match(/[àâçéèêëîïôûùüÿœ]/g) || []).length;
+  const frHits = (text.match(/\b(le|la|les|des|pour|avec|une|bonjour)\b/g) || []).length;
+  const deChars = (text.match(/[äöüß]/g) || []).length;
+  const deHits = (text.match(/\b(und|mit|für|ein|eine|der|die|das)\b/g) || []).length;
+  const itHits = (text.match(/\b(di|con|per|una|uno|ciao|che)\b/g) || []).length;
+  const ptHits = (text.match(/\b(de|para|com|uma|olá|não)\b/g) || []).length;
+  const enHits = (text.match(/\b(and|with|for|the|this|that|storybook|once|forest)\b/g) || []).length;
+
+  if (trChars > 0 || trHits > Math.max(enHits, esHits, frHits, deHits, itHits, ptHits)) return 'tr';
+  if (esChars > 0 || esHits > Math.max(enHits, trHits, frHits, deHits, itHits, ptHits)) return 'es';
+  if (frChars > 0 || frHits > Math.max(enHits, trHits, esHits, deHits, itHits, ptHits)) return 'fr';
+  if (deChars > 0 || deHits > Math.max(enHits, trHits, esHits, frHits, itHits, ptHits)) return 'de';
+  if (itHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits) && itHits > 0) return 'it';
+  if (ptHits > Math.max(enHits, trHits, esHits, frHits, deHits, itHits) && ptHits > 0) return 'pt-BR';
+  if (/[a-z]/.test(text)) return 'en';
+  return null;
+}
+
 function buildBookTypeSubGenreLabel(courseData: CourseData, t: (value: string) => string): string {
   const bookTypeLabel = resolveBookTypeLabel(courseData.bookType, t);
   const subGenre = String(courseData.subGenre || '').trim();
@@ -631,6 +664,7 @@ export default function CourseFlowView({
   const [headerPodcastLanguageCode, setHeaderPodcastLanguageCode] = useState<string>('tr');
   const [isPodcastVoicePickerOpen, setIsPodcastVoicePickerOpen] = useState(false);
   const [selectedPodcastVoiceName, setSelectedPodcastVoiceName] = useState<PodcastVoiceName>(DEFAULT_PODCAST_VOICE_NAME);
+  const [hasExplicitPodcastVoiceSelection, setHasExplicitPodcastVoiceSelection] = useState(false);
   const [loadingPodcastPreviewVoiceName, setLoadingPodcastPreviewVoiceName] = useState<PodcastVoiceName | null>(null);
   const [playingPodcastPreviewVoiceName, setPlayingPodcastPreviewVoiceName] = useState<PodcastVoiceName | null>(null);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -1621,6 +1655,16 @@ export default function CourseFlowView({
     const explicitRaw = String(courseData?.language || '').trim().toLowerCase();
     if (explicitRaw) return explicitRaw;
 
+    const contentProbe = String(courseData?.nodes
+      ?.filter((node) => node.type === 'lecture' || node.type === 'podcast')
+      .map((node) => [node.title, node.content || node.podcastScript || ''].filter(Boolean).join(' '))
+      .join(' ')
+      || courseData?.topic
+      || ''
+    ).trim();
+    const inferredFromContent = detectLikelyBookLanguageFromText(contentProbe);
+    if (inferredFromContent) return inferredFromContent;
+
     if (typeof navigator !== 'undefined') {
       const candidates = [...(navigator.languages || []), navigator.language];
       for (const candidate of candidates) {
@@ -1836,6 +1880,7 @@ export default function CourseFlowView({
     const languageCode = resolveActiveLanguageCode();
     setHeaderPodcastLanguageCode(languageCode);
     setSelectedPodcastVoiceName(getResolvedPodcastVoiceName(podcastNode, languageCode));
+    setHasExplicitPodcastVoiceSelection(false);
     setIsHeaderPodcastPanelOpen(true);
     setIsPodcastVoicePickerOpen(true);
     stopPodcastVoicePreview();
@@ -2744,9 +2789,9 @@ export default function CourseFlowView({
                         <div
                           className="mt-2 rounded-2xl border border-dashed p-3"
                           style={{
-                            background: 'linear-gradient(160deg, rgba(24,38,57,0.92) 0%, rgba(17,22,29,0.94) 55%, rgba(14,24,38,0.95) 100%)',
-                            borderColor: 'rgba(120,171,226,0.34)',
-                            boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18)'
+                            background: 'rgba(19,33,51,0.86)',
+                            borderColor: 'rgba(108,144,186,0.35)',
+                            boxShadow: 'inset 0 0 0 1px rgba(125,163,207,0.1)'
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -2767,15 +2812,15 @@ export default function CourseFlowView({
                               className="h-full rounded-full transition-all duration-300"
                               style={{
                                 width: `${Math.max(8, Math.min(100, podcastGenerationVisualProgress))}%`,
-                                background: 'linear-gradient(90deg, #f3d156 0%, #82d96a 28%, #67d6ff 58%, #ff6b6b 82%, #7fa8ff 100%)'
+                                background: 'linear-gradient(90deg, #f59e0b 0%, #facc15 100%)'
                               }}
                             />
                           </div>
-                          <p className="mt-1 text-center text-[10px] text-[#c9e1fb]">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
-                          <p className="mt-1 text-center text-[10px] text-[#afcceb]">
+                          <p className="mt-1 text-center text-[10px] text-[#f1dfba]">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
+                          <p className="mt-1 text-center text-[10px] text-[#d7c299]">
                             {getPodcastGenerationStatusText()}
                           </p>
-                          <p className="mt-1 text-center text-[10px] text-[#afcceb]">
+                          <p className="mt-1 text-center text-[10px] text-[#d7c299]">
                             {t('Kitabın uzunluğuna göre bu işlem birkaç dakika sürebilir.')}
                           </p>
                           <div className="mt-1 flex items-center justify-center">
@@ -2787,13 +2832,13 @@ export default function CourseFlowView({
                         <div
                           className="mt-2 rounded-2xl border border-dashed p-2"
                           style={{
-                            background: 'linear-gradient(160deg, rgba(24,38,57,0.9) 0%, rgba(17,22,29,0.9) 56%, rgba(14,24,38,0.93) 100%)',
-                            borderColor: 'rgba(120,171,226,0.3)',
-                            boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.14)'
+                            background: 'rgba(17,22,29,0.9)',
+                            borderColor: 'rgba(245, 158, 11, 0.28)',
+                            boxShadow: 'inset 0 0 0 1px rgba(245, 158, 11, 0.06)'
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="mb-2 px-1 text-[10px] font-bold text-[#cde4fb]">
+                          <div className="mb-2 px-1 text-[10px] font-bold text-[#f6e2b8]">
                             {t('Podcast')} ({effectiveHeaderPodcastLanguageLabel})
                           </div>
                           {(headerPodcastAudioUrl && hasSegmentedPodcast) ? (
@@ -2818,11 +2863,11 @@ export default function CourseFlowView({
                             <div
                               className="rounded-xl border border-dashed px-3 py-3"
                               style={{
-                                borderColor: 'rgba(120,171,226,0.24)',
+                                borderColor: 'rgba(245, 158, 11, 0.24)',
                                 background: 'rgba(13,24,38,0.45)'
                               }}
                             >
-                              <p className="text-[11px] text-[#b9d3ee]">
+                              <p className="text-[11px] text-[#d9dfe8]">
                                 {headerPodcastAudioUrl && !hasSegmentedPodcast
                                   ? t('Eski kısa podcast bulundu. Tam kitap podcast için yeniden oluşturun.')
                                   : t('Podcast henüz hazır değil.')}
@@ -2831,12 +2876,12 @@ export default function CourseFlowView({
                                 type="button"
                                 onClick={handleOpenPodcastVoicePicker}
                                 disabled={isExportBusy}
-                                className={`mt-2 h-14 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-between transition-all overflow-hidden relative ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] hover:shadow-[0_10px_20px_rgba(26,71,116,0.36)] active:scale-[0.99]'}`}
+                                className={`mt-2 h-14 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-between transition-all overflow-hidden relative ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
                                 style={{
-                                  background: 'rgba(28, 67, 108, 0.96)',
-                                  borderColor: 'rgba(186, 219, 248, 0.22)',
-                                  color: '#ffffff',
-                                  boxShadow: 'inset 0 0 0 1px rgba(225,240,255,0.06), 0 8px 16px rgba(18,44,74,0.22)'
+                                  background: 'rgba(255, 248, 232, 0.05)',
+                                  borderColor: 'rgba(245, 158, 11, 0.34)',
+                                  color: '#fffdf6',
+                                  boxShadow: 'inset 0 0 0 1px rgba(255,244,214,0.05), 0 10px 20px rgba(0,0,0,0.16)'
                                 }}
                               >
                                 <div
@@ -2847,17 +2892,17 @@ export default function CourseFlowView({
                                   <span
                                     className="h-7 w-7 shrink-0 rounded-xl inline-flex items-center justify-center border border-dashed"
                                     style={{
-                                      borderColor: 'rgba(225,240,255,0.18)',
-                                      background: 'rgba(12,28,48,0.22)'
+                                      borderColor: 'rgba(245, 158, 11, 0.22)',
+                                      background: 'rgba(255,255,255,0.04)'
                                     }}
                                   >
                                     {isExportBusy ? <FaviconSpinner size={13} /> : <AudioLines size={13} className="text-white" />}
                                   </span>
                                   <span className="min-w-0 text-left leading-tight">
-                                    <span className="block text-[13px] font-black tracking-[0.01em] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.72)' }}>
+                                    <span className="block text-[13px] font-black tracking-[0.01em] truncate text-[#fffaf0]">
                                       {t('Podcast oluştur')}
                                     </span>
-                                    <span className="block mt-1 text-[11px] font-semibold text-[#eef6ff] truncate" style={{ textShadow: '0 1px 1px rgba(8,20,35,0.62)' }}>
+                                    <span className="block mt-1 text-[11px] font-medium text-white/68 truncate">
                                       {isExportBusy ? t('Hazırlanıyor...') : t('Önce sesi test et, sonra oluştur.')}
                                     </span>
                                   </span>
@@ -2865,9 +2910,9 @@ export default function CourseFlowView({
                                 <span
                                   className="relative ml-2 shrink-0 h-8 px-2.5 rounded-xl border border-dashed inline-flex items-center justify-center text-[11px] font-black"
                                   style={{
-                                    borderColor: 'rgba(225,240,255,0.18)',
-                                    background: 'rgba(9,24,40,0.24)',
-                                    color: '#ffffff'
+                                    borderColor: 'rgba(245, 158, 11, 0.22)',
+                                    background: 'rgba(255,255,255,0.04)',
+                                    color: '#fffaf0'
                                   }}
                                 >
                                   {PODCAST_CREATE_CREDIT_COST} {t('kredi')}
@@ -2877,16 +2922,16 @@ export default function CourseFlowView({
                                 <div
                                   className="mt-3 rounded-2xl border border-dashed p-3"
                                   style={{
-                                    borderColor: 'rgba(120,171,226,0.26)',
+                                    borderColor: 'rgba(245, 158, 11, 0.24)',
                                     background: 'rgba(11,20,33,0.56)'
                                   }}
                                 >
                                   <div className="mb-3 flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                      <p className="text-[11px] font-black tracking-[0.03em] text-white">
+                                      <p className="text-[11px] font-black tracking-[0.03em] text-[#fff8e8]">
                                         {t('Podcast sesini seç')}
                                       </p>
-                                      <p className="mt-1 text-[10px] text-[#b7d3ef]">
+                                      <p className="mt-1 text-[10px] text-white/68">
                                         {t('Her sesi kitap dilinde dinleyip sonra seçebilirsin.')}
                                       </p>
                                     </div>
@@ -2897,8 +2942,8 @@ export default function CourseFlowView({
                                         setIsPodcastVoicePickerOpen(false);
                                         stopPodcastVoicePreview();
                                       }}
-                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-dashed text-[#d8ebff] transition-all hover:bg-white/5"
-                                      style={{ borderColor: 'rgba(153,188,226,0.28)' }}
+                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-dashed text-[#f4e4bf] transition-all hover:bg-white/5"
+                                      style={{ borderColor: 'rgba(245, 158, 11, 0.24)' }}
                                       aria-label={t('Kapat')}
                                       title={t('Kapat')}
                                     >
@@ -2915,11 +2960,11 @@ export default function CourseFlowView({
                                           key={option.id}
                                           className="rounded-2xl border border-dashed p-2"
                                           style={{
-                                            borderColor: isSelected ? 'rgba(255,217,122,0.68)' : 'rgba(120,171,226,0.24)',
+                                            borderColor: isSelected ? 'rgba(245, 158, 11, 0.62)' : 'rgba(245, 158, 11, 0.2)',
                                             background: isSelected
-                                              ? 'linear-gradient(160deg, rgba(31,64,102,0.72) 0%, rgba(24,46,72,0.78) 100%)'
+                                              ? 'rgba(133,79,14,0.44)'
                                               : 'rgba(17,24,36,0.72)',
-                                            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255,217,122,0.18)' : 'none'
+                                            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(245, 158, 11, 0.18)' : 'none'
                                           }}
                                         >
                                           <button
@@ -2927,12 +2972,33 @@ export default function CourseFlowView({
                                             onClick={(event) => {
                                               event.stopPropagation();
                                               setSelectedPodcastVoiceName(option.voiceName);
+                                              setHasExplicitPodcastVoiceSelection(true);
                                             }}
-                                            className="w-full text-left"
+                                            className="inline-flex min-h-[52px] w-full items-center justify-between gap-2 rounded-xl border border-dashed px-3 py-2 text-left transition-all hover:-translate-y-[1px] active:scale-[0.99]"
+                                            style={{
+                                              borderColor: isSelected ? 'rgba(255, 220, 145, 0.58)' : 'rgba(245, 158, 11, 0.22)',
+                                              background: isSelected ? '#a86a13' : 'rgba(255, 248, 232, 0.05)',
+                                              color: '#fffaf0',
+                                              boxShadow: isSelected
+                                                ? 'inset 0 0 0 1px rgba(255,244,214,0.12), 0 0 0 3px rgba(245,158,11,0.16), 0 10px 20px rgba(76,48,8,0.16)'
+                                                : 'inset 0 0 0 1px rgba(255,244,214,0.05), 0 8px 16px rgba(0,0,0,0.14)'
+                                            }}
                                           >
-                                            <span className="block text-[12px] font-black text-white">{option.label}</span>
-                                            <span className="mt-1 block text-[10px] text-[#b7d3ef]">
-                                              {isSelected ? t('Seçildi') : t('Ses örneğini dinle')}
+                                            <span className="min-w-0">
+                                              <span className="block text-[12px] font-black text-[#fff7e7]">{option.label}</span>
+                                              <span className={`mt-1 block text-[10px] ${isSelected ? 'text-[#fff0c8]' : 'text-white/68'}`}>
+                                                {isSelected ? t('Seçildi') : t('Ses örneğini dinle')}
+                                              </span>
+                                            </span>
+                                            <span
+                                              className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg border border-dashed px-2 text-[10px] font-black"
+                                              style={{
+                                                borderColor: isSelected ? 'rgba(255, 231, 180, 0.44)' : 'rgba(245, 158, 11, 0.2)',
+                                                background: isSelected ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                                                color: '#fff8eb'
+                                              }}
+                                            >
+                                              {isSelected ? t('Aktif') : t('Seç')}
                                             </span>
                                           </button>
                                           <button
@@ -2943,8 +3009,8 @@ export default function CourseFlowView({
                                             }}
                                             className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-[0.98]"
                                             style={{
-                                              borderColor: isPlayingPreview ? 'rgba(135,231,146,0.74)' : 'rgba(142,188,235,0.34)',
-                                              background: isPlayingPreview ? 'rgba(57,102,45,0.34)' : 'rgba(24,43,66,0.8)',
+                                              borderColor: isPlayingPreview ? 'rgba(255, 220, 145, 0.58)' : 'rgba(245, 158, 11, 0.22)',
+                                              background: isPlayingPreview ? '#a86a13' : 'rgba(255, 248, 232, 0.05)',
                                               color: '#ffffff'
                                             }}
                                           >
@@ -2967,14 +3033,16 @@ export default function CourseFlowView({
                                     disabled={isExportBusy}
                                     className={`mt-3 h-11 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-center gap-2 transition-all ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
                                     style={{
-                                      background: 'rgba(28, 67, 108, 0.96)',
-                                      borderColor: 'rgba(186, 219, 248, 0.22)',
+                                      background: hasExplicitPodcastVoiceSelection ? '#a86a13' : 'rgba(255, 248, 232, 0.05)',
+                                      borderColor: hasExplicitPodcastVoiceSelection ? 'rgba(255, 220, 145, 0.58)' : 'rgba(245, 158, 11, 0.3)',
                                       color: '#ffffff',
-                                      boxShadow: 'inset 0 0 0 1px rgba(225,240,255,0.06), 0 8px 16px rgba(18,44,74,0.22)'
+                                      boxShadow: hasExplicitPodcastVoiceSelection
+                                        ? 'inset 0 0 0 1px rgba(255,244,214,0.12), 0 0 0 3px rgba(245,158,11,0.18), 0 10px 20px rgba(76,48,8,0.18)'
+                                        : 'inset 0 0 0 1px rgba(255,244,214,0.05), 0 8px 16px rgba(0,0,0,0.14)'
                                     }}
                                   >
                                     {isExportBusy ? <FaviconSpinner size={14} /> : <AudioLines size={14} className="text-white" />}
-                                    <span className="text-[12px] font-black">{t('Seçili sesle podcast oluştur')}</span>
+                                    <span className="text-[12px] font-black text-white">{t('Seçili sesle podcast oluştur')}</span>
                                   </button>
                                 </div>
                               )}
