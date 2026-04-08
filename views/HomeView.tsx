@@ -129,11 +129,11 @@ const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
     actionGlow: 'rgba(16, 185, 129, 0.28)'
   },
   novel: {
-    tone: { border: 'rgba(217, 82, 96, 0.66)', fill: 'rgba(217, 82, 96, 0.18)', glow: 'rgba(217, 82, 96, 0.24)' },
-    progress: 'linear-gradient(90deg, #d95b68 0%, #e79a9f 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(138,48,59,0.94) 0%, rgba(166,68,79,0.94) 100%)',
-    actionBorder: 'rgba(232, 146, 156, 0.74)',
-    actionGlow: 'rgba(217, 82, 96, 0.26)'
+    tone: { border: 'rgba(227, 10, 23, 0.72)', fill: 'rgba(227, 10, 23, 0.18)', glow: 'rgba(227, 10, 23, 0.24)' },
+    progress: 'linear-gradient(90deg, #e30a17 0%, #ff4654 100%)',
+    actionBackground: 'linear-gradient(135deg, rgba(163,12,24,0.94) 0%, rgba(227,10,23,0.94) 100%)',
+    actionBorder: 'rgba(255, 134, 143, 0.72)',
+    actionGlow: 'rgba(227, 10, 23, 0.28)'
   }
 };
 
@@ -792,10 +792,10 @@ export default function HomeView({
 }: HomeViewProps) {
   const { locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('general');
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('4-6');
   const [bookLanguageInput, setBookLanguageInput] = useState<string>(defaultBookLanguage);
-  const [selectedBookType, setSelectedBookType] = useState<SmartBookBookType>('novel');
-  const [selectedSubGenre, setSelectedSubGenre] = useState<string>(SMARTBOOK_SUBGENRE_OPTIONS.novel[0]);
+  const [selectedBookType, setSelectedBookType] = useState<SmartBookBookType>('fairy_tale');
+  const [selectedSubGenre, setSelectedSubGenre] = useState<string>(SMARTBOOK_SUBGENRE_OPTIONS.fairy_tale[0]);
   const [selectedEndingStyle, setSelectedEndingStyle] = useState<SmartBookEndingStyle>('happy');
   const [creatorNameInput, setCreatorNameInput] = useState('');
   const [heroNamesInput, setHeroNamesInput] = useState('');

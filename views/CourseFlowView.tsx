@@ -2289,8 +2289,12 @@ export default function CourseFlowView({
   return (
     <div
       ref={fullscreenReaderScrollRef}
-      className={isReadingFullscreen ? 'h-full overflow-y-auto px-4 pb-24 pt-3 scroll-smooth' : 'view-container'}
-      style={{ background: '#1A1F26', backgroundImage: 'none' }}
+      className={isReadingFullscreen ? 'h-full overflow-y-auto px-4 pb-24 scroll-smooth' : 'view-container'}
+      style={{
+        background: '#1A1F26',
+        backgroundImage: 'none',
+        paddingTop: isReadingFullscreen ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : undefined
+      }}
     >
       {false && backgroundReadyToasts.length > 0 && (
         <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+76px)] z-[58] w-[calc(100%-32px)] max-w-[420px] -translate-x-1/2 space-y-2.5 pointer-events-none">
