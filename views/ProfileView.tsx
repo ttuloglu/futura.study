@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, AlertTriangle, Bell, LogOut, Save, ShieldCheck, Trash2, User, UserRoundPen } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
 
@@ -31,7 +31,40 @@ export default function ProfileView({
   const [isDangerActionBusy, setDangerActionBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const statusToastTimerRef = useRef<number | null>(null);
   const canManageAccount = !isGuestSession;
+
+  const getSafeProfileErrorMessage = (error: unknown, fallback: string): string => {
+    const raw = String((error as { message?: unknown } | null)?.message || '');
+    if (!raw) return fallback;
+    const normalized = raw.toLocaleLowerCase('tr-TR');
+    if (
+      normalized.includes('permission-denied') ||
+      normalized.includes('unauthenticated') ||
+      normalized.includes('auth/') ||
+      normalized.includes('oturum') ||
+      normalized.includes('giriş')
+    ) {
+      return t('Oturum doğrulanamadı. Lütfen tekrar giriş yapın.');
+    }
+    if (
+      normalized.includes('resource_exhausted') ||
+      normalized.includes('resource exhausted') ||
+      normalized.includes('quota') ||
+      normalized.includes('rate limit') ||
+      normalized.includes('"code":429') ||
+      normalized.includes('http 4') ||
+      normalized.includes('http 5') ||
+      normalized.includes('functions/') ||
+      normalized.includes('internal') ||
+      normalized.includes('unavailable') ||
+      normalized.includes('failed-precondition') ||
+      normalized.includes('deadline-exceeded')
+    ) {
+      return fallback;
+    }
+    return fallback;
+  };
 
   useEffect(() => {
     setNameInput(userName);
@@ -72,8 +105,7 @@ export default function ProfileView({
       await onUpdateProfileName(normalized);
       setStatusMessage(t('İsim Soyisim güncellendi.'));
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('İsim Soyisim güncellenemedi.');
-      setErrorMessage(message);
+      setErrorMessage(getSafeProfileErrorMessage(error, t('İsim Soyisim güncellenemedi.')));
     } finally {
       setIsSavingName(false);
     }
@@ -96,12 +128,32 @@ export default function ProfileView({
       }
       setPendingDangerAction(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('İşlem tamamlanamadı.');
-      setErrorMessage(message);
+      setErrorMessage(getSafeProfileErrorMessage(error, t('İşlem tamamlanamadı.')));
     } finally {
       setDangerActionBusy(false);
     }
   };
+
+  useEffect(() => {
+    const activeMessage = errorMessage || statusMessage;
+    if (!activeMessage) return;
+    if (statusToastTimerRef.current !== null) {
+      window.clearTimeout(statusToastTimerRef.current);
+    }
+    statusToastTimerRef.current = window.setTimeout(() => {
+      setErrorMessage('');
+      setStatusMessage('');
+      statusToastTimerRef.current = null;
+    }, 2400);
+  }, [errorMessage, statusMessage]);
+
+  useEffect(() => {
+    return () => {
+      if (statusToastTimerRef.current !== null) {
+        window.clearTimeout(statusToastTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="view-container">
@@ -135,6 +187,14 @@ export default function ProfileView({
                 {isDangerActionBusy ? t('İşleniyor...') : dangerModalMeta.confirmLabel}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {(statusMessage || errorMessage) && (
+        <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+80px)] z-[985] -translate-x-1/2 px-4">
+          <div className="rounded-2xl border border-white/45 bg-white/20 px-4 py-3 backdrop-blur-xl shadow-[0_18px_28px_-18px_rgba(0,0,0,0.85)]">
+            <p className="text-[12px] font-semibold text-white">{errorMessage || statusMessage}</p>
           </div>
         </div>
       )}
@@ -254,15 +314,6 @@ export default function ProfileView({
             )}
           </div>
         </section>
-
-        {(statusMessage || errorMessage) && (
-          <section>
-            <div className="rounded-xl border border-dashed px-3 py-2" style={{ borderColor: errorMessage ? 'rgba(233,140,140,0.45)' : 'rgba(120,171,226,0.38)', background: 'rgba(17,22,29,0.72)' }}>
-              {statusMessage && <p className="text-[12px] text-[#cde4fb]">{statusMessage}</p>}
-              {errorMessage && <p className="text-[12px] text-[#ffbab3]">{errorMessage}</p>}
-            </div>
-          </section>
-        )}
 
         <section className="px-1 pb-12">
           <button

@@ -44,6 +44,7 @@ import {
   isRevenueCatPurchaseCancelledError,
   purchaseRevenueCatCreditPack
 } from './utils/revenueCat';
+import { normalizeMarkdownNarrativeLayout } from './utils/markdownLayout';
 
 const HomeView = lazy(() => import('./views/HomeView'));
 const CourseFlowView = lazy(() => import('./views/CourseFlowView'));
@@ -1134,7 +1135,9 @@ async function hydrateCourseFromBundleBlob(
         type: node.type,
         status: node.status,
         duration: typeof node.duration === 'string' ? node.duration : undefined,
-        content: await rewriteMarkdownImageUrls(typeof node.content === 'string' ? node.content : undefined),
+        content: normalizeMarkdownNarrativeLayout(
+          await rewriteMarkdownImageUrls(typeof node.content === 'string' ? node.content : undefined) || ''
+        ) || undefined,
         podcastScript: typeof node.podcastScript === 'string' ? node.podcastScript : undefined,
         podcastAudioUrl: resolvedPodcastAudioUrl,
         questions: Array.isArray(node.questions) ? node.questions : undefined
@@ -1214,12 +1217,36 @@ function hasMissingPrimaryNodeContent(course: CourseData | null | undefined): bo
   return lectureNodes.some((node) => !(typeof node.content === 'string' && node.content.trim().length > 0));
 }
 
+function hasMissingNarrativeImagesForHydration(course: CourseData | null | undefined): boolean {
+  if (!course || !Array.isArray(course.nodes) || course.nodes.length === 0) return false;
+  const isNarrative =
+    course.bookType === 'fairy_tale' ||
+    course.bookType === 'story' ||
+    course.bookType === 'novel';
+  if (!isNarrative) return false;
+
+  const hasBundleSource =
+    Boolean(String(course.contentPackagePath || '').trim()) ||
+    Boolean(String(course.contentPackageUrl || '').trim()) ||
+    Boolean(String(course.bundle?.path || '').trim());
+  if (!hasBundleSource) return false;
+
+  const lectureBodies = course.nodes
+    .filter((node) => node.type === 'lecture' && typeof node.content === 'string' && node.content.trim().length > 0)
+    .map((node) => String(node.content || ''));
+  if (!lectureBodies.length) return false;
+
+  const hasAnyImageMarkup = lectureBodies.some((body) => /!\[[^\]]*]\([^)]+\)|<img\b/i.test(body));
+  return !hasAnyImageMarkup;
+}
+
 function courseNeedsHydration(course: CourseData | null | undefined): boolean {
   return (
     isCourseProgressOnly(course) ||
     !course?.coverImageUrl ||
     courseNeedsFullContentRepair(course) ||
-    hasMissingPrimaryNodeContent(course)
+    hasMissingPrimaryNodeContent(course) ||
+    hasMissingNarrativeImagesForHydration(course)
   );
 }
 
@@ -1227,7 +1254,8 @@ function courseNeedsContentHydration(course: CourseData | null | undefined): boo
   return (
     isCourseProgressOnly(course) ||
     courseNeedsFullContentRepair(course) ||
-    hasMissingPrimaryNodeContent(course)
+    hasMissingPrimaryNodeContent(course) ||
+    hasMissingNarrativeImagesForHydration(course)
   );
 }
 

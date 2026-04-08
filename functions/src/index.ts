@@ -24,16 +24,16 @@ const GEMINI_PLANNER_MODEL =
   (
     process.env.GEMINI_PLANNER_MODEL ||
     readValueFromDotEnv("GEMINI_PLANNER_MODEL") ||
-    "gemini-2.5-flash-lite"
+    "gemini-2.5-flash"
   ).trim();
-// Production content generation is hard-pinned to Gemini 3 Flash Preview.
-const GEMINI_CONTENT_MODEL = "gemini-3-flash-preview";
+// Production content generation is hard-pinned to Gemini 2.5 Flash.
+const GEMINI_CONTENT_MODEL = "gemini-2.5-flash";
 const GEMINI_QUALITY_MODEL =
   (
     process.env.GEMINI_QUALITY_MODEL ||
     readValueFromDotEnv("GEMINI_QUALITY_MODEL") ||
     GEMINI_PLANNER_MODEL ||
-    "gemini-2.5-flash-lite"
+    "gemini-2.5-flash"
   ).trim();
 const GEMINI_FLASH_TTS_MODEL =
   (
@@ -74,7 +74,7 @@ const GEMINI_QUIZ_REVIEW_MODEL =
     process.env.GEMINI_QUIZ_REVIEW_MODEL ||
     readValueFromDotEnv("GEMINI_QUIZ_REVIEW_MODEL") ||
     GEMINI_PLANNER_MODEL ||
-    "gemini-2.5-flash-lite"
+    "gemini-2.5-flash"
   ).trim();
 const OPENAI_COVER_MODEL = "gpt-image-1.5";
 const OPENAI_LECTURE_IMAGE_MODEL = "gpt-image-1.5";
@@ -209,6 +209,18 @@ const GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M =
     process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M ||
     readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M") ||
     "1.5"
+  );
+const GOOGLE_GEMINI_2_5_FLASH_INPUT_USD_PER_1M =
+  Number(
+    process.env.GOOGLE_GEMINI_2_5_FLASH_INPUT_USD_PER_1M ||
+    readValueFromDotEnv("GOOGLE_GEMINI_2_5_FLASH_INPUT_USD_PER_1M") ||
+    "0.3"
+  );
+const GOOGLE_GEMINI_2_5_FLASH_OUTPUT_USD_PER_1M =
+  Number(
+    process.env.GOOGLE_GEMINI_2_5_FLASH_OUTPUT_USD_PER_1M ||
+    readValueFromDotEnv("GOOGLE_GEMINI_2_5_FLASH_OUTPUT_USD_PER_1M") ||
+    "2.5"
   );
 const GOOGLE_FLASH_TTS_INPUT_USD_PER_1M =
   Number(process.env.GOOGLE_FLASH_TTS_INPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_FLASH_TTS_INPUT_USD_PER_1M") || "0.5");
@@ -3000,6 +3012,13 @@ function costForGemini31FlashLitePreview(inputTokens: number, outputTokens: numb
   );
 }
 
+function costForGemini25Flash(inputTokens: number, outputTokens: number): number {
+  return roundUsd(
+    (inputTokens / 1_000_000) * GOOGLE_GEMINI_2_5_FLASH_INPUT_USD_PER_1M +
+    (outputTokens / 1_000_000) * GOOGLE_GEMINI_2_5_FLASH_OUTPUT_USD_PER_1M
+  );
+}
+
 function costForGeminiModel(model: string, inputTokens: number, outputTokens: number): number {
   const normalized = String(model || "").toLowerCase();
   if (normalized.includes("gemini-3.1-flash-lite")) {
@@ -3008,7 +3027,13 @@ function costForGeminiModel(model: string, inputTokens: number, outputTokens: nu
   if (normalized.includes("gemini-3-flash")) {
     return costForGemini3FlashPreview(inputTokens, outputTokens);
   }
-  return costForGeminiFlashLite(inputTokens, outputTokens);
+  if (normalized.includes("gemini-2.5-flash-lite")) {
+    return costForGeminiFlashLite(inputTokens, outputTokens);
+  }
+  if (normalized.includes("gemini-2.5-flash")) {
+    return costForGemini25Flash(inputTokens, outputTokens);
+  }
+  return costForGemini25Flash(inputTokens, outputTokens);
 }
 
 function costForOpenAiGptImageLow(
@@ -3127,6 +3152,50 @@ function getAiRetryDelayMs(attempt: number, error?: unknown): number {
   const boundedHint = hintedDelay ? Math.min(Math.max(hintedDelay, 1200), 45_000) : 0;
   const mergedBase = Math.max(baseDelay, boundedHint || 0);
   return mergedBase + randomInt(350, 2200);
+}
+
+async function withTransientProviderRetry<T>(
+  run: () => Promise<T>,
+  options: {
+    stage: string;
+    jobId?: string;
+    maxAttempts?: number;
+    minDelayMs?: number;
+    maxDelayMs?: number;
+    stepIndex?: number;
+    stepTotal?: number;
+  }
+): Promise<T> {
+  const maxAttempts = Math.max(1, Math.min(8, Math.floor(options.maxAttempts ?? 5)));
+  const minDelayMs = Math.max(800, Math.floor(options.minDelayMs ?? 1500));
+  const maxDelayMs = Math.max(minDelayMs, Math.floor(options.maxDelayMs ?? 60_000));
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      const transient = isTransientAiProviderError(error);
+      if (!transient || attempt >= maxAttempts) {
+        throw error;
+      }
+      let delayMs = getAiRetryDelayMs(attempt, error);
+      delayMs = Math.max(minDelayMs, Math.min(maxDelayMs, delayMs));
+      logger.warn("Transient provider error, retrying stage", {
+        stage: options.stage,
+        jobId: options.jobId || null,
+        attempt,
+        maxAttempts,
+        delayMs,
+        stepIndex: Number.isFinite(Number(options.stepIndex)) ? options.stepIndex : null,
+        stepTotal: Number.isFinite(Number(options.stepTotal)) ? options.stepTotal : null,
+        quotaExceeded: isQuotaExceededProviderError(error),
+        error: toErrorMessage(error)
+      });
+      await waitFor(delayMs);
+    }
+  }
+
+  throw new HttpsError("unavailable", "Transient provider retries exhausted.");
 }
 
 function waitFor(ms: number): Promise<void> {
@@ -6907,7 +6976,27 @@ JSON şeması:
       }
     });
 
-    const repaired = parseJsonObject(response.text, "Failed to parse narrative title repair response.");
+    let repaired: Record<string, unknown>;
+    try {
+      repaired = parseJsonObject(response.text, "Failed to parse narrative title repair response.");
+    } catch (error) {
+      titleRepairUsageEntries.push(buildGeminiUsageEntry(
+        "Anlati metadata onarimi",
+        GEMINI_PLANNER_MODEL,
+        (response as unknown as { usageMetadata?: unknown }).usageMetadata,
+        repairPrompt,
+        response.text || ""
+      ));
+      logger.warn("Narrative metadata repair parse failed; current metadata kept.", {
+        error: error instanceof Error ? error.message : String(error),
+        responsePreview: String(response.text || "").slice(0, 320)
+      });
+      return {
+        outline: currentOutline,
+        bookTitle: rawBookTitleValue,
+        bookDescription: rawBookDescriptionValue
+      };
+    }
     const repairedBookTitle = typeof repaired.bookTitle === "string"
       ? repaired.bookTitle.replace(/\s+/g, " ").trim()
       : "";
@@ -7547,6 +7636,32 @@ function looksLikeAcademicDriftInNarrative(markdown: string): boolean {
   return false;
 }
 
+const COMPLETE_SENTENCE_END_RE = /[.!?…]["')\]]?$/u;
+
+function endsWithCompleteSentence(text: string): boolean {
+  return COMPLETE_SENTENCE_END_RE.test(String(text || "").trim());
+}
+
+function trimTrailingIncompleteSentence(text: string): string {
+  const normalized = String(text || "").trim();
+  if (!normalized) return "";
+  if (endsWithCompleteSentence(normalized)) return normalized;
+
+  const sentenceBoundaryRe = /[.!?…]["')\]]?(?=\s|$)/gu;
+  let lastBoundaryEnd = -1;
+  let match: RegExpExecArray | null = sentenceBoundaryRe.exec(normalized);
+  while (match) {
+    lastBoundaryEnd = match.index + match[0].length;
+    match = sentenceBoundaryRe.exec(normalized);
+  }
+
+  if (lastBoundaryEnd > Math.max(40, Math.floor(normalized.length * 0.45))) {
+    return normalized.slice(0, lastBoundaryEnd).trim();
+  }
+
+  return normalized;
+}
+
 async function generateLongFormMarkdown(
   ai: GoogleGenAI,
   basePrompt: string,
@@ -7593,9 +7708,19 @@ async function generateLongFormMarkdown(
   if (options.singlePass) {
     const singlePassAttempts = isNarrativeProfile ? 3 : 2;
     let normalized = "";
-    let responseForUsage: { usageMetadata?: unknown } | null = null;
+    const singlePassUsageEntries: UsageReportEntry[] = [];
+    const acceptanceRatio = Math.max(0.55, Math.min(1, options.minAcceptanceRatio ?? 0.7));
+    const relaxedAcceptanceRatio = Math.max(0.45, Math.min(1, options.relaxedFallbackRatio ?? Math.max(0.5, acceptanceRatio - 0.1)));
+    let singlePassRetryHint = "";
+    let validationPassed = false;
 
     for (let attempt = 1; attempt <= singlePassAttempts; attempt += 1) {
+      const activeAcceptanceRatio = attempt >= singlePassAttempts ? relaxedAcceptanceRatio : acceptanceRatio;
+      const minimumWordFloor = isFairyTaleBook ? 45 : 220;
+      const minRequiredWords = Math.max(minimumWordFloor, Math.floor(options.minWords * activeAcceptanceRatio));
+      const minRequiredChars = Number.isFinite(options.minChars)
+        ? Math.max(220, Math.floor((options.minChars || 0) * activeAcceptanceRatio))
+        : 0;
       const response = await ai.models.generateContent({
         model: GEMINI_CONTENT_MODEL,
         contents: `
@@ -7608,7 +7733,7 @@ ${basePrompt}
 4) ${isNarrativeProfile
             ? `İçerik tamamen kurmaca anlatı formatında olmalı; teknik/akademik dile kayma. Sadece düzyazı paragraf üret; şiir gibi satır satır kırma. Bölüm içine ek başlık koyma.${isFairyTaleBook ? " Masalda aşırı '-mış/-muş' zinciri kurma; doğal Türkçe zaman akışı kullan." : ""}`
             : "İçerik doğrudan ders anlatımıyla ilerlesin."}
-${attempt > 1 ? "5) Önceki denemede boş içerik döndü. Bu kez eksiksiz ve dolu içerik üret." : ""}
+${attempt > 1 ? `5) DÜZELTME: ${singlePassRetryHint || "Önceki denemede eksik/yarım içerik döndü. Bu kez eksiksiz ve dolu içerik üret."}` : ""}
 `.trim(),
         config: {
           systemInstruction: getSystemInstructionForBookType(options.bookType),
@@ -7617,29 +7742,36 @@ ${attempt > 1 ? "5) Önceki denemede boş içerik döndü. Bu kez eksiksiz ve do
         }
       });
 
-      responseForUsage = response as unknown as { usageMetadata?: unknown };
+      singlePassUsageEntries.push(buildGeminiUsageEntry(
+        `${options.usageLabel} tek-geçiş deneme ${attempt}`,
+        GEMINI_CONTENT_MODEL,
+        (response as unknown as { usageMetadata?: unknown }).usageMetadata,
+        basePrompt,
+        response.text || ""
+      ));
       const raw = response.text?.trim() || "";
       const cleanedRaw = stripCompletionMarker(raw);
       normalized = stripAssistantStyleLead(normalizeMarkdownListsAndHeadings(cleanedRaw)).trim();
       if (isNarrativeProfile) {
         normalized = paragraphizeNarrativeText(normalized);
       }
-      if (normalized) break;
+      if (!normalized) {
+        singlePassRetryHint = "Boş içerik döndü. İçeriği eksiksiz üret.";
+        logger.warn("Single-pass generation returned empty content", {
+          usageLabel: options.usageLabel,
+          attempt,
+          maxAttempts: singlePassAttempts,
+          bookType: options.bookType || "academic",
+          topicHint: options.topicHint ? String(options.topicHint).slice(0, 120) : undefined
+        });
+        continue;
+      }
 
-      logger.warn("Single-pass generation returned empty content", {
-        usageLabel: options.usageLabel,
-        attempt,
-        maxAttempts: singlePassAttempts,
-        bookType: options.bookType || "academic",
-        topicHint: options.topicHint ? String(options.topicHint).slice(0, 120) : undefined
-      });
-    }
-
-    if (!normalized) {
-      throw new HttpsError("internal", "İçerik üretilemedi. Lütfen tekrar deneyin.");
-    }
-    if (isNarrativeProfile && !/[.!?…]["')\]]?$/u.test(normalized)) {
-      const continuationPrompt = `
+      if (isNarrativeProfile && !endsWithCompleteSentence(normalized)) {
+        let continuationAttempt = 0;
+        while (!endsWithCompleteSentence(normalized) && continuationAttempt < 3) {
+          continuationAttempt += 1;
+          const continuationPrompt = `
 ${basePrompt}
 
 Mevcut bölüm metni:
@@ -7654,32 +7786,67 @@ Görev:
 - Düz yazı paragrafı kullan; şiir gibi satır satır yazma.
 - Son cümleyi doğal ve eksiksiz bitir.
 `.trim();
-      const continuationResponse = await ai.models.generateContent({
-        model: GEMINI_CONTENT_MODEL,
-        contents: continuationPrompt,
-        config: {
-          systemInstruction: getSystemInstructionForBookType(options.bookType),
-          temperature: options.temperature ?? 1,
-          maxOutputTokens: Math.max(800, Math.min(2200, options.maxOutputTokens))
+          const continuationResponse = await ai.models.generateContent({
+            model: GEMINI_CONTENT_MODEL,
+            contents: continuationPrompt,
+            config: {
+              systemInstruction: getSystemInstructionForBookType(options.bookType),
+              temperature: options.temperature ?? 1,
+              maxOutputTokens: Math.max(900, Math.min(2600, options.maxOutputTokens))
+            }
+          });
+          singlePassUsageEntries.push(buildGeminiUsageEntry(
+            `${options.usageLabel} tek-geçiş tamamlama ${attempt}.${continuationAttempt}`,
+            GEMINI_CONTENT_MODEL,
+            (continuationResponse as unknown as { usageMetadata?: unknown }).usageMetadata,
+            continuationPrompt,
+            continuationResponse.text || ""
+          ));
+          const continuationRaw = continuationResponse.text?.trim() || "";
+          const continuationText = paragraphizeNarrativeText(
+            stripAssistantStyleLead(normalizeMarkdownListsAndHeadings(stripCompletionMarker(continuationRaw))).trim()
+          );
+          if (!continuationText) {
+            break;
+          }
+          const appended = `${normalized}\n\n${continuationText}`.trim();
+          normalized = paragraphizeNarrativeText(appended);
         }
-      });
-      const continuationRaw = continuationResponse.text?.trim() || "";
-      const continuationText = paragraphizeNarrativeText(
-        stripAssistantStyleLead(normalizeMarkdownListsAndHeadings(stripCompletionMarker(continuationRaw))).trim()
-      );
-      if (continuationText) {
-        const appended = `${normalized} ${continuationText}`.replace(/\s+/g, " ").trim();
-        normalized = paragraphizeNarrativeText(appended);
       }
+
+      if (isNarrativeProfile && !endsWithCompleteSentence(normalized)) {
+        const trimmed = trimTrailingIncompleteSentence(normalized);
+        if (trimmed !== normalized && endsWithCompleteSentence(trimmed)) {
+          normalized = paragraphizeNarrativeText(trimmed);
+        }
+      }
+
+      const wordCount = countWords(normalized);
+      const charCount = countCharacters(normalized);
+      const endsCleanly = !isNarrativeProfile || endsWithCompleteSentence(normalized);
+
+      if (!endsCleanly) {
+        singlePassRetryHint = "Metin halen yarım/kesik bitiyor. Son cümleyi doğal ve eksiksiz tamamla.";
+        continue;
+      }
+      if (wordCount < minRequiredWords) {
+        singlePassRetryHint = `Metin kısa kaldı (${wordCount} kelime). En az ${minRequiredWords} kelimeye tamamla.`;
+        continue;
+      }
+      if (minRequiredChars > 0 && charCount < minRequiredChars) {
+        singlePassRetryHint = `Metin kısa kaldı (${charCount} karakter). En az ${minRequiredChars} karaktere tamamla.`;
+        continue;
+      }
+
+      validationPassed = true;
+      break;
     }
-    const usageEntry = buildGeminiUsageEntry(
-      options.usageLabel,
-      GEMINI_CONTENT_MODEL,
-      responseForUsage?.usageMetadata,
-      basePrompt,
-      normalized
-    );
-    return { content: normalized, usageEntries: [usageEntry] };
+
+    if (!normalized || !validationPassed) {
+      throw new HttpsError("internal", "İçerik eksiksiz üretilemedi. Lütfen tekrar deneyin.");
+    }
+
+    return { content: normalized, usageEntries: singlePassUsageEntries };
   }
 
   for (let attempt = 1; attempt <= maxGenerationAttempts; attempt++) {
@@ -12502,13 +12669,26 @@ async function runBookGenerationJobTask(
 
   const ai = createGoogleGenAiClient();
   const usageEntries: UsageReportEntry[] = [];
-  const outlineResult = await generateCourseOutline(
-    ai,
-    topic,
-    sourceContent,
-    ageGroup,
-    creativeBrief,
-    allowAiBookTitleGeneration
+  const outlineResult = await withTransientProviderRetry(
+    () => withTimeout(
+      generateCourseOutline(
+        ai,
+        topic,
+        sourceContent,
+        ageGroup,
+        creativeBrief,
+        allowAiBookTitleGeneration
+      ),
+      420_000,
+      () => new HttpsError("deadline-exceeded", "Akış planı üretimi zaman aşımına uğradı.")
+    ),
+    {
+      stage: "book-outline",
+      jobId: jobRef.id,
+      maxAttempts: 6,
+      minDelayMs: 2000,
+      maxDelayMs: 75_000
+    }
   );
   usageEntries.push(outlineResult.usageEntry);
   assertSafeBookOutline(outlineResult.outline);
@@ -12562,20 +12742,35 @@ async function runBookGenerationJobTask(
       { merge: true }
     );
 
-    const lectureResult = await generateLectureContent(
-      ai,
-      bookTitle,
-      node.title,
-      imageApiKey,
-      ageGroup,
-      creativeBrief,
-      finalTargetPageCount,
+    const lectureResult = await withTransientProviderRetry(
+      () => withTimeout(
+        generateLectureContent(
+          ai,
+          bookTitle,
+          node.title,
+          imageApiKey,
+          ageGroup,
+          creativeBrief,
+          finalTargetPageCount,
+          {
+            outlinePositions: { current: index + 1, total: lectureNodes.length },
+            previousChapterContent: previousChapterContent || undefined,
+            storySoFarContent: storySoFarContent || undefined
+          },
+          false
+        ),
+        420_000,
+        () => new HttpsError("deadline-exceeded", `Bölüm üretimi zaman aşımına uğradı: ${node.title}`)
+      ),
       {
-        outlinePositions: { current: index + 1, total: lectureNodes.length },
-        previousChapterContent: previousChapterContent || undefined,
-        storySoFarContent: storySoFarContent || undefined
-      },
-      false
+        stage: "book-chapter",
+        jobId: jobRef.id,
+        maxAttempts: 6,
+        minDelayMs: 2000,
+        maxDelayMs: 75_000,
+        stepIndex: index + 1,
+        stepTotal: lectureNodes.length
+      }
     );
     usageEntries.push(...lectureResult.usageEntries);
 
@@ -12615,13 +12810,26 @@ async function runBookGenerationJobTask(
     { merge: true }
   );
 
-  const coverResult = await generateCourseCover(
-    bookTitle,
-    bookType,
-    imageApiKey,
-    ageGroup,
-    creativeBrief,
-    buildBookJobCoverContext(generatedNodes)
+  const coverResult = await withTransientProviderRetry(
+    () => withTimeout(
+      generateCourseCover(
+        bookTitle,
+        bookType,
+        imageApiKey,
+        ageGroup,
+        creativeBrief,
+        buildBookJobCoverContext(generatedNodes)
+      ),
+      240_000,
+      () => new HttpsError("deadline-exceeded", "Kapak üretimi zaman aşımına uğradı.")
+    ),
+    {
+      stage: "book-cover",
+      jobId: jobRef.id,
+      maxAttempts: 5,
+      minDelayMs: 1800,
+      maxDelayMs: 60_000
+    }
   );
   usageEntries.push(coverResult.usageEntry);
   if (!coverResult.coverImageUrl) {
@@ -12696,7 +12904,7 @@ export const processBookGenerationJobTask = onDocumentCreated(
     region: "us-central1",
     timeoutSeconds: 540,
     memory: "1GiB",
-    maxInstances: 4,
+    maxInstances: 2,
     secrets: [GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY]
   },
   async (event) => {

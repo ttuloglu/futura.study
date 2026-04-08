@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   Activity,
   ArrowRight,
+  ArrowUp,
   AudioLines,
   Award,
   BookOpenText,
@@ -100,6 +101,8 @@ const PODCAST_VOICE_OPTIONS: Array<{ id: string; label: string; voiceName: Podca
   { id: 'fortale-7', label: 'Fortale-7', voiceName: 'Umbriel' },
   { id: 'fortale-8', label: 'Fortale-8', voiceName: 'Algieba' }
 ];
+const FULLSCREEN_READER_FONT_STEP_MIN = -1;
+const FULLSCREEN_READER_FONT_STEP_MAX = 3;
 const DEFAULT_PODCAST_VOICE_NAME: PodcastVoiceName = PODCAST_VOICE_OPTIONS[0].voiceName;
 const PODCAST_VOICE_PREVIEW_TEXTS: Record<string, string> = {
   ar: 'مرحبًا بكم في Fortale. اصنعوا حكاياتكم الملحمية.',
@@ -341,20 +344,33 @@ function stripLeadingDuplicateSectionHeadings(
 function getUserFacingError(error: unknown, fallback: string): string {
   const rawMessage = (error as { message?: string } | null)?.message;
   if (!rawMessage || typeof rawMessage !== 'string') return fallback;
-
-  if (rawMessage.includes('resource-exhausted')) {
-    return rawMessage
-      .replace(/^Firebase:\s*/i, '')
-      .replace(/\s*\(functions\/[a-z-]+\)\.?$/i, '')
-      .trim();
+  const normalized = rawMessage.toLocaleLowerCase('tr-TR');
+  if (
+    normalized.includes('permission-denied') ||
+    normalized.includes('unauthenticated') ||
+    normalized.includes('auth/') ||
+    normalized.includes('oturum') ||
+    normalized.includes('giriş')
+  ) {
+    return 'Oturum doğrulanamadı. Lütfen tekrar giriş yapın.';
   }
-
-  const cleaned = rawMessage
-    .replace(/^Firebase:\s*/i, '')
-    .replace(/\s*\(functions\/[a-z-]+\)\.?$/i, '')
-    .trim();
-
-  return cleaned || fallback;
+  if (
+    normalized.includes('resource_exhausted') ||
+    normalized.includes('resource exhausted') ||
+    normalized.includes('quota') ||
+    normalized.includes('rate limit') ||
+    normalized.includes('"code":429') ||
+    normalized.includes('http 4') ||
+    normalized.includes('http 5') ||
+    normalized.includes('functions/') ||
+    normalized.includes('internal') ||
+    normalized.includes('unavailable') ||
+    normalized.includes('failed-precondition') ||
+    normalized.includes('deadline-exceeded')
+  ) {
+    return fallback;
+  }
+  return fallback;
 }
 
 function getNodeLabelForMessage(node: TimelineNode): string {
@@ -627,6 +643,7 @@ export default function CourseFlowView({
   const [pulseTabNodeId, setPulseTabNodeId] = useState<string | null>(null);
   const [progressPulse, setProgressPulse] = useState(false);
   const [isReadingFullscreen, setIsReadingFullscreen] = useState(false);
+  const [readingFullscreenFontStep, setReadingFullscreenFontStep] = useState(0);
   const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
   const [podcastGenerationVisualProgress, setPodcastGenerationVisualProgress] = useState(6);
   const [hydratedContentNodeIds, setHydratedContentNodeIds] = useState<string[]>([]);
@@ -649,6 +666,7 @@ export default function CourseFlowView({
   });
   const pdfPaletteDraggedRef = useRef(false);
   const podcastVoicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const fullscreenReaderScrollRef = useRef<HTMLDivElement | null>(null);
   const autoIntroGenerationRef = useRef<Set<string>>(new Set());
   const nodeReadySnapshotRef = useRef<Map<string, { primaryReady: boolean; summaryReady: boolean }>>(new Map());
   const nodeReadyInitCourseIdRef = useRef<string | null>(null);
@@ -664,6 +682,13 @@ export default function CourseFlowView({
     courseData?.bookType === 'fairy_tale' ||
     courseData?.bookType === 'story' ||
     courseData?.bookType === 'novel';
+  const readingFullscreenFontScale = useMemo(() => {
+    if (readingFullscreenFontStep <= -1) return 0.92;
+    if (readingFullscreenFontStep === 0) return 1;
+    if (readingFullscreenFontStep === 1) return 1.08;
+    if (readingFullscreenFontStep === 2) return 1.16;
+    return 1.24;
+  }, [readingFullscreenFontStep]);
   const estimatedCreationMinutes = getEstimatedGenerationMinutes(courseData?.bookType);
   const calculateTotalDuration = (nodes: TimelineNode[]): string => {
     const totalMinutes = nodes.reduce((sum, node) => {
@@ -2218,7 +2243,8 @@ export default function CourseFlowView({
 
   return (
     <div
-      className={isReadingFullscreen ? 'h-full overflow-y-auto px-4 pb-6 pt-3 scroll-smooth' : 'view-container'}
+      ref={fullscreenReaderScrollRef}
+      className={isReadingFullscreen ? 'h-full overflow-y-auto px-4 pb-24 pt-3 scroll-smooth' : 'view-container'}
       style={{ background: '#1A1F26', backgroundImage: 'none' }}
     >
       {false && backgroundReadyToasts.length > 0 && (
@@ -2968,24 +2994,86 @@ export default function CourseFlowView({
         <section className={`mt-3 animate-enter flex-1 ${isReadingFullscreen ? 'pb-6' : 'pb-24'}`}>
           <div className="relative">
             {isReadingFullscreen ? (
-              <button
-                type="button"
-                onClick={() => setIsReadingFullscreen(false)}
-                className="fixed z-[110] h-9 rounded-xl border border-dashed inline-flex items-center justify-center gap-1.5 px-3 text-white/80 transition-all duration-200 active:scale-95"
-                style={{
-                  top: 'calc(env(safe-area-inset-top, 0px) + 22px)',
-                  right: '12px',
-                  background: 'rgba(17,22,29,0.78)',
-                  borderColor: 'rgba(173,149,124,0.16)'
-                }}
-                aria-label={t('Tam ekranı kapat')}
-                title={t('Tam ekranı kapat')}
-              >
-                <Minimize2 size={14} />
-                <span className="text-[11px] font-bold whitespace-nowrap">
-                  {t('Kapat')}
-                </span>
-              </button>
+              <>
+                <div
+                  className="fixed z-[110] flex items-center gap-2"
+                  style={{
+                    right: '12px',
+                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const container = fullscreenReaderScrollRef.current;
+                      if (!container) return;
+                      container.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
+                    style={{
+                      background: 'rgba(17,22,29,0.78)',
+                      borderColor: 'rgba(173,149,124,0.16)'
+                    }}
+                    aria-label={t('Başa dön')}
+                    title={t('Başa dön')}
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsReadingFullscreen(false)}
+                    className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
+                    style={{
+                      background: 'rgba(17,22,29,0.78)',
+                      borderColor: 'rgba(173,149,124,0.16)'
+                    }}
+                    aria-label={t('Tam ekranı kapat')}
+                    title={t('Tam ekranı kapat')}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div
+                  className="fixed z-[110] inline-flex items-center rounded-xl border border-dashed overflow-hidden"
+                  style={{
+                    left: '12px',
+                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+                    background: 'rgba(17,22,29,0.82)',
+                    borderColor: 'rgba(173,149,124,0.16)'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setReadingFullscreenFontStep((current) => Math.max(FULLSCREEN_READER_FONT_STEP_MIN, current - 1))}
+                    disabled={readingFullscreenFontStep <= FULLSCREEN_READER_FONT_STEP_MIN}
+                    className="h-9 w-9 inline-flex items-center justify-center text-[15px] font-black text-white/85 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                    aria-label={t('Yazıyı küçült')}
+                    title={t('Yazıyı küçült')}
+                  >
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReadingFullscreenFontStep(0)}
+                    className="h-9 px-2 inline-flex items-center justify-center text-[11px] font-black text-white/88 border-x border-dashed active:scale-95"
+                    style={{ borderColor: 'rgba(173,149,124,0.16)' }}
+                    aria-label={t('Yazı boyutunu sıfırla')}
+                    title={t('Yazı boyutunu sıfırla')}
+                  >
+                    Aa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReadingFullscreenFontStep((current) => Math.min(FULLSCREEN_READER_FONT_STEP_MAX, current + 1))}
+                    disabled={readingFullscreenFontStep >= FULLSCREEN_READER_FONT_STEP_MAX}
+                    className="h-9 w-9 inline-flex items-center justify-center text-[14px] text-white/85 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                    aria-label={t('Yazıyı büyüt')}
+                    title={t('Yazıyı büyüt')}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </>
             ) : (
               <button
                 type="button"
@@ -3107,8 +3195,9 @@ export default function CourseFlowView({
                         content={displayContent}
                         variant="inline"
                         className="text-sm md:text-[15px]"
-                        quoteFirstParagraph={node.type === 'lecture'}
+                        quoteFirstParagraph={node.type === 'lecture' && !isNarrativeBook}
                         readerMode={isReadingFullscreen && isFairyTaleBook ? 'fairytale-fullscreen' : 'default'}
+                        fullscreenFontScale={isReadingFullscreen ? readingFullscreenFontScale : 1}
                       />
                     )}
                     {!isLocked && node.content && !isContentHydrated && (
@@ -3214,7 +3303,7 @@ export default function CourseFlowView({
                                 )
                               );
                             } catch (err) {
-                              alert(getUserFacingError(err, t('İçerik oluşturulamadı.')));
+                              showIosPopup(getUserFacingError(err, t('Bir sorun oluştu. Lütfen kısa bir süre sonra tekrar deneyin.')));
                             } finally {
                               finishGen(node.id);
                             }

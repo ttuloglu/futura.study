@@ -13,6 +13,7 @@ import {
   PodcastVoiceName
 } from "./types";
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from "./utils/contentSafety";
+import { normalizeMarkdownNarrativeLayout } from "./utils/markdownLayout";
 
 type AiOperation =
   | "extractDocumentContext"
@@ -516,7 +517,8 @@ function normalizeSmartBookMarkdownContent(input: string): string {
     output.push(normalizedLine);
   }
 
-  return output.join('\n').trim();
+  const normalized = output.join('\n').trim();
+  return normalizeMarkdownNarrativeLayout(normalized);
 }
 
 export async function generateCourseOutline(

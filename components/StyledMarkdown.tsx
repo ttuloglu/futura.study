@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Download, X } from 'lucide-react';
 import { downloadFile } from '../utils/fileDownload';
+import { normalizeMarkdownNarrativeLayout } from '../utils/markdownLayout';
 import 'katex/dist/katex.min.css';
 
 interface StyledMarkdownProps {
@@ -15,6 +16,7 @@ interface StyledMarkdownProps {
   quoteFirstParagraph?: boolean;
   enableImageLightbox?: boolean;
   readerMode?: 'default' | 'fairytale-fullscreen';
+  fullscreenFontScale?: number;
 }
 
 const MATH_COMMAND_RE = /\\(?:sum|prod|vec|frac|sqrt|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|phi|omega|Delta|Sigma|Pi|Omega|times|cdot|div|pm|mp|neq|ne|leq|geq|approx|sim|to|rightarrow|leftarrow|infty|in|notin|subseteq|subset|supseteq|cup|cap|forall|exists|therefore|because)\b/;
@@ -386,7 +388,8 @@ export default function StyledMarkdown({
   variant = 'card',
   quoteFirstParagraph = false,
   enableImageLightbox = true,
-  readerMode = 'default'
+  readerMode = 'default',
+  fullscreenFontScale = 1
 }: StyledMarkdownProps) {
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [lightboxScale, setLightboxScale] = useState(1);
@@ -405,15 +408,20 @@ export default function StyledMarkdown({
     variant === 'inline'
       ? 'bg-transparent text-white/90'
       : 'glass-panel bg-white/5 border-white/5 px-4 py-5 text-white/90 shadow-2xl rounded-2xl';
+  const readerScale = Number.isFinite(fullscreenFontScale)
+    ? Math.max(0.86, Math.min(1.45, fullscreenFontScale))
+    : 1;
   const safeContent = useMemo(
-    () => normalizeStrayMarkdownMarkers(
-      deindentAccidentalProseBlocks(
-        normalizeMathMarkdownInput(
-          stripImageTableCaptionRows(
-            normalizeGenericVisualCaptions(
-              normalizeHtmlImagesToMarkdown(
-                stripSystemImageCaptionLines(
-                  escapeFalseOrderedListMarkers(content)
+    () => normalizeMarkdownNarrativeLayout(
+      normalizeStrayMarkdownMarkers(
+        deindentAccidentalProseBlocks(
+          normalizeMathMarkdownInput(
+            stripImageTableCaptionRows(
+              normalizeGenericVisualCaptions(
+                normalizeHtmlImagesToMarkdown(
+                  stripSystemImageCaptionLines(
+                    escapeFalseOrderedListMarkers(content)
+                  )
                 )
               )
             )
@@ -641,17 +649,26 @@ export default function StyledMarkdown({
         }}
         components={{
           h1: ({ children }) => (
-            <h1 className="mb-5 border-b border-dashed border-white/20 pb-3 text-[22px] font-extrabold tracking-tight text-white">
+            <h1
+              className="mb-5 border-b border-dashed border-white/20 pb-3 text-[22px] font-extrabold tracking-tight text-white"
+              style={{ fontSize: 'calc(22px * var(--reader-font-scale, 1))' }}
+            >
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mb-4 mt-8 border-b border-dashed border-white/10 pb-2 text-[18px] font-bold tracking-tight text-white/95">
+            <h2
+              className="mb-4 mt-8 border-b border-dashed border-white/10 pb-2 text-[18px] font-bold tracking-tight text-white/95"
+              style={{ fontSize: 'calc(18px * var(--reader-font-scale, 1))' }}
+            >
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mb-3 mt-6 border-b border-dashed border-white/5 pb-1.5 text-[15px] font-bold text-white/90">
+            <h3
+              className="mb-3 mt-6 border-b border-dashed border-white/5 pb-1.5 text-[15px] font-bold text-white/90"
+              style={{ fontSize: 'calc(15px * var(--reader-font-scale, 1))' }}
+            >
               {children}
             </h3>
           ),
@@ -660,21 +677,34 @@ export default function StyledMarkdown({
             paragraphRenderCount += 1;
             if (shouldQuoteFirstParagraph && isFirstParagraph) {
               return (
-                <p className="my-4 text-[14px] leading-[1.8] tracking-wide text-white/85 italic text-center first:mt-0">
+                <p
+                  className="my-4 text-[14px] leading-[1.8] text-white/85 italic text-center first:mt-0"
+                  style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+                >
                   <span aria-hidden className="opacity-85">“</span>
                   {children}
                   <span aria-hidden className="opacity-85">”</span>
                 </p>
               );
             }
-            return <p className="my-3 text-[14px] leading-[1.7] tracking-wide text-white/75 first:mt-0">{children}</p>;
+            return (
+              <p
+                className="my-3 text-[14px] leading-[1.7] text-white/75 first:mt-0"
+                style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+              >
+                {children}
+              </p>
+            );
           },
           strong: ({ children }) => (
             <strong className="font-extrabold text-white/95">{children}</strong>
           ),
           em: ({ children }) => <em className="italic text-white/80">{children}</em>,
           ul: ({ children }) => (
-            <ul className="my-4 list-none space-y-2 pl-2 text-[14px] leading-[1.6] text-white/75">
+            <ul
+              className="my-4 list-none space-y-2 pl-2 text-[14px] leading-[1.6] text-white/75"
+              style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+            >
               {React.Children.map(children, child => {
                 if (!React.isValidElement(child)) return child;
                 return React.cloneElement(child, {
@@ -687,13 +717,17 @@ export default function StyledMarkdown({
             <ol
               {...props}
               className="my-4 list-decimal space-y-2 pl-6 text-[14px] leading-[1.6] text-white/75"
+              style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
             >
               {children}
             </ol>
           ),
           li: ({ children, className }) => <li className={className || ''}>{children}</li>,
           blockquote: ({ children }) => (
-            <blockquote className="my-4 border-l-2 border-accent-green/40 bg-transparent px-4 py-2 text-white/70 italic rounded-r-lg">
+            <blockquote
+              className="my-4 border-l-2 border-accent-green/40 bg-transparent px-4 py-2 text-white/70 italic rounded-r-lg"
+              style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+            >
               {children}
             </blockquote>
           ),
@@ -703,7 +737,10 @@ export default function StyledMarkdown({
                 {children}
               </code>
             ) : (
-              <code className="block overflow-x-auto rounded-none border-0 bg-transparent p-0 font-mono text-[11px] leading-relaxed text-white/80">
+              <code
+                className="block overflow-x-auto rounded-none border-0 bg-transparent p-0 font-mono text-[11px] leading-relaxed text-white/80"
+                style={{ fontSize: 'calc(11px * var(--reader-font-scale, 1))' }}
+              >
                 {children}
               </code>
             ),
@@ -719,7 +756,10 @@ export default function StyledMarkdown({
             </div>
           ),
           th: ({ children }) => (
-            <th className="border-b border-white/10 bg-transparent px-3 py-2 font-bold text-white">
+            <th
+              className="border-b border-white/10 bg-transparent px-3 py-2 font-bold text-white"
+              style={{ fontSize: 'calc(11px * var(--reader-font-scale, 1))' }}
+            >
               {children}
             </th>
           ),
@@ -786,7 +826,7 @@ export default function StyledMarkdown({
               <section key={`${section.imageSrc}-${index}`} className="relative">
                 <div
                   className="sticky z-10 pb-2"
-                  style={{ top: 'calc(env(safe-area-inset-top, 0px) + 4px)' }}
+                  style={{ top: 'max(0px, calc(env(safe-area-inset-top, 0px) - 2px))' }}
                 >
                   {renderInlineImage(section.imageSrc, section.imageAlt, 'h-[30vh] min-h-[220px] max-h-[360px]', { bare: true })}
                 </div>
@@ -811,7 +851,10 @@ export default function StyledMarkdown({
     <article
       data-no-ui-translate="true"
       className={`${wrapperClass} ${className} prose-invert smartbook-markdown-plain`}
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
+      style={{
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        ['--reader-font-scale' as string]: String(readerScale)
+      }}
     >
       {markdownContent}
       {enableImageLightbox && lightboxImage && typeof document !== 'undefined' && createPortal(

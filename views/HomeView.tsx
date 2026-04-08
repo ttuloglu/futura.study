@@ -86,6 +86,8 @@ const DOCUMENT_ACCEPT =
   '.pdf,.txt,.md,.markdown,.csv,.json,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const BOOK_CREATING_LOOP_VIDEO_SRC = '/animations/book-creating-loop.mp4';
 const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation-job';
+const GENERIC_TRANSIENT_ERROR_MESSAGE = 'Bir sorun oluştu. Lütfen kısa bir süre sonra tekrar deneyin.';
+const GENERIC_AUTH_REQUIRED_MESSAGE = 'Oturum doğrulanamadı. Lütfen tekrar giriş yapın.';
 
 type StoryInputMode = 'auto' | 'manual' | null;
 type WizardTone = {
@@ -255,12 +257,35 @@ function formatFileSize(bytes: number): string {
 
 function getUserFacingError(error: unknown, fallback: string): string {
   const rawMessage = (error as { message?: string } | null)?.message;
-  if (!rawMessage || typeof rawMessage !== 'string') return fallback;
-  const cleaned = rawMessage
-    .replace(/^Firebase:\s*/i, '')
-    .replace(/\s*\(functions\/[a-z-]+\)\.?$/i, '')
-    .trim();
-  return cleaned || fallback;
+  if (!rawMessage || typeof rawMessage !== 'string') return fallback || GENERIC_TRANSIENT_ERROR_MESSAGE;
+  if (rawMessage.trim() === BOOK_CONTENT_SAFETY_MESSAGE) return BOOK_CONTENT_SAFETY_MESSAGE;
+  const normalized = rawMessage.toLocaleLowerCase('tr-TR');
+  if (
+    normalized.includes('permission-denied') ||
+    normalized.includes('unauthenticated') ||
+    normalized.includes('auth/') ||
+    normalized.includes('oturum') ||
+    normalized.includes('giriş')
+  ) {
+    return GENERIC_AUTH_REQUIRED_MESSAGE;
+  }
+  if (
+    normalized.includes('resource_exhausted') ||
+    normalized.includes('resource exhausted') ||
+    normalized.includes('quota') ||
+    normalized.includes('rate limit') ||
+    normalized.includes('"code":429') ||
+    normalized.includes('http 4') ||
+    normalized.includes('http 5') ||
+    normalized.includes('functions/') ||
+    normalized.includes('internal') ||
+    normalized.includes('unavailable') ||
+    normalized.includes('failed-precondition') ||
+    normalized.includes('deadline-exceeded')
+  ) {
+    return fallback || GENERIC_TRANSIENT_ERROR_MESSAGE;
+  }
+  return fallback || GENERIC_TRANSIENT_ERROR_MESSAGE;
 }
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -795,6 +820,7 @@ export default function HomeView({
   const stickyRowContainerRef = useRef<HTMLElement | null>(null);
   const stickyCopyTimerRef = useRef<number | null>(null);
   const stickyNoticeTimerRef = useRef<number | null>(null);
+  const sourceNoticeTimerRef = useRef<number | null>(null);
   const lastDefaultBookLanguageRef = useRef(defaultBookLanguage);
   const generationJobPollTimerRef = useRef<number | null>(null);
   const activeGenerationJobIdRef = useRef<string | null>(null);
@@ -971,7 +997,7 @@ export default function HomeView({
     setActiveGeneratingBookType(null);
     setGenerationStatus('');
     resetGenerationProgress(0);
-    setSourceNotice(message);
+    setSourceNotice(getUserFacingError({ message }, GENERIC_TRANSIENT_ERROR_MESSAGE));
   }
 
   function startBookGenerationPolling(
@@ -1023,9 +1049,9 @@ export default function HomeView({
         }
       } catch (error) {
         if (activeGenerationJobIdRef.current !== jobId) return;
-        const message = getUserFacingError(error, 'Fortale üretim durumu alınamadı.');
-        if (/permission|denied|auth|giriş|login|unauth/i.test(message)) {
-          failGenerationJob(message);
+        const rawMessage = String((error as { message?: string } | null)?.message || '');
+        if (/permission|denied|auth|giriş|login|unauth/i.test(rawMessage.toLocaleLowerCase('tr-TR'))) {
+          failGenerationJob(GENERIC_AUTH_REQUIRED_MESSAGE);
           return;
         }
         setGenerationStatus('Üretim durumu yeniden kontrol ediliyor...');
@@ -1057,6 +1083,25 @@ export default function HomeView({
       return previous;
     });
   }, [defaultBookLanguage]);
+
+  useEffect(() => {
+    if (!sourceNotice) return;
+    if (sourceNoticeTimerRef.current !== null) {
+      window.clearTimeout(sourceNoticeTimerRef.current);
+    }
+    sourceNoticeTimerRef.current = window.setTimeout(() => {
+      setSourceNotice(null);
+      sourceNoticeTimerRef.current = null;
+    }, 2600);
+  }, [sourceNotice]);
+
+  useEffect(() => {
+    return () => {
+      if (sourceNoticeTimerRef.current !== null) {
+        window.clearTimeout(sourceNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const pendingJob = readPendingBookGenerationJob();
@@ -2459,11 +2504,6 @@ export default function HomeView({
                 </div>
               ) : (
                 <>
-                {sourceNotice && (
-                  <div className="mt-2 px-1">
-                    <p className="text-[11px] text-red-300">{sourceNotice}</p>
-                  </div>
-                )}
                 <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'}`}>
                   {currentVisibleStepIndex > 0 && (
                     <button
@@ -2554,6 +2594,14 @@ export default function HomeView({
             </div>
           </div>,
           document.body
+        )}
+
+        {sourceNotice && (
+          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+80px)] z-[126] -translate-x-1/2 px-4">
+            <div className="rounded-2xl border border-white/45 bg-white/20 px-4 py-3 backdrop-blur-xl shadow-[0_18px_28px_-18px_rgba(0,0,0,0.85)]">
+              <p className="text-[12px] font-semibold text-white">{sourceNotice}</p>
+            </div>
+          </div>
         )}
 
         {homeShelfCourses.length > 0 ? (
