@@ -947,6 +947,70 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   border-radius: 0 !important;
 }
 
+.smartbook-paged-reader {
+  overflow: hidden;
+}
+
+.smartbook-paged-reader .smartbook-paged-shell {
+  background: transparent !important;
+}
+
+.smartbook-paged-reader .smartbook-paged-hero {
+  background: rgba(0, 0, 0, 0.18) !important;
+}
+
+.smartbook-paged-reader .smartbook-paged-progress-track {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.smartbook-paged-reader .smartbook-paged-progress-fill {
+  background: #78abe2 !important;
+}
+
+.smartbook-paged-reader .smartbook-paged-page-number {
+  background: rgba(17, 22, 29, 0.72) !important;
+}
+
+.smartbook-paged-reader .smartbook-paged-reader-content {
+  overflow-x: hidden;
+  background: transparent !important;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+  -webkit-hyphens: none;
+  scrollbar-width: none;
+  animation: smartbook-page-enter 180ms ease-out;
+}
+
+.smartbook-paged-reader .smartbook-paged-reader-content::-webkit-scrollbar {
+  display: none;
+}
+
+.smartbook-paged-reader .smartbook-paged-reader-content :where(p, li, span, strong, em) {
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+
+.smartbook-paged-reader .smartbook-paged-reader-content :where(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.9em !important;
+  margin-bottom: 0.55em !important;
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.smartbook-paged-reader .smartbook-paged-reader-content :where(p) {
+  margin-top: 0.72em !important;
+  margin-bottom: 0.72em !important;
+  line-height: 1.62 !important;
+}
+
+@keyframes smartbook-page-enter {
+  0% { opacity: 0.35; transform: translateX(10px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes milestone-overlay-in {
   0% { opacity: 0; transform: translateY(-12px) scale(0.975); filter: saturate(0.92); }
   100% { opacity: 1; transform: translateY(0) scale(1); filter: saturate(1); }
@@ -1194,6 +1258,64 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   pointer-events: none;
 }
 
+.fortale-story-glow-image {
+  filter: none;
+  will-change: transform;
+}
+
+.fortale-story-swiper,
+.fortale-story-swiper .swiper-wrapper,
+.fortale-story-swiper .swiper-slide {
+  height: 100% !important;
+}
+
+.fortale-story-swiper .swiper-slide {
+  display: grid !important;
+  place-items: center !important;
+}
+
+.fortale-story-swiper .swiper-zoom-container {
+  display: grid !important;
+  place-items: center !important;
+  align-content: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+}
+
+.fortale-story-swiper .fortale-story-glow-image {
+  display: block;
+  grid-area: 1 / 1;
+  margin: auto;
+}
+
+.fortale-story-toolbar-slot {
+  overflow: visible;
+}
+
+.fortale-story-toolbar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  transform-origin: center;
+}
+
+.fortale-story-toolbar-text {
+  display: inline-block;
+  line-height: 1;
+  white-space: nowrap;
+  transform-origin: center;
+  min-width: max-content;
+}
+
+.fortale-story-toolbar-icon.is-landscape {
+  transform: rotate(90deg);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .milestone-overlay-in,
   .milestone-toast-in,
@@ -1207,7 +1329,9 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   .smartbook-create-fill,
   .fortale-book-silhouette,
   .fortale-book-sheen,
-  .fortale-book-scan-line {
+  .fortale-book-scan-line,
+  .fortale-story-glow-image,
+  .fortale-story-gallery-aura {
     animation: none !important;
   }
 }

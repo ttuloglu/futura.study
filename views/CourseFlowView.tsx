@@ -814,6 +814,7 @@ function VisualStoryReader({
   // Keep the visual reader inline so the custom music control stays available on native.
   const isNativePhotoViewer = false;
   const derivedCoverNarrationScript = deriveVisualStoryCoverScript(courseData);
+  const rotatedIconStyle = isLandscapePreview ? { transform: 'rotate(90deg)' } : undefined;
   const derivedVisualStoryNarrationPages = useMemo(
     () =>
       (courseData.nodes || [])
@@ -1333,7 +1334,7 @@ function VisualStoryReader({
     <div
       className="min-h-dvh overflow-hidden text-white"
       style={{
-        background: 'linear-gradient(135deg, #2c2521 0%, #4b3a31 44%, #655046 100%)'
+        background: 'linear-gradient(160deg, #ffe29a 0%, #ffc6a5 38%, #9ee4ff 100%)'
       }}
     >
 	      <audio
@@ -1410,21 +1411,22 @@ function VisualStoryReader({
 	          disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
 	          className="h-11 w-11 rounded-2xl border border-dashed inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
 	          style={{
-	            background: isNarrationPlaying ? 'rgba(68, 31, 18, 0.92)' : 'rgba(17,22,29,0.84)',
-	            borderColor: isNarrationPlaying ? 'rgba(255, 194, 144, 0.38)' : 'rgba(173,149,124,0.18)',
-	            boxShadow: isNarrationPlaying
-	              ? '0 10px 24px rgba(68, 31, 18, 0.26)'
-	              : '0 10px 24px rgba(0,0,0,0.18)',
+	            background: isNarrationPlaying ? 'rgba(255, 244, 230, 0.92)' : 'rgba(255,255,255,0.72)',
+	            borderColor: isNarrationPlaying ? 'rgba(255, 151, 110, 0.52)' : 'rgba(255,255,255,0.46)',
+	            color: '#27415f',
+	            boxShadow: 'none',
 	            backdropFilter: 'blur(10px)'
 	          }}
 	          aria-label={isNarrationPlaying ? t('Masalı duraklat') : t('Masalı başlat')}
 	          title={isNarrationGenerating ? `${t('Hazırlanıyor')} ${narrationGenerationProgress}%` : (isNarrationPlaying ? t('Masalı duraklat') : t('Masalı başlat'))}
 	        >
-	          {isNarrationGenerating
-	            ? <FaviconSpinner size={18} />
-	            : isNarrationPlaying
-	              ? <PauseCircle size={20} />
-	              : <PlayCircle size={20} />}
+	          <span className="inline-flex items-center justify-center" style={rotatedIconStyle}>
+	            {isNarrationGenerating
+	              ? <FaviconSpinner size={18} />
+	              : isNarrationPlaying
+	                ? <PauseCircle size={20} />
+	                : <PlayCircle size={20} />}
+	          </span>
 	        </button>
 	      </div>
 	      <div
@@ -1713,7 +1715,6 @@ function VisualStoryReader({
                     overflow: 'visible'
                   }}
                 >
-                  <div className="fortale-story-gallery-aura" aria-hidden />
                   <img
                     src={page.imageUrl || ''}
                     alt={page.text || page.title}

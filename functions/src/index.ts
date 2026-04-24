@@ -10033,6 +10033,17 @@ function normalizeNarrationTextForTts(narrationText: string): string {
     .trim();
 }
 
+function formatVisualStoryNarrationForTts(narrationText: string): string {
+  const normalized = normalizeNarrationTextForTts(narrationText);
+  if (!normalized) return "";
+  const sentences = normalized
+    .split(/(?<=[.!?…])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .map((sentence) => sentence.replace(/,\s+/g, ",\n"));
+  return sentences.join("\n\n");
+}
+
 function countPodcastWords(text: string): number {
   const normalized = String(text || "").trim();
   if (!normalized) return 0;
@@ -14766,8 +14777,8 @@ export const startPodcastAudioJob = onCall(
     let visualStoryAudioTarget: PodcastVisualStoryAudioTarget | undefined;
     if (isVisualStoryAudioJob) {
       chunks = [
-        ...(coverScript ? [coverScript] : []),
-        ...visualStoryPages.map((page) => page.script)
+        ...(coverScript ? [formatVisualStoryNarrationForTts(coverScript)] : []),
+        ...visualStoryPages.map((page) => formatVisualStoryNarrationForTts(page.script))
       ];
       const orderedTexts = chunks.map((chunk) => normalizeNarrationTextForTts(chunk));
       const chunkMeta = [
