@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import ReactMarkdown from 'react-markdown';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Zoom } from 'swiper/modules';
+import type { Swiper as SwiperType } from 'swiper';
+import 'swiper/css';
+import 'swiper/css/zoom';
 import {
   Activity,
+  ArrowDown,
+  ArrowLeft,
   ArrowRight,
   ArrowUp,
   AudioLines,
@@ -22,12 +30,14 @@ import {
   ChevronDown,
   Compass,
   Maximize2,
-  Minimize2
+  Minimize2,
+  RotateCw
 } from 'lucide-react';
 import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState, PodcastVoiceName } from '../types';
 import FLogo from '../components/FLogo';
 import FaviconSpinner from '../components/FaviconSpinner';
 import {
+  formatAiUsageEntryForConsole,
   generateLectureContent,
   getPodcastAudioJob,
   generateRemedialContent,
@@ -37,7 +47,7 @@ import {
 } from '../ai';
 import { PODCAST_CREATE_CREDIT_COST } from '../utils/creditCosts';
 import { downloadFile } from '../utils/fileDownload';
-import StyledMarkdown from '../components/StyledMarkdown';
+import StyledMarkdown, { extractMarkdownImageSections } from '../components/StyledMarkdown';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
 import { getEstimatedGenerationMinutes } from '../utils/bookGeneration';
@@ -63,6 +73,24 @@ interface CourseFlowViewProps {
 type NodeVisual = {
   icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
   label: string;
+};
+
+type FullscreenReaderTextSection = {
+  key: string;
+  markdown: string;
+  heading?: string;
+  subtitle?: string;
+  durationLabel?: string;
+  imageIndex: number | null;
+  activeImageIndex: number;
+};
+
+type FullscreenReaderImage = {
+  key: string;
+  src: string;
+  alt: string;
+  sectionKey: string;
+  heading: string;
 };
 
 const NODE_VISUALS: Record<NodeType, NodeVisual> = {
@@ -104,6 +132,7 @@ const PODCAST_VOICE_OPTIONS: Array<{ id: string; label: string; voiceName: Podca
 const FULLSCREEN_READER_FONT_STEP_MIN = -1;
 const FULLSCREEN_READER_FONT_STEP_MAX = 3;
 const DEFAULT_PODCAST_VOICE_NAME: PodcastVoiceName = PODCAST_VOICE_OPTIONS[0].voiceName;
+const IMAGE_PREVIEW_ACTION_TOP = 'calc(env(safe-area-inset-top, 0px) + 76px)';
 const PODCAST_VOICE_PREVIEW_TEXTS: Record<string, string> = {
   ar: 'مرحبًا بكم في Fortale. اصنعوا حكاياتكم الملحمية.',
   da: 'Velkommen til Fortale. Skab jeres episke historier.',
@@ -125,6 +154,49 @@ const PODCAST_VOICE_PREVIEW_TEXTS: Record<string, string> = {
   sv: 'Välkommen till Fortale. Skapa era episka berättelser.',
   th: 'ยินดีต้อนรับสู่ Fortale สร้างเรื่องราวสุดยิ่งใหญ่ของคุณ',
   tr: "Fortale'e hoş geldiniz. Epik hikayelerinizi oluşturun."
+};
+type FairyTaleBackgroundTrackKey = 'classic' | 'modern' | 'adventure' | 'mythic' | 'educational';
+
+type FairyTaleBackgroundTrack = {
+  key: FairyTaleBackgroundTrackKey;
+  label: string;
+  src: string;
+};
+
+const FAIRY_TALE_BACKGROUND_TRACKS: Record<FairyTaleBackgroundTrackKey, FairyTaleBackgroundTrack> = {
+  classic: {
+    key: 'classic',
+    label: 'Fairy Tale - Fairy Flute',
+    src: '/audio/fairy-tales/fairy-tale-fairy-flute-2585.mp3'
+  },
+  modern: {
+    key: 'modern',
+    label: 'Cinematic Music Sketches - 05 - Fairy Tale Sketch',
+    src: '/audio/fairy-tales/cinematic-music-sketches-05-fairy-tale-sketch.mp3'
+  },
+  adventure: {
+    key: 'adventure',
+    label: 'Cinematic Fairy Tale Story (Main)',
+    src: '/audio/fairy-tales/cinematic-fairy-tale-story-main-8697.mp3'
+  },
+  mythic: {
+    key: 'mythic',
+    label: 'Look Up to the Stars - Ambient Fairy Tale Music',
+    src: '/audio/fairy-tales/look-up-to-the-stars-ambient-fairy-tale-music.mp3'
+  },
+  educational: {
+    key: 'educational',
+    label: 'Cinematic Fairy Tale Intro Sketch',
+    src: '/audio/fairy-tales/cinematic-fairy-tale-intro-sketch-115538.mp3'
+  }
+};
+
+const FAIRY_TALE_SUBGENRE_TRACK_KEYS: Record<string, FairyTaleBackgroundTrackKey> = {
+  'klasik masal': 'classic',
+  'modern masal': 'modern',
+  'macera masalı': 'adventure',
+  'mitolojik esintili': 'mythic',
+  'eğitici masal': 'educational'
 };
 let exportUtilsPromise: Promise<typeof import('../utils/exportUtils')> | null = null;
 
@@ -185,6 +257,12 @@ function buildBookTypeSubGenreLabel(courseData: CourseData, t: (value: string) =
   const ageGroupLabel = ageLabel === 'Genel' ? `${ageLabel} ${t('Yaş Grubu')}` : `${ageLabel} ${t('Grubu')}`;
   if (!subGenre) return `${bookTypeLabel} I ${ageGroupLabel}`;
   return `${bookTypeLabel}- ${t(subGenre)} I ${ageGroupLabel}`;
+}
+
+function resolveVisualStoryBackgroundTrack(subGenre: string | undefined): FairyTaleBackgroundTrack {
+  const normalizedSubGenre = String(subGenre || '').trim().toLocaleLowerCase('tr-TR');
+  const trackKey = FAIRY_TALE_SUBGENRE_TRACK_KEYS[normalizedSubGenre] || 'classic';
+  return FAIRY_TALE_BACKGROUND_TRACKS[trackKey];
 }
 
 function loadExportUtils() {
@@ -632,7 +710,1047 @@ function InlineQuizMarkdown({ content }: { content: string }) {
   );
 }
 
+type VisualStoryPage = {
+  id: string;
+  nodeId?: string;
+  title: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  text?: string;
+  pageSequence?: number;
+};
+
+const VISUAL_STORY_NARRATION_PRE_DELAY_MS = 2000;
+const VISUAL_STORY_NARRATION_POST_DELAY_MS = 5000;
+
+function normalizeVisualStoryNarrationSource(value: string | undefined | null): string {
+  return String(value || '')
+    .replace(/\r/g, '\n')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[`*_>#~-]/g, ' ')
+    .replace(/\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function deriveVisualStoryPageScript(
+  node: TimelineNode,
+  index: number,
+  t: (key: string) => string
+): string {
+  const candidates = [
+    node.pageText,
+    node.podcastScript,
+    node.content,
+    node.description
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeVisualStoryNarrationSource(candidate);
+    if (normalized) return normalized;
+  }
+  return normalizeVisualStoryNarrationSource(node.title || `${t('Sayfa')} ${index + 1}`);
+}
+
+function deriveVisualStoryCoverScript(courseData: CourseData): string {
+  return normalizeVisualStoryNarrationSource(
+    courseData.coverNarrationText ||
+    courseData.description ||
+    courseData.topic
+  );
+}
+
+function logVisualStoryNarrationCosts(
+  usageEntries: Array<{ label?: string; provider?: string; model?: string; inputTokens?: number; outputTokens?: number; totalTokens?: number; estimatedCostUsd?: number }>
+): void {
+  usageEntries.forEach((entry) => {
+    console.info(`[ai-cost] seslendirme - ${formatAiUsageEntryForConsole(entry)}`);
+  });
+}
+
+function VisualStoryReader({
+  courseData,
+  onBack,
+  onUpdateNodes,
+  onRequireCredit
+}: {
+  courseData: CourseData;
+  onBack: () => void;
+  onUpdateNodes?: (nodes: TimelineNode[]) => void;
+  onRequireCredit?: (action: 'create', costOverride?: number) => boolean;
+}) {
+  const { t } = useUiI18n();
+  const [pageIndex, setPageIndex] = useState(0);
+  const [rotationDeg, setRotationDeg] = useState(0);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [isPdfDownloading, setIsPdfDownloading] = useState(false);
+  const [isEpubDownloading, setIsEpubDownloading] = useState(false);
+  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [isBackgroundMusicEnabled, setIsBackgroundMusicEnabled] = useState(false);
+  const [backgroundMusicError, setBackgroundMusicError] = useState<string | null>(null);
+  const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
+  const [narrationError, setNarrationError] = useState<string | null>(null);
+  const [isNarrationGenerating, setIsNarrationGenerating] = useState(false);
+  const [narrationGenerationProgress, setNarrationGenerationProgress] = useState(0);
+  const [coverAudioOverrideUrl, setCoverAudioOverrideUrl] = useState<string | null>(null);
+  const [pageAudioOverrideUrls, setPageAudioOverrideUrls] = useState<Record<string, string>>({});
+  const [selectedPdfBackgroundPresetId, setSelectedPdfBackgroundPresetId] = useState<PdfBackgroundPresetId>(PDF_BACKGROUND_PRESETS[0].id);
+  const [nativeViewerLaunchToken, setNativeViewerLaunchToken] = useState(0);
+  const [nativeViewerError, setNativeViewerError] = useState<string | null>(null);
+  const swiperRef = useRef<SwiperType | null>(null);
+  const nativeViewerOpenedRef = useRef(false);
+  const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
+  const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const activePageIndexRef = useRef(0);
+  const narrationAdvanceLockRef = useRef(false);
+  const narrationStartTimerRef = useRef<number | null>(null);
+  const narrationAdvanceTimerRef = useRef<number | null>(null);
+  const narrationRunIdRef = useRef(0);
+  const isLandscapePreview = rotationDeg === 90;
+  const backgroundTrack = useMemo(
+    () => resolveVisualStoryBackgroundTrack(courseData.subGenre),
+    [courseData.subGenre]
+  );
+  // Keep the visual reader inline so the custom music control stays available on native.
+  const isNativePhotoViewer = false;
+  const derivedCoverNarrationScript = deriveVisualStoryCoverScript(courseData);
+  const derivedVisualStoryNarrationPages = useMemo(
+    () =>
+      (courseData.nodes || [])
+        .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()) && Boolean(node.id))
+        .slice()
+        .sort((left, right) => {
+          const leftSeqRaw = Number(left.pageSequence);
+          const rightSeqRaw = Number(right.pageSequence);
+          const leftSeq = Number.isFinite(leftSeqRaw) ? leftSeqRaw : 999;
+          const rightSeq = Number.isFinite(rightSeqRaw) ? rightSeqRaw : 999;
+          return leftSeq - rightSeq;
+        })
+        .map((node, index) => ({
+          nodeId: node.id,
+          title: node.title || `${t('Sayfa')} ${index + 1}`,
+          script: deriveVisualStoryPageScript(node, index, t),
+          pageSequence: Number.isFinite(Number(node.pageSequence)) ? Number(node.pageSequence) : index + 1
+        }))
+        .filter((page) => page.script.length > 0),
+    [courseData.nodes, t]
+  );
+
+  const pages = useMemo<VisualStoryPage[]>(() => {
+    const coverPage: VisualStoryPage = {
+      id: 'cover',
+      title: courseData.topic || t('Kapak'),
+      imageUrl: courseData.coverImageUrl,
+      audioUrl: coverAudioOverrideUrl || courseData.coverNarrationAudioUrl,
+      text: derivedCoverNarrationScript
+    };
+    const storyPages = (courseData.nodes || [])
+      .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()))
+      .slice()
+      .sort((left, right) => {
+        const leftSeqRaw = Number(left.pageSequence);
+        const rightSeqRaw = Number(right.pageSequence);
+        const leftSeq = Number.isFinite(leftSeqRaw) ? leftSeqRaw : 999;
+        const rightSeq = Number.isFinite(rightSeqRaw) ? rightSeqRaw : 999;
+        return leftSeq - rightSeq;
+      })
+      .map((node, index) => ({
+        id: node.id || `page-${index + 1}`,
+        nodeId: node.id,
+        title: node.title || `${t('Sayfa')} ${index + 1}`,
+        imageUrl: node.pageImageUrl,
+        audioUrl: pageAudioOverrideUrls[node.id] || node.pageAudioUrl,
+        text: deriveVisualStoryPageScript(node, index, t),
+        pageSequence: node.pageSequence
+      }));
+    return [coverPage, ...storyPages].filter((page) => Boolean(page.imageUrl?.trim()));
+  }, [courseData, coverAudioOverrideUrl, derivedCoverNarrationScript, pageAudioOverrideUrls, t]);
+
+  const currentPage = pages[pageIndex] || null;
+  const currentPageAudioUrl = String(currentPage?.audioUrl || '').trim();
+  const hasMissingNarrationAudio = pages.some((page) => !page.audioUrl?.trim());
+  const isCurrentPageNarratable = Boolean(currentPageAudioUrl);
+  const canGenerateNarrationAudio = Boolean(
+    courseData.id &&
+    isFairyTaleBookType(courseData.bookType) &&
+    (
+      Boolean(derivedCoverNarrationScript) ||
+      derivedVisualStoryNarrationPages.length > 0
+    )
+  );
+
+  const selectedPdfBackgroundPreset =
+    PDF_BACKGROUND_PRESETS.find((preset) => preset.id === selectedPdfBackgroundPresetId) || PDF_BACKGROUND_PRESETS[0];
+  const nativeViewerImages = useMemo(
+    () =>
+      pages
+        .map((page) => ({
+          url: String(page.imageUrl || '').trim(),
+          title: page.title
+        }))
+        .filter((image) => image.url.length > 0),
+    [pages]
+  );
+
+  useEffect(() => {
+    setBackgroundMusicError(null);
+  }, [backgroundTrack.src]);
+
+  useEffect(() => {
+    const audio = backgroundAudioRef.current;
+    if (!audio) return;
+    audio.loop = true;
+    audio.preload = 'auto';
+    audio.volume = isNarrationPlaying ? 0.12 : 0.24;
+    if (!isBackgroundMusicEnabled) {
+      audio.pause();
+      return;
+    }
+    if (audio.paused) {
+      audio.currentTime = 0;
+    }
+    const playback = audio.paused ? audio.play() : undefined;
+    if (!playback || typeof playback.catch !== 'function') return;
+    playback.catch((error) => {
+      console.error('Visual story background music failed to play:', error);
+      setBackgroundMusicError(t('Masal müziği başlatılamadı.'));
+      setIsBackgroundMusicEnabled(false);
+    });
+    return () => {
+      audio.pause();
+    };
+  }, [backgroundTrack.src, isBackgroundMusicEnabled, isNarrationPlaying, t]);
+
+  useEffect(() => {
+    activePageIndexRef.current = pageIndex;
+  }, [pageIndex]);
+
+  useEffect(() => {
+    const swiper = swiperRef.current;
+    if (!swiper || swiper.destroyed) return;
+    if (swiper.activeIndex === pageIndex) return;
+    swiper.slideTo(pageIndex, 0);
+  }, [pageIndex]);
+
+  const clearNarrationTimers = (options?: { pauseAudio?: boolean }) => {
+    narrationRunIdRef.current += 1;
+    if (narrationStartTimerRef.current !== null) {
+      window.clearTimeout(narrationStartTimerRef.current);
+      narrationStartTimerRef.current = null;
+    }
+    if (narrationAdvanceTimerRef.current !== null) {
+      window.clearTimeout(narrationAdvanceTimerRef.current);
+      narrationAdvanceTimerRef.current = null;
+    }
+    narrationAdvanceLockRef.current = false;
+    if (options?.pauseAudio) {
+      narrationAudioRef.current?.pause();
+    }
+  };
+
+  useEffect(() => {
+    clearNarrationTimers({ pauseAudio: true });
+    if (!isNarrationPlaying) {
+      return;
+    }
+    if (!currentPageAudioUrl) {
+      setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
+      setIsNarrationPlaying(false);
+      setIsBackgroundMusicEnabled(false);
+      return;
+    }
+
+    setNarrationError(null);
+    const runId = narrationRunIdRef.current;
+    narrationStartTimerRef.current = window.setTimeout(() => {
+      if (runId !== narrationRunIdRef.current) return;
+      const currentAudio = narrationAudioRef.current;
+      if (!currentAudio) return;
+      if (currentAudio.src !== currentPageAudioUrl) {
+        currentAudio.src = currentPageAudioUrl;
+      }
+      currentAudio.load();
+      currentAudio.currentTime = 0;
+      const playback = currentAudio.play();
+      if (!playback || typeof playback.catch !== 'function') return;
+      playback.catch((error) => {
+        if (runId !== narrationRunIdRef.current) return;
+        console.error('Visual story narration failed to play:', error);
+        setNarrationError(t('Masal sesi başlatılamadı.'));
+        setIsNarrationPlaying(false);
+        setIsBackgroundMusicEnabled(false);
+      });
+    }, VISUAL_STORY_NARRATION_PRE_DELAY_MS);
+
+    return () => {
+      clearNarrationTimers({ pauseAudio: true });
+    };
+  }, [currentPage?.id, currentPage?.title, currentPageAudioUrl, isNarrationPlaying, pageIndex, t]);
+
+  useEffect(() => {
+    return () => {
+      clearNarrationTimers({ pauseAudio: true });
+      backgroundAudioRef.current?.pause();
+      narrationAudioRef.current?.pause();
+    };
+  }, []);
+
+  useEffect(() => {
+    const maxIndex = Math.max(0, pages.length - 1);
+    if (pageIndex <= maxIndex) return;
+    setPageIndex(maxIndex);
+  }, [pageIndex, pages.length]);
+
+  const scrollToPage = (nextIndex: number, speed = 280) => {
+    const clampedIndex = Math.max(0, Math.min(pages.length - 1, nextIndex));
+    activePageIndexRef.current = clampedIndex;
+    setPageIndex(clampedIndex);
+    swiperRef.current?.zoom?.out?.();
+    swiperRef.current?.slideTo(clampedIndex, speed);
+  };
+
+  useEffect(() => {
+    if (!pages.length) return;
+    scrollToPage(pageIndex, 0);
+  }, [pages.length]);
+
+  const goToAdjacentPage = (delta: -1 | 1) => {
+    scrollToPage(pageIndex + delta);
+  };
+
+  const advanceNarrationToNextPage = () => {
+    if (narrationAdvanceLockRef.current) return;
+    narrationAdvanceLockRef.current = true;
+    narrationAudioRef.current?.pause();
+    if (narrationAdvanceTimerRef.current !== null) {
+      window.clearTimeout(narrationAdvanceTimerRef.current);
+      narrationAdvanceTimerRef.current = null;
+    }
+    const runId = narrationRunIdRef.current;
+    narrationAdvanceTimerRef.current = window.setTimeout(() => {
+      if (runId !== narrationRunIdRef.current) return;
+      narrationAdvanceTimerRef.current = null;
+      narrationAdvanceLockRef.current = false;
+      if (activePageIndexRef.current < pages.length - 1) {
+        scrollToPage(activePageIndexRef.current + 1);
+        return;
+      }
+      setIsNarrationPlaying(false);
+      setIsBackgroundMusicEnabled(false);
+    }, VISUAL_STORY_NARRATION_POST_DELAY_MS);
+  };
+
+  const handleNarrationEnded = () => {
+    advanceNarrationToNextPage();
+  };
+
+  const handleNarrationTimeUpdate = () => {
+    const audio = narrationAudioRef.current;
+    if (!audio || !isNarrationPlaying) return;
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    if (audio.duration - audio.currentTime <= 0.18) {
+      advanceNarrationToNextPage();
+    }
+  };
+
+  const handleNarrationPlayPause = async () => {
+    if (isNarrationPlaying) {
+      clearNarrationTimers({ pauseAudio: true });
+      setIsNarrationPlaying(false);
+      setIsBackgroundMusicEnabled(false);
+      return;
+    }
+
+    let didGenerateNarration = false;
+    if ((hasMissingNarrationAudio || !isCurrentPageNarratable) && canGenerateNarrationAudio) {
+      const generated = await handleGenerateVisualStoryNarration();
+      if (!generated) return;
+      didGenerateNarration = true;
+    }
+
+    const nextPage = pages[activePageIndexRef.current] || null;
+    if (!didGenerateNarration && !String(nextPage?.audioUrl || '').trim() && !currentPageAudioUrl) {
+      setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
+      return;
+    }
+    setBackgroundMusicError(null);
+    setIsBackgroundMusicEnabled(true);
+    setIsNarrationPlaying(true);
+  };
+
+  const handleGenerateVisualStoryNarration = async (): Promise<boolean> => {
+    if (isNarrationGenerating || !canGenerateNarrationAudio) return false;
+    if (onRequireCredit && !onRequireCredit('create', PODCAST_CREATE_CREDIT_COST)) {
+      setNarrationError(`${t('Podcast oluşturmak için')} ${PODCAST_CREATE_CREDIT_COST} ${t('kredi gerekir.')}`);
+      return false;
+    }
+
+    const coverScript = derivedCoverNarrationScript;
+    const visualStoryPages = derivedVisualStoryNarrationPages;
+    const fullScript = [coverScript, ...visualStoryPages.map((page) => page.script)]
+      .filter(Boolean)
+      .join('\n\n');
+    if (!fullScript) {
+      setNarrationError(t('Podcast için seslendirilecek içerik bulunamadı.'));
+      return false;
+    }
+
+    let activeNarrationJobState: Awaited<ReturnType<typeof startPodcastAudioJob>> | null = null;
+    try {
+      setNarrationError(null);
+      setIsNarrationGenerating(true);
+      setNarrationGenerationProgress(8);
+      let jobState = await startPodcastAudioJob(
+        courseData.topic || t('Masal'),
+        fullScript,
+        {
+          target: 'visualStory',
+          bookType: courseData.bookType,
+          voiceName: DEFAULT_PODCAST_VOICE_NAME,
+          bookId: courseData.id,
+          coverScript,
+          visualStoryPages
+        }
+      );
+      activeNarrationJobState = jobState;
+      setNarrationGenerationProgress(Math.max(12, Math.round((jobState.completedChunks / Math.max(1, jobState.totalChunks)) * 92)));
+      while (jobState.status === 'queued' || jobState.status === 'processing' || jobState.status === 'finalizing') {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        jobState = await getPodcastAudioJob(jobState.jobId);
+        activeNarrationJobState = jobState;
+        const baseProgress = jobState.status === 'finalizing'
+          ? 96
+          : Math.round((jobState.completedChunks / Math.max(1, jobState.totalChunks)) * 92);
+        setNarrationGenerationProgress(Math.max(12, baseProgress));
+      }
+      if (jobState.status === 'failed') {
+        throw new Error(jobState.error || t('Podcast sesi üretilemedi.'));
+      }
+      const expectedSegments = (coverScript ? 1 : 0) + visualStoryPages.length;
+      if (jobState.segments.length < expectedSegments) {
+        throw new Error(t('Sayfa bazlı masal sesleri eksik üretildi.'));
+      }
+      const coverOffset = coverScript ? 1 : 0;
+      const nextOverrides: Record<string, string> = {};
+      if (coverScript && jobState.segments[0]?.audioUrl) {
+        setCoverAudioOverrideUrl(jobState.segments[0].audioUrl);
+      }
+      visualStoryPages.forEach((page, index) => {
+        const audioUrl = jobState.segments[index + coverOffset]?.audioUrl || '';
+        if (audioUrl) nextOverrides[page.nodeId] = audioUrl;
+      });
+      if (Object.keys(nextOverrides).length === 0 && !jobState.segments[0]?.audioUrl) {
+        throw new Error(t('Podcast sesi üretilemedi.'));
+      }
+      logVisualStoryNarrationCosts(jobState.usageEntries || []);
+      console.info(
+        `[ai-cost] seslendirme toplam - input ${jobState.usage.inputTokens} out ${jobState.usage.outputTokens} total ${jobState.usage.totalTokens} price ${jobState.usage.estimatedCostUsd.toFixed(6)} usd`
+      );
+      setPageAudioOverrideUrls((current) => ({ ...current, ...nextOverrides }));
+      if (onUpdateNodes) {
+        onUpdateNodes((courseData.nodes || []).map((node) => {
+          const audioUrl = nextOverrides[node.id];
+          if (!audioUrl) return node;
+          return {
+            ...node,
+            pageAudioUrl: audioUrl,
+            pageAudioStatus: 'ready'
+          };
+        }));
+      }
+      setNarrationGenerationProgress(100);
+      return true;
+    } catch (error) {
+      console.error('Visual story narration generation failed:', error);
+      if (activeNarrationJobState?.usageEntries?.length) logVisualStoryNarrationCosts(activeNarrationJobState.usageEntries);
+      setNarrationError(getUserFacingError(error, t('Podcast sesi üretilemedi.')));
+      return false;
+    } finally {
+      window.setTimeout(() => {
+        setIsNarrationGenerating(false);
+        setNarrationGenerationProgress(0);
+      }, 350);
+    }
+  };
+
+  const renderRotatedToolbarText = (value: string, className: string) => (
+    <span
+      className={className}
+      style={isLandscapePreview ? { transform: 'rotate(90deg)', transformOrigin: 'center' } : undefined}
+    >
+      {value}
+    </span>
+  );
+
+  const toggleVisualStoryRotation = () => {
+    setRotationDeg((current) => (current === 90 ? 0 : 90));
+  };
+
+  useEffect(() => {
+    if (!isNativePhotoViewer) return;
+    if (!nativeViewerImages.length) return;
+    if (nativeViewerOpenedRef.current) return;
+
+    nativeViewerOpenedRef.current = true;
+    setNativeViewerError(null);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const { PhotoViewer } = await import('@capacitor-community/photoviewer');
+        const result = await PhotoViewer.show({
+          images: nativeViewerImages,
+          mode: nativeViewerImages.length > 1 ? 'slider' : 'one',
+          startFrom: Math.max(0, Math.min(pageIndex, nativeViewerImages.length - 1)),
+          options: {
+            share: false,
+            title: false,
+            transformer: 'none',
+            maxzoomscale: 4,
+            backgroundcolor: 'black'
+          }
+        });
+        if (cancelled) return;
+        if (typeof result?.imageIndex === 'number' && Number.isFinite(result.imageIndex)) {
+          setPageIndex(Math.max(0, Math.min(nativeViewerImages.length - 1, result.imageIndex)));
+        }
+        onBack();
+      } catch (error) {
+        if (cancelled) return;
+        nativeViewerOpenedRef.current = false;
+        setNativeViewerError(getUserFacingError(error, t('Görsel galeri açılamadı.')));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativePhotoViewer, nativeViewerImages, nativeViewerLaunchToken, onBack, pageIndex, t]);
+
+  const handleVisualStoryPdfDownload = async (backgroundColor?: string) => {
+    if (isPdfDownloading) return;
+    setIsDownloadMenuOpen(false);
+    setIsPdfDownloading(true);
+    try {
+      const { exportVisualStoryToPdf } = await loadExportUtils();
+      await exportVisualStoryToPdf(courseData, { backgroundColor });
+    } catch (error) {
+      console.error('Visual story PDF export failed:', error);
+      window.alert(t('PDF indirilemedi.'));
+    } finally {
+      setIsPdfDownloading(false);
+    }
+  };
+
+  const handleVisualStoryEpubDownload = async () => {
+    if (isEpubDownloading) return;
+    setIsDownloadMenuOpen(false);
+    setIsEpubDownloading(true);
+    try {
+      const { exportCourseToEpub } = await loadExportUtils();
+      await exportCourseToEpub(courseData);
+    } catch (error) {
+      console.error('Visual story ePub export failed:', error);
+      window.alert(t('ePub indirilemedi.'));
+    } finally {
+      setIsEpubDownloading(false);
+    }
+  };
+
+  if (!pages.length) {
+    return (
+      <div className="view-container">
+        <div className="app-content-width px-4 pt-8">
+          <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
+            <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
+              <FaviconSpinner size={30} />
+            </div>
+            <p className="text-[12px] font-semibold text-white/88">{t('Kitabınız yükleniyor')}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isNativePhotoViewer) {
+    return (
+      <div className="min-h-dvh bg-[#111820] text-white flex items-center justify-center px-5">
+        <div className="w-full max-w-sm rounded-[28px] border border-dashed p-5 text-center shadow-[0_26px_60px_-28px_rgba(0,0,0,0.88)]"
+          style={{
+            background: 'rgba(17,22,29,0.92)',
+            borderColor: 'rgba(143,197,255,0.24)'
+          }}
+        >
+          {nativeViewerError ? (
+            <>
+              <p className="text-sm font-bold text-white/92">{nativeViewerError}</p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    nativeViewerOpenedRef.current = false;
+                    setNativeViewerError(null);
+                    setNativeViewerLaunchToken((current) => current + 1);
+                  }}
+                  className="h-10 rounded-xl border border-dashed px-4 text-[12px] font-bold text-white/92 active:scale-95"
+                  style={{
+                    background: 'rgba(27, 67, 110, 0.98)',
+                    borderColor: 'rgba(171,214,255,0.5)'
+                  }}
+                >
+                  {t('Galeriyi tekrar aç')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="h-10 rounded-xl border border-dashed px-4 text-[12px] font-bold text-white/82 active:scale-95"
+                  style={{
+                    background: 'rgba(17,22,29,0.78)',
+                    borderColor: 'rgba(173,149,124,0.16)'
+                  }}
+                >
+                  {t('Kapat')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                <FaviconSpinner size={30} />
+              </div>
+              <p className="mt-4 text-sm font-bold text-white/92">{t('Native galeri açılıyor')}</p>
+              <p className="mt-2 text-[12px] leading-relaxed text-white/58">
+                {t('Galeri kapandığında buradan çıkılacak.')}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="min-h-dvh overflow-hidden text-white"
+      style={{
+        background: 'linear-gradient(135deg, #2c2521 0%, #4b3a31 44%, #655046 100%)'
+      }}
+    >
+	      <audio
+	        key={backgroundTrack.src}
+	        ref={backgroundAudioRef}
+	        src={backgroundTrack.src}
+        preload="auto"
+        loop
+	        hidden
+	        aria-hidden="true"
+	      />
+		      <audio
+		        key={`${currentPage?.id || 'visual-story-page'}:${currentPageAudioUrl || 'no-audio'}`}
+		        ref={narrationAudioRef}
+		        src={currentPageAudioUrl || undefined}
+		        preload="auto"
+		        hidden
+		        aria-hidden="true"
+		        onEnded={handleNarrationEnded}
+		        onTimeUpdate={handleNarrationTimeUpdate}
+		      />
+	      {isDownloadMenuOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-[105] cursor-default bg-transparent"
+          aria-label={t('İndirme menüsünü kapat')}
+          onClick={() => setIsDownloadMenuOpen(false)}
+        />
+      )}
+	      {(backgroundMusicError || narrationError) && (
+	        <div
+	          className="fixed left-3 z-[112] pointer-events-auto"
+	          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+	        >
+	          <div className="flex flex-col items-start gap-2">
+	            {backgroundMusicError && (
+	              <div
+	                className="max-w-[180px] rounded-2xl border border-dashed px-3 py-2 text-[10px] font-semibold leading-relaxed text-[#ffe6d1]"
+	                style={{
+	                  background: 'rgba(68, 31, 18, 0.92)',
+	                  borderColor: 'rgba(255, 194, 144, 0.34)',
+	                  backdropFilter: 'blur(10px)'
+	                }}
+	              >
+	                {backgroundMusicError}
+	              </div>
+	            )}
+	            {narrationError && (
+	              <div
+	                className="max-w-[190px] rounded-2xl border border-dashed px-3 py-2 text-[10px] font-semibold leading-relaxed text-[#ffe6d1]"
+	                style={{
+	                  background: 'rgba(68, 31, 18, 0.92)',
+	                  borderColor: 'rgba(255, 194, 144, 0.34)',
+	                  backdropFilter: 'blur(10px)'
+	                }}
+	              >
+	                {narrationError}
+	              </div>
+	            )}
+	          </div>
+	        </div>
+	      )}
+	      <div
+	        className="fixed right-3 z-[112] pointer-events-auto"
+	        style={{
+	          top: 'calc(env(safe-area-inset-top, 0px) + 12px)'
+	        }}
+	      >
+	        <button
+	          type="button"
+	          onClick={() => {
+	            void handleNarrationPlayPause();
+	          }}
+	          disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
+	          className="h-11 w-11 rounded-2xl border border-dashed inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+	          style={{
+	            background: isNarrationPlaying ? 'rgba(68, 31, 18, 0.92)' : 'rgba(17,22,29,0.84)',
+	            borderColor: isNarrationPlaying ? 'rgba(255, 194, 144, 0.38)' : 'rgba(173,149,124,0.18)',
+	            boxShadow: isNarrationPlaying
+	              ? '0 10px 24px rgba(68, 31, 18, 0.26)'
+	              : '0 10px 24px rgba(0,0,0,0.18)',
+	            backdropFilter: 'blur(10px)'
+	          }}
+	          aria-label={isNarrationPlaying ? t('Masalı duraklat') : t('Masalı başlat')}
+	          title={isNarrationGenerating ? `${t('Hazırlanıyor')} ${narrationGenerationProgress}%` : (isNarrationPlaying ? t('Masalı duraklat') : t('Masalı başlat'))}
+	        >
+	          {isNarrationGenerating
+	            ? <FaviconSpinner size={18} />
+	            : isNarrationPlaying
+	              ? <PauseCircle size={20} />
+	              : <PlayCircle size={20} />}
+	        </button>
+	      </div>
+	      <div
+	        className="fixed inset-x-0 z-[110] pointer-events-none"
+	        style={{
+	          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
+        }}
+      >
+        <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setIsDownloadMenuOpen((current) => !current)}
+            disabled={isPdfDownloading || isEpubDownloading}
+            className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-60"
+            style={{
+              background: 'rgba(17,22,29,0.78)',
+              borderColor: 'rgba(173,149,124,0.16)'
+            }}
+            aria-label={t('İndir')}
+            title={t('İndir')}
+          >
+            {isPdfDownloading || isEpubDownloading
+              ? <FaviconSpinner size={16} />
+              : (
+                <span
+                  className="inline-flex items-center justify-center"
+                  style={isLandscapePreview ? { transform: 'rotate(90deg)' } : undefined}
+                >
+                  <Download size={14} />
+                </span>
+              )}
+          </button>
+          {isDownloadMenuOpen && (
+            <div
+              className="absolute left-3 bottom-[48px] grid w-[220px] gap-2 rounded-2xl border border-dashed p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
+              style={{
+                background: 'rgba(12, 18, 28, 0.94)',
+                borderColor: 'rgba(143,197,255,0.26)',
+                backdropFilter: 'blur(12px)'
+              }}
+            >
+              <div
+                className="rounded-xl border border-dashed p-2"
+                style={{
+                  background: 'rgba(16, 25, 37, 0.9)',
+                  borderColor: 'rgba(143,197,255,0.2)'
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+                    {t('Fortale PDF')}
+                  </span>
+                  <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#9ec8f5]">
+                    {t(selectedPdfBackgroundPreset.label)}
+                  </span>
+                </div>
+                <div className="mb-2 grid grid-cols-5 gap-2">
+                  {PDF_BACKGROUND_PRESETS.map((preset) => {
+                    const isSelected = preset.id === selectedPdfBackgroundPresetId;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
+                        disabled={isPdfDownloading || isEpubDownloading}
+                        className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
+                        style={{
+                          background: preset.color,
+                          borderColor: isSelected ? '#f04e5e' : 'rgba(210,231,255,0.42)',
+                          borderWidth: isSelected ? 2.5 : 1,
+                          boxShadow: isSelected ? '0 0 0 3px rgba(240,78,94,0.18)' : 'none'
+                        }}
+                        aria-label={t(preset.label)}
+                        title={t(preset.label)}
+                      />
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
+                  disabled={isPdfDownloading || isEpubDownloading}
+                  className="group h-9 w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(28,57,91,0.98) 0%, rgba(22,42,67,0.96) 100%)',
+                    borderColor: 'rgba(143,197,255,0.45)',
+                    boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+                  }}
+                  aria-label={t('Fortale PDF')}
+                  title={t('Fortale PDF')}
+                >
+                  {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} className="text-[#d9ecff]" />}
+                  <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+                    {isPdfDownloading ? t('Hazırlanıyor') : t('İndir')}
+                  </span>
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleVisualStoryEpubDownload}
+                disabled={isPdfDownloading || isEpubDownloading}
+                className="group h-9 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(28,57,91,0.98) 0%, rgba(22,42,67,0.96) 100%)',
+                  borderColor: 'rgba(143,197,255,0.45)',
+                  boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+                }}
+                aria-label={t('Fortale ePub')}
+                title={t('Fortale ePub')}
+              >
+                {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} className="text-[#d9ecff]" />}
+                <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+                  {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
+                </span>
+              </button>
+	            </div>
+	          )}
+	
+	          <div
+	            className="inline-flex items-center overflow-visible rounded-xl border border-dashed"
+	            style={{
+              background: 'rgba(17,22,29,0.78)',
+              borderColor: 'rgba(173,149,124,0.16)'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => goToAdjacentPage(-1)}
+              disabled={pageIndex <= 0}
+              className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
+              aria-label={t('Önceki sayfa')}
+              title={t('Önceki sayfa')}
+            >
+              {isLandscapePreview ? <ArrowUp size={14} /> : <ArrowLeft size={14} />}
+            </button>
+            <div
+              className="fortale-story-toolbar-slot h-9 min-w-[58px] border-x border-dashed px-2 inline-flex items-center justify-center text-[11px] font-black tabular-nums text-white/88"
+              style={{ borderColor: 'rgba(173,149,124,0.16)' }}
+              aria-label={`${pageIndex + 1} / ${pages.length}`}
+            >
+              {renderRotatedToolbarText(`${pageIndex + 1}/${pages.length}`, 'fortale-story-toolbar-text text-[10px]')}
+            </div>
+            <button
+              type="button"
+              onClick={() => goToAdjacentPage(1)}
+              disabled={pageIndex >= pages.length - 1}
+              className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
+              aria-label={t('Sonraki sayfa')}
+              title={t('Sonraki sayfa')}
+            >
+              {isLandscapePreview ? <ArrowDown size={14} /> : <ArrowRight size={14} />}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div
+              className="inline-flex items-center overflow-visible rounded-xl border border-dashed"
+              style={{
+                background: 'rgba(17,22,29,0.78)',
+                borderColor: 'rgba(173,149,124,0.16)'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  swiperRef.current?.zoom?.out();
+                  const nextScale = Number(swiperRef.current?.zoom?.scale || 1);
+                  setZoomScale(Math.max(1, Number(nextScale.toFixed(2))));
+                }}
+                disabled={zoomScale <= 1.01}
+                className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
+                aria-label={t('Zoom out')}
+                title={t('Zoom out')}
+              >
+                <Minimize2 size={14} />
+              </button>
+              <div
+                className="fortale-story-toolbar-slot h-9 min-w-[52px] border-x border-dashed px-2 inline-flex items-center justify-center text-[10px] font-black tabular-nums text-white/88"
+                style={{ borderColor: 'rgba(173,149,124,0.16)' }}
+              >
+                {renderRotatedToolbarText(`${Math.round(zoomScale * 100)}%`, 'fortale-story-toolbar-text text-[9px]')}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  swiperRef.current?.zoom?.in();
+                  const nextScale = Number(swiperRef.current?.zoom?.scale || zoomScale || 1);
+                  setZoomScale(Math.min(4, Number(nextScale.toFixed(2))));
+                }}
+                disabled={zoomScale >= 3.95}
+                className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
+                aria-label={t('Zoom in')}
+                title={t('Zoom in')}
+              >
+                <Maximize2 size={14} />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={toggleVisualStoryRotation}
+              className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
+              style={{
+                background: 'rgba(17,22,29,0.78)',
+                borderColor: 'rgba(173,149,124,0.16)'
+              }}
+              aria-label={t('Sayfayı döndür')}
+              title={t('Sayfayı döndür')}
+            >
+              <RotateCw size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
+              style={{
+                background: 'rgba(17,22,29,0.78)',
+                borderColor: 'rgba(173,149,124,0.16)'
+              }}
+              aria-label={t('Kapat')}
+              title={t('Kapat')}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto flex h-dvh w-full max-w-[960px] flex-col px-0 pb-[calc(env(safe-area-inset-bottom,0px)+70px)] pt-[env(safe-area-inset-top,0px)]">
+        <main className="grid min-h-0 flex-1 place-items-center overflow-hidden">
+          <Swiper
+            key={isLandscapePreview ? 'visual-story-landscape' : 'visual-story-portrait'}
+            modules={[Zoom]}
+            direction={isLandscapePreview ? 'vertical' : 'horizontal'}
+            onSwiper={(swiper) => {
+              swiperRef.current = swiper;
+              swiper.slideTo(pageIndex, 0);
+            }}
+            onSlideChange={(swiper) => {
+              activePageIndexRef.current = swiper.activeIndex;
+              setPageIndex(swiper.activeIndex);
+              const nextScale = Number(swiper.zoom?.scale || 1);
+              setZoomScale(Math.max(1, Number(nextScale.toFixed(2))));
+            }}
+            onZoomChange={(swiper, scale) => {
+              const nextScale = Number(scale || swiper.zoom?.scale || 1);
+              setZoomScale(Math.max(1, Number(nextScale.toFixed(2))));
+            }}
+            initialSlide={pageIndex}
+            slidesPerView={1}
+            resistanceRatio={0.12}
+            shortSwipes
+            longSwipes
+            longSwipesRatio={0.14}
+            longSwipesMs={180}
+            threshold={8}
+            zoom={{
+              maxRatio: 4,
+              minRatio: 1,
+              toggle: false
+            }}
+            className="fortale-story-swiper h-full w-full"
+            style={{
+              minHeight: 0,
+              height: '100%',
+              maxHeight: '100%',
+              overflow: 'hidden'
+            }}
+          >
+            {pages.map((page) => (
+              <SwiperSlide
+                key={page.id}
+                aria-label={page.title}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  overflow: 'hidden'
+                }}
+              >
+                <div
+                  className="swiper-zoom-container relative flex h-full w-full items-center justify-center"
+                  style={{
+                    height: '100%',
+                    minHeight: '100%',
+                    overflow: 'visible'
+                  }}
+                >
+                  <div className="fortale-story-gallery-aura" aria-hidden />
+                  <img
+                    src={page.imageUrl || ''}
+                    alt={page.text || page.title}
+                    loading="eager"
+                    decoding="async"
+                    className="fortale-story-glow-image relative z-10 select-none object-contain transition-transform duration-200 ease-out"
+                    draggable={false}
+                    style={isLandscapePreview
+                      ? {
+                        transform: 'rotate(90deg)',
+                        transformOrigin: 'center',
+                        width: 'auto',
+                        height: 'auto',
+                        maxWidth: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 116px)',
+                        maxHeight: 'calc(100vw - 24px)'
+                      }
+                      : {
+                        transform: 'rotate(0deg)',
+                        transformOrigin: 'center',
+                        width: 'auto',
+                        height: 'auto',
+                        maxWidth: 'calc(100vw - 24px)',
+                        maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 116px)'
+                      }}
+                  />
+                </div>
+              </SwiperSlide>
+            ))}
+          </Swiper>
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export default function CourseFlowView({
+  onBack,
   onNavigate,
   courseData,
   onUpdateCourse,
@@ -678,6 +1796,7 @@ export default function CourseFlowView({
   const [progressPulse, setProgressPulse] = useState(false);
   const [isReadingFullscreen, setIsReadingFullscreen] = useState(false);
   const [readingFullscreenFontStep, setReadingFullscreenFontStep] = useState(0);
+  const [fullscreenActiveImageIndex, setFullscreenActiveImageIndex] = useState(0);
   const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
   const [podcastGenerationVisualProgress, setPodcastGenerationVisualProgress] = useState(6);
   const [hydratedContentNodeIds, setHydratedContentNodeIds] = useState<string[]>([]);
@@ -701,6 +1820,8 @@ export default function CourseFlowView({
   const pdfPaletteDraggedRef = useRef(false);
   const podcastVoicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const fullscreenReaderScrollRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenReaderSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const fullscreenReaderImageTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const autoIntroGenerationRef = useRef<Set<string>>(new Set());
   const nodeReadySnapshotRef = useRef<Map<string, { primaryReady: boolean; summaryReady: boolean }>>(new Map());
   const nodeReadyInitCourseIdRef = useRef<string | null>(null);
@@ -812,9 +1933,9 @@ export default function CourseFlowView({
   }, []);
 
   useEffect(() => {
-    onReadingFullscreenChange?.(isReadingFullscreen);
+    onReadingFullscreenChange?.(isReadingFullscreen || courseData?.visualStoryMode === true);
     return () => onReadingFullscreenChange?.(false);
-  }, [isReadingFullscreen, onReadingFullscreenChange]);
+  }, [courseData?.visualStoryMode, isReadingFullscreen, onReadingFullscreenChange]);
 
   useEffect(() => {
     if (!isReadingFullscreen) return;
@@ -980,6 +2101,9 @@ export default function CourseFlowView({
     const computePrimaryReady = (node: TimelineNode): boolean => {
       if (!isNodeVisibleInFlow(node)) return true;
       if (node.type === 'podcast') return Boolean(node.podcastAudioUrl?.trim());
+      if (courseData.visualStoryMode === true && node.type === 'lecture') {
+        return Boolean(node.pageImageUrl?.trim()) && Boolean(node.pageText?.trim());
+      }
       if (node.type === 'lecture' || node.type === 'reinforce' || node.type === 'retention') return Boolean(node.content?.trim());
       return false;
     };
@@ -1011,7 +2135,7 @@ export default function CourseFlowView({
     });
 
     nodeReadySnapshotRef.current = nextSnapshot;
-  }, [courseData?.id, courseData?.nodes, prefersReducedMotion]);
+  }, [courseData?.id, courseData?.nodes, courseData?.visualStoryMode, prefersReducedMotion]);
 
   useEffect(() => {
     if (!courseData?.nodes || generatingNodeId) return;
@@ -1117,6 +2241,148 @@ export default function CourseFlowView({
     if (node.type === 'reinforce') return 'Detaylar';
     if (node.type === 'retention') return 'Özet';
     return NODE_VISUALS[node.type]?.label || node.title;
+  };
+
+  const fullscreenReaderContent = useMemo(() => {
+    const textSections: FullscreenReaderTextSection[] = [];
+    const images: FullscreenReaderImage[] = [];
+    let lastSeenImageIndex = -1;
+
+    orderedTabNodes.forEach((node, index) => {
+      const sectionTitle = getFlowTabLabel(node, index);
+      const isLocked = (node.status === 'locked' || node.status === 'conditional') && !node.content && !node.isLoading;
+      const showNodeSubtitle = !isNarrativeBook && Boolean(node.title && !isSameSectionHeading(node.title, sectionTitle));
+      const isContentHydrated = !node.content || hydratedContentNodeIds.includes(node.id);
+      const displayContent = isContentHydrated && node.content
+        ? stripLeadingDuplicateSectionHeadings(node.content, [sectionTitle, node.title])
+        : '';
+
+      if (isLocked || !displayContent.trim()) return;
+
+      const imageSections = extractMarkdownImageSections(displayContent);
+      if (!imageSections.length) {
+        textSections.push({
+          key: `${node.id}-text-only`,
+          markdown: displayContent,
+          heading: sectionTitle,
+          subtitle: showNodeSubtitle ? node.title : undefined,
+          durationLabel: formatLocalizedDurationLabel(node.duration, t),
+          imageIndex: null,
+          activeImageIndex: Math.max(0, lastSeenImageIndex)
+        });
+        return;
+      }
+
+      imageSections.forEach((section, sectionIndex) => {
+        const imageIndex = images.length;
+        const key = `${node.id}-image-section-${sectionIndex}`;
+        images.push({
+          key: `${key}-image`,
+          src: section.imageSrc,
+          alt: section.imageAlt,
+          sectionKey: key,
+          heading: sectionTitle
+        });
+        lastSeenImageIndex = imageIndex;
+        textSections.push({
+          key,
+          markdown: section.markdown,
+          heading: sectionIndex === 0 ? sectionTitle : undefined,
+          subtitle: sectionIndex === 0 && showNodeSubtitle ? node.title : undefined,
+          durationLabel: sectionIndex === 0 ? formatLocalizedDurationLabel(node.duration, t) : undefined,
+          imageIndex,
+          activeImageIndex: imageIndex
+        });
+      });
+    });
+
+    return { textSections, images };
+  }, [getFlowTabLabel, hydratedContentNodeIds, isNarrativeBook, orderedTabNodes, t]);
+
+  const hasFullscreenStickyImages =
+    isReadingFullscreen &&
+    fullscreenReaderContent.images.length > 0 &&
+    fullscreenReaderContent.textSections.length > 0;
+
+  useEffect(() => {
+    if (!hasFullscreenStickyImages) return;
+    setFullscreenActiveImageIndex((current) => (
+      Math.max(0, Math.min(current, fullscreenReaderContent.images.length - 1))
+    ));
+  }, [fullscreenReaderContent.images.length, hasFullscreenStickyImages]);
+
+  useEffect(() => {
+    if (!hasFullscreenStickyImages) return;
+    const scrollContainer = fullscreenReaderScrollRef.current;
+    if (!scrollContainer) return;
+
+    const updateActiveImageFromScroll = () => {
+      const activationLine = Math.max(168, Math.min(window.innerHeight * 0.48, 420));
+      let nextImageIndex = fullscreenReaderContent.images.length > 0 ? 0 : -1;
+
+      for (const section of fullscreenReaderContent.textSections) {
+        const element = fullscreenReaderSectionRefs.current[section.key];
+        if (!element) continue;
+        if (element.getBoundingClientRect().top <= activationLine) {
+          nextImageIndex = Math.max(0, section.activeImageIndex);
+          continue;
+        }
+        break;
+      }
+
+      if (nextImageIndex >= 0) {
+        setFullscreenActiveImageIndex((current) => (
+          current === nextImageIndex ? current : nextImageIndex
+        ));
+      }
+    };
+
+    updateActiveImageFromScroll();
+    scrollContainer.addEventListener('scroll', updateActiveImageFromScroll, { passive: true });
+    window.addEventListener('resize', updateActiveImageFromScroll);
+    return () => {
+      scrollContainer.removeEventListener('scroll', updateActiveImageFromScroll);
+      window.removeEventListener('resize', updateActiveImageFromScroll);
+    };
+  }, [fullscreenReaderContent.images.length, fullscreenReaderContent.textSections, hasFullscreenStickyImages]);
+
+  const scrollToFullscreenImageSection = (nextImageIndex: number) => {
+    const clampedIndex = Math.max(0, Math.min(nextImageIndex, fullscreenReaderContent.images.length - 1));
+    const targetImage = fullscreenReaderContent.images[clampedIndex];
+    if (!targetImage) return;
+    setFullscreenActiveImageIndex(clampedIndex);
+    fullscreenReaderSectionRefs.current[targetImage.sectionKey]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  };
+
+  const handleFullscreenImageTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    fullscreenReaderImageTouchRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    };
+  };
+
+  const handleFullscreenImageTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = fullscreenReaderImageTouchRef.current;
+    fullscreenReaderImageTouchRef.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    const elapsed = Date.now() - start.time;
+    if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15 || elapsed > 850) return;
+
+    if (deltaX < 0) {
+      scrollToFullscreenImageSection(fullscreenActiveImageIndex + 1);
+      return;
+    }
+    scrollToFullscreenImageSection(fullscreenActiveImageIndex - 1);
   };
 
   useEffect(() => {
@@ -1343,19 +2609,19 @@ export default function CourseFlowView({
 
     if (nextNode.type === 'podcast' && !nextNode.podcastAudioUrl) {
       if (nextNode.isLoading) {
-        showIosPopup('Podcast arka planda hazırlanıyor. Birazdan hazır olacak.');
+        showIosPopup(t('Podcast arka planda hazırlanıyor. Birazdan hazır olacak.'));
         return;
       }
-      showIosPopup('Podcast paketi henüz hazır değil. Arka planda hazırlanıyor.');
+      showIosPopup(t('Podcast paketi henüz hazır değil. Arka planda hazırlanıyor.'));
       return;
     }
 
     if (!nextNode.content && nextNode.type !== 'podcast' && nextNode.type !== 'quiz') {
       if (nextNode.isLoading) {
-        showIosPopup('Bu bölüm arka planda hazırlanıyor. Birkaç saniye sonra tekrar dene.');
+        showIosPopup(t('Bu bölüm arka planda hazırlanıyor. Birkaç saniye sonra tekrar dene.'));
         return;
       }
-      showIosPopup('Bu bölüm paketi henüz hazır değil. Arka planda hazırlanıyor.');
+      showIosPopup(t('Bu bölüm paketi henüz hazır değil. Arka planda hazırlanıyor.'));
     }
   };
 
@@ -1371,7 +2637,7 @@ export default function CourseFlowView({
         ((node.type === 'lecture' || node.type === 'reinforce') && !node.content) ||
         (node.type === 'retention' && !node.content))
     ) {
-      showIosPopup('Bu bölüm arka planda hazırlanıyor. Birazdan tekrar dene.');
+      showIosPopup(t('Bu bölüm arka planda hazırlanıyor. Birazdan tekrar dene.'));
       return;
     }
 
@@ -1380,7 +2646,9 @@ export default function CourseFlowView({
       return;
     }
 
-    const needsAutoGeneration = (node.type === 'podcast' || node.type === 'quiz') ? false : !node.content;
+    const needsAutoGeneration = courseData?.visualStoryMode === true
+      ? false
+      : (node.type === 'podcast' || node.type === 'quiz') ? false : !node.content;
 
     if (needsAutoGeneration) {
       showIosPopup(node.isLoading
@@ -1391,6 +2659,7 @@ export default function CourseFlowView({
 
   useEffect(() => {
     if (!allowOpenAutoGeneration) return;
+    if (courseData?.visualStoryMode === true) return;
     if (!courseData?.id || !orderedTabNodes.length || generatingNodeId) return;
     const currentNode =
       orderedTabNodes.find((node) => node.status === 'current') ||
@@ -1405,7 +2674,7 @@ export default function CourseFlowView({
       setActiveTabNodeId(currentNode.id);
     }
     // Background packaging prepares content; tab navigation should not trigger generation.
-  }, [allowOpenAutoGeneration, courseData?.id, orderedTabNodes, generatingNodeId, activeTabNodeId]);
+  }, [allowOpenAutoGeneration, courseData?.id, courseData?.visualStoryMode, orderedTabNodes, generatingNodeId, activeTabNodeId]);
 
   const handleQuizSelect = (idx: number) => {
     if (!activeQuizNode || !activeQuizNode.questions?.length) return;
@@ -1468,7 +2737,7 @@ export default function CourseFlowView({
   const tryGoToNextSection = (node: TimelineNode, options?: { allowPodcastSkip?: boolean }) => {
     const nextNode = findNextNodeInOrder(node.id);
     if (!nextNode) {
-      showIosPopup('Bu kitap içinde sonraki bölüm yok.');
+      showIosPopup(t('Bu kitap içinde sonraki bölüm yok.'));
       return;
     }
 
@@ -1489,7 +2758,7 @@ export default function CourseFlowView({
     }
 
     if (nextNode.status === 'locked' || nextNode.status === 'conditional') {
-      showIosPopup('Sonraki bölümü açmak için bu bölümü tamamlamalısın.');
+      showIosPopup(t('Sonraki bölümü açmak için bu bölümü tamamlamalısın.'));
       return;
     }
 
@@ -1511,13 +2780,15 @@ export default function CourseFlowView({
     setPodcastSkipConfirmNodeId(null);
     if (!node) return;
 
-    showIosPopup('Podcast tamamlanmadan geçiş yapılıyor.');
+    showIosPopup(t('Podcast tamamlanmadan geçiş yapılıyor.'));
     tryGoToNextSection(node, { allowPodcastSkip: true });
   };
 
   const hasNodePdfContent = (node: TimelineNode): boolean => {
     if (node.podcastScript?.trim()) return true;
     if (node.content?.trim()) return true;
+    if (node.pageText?.trim()) return true;
+    if (node.pageImageUrl?.trim()) return true;
     if (Array.isArray(node.questions) && node.questions.length > 0) return true;
     return false;
   };
@@ -1593,7 +2864,7 @@ export default function CourseFlowView({
       });
     } catch (error) {
       console.error('PDF export failed:', error);
-      showIosPopup('PDF indirilemedi.');
+      showIosPopup(t('PDF indirilemedi.'));
     }
   };
 
@@ -1644,7 +2915,7 @@ export default function CourseFlowView({
       });
     } catch (error) {
       console.error('EPUB export failed:', error);
-      showIosPopup('EPUB indirilemedi.');
+      showIosPopup(t('EPUB indirilemedi.'));
     }
   };
 
@@ -1867,13 +3138,13 @@ export default function CourseFlowView({
     if (!courseData) return;
     if (isExportBusy) return;
     if (!isFairyTaleBookType(courseData.bookType)) {
-      showIosPopup('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.');
+      showIosPopup(t('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.'));
       return;
     }
 
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
-      showIosPopup('Podcast üretimi için uygun bölüm bulunamadı.');
+      showIosPopup(t('Podcast üretimi için uygun bölüm bulunamadı.'));
       return;
     }
 
@@ -1938,7 +3209,7 @@ export default function CourseFlowView({
       console.error('Podcast voice preview failed:', error);
       setPlayingPodcastPreviewVoiceName(null);
       setLoadingPodcastPreviewVoiceName(null);
-      showIosPopup('Ses önizlemesi oynatılamadı.');
+      showIosPopup(t('Ses önizlemesi oynatılamadı.'));
     }
   };
 
@@ -1950,7 +3221,14 @@ export default function CourseFlowView({
 
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
-      showIosPopup('Podcast üretimi için uygun bölüm bulunamadı.');
+      showIosPopup(t('Podcast üretimi için uygun bölüm bulunamadı.'));
+      return;
+    }
+
+    if (isHeaderPodcastPanelOpen) {
+      setIsHeaderPodcastPanelOpen(false);
+      setIsPodcastVoicePickerOpen(false);
+      stopPodcastVoicePreview();
       return;
     }
 
@@ -1966,13 +3244,13 @@ export default function CourseFlowView({
     if (!courseData) return;
     if (isExportBusy) return;
     if (!isFairyTaleBookType(courseData.bookType)) {
-      showIosPopup('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.');
+      showIosPopup(t('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.'));
       return;
     }
 
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
-      showIosPopup('Podcast üretimi için uygun bölüm bulunamadı.');
+      showIosPopup(t('Podcast üretimi için uygun bölüm bulunamadı.'));
       return;
     }
 
@@ -1998,7 +3276,7 @@ export default function CourseFlowView({
     }
 
     if (!fullBookScript) {
-      showIosPopup('Podcast için seslendirilecek içerik bulunamadı.');
+      showIosPopup(t('Podcast için seslendirilecek içerik bulunamadı.'));
       return;
     }
 
@@ -2184,7 +3462,7 @@ export default function CourseFlowView({
       setHeaderPodcastLanguageCode(languageCode);
       setIsHeaderPodcastPanelOpen(true);
       setIsPodcastVoicePickerOpen(false);
-      showIosPopup('Podcast hazır.');
+      showIosPopup(t('Podcast hazır.'));
     } catch (error) {
       console.error('Podcast download failed:', error);
       showIosPopup(getPodcastErrorMessage(error));
@@ -2197,7 +3475,7 @@ export default function CourseFlowView({
     if (isExportBusy) return;
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
-      showIosPopup('Bu kitap için podcast bulunamadı.');
+      showIosPopup(t('Bu kitap için podcast bulunamadı.'));
       return;
     }
     const lang = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
@@ -2207,7 +3485,7 @@ export default function CourseFlowView({
       || podcastNode.podcastSegments?.[0]?.audioUrl
       || '';
     if (!audioUrl) {
-      showIosPopup('Önce podcast oluşturmalısınız.');
+      showIosPopup(t('Önce podcast oluşturmalısınız.'));
       return;
     }
     const fileBase = slugifySmartBookName(courseData.topic || 'smartbook');
@@ -2218,7 +3496,7 @@ export default function CourseFlowView({
       });
     } catch (error) {
       console.error('Header podcast download failed:', error);
-      showIosPopup('Podcast indirilemedi.');
+      showIosPopup(t('Podcast indirilemedi.'));
     }
   };
 
@@ -2228,11 +3506,11 @@ export default function CourseFlowView({
     if (isExportBusy) return;
     if (node) {
       if (!hasNodePdfContent(node)) {
-        showIosPopup('Bu bölüm için indirilecek içerik henüz hazır değil.');
+        showIosPopup(t('Bu bölüm için indirilecek içerik henüz hazır değil.'));
         return;
       }
       if (!canDownloadNodePdf(node)) {
-        showIosPopup('Sadece kullanıcıya açılmış bölümleri PDF olarak indirebilirsin.');
+        showIosPopup(t('Sadece kullanıcıya açılmış bölümleri PDF olarak indirebilirsin.'));
         return;
       }
       try {
@@ -2242,7 +3520,7 @@ export default function CourseFlowView({
         });
       } catch (error) {
         console.error('Node PDF export failed:', error);
-        showIosPopup('Bölüm PDF indirilemedi.');
+        showIosPopup(t('Bölüm PDF indirilemedi.'));
       }
       return;
     }
@@ -2263,6 +3541,16 @@ export default function CourseFlowView({
     || headerPodcastSegments?.[0]?.audioUrl
     || '';
   const hasSegmentedPodcast = headerPodcastSegments.length > 0;
+	  if (courseData.visualStoryMode === true) {
+	    return (
+	      <VisualStoryReader
+	        courseData={courseData}
+	        onBack={onBack}
+	        onUpdateNodes={onUpdateCourse}
+	        onRequireCredit={onRequireCredit}
+	      />
+	    );
+	  }
   if (!orderedTabNodes.length) {
     return (
       <div className="view-container">
@@ -2285,14 +3573,14 @@ export default function CourseFlowView({
     activeMilestone && !activeMilestone.persistent
       ? getMilestoneDisplayDurationMs(activeMilestone, prefersReducedMotion)
       : 0;
-
   return (
     <div
       ref={fullscreenReaderScrollRef}
-      className={isReadingFullscreen ? 'h-full overflow-y-auto px-4 pb-24 scroll-smooth' : 'view-container'}
+      className={isReadingFullscreen ? 'overflow-y-auto px-4 pb-24' : 'view-container'}
       style={{
         background: '#1A1F26',
         backgroundImage: 'none',
+        height: isReadingFullscreen ? '100dvh' : undefined,
         paddingTop: isReadingFullscreen ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : undefined
       }}
     >
@@ -2540,18 +3828,46 @@ export default function CourseFlowView({
           className="fixed inset-0 z-[70] bg-black/78 backdrop-blur-[3px] flex items-center justify-center p-4"
           onClick={() => setCoverPreviewImageUrl(null)}
         >
-          <button
-            type="button"
-            className="absolute right-4 top-[calc(env(safe-area-inset-top,0px)+14px)] z-[71] rounded-full border border-dashed p-2 text-white/90"
-            style={{ background: 'rgba(17,22,29,0.82)', borderColor: 'rgba(173,149,124,0.22)' }}
-            onClick={(event) => {
-              event.stopPropagation();
-              setCoverPreviewImageUrl(null);
-            }}
-            aria-label={t('Kapat')}
+          <div
+            className="absolute right-4 z-[71] flex items-center gap-2"
+            style={{ top: IMAGE_PREVIEW_ACTION_TOP }}
+            onClick={(event) => event.stopPropagation()}
           >
-            <X size={18} />
-          </button>
+            <button
+              type="button"
+              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              onClick={async () => {
+                try {
+                  const topicSlug = String(courseData.topic || 'gorsel')
+                    .trim()
+                    .toLocaleLowerCase('tr-TR')
+                    .replace(/[^a-z0-9çğıöşü_-]+/gi, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '') || 'gorsel';
+                  await downloadFile({
+                    url: coverPreviewImageUrl,
+                    fileName: `${topicSlug}-gorsel.jpg`
+                  });
+                } catch (error) {
+                  console.error('Cover preview download failed:', error);
+                  showIosPopup(t('İndirilecek dosya bulunamadı.'));
+                }
+              }}
+              aria-label={t('İndir')}
+              title={t('İndir')}
+            >
+              <Download size={18} />
+            </button>
+            <button
+              type="button"
+              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              onClick={() => setCoverPreviewImageUrl(null)}
+              aria-label={t('Kapat')}
+              title={t('Kapat')}
+            >
+              <X size={18} />
+            </button>
+          </div>
           <img
             src={coverPreviewImageUrl}
             alt={`${courseData.topic} ${t('Kitap kapağı')}`}
@@ -2698,7 +4014,7 @@ export default function CourseFlowView({
                             className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${isExportBusy ? 'opacity-85 cursor-wait' : 'hover:-translate-y-[1px] active:scale-95'
                               }`}
                             style={{
-                              background: 'linear-gradient(135deg, rgba(31,64,102,0.98) 0%, rgba(24,46,72,0.96) 100%)',
+                              background: 'rgba(31, 64, 102, 0.92)',
                               borderColor: 'rgba(171,214,255,0.5)',
                               boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
                             }}
@@ -2816,15 +4132,15 @@ export default function CourseFlowView({
                               className="h-full rounded-full transition-all duration-300"
                               style={{
                                 width: `${Math.max(8, Math.min(100, podcastGenerationVisualProgress))}%`,
-                                background: 'linear-gradient(90deg, #f59e0b 0%, #facc15 100%)'
+                                background: '#38bdf8'
                               }}
                             />
                           </div>
-                          <p className="mt-1 text-center text-[10px] text-[#f1dfba]">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
-                          <p className="mt-1 text-center text-[10px] text-[#d7c299]">
+                          <p className="mt-1 text-center text-[10px] text-[#d5e8ff]">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
+                          <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
                             {getPodcastGenerationStatusText()}
                           </p>
-                          <p className="mt-1 text-center text-[10px] text-[#d7c299]">
+                          <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
                             {t('Kitabın uzunluğuna göre bu işlem birkaç dakika sürebilir.')}
                           </p>
                           <div className="mt-1 flex items-center justify-center">
@@ -2836,13 +4152,13 @@ export default function CourseFlowView({
                         <div
                           className="mt-2 rounded-2xl border border-dashed p-2"
                           style={{
-                            background: 'rgba(17,22,29,0.9)',
-                            borderColor: 'rgba(245, 158, 11, 0.28)',
-                            boxShadow: 'inset 0 0 0 1px rgba(245, 158, 11, 0.06)'
+                            background: 'rgba(17, 27, 40, 0.94)',
+                            borderColor: 'rgba(120,171,226,0.34)',
+                            boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18), 0 16px 32px rgba(5,12,22,0.18)'
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="mb-2 px-1 text-[10px] font-bold text-[#f6e2b8]">
+                          <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
                             {t('Podcast')} ({effectiveHeaderPodcastLanguageLabel})
                           </div>
                           {(headerPodcastAudioUrl && hasSegmentedPodcast) ? (
@@ -2865,13 +4181,12 @@ export default function CourseFlowView({
                             />
                           ) : (
                             <div
-                              className="rounded-xl border border-dashed px-3 py-3"
+                              className="rounded-xl px-3 py-3"
                               style={{
-                                borderColor: 'rgba(245, 158, 11, 0.24)',
-                                background: 'rgba(13,24,38,0.45)'
+                                background: 'rgba(21, 35, 54, 0.62)'
                               }}
                             >
-                              <p className="text-[11px] text-[#d9dfe8]">
+                              <p className="text-[11px] text-[#d9e9fb]">
                                 {headerPodcastAudioUrl && !hasSegmentedPodcast
                                   ? t('Eski kısa podcast bulundu. Tam kitap podcast için yeniden oluşturun.')
                                   : t('Podcast henüz hazır değil.')}
@@ -2880,30 +4195,28 @@ export default function CourseFlowView({
                                 type="button"
                                 onClick={handleOpenPodcastVoicePicker}
                                 disabled={isExportBusy}
-                                className={`mt-2 h-14 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-between transition-all overflow-hidden relative ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
+                                className={`mt-2 h-14 w-full rounded-2xl px-3 inline-flex items-center justify-between transition-all overflow-hidden relative ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
                                 style={{
-                                  background: 'rgba(255, 248, 232, 0.05)',
-                                  borderColor: 'rgba(245, 158, 11, 0.34)',
-                                  color: '#fffdf6',
-                                  boxShadow: 'inset 0 0 0 1px rgba(255,244,214,0.05), 0 10px 20px rgba(0,0,0,0.16)'
+                                  background: 'rgba(14,21,31,0.3)',
+                                  color: '#eef8ff',
+                                  boxShadow: '0 10px 20px rgba(8,20,34,0.18)'
                                 }}
                               >
                                 <div
                                   className="pointer-events-none absolute inset-0"
-                                  style={{ background: 'none' }}
+                                  style={{ background: 'rgba(56,189,248,0.04)' }}
                                 />
                                 <span className="relative inline-flex items-center gap-2 min-w-0">
                                   <span
-                                    className="h-7 w-7 shrink-0 rounded-xl inline-flex items-center justify-center border border-dashed"
+                                    className="h-7 w-7 shrink-0 rounded-xl inline-flex items-center justify-center"
                                     style={{
-                                      borderColor: 'rgba(245, 158, 11, 0.22)',
-                                      background: 'rgba(255,255,255,0.04)'
+                                      background: 'rgba(56,189,248,0.12)'
                                     }}
                                   >
                                     {isExportBusy ? <FaviconSpinner size={13} /> : <AudioLines size={13} className="text-white" />}
                                   </span>
-                                  <span className="min-w-0 text-left leading-tight">
-                                    <span className="block text-[13px] font-black tracking-[0.01em] truncate text-[#fffaf0]">
+                                    <span className="min-w-0 text-left leading-tight">
+                                    <span className="block text-[13px] font-black tracking-[0.01em] truncate text-[#f4fbff]">
                                       {t('Podcast oluştur')}
                                     </span>
                                     <span className="block mt-1 text-[11px] font-medium text-white/68 truncate">
@@ -2912,11 +4225,10 @@ export default function CourseFlowView({
                                   </span>
                                 </span>
                                 <span
-                                  className="relative ml-2 shrink-0 h-8 px-2.5 rounded-xl border border-dashed inline-flex items-center justify-center text-[11px] font-black"
+                                  className="relative ml-2 shrink-0 h-8 px-2.5 rounded-xl inline-flex items-center justify-center text-[11px] font-black"
                                   style={{
-                                    borderColor: 'rgba(245, 158, 11, 0.22)',
-                                    background: 'rgba(255,255,255,0.04)',
-                                    color: '#fffaf0'
+                                    background: 'rgba(16,185,129,0.12)',
+                                    color: '#dbfff4'
                                   }}
                                 >
                                   {PODCAST_CREATE_CREDIT_COST} {t('kredi')}
@@ -2924,15 +4236,14 @@ export default function CourseFlowView({
                               </button>
                               {isPodcastVoicePickerOpen && (
                                 <div
-                                  className="mt-3 rounded-2xl border border-dashed p-3"
+                                  className="mt-3 rounded-2xl p-3"
                                   style={{
-                                    borderColor: 'rgba(245, 158, 11, 0.24)',
-                                    background: 'rgba(11,20,33,0.56)'
+                                    background: 'rgba(15, 29, 47, 0.74)'
                                   }}
                                 >
                                   <div className="mb-3 flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                      <p className="text-[11px] font-black tracking-[0.03em] text-[#fff8e8]">
+                                      <p className="text-[11px] font-black tracking-[0.03em] text-[#e5f4ff]">
                                         {t('Podcast sesini seç')}
                                       </p>
                                       <p className="mt-1 text-[10px] text-white/68">
@@ -2946,8 +4257,7 @@ export default function CourseFlowView({
                                         setIsPodcastVoicePickerOpen(false);
                                         stopPodcastVoicePreview();
                                       }}
-                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-dashed text-[#f4e4bf] transition-all hover:bg-white/5"
-                                      style={{ borderColor: 'rgba(245, 158, 11, 0.24)' }}
+                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#d0e4fb] transition-all hover:bg-white/5"
                                       aria-label={t('Kapat')}
                                       title={t('Kapat')}
                                     >
@@ -2962,13 +4272,12 @@ export default function CourseFlowView({
                                       return (
                                         <div
                                           key={option.id}
-                                          className="rounded-2xl border border-dashed p-2"
+                                          className="rounded-2xl p-2"
                                           style={{
-                                            borderColor: isSelected ? 'rgba(245, 158, 11, 0.62)' : 'rgba(245, 158, 11, 0.2)',
                                             background: isSelected
-                                              ? 'rgba(133,79,14,0.44)'
-                                              : 'rgba(17,24,36,0.72)',
-                                            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(245, 158, 11, 0.18)' : 'none'
+                                              ? 'rgba(56,189,248,0.16)'
+                                              : 'rgba(14,21,31,0.48)',
+                                            boxShadow: isSelected ? '0 0 16px rgba(34,211,238,0.14)' : 'none'
                                           }}
                                         >
                                           <button
@@ -2978,28 +4287,28 @@ export default function CourseFlowView({
                                               setSelectedPodcastVoiceName(option.voiceName);
                                               setHasExplicitPodcastVoiceSelection(true);
                                             }}
-                                            className="inline-flex min-h-[52px] w-full items-center justify-between gap-2 rounded-xl border border-dashed px-3 py-2 text-left transition-all hover:-translate-y-[1px] active:scale-[0.99]"
+                                            className="inline-flex min-h-[52px] w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left transition-all hover:-translate-y-[1px] active:scale-[0.99]"
                                             style={{
-                                              borderColor: isSelected ? 'rgba(255, 220, 145, 0.58)' : 'rgba(245, 158, 11, 0.22)',
-                                              background: isSelected ? '#a86a13' : 'rgba(255, 248, 232, 0.05)',
-                                              color: '#fffaf0',
+                                              background: isSelected
+                                                ? 'rgba(37, 99, 235, 0.86)'
+                                                : 'rgba(14,21,31,0.3)',
+                                              color: '#f4fbff',
                                               boxShadow: isSelected
-                                                ? 'inset 0 0 0 1px rgba(255,244,214,0.12), 0 0 0 3px rgba(245,158,11,0.16), 0 10px 20px rgba(76,48,8,0.16)'
-                                                : 'inset 0 0 0 1px rgba(255,244,214,0.05), 0 8px 16px rgba(0,0,0,0.14)'
+                                                ? '0 10px 20px rgba(8,47,73,0.18)'
+                                                : '0 8px 16px rgba(0,0,0,0.14)'
                                             }}
                                           >
                                             <span className="min-w-0">
-                                              <span className="block text-[12px] font-black text-[#fff7e7]">{option.label}</span>
-                                              <span className={`mt-1 block text-[10px] ${isSelected ? 'text-[#fff0c8]' : 'text-white/68'}`}>
+                                              <span className="block text-[12px] font-black text-[#f5fbff]">{option.label}</span>
+                                              <span className={`mt-1 block text-[10px] ${isSelected ? 'text-[#dff6ff]' : 'text-white/68'}`}>
                                                 {isSelected ? t('Seçildi') : t('Ses örneğini dinle')}
                                               </span>
                                             </span>
                                             <span
-                                              className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg border border-dashed px-2 text-[10px] font-black"
+                                              className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg px-2 text-[10px] font-black"
                                               style={{
-                                                borderColor: isSelected ? 'rgba(255, 231, 180, 0.44)' : 'rgba(245, 158, 11, 0.2)',
-                                                background: isSelected ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-                                                color: '#fff8eb'
+                                                background: isSelected ? 'rgba(255,255,255,0.1)' : 'rgba(56,189,248,0.08)',
+                                                color: '#effbff'
                                               }}
                                             >
                                               {isSelected ? t('Aktif') : t('Seç')}
@@ -3011,10 +4320,11 @@ export default function CourseFlowView({
                                               event.stopPropagation();
                                               void handlePreviewPodcastVoice(option.voiceName);
                                             }}
-                                            className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-[0.98]"
+                                            className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-xl text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-[0.98]"
                                             style={{
-                                              borderColor: isPlayingPreview ? 'rgba(255, 220, 145, 0.58)' : 'rgba(245, 158, 11, 0.22)',
-                                              background: isPlayingPreview ? '#a86a13' : 'rgba(255, 248, 232, 0.05)',
+                                              background: isPlayingPreview
+                                                ? 'rgba(37, 99, 235, 0.86)'
+                                                : 'rgba(14,21,31,0.3)',
                                               color: '#ffffff'
                                             }}
                                           >
@@ -3035,14 +4345,16 @@ export default function CourseFlowView({
                                     type="button"
                                     onClick={handleCreatePodcast}
                                     disabled={isExportBusy}
-                                    className={`mt-3 h-11 w-full rounded-2xl border border-dashed px-3 inline-flex items-center justify-center gap-2 transition-all ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
+                                    className={`mt-3 h-11 w-full rounded-2xl border px-3 inline-flex items-center justify-center gap-2 transition-all ${isExportBusy ? 'opacity-80 cursor-wait' : 'hover:-translate-y-[1px] active:scale-[0.99]'}`}
                                     style={{
-                                      background: hasExplicitPodcastVoiceSelection ? '#a86a13' : 'rgba(255, 248, 232, 0.05)',
-                                      borderColor: hasExplicitPodcastVoiceSelection ? 'rgba(255, 220, 145, 0.58)' : 'rgba(245, 158, 11, 0.3)',
+                                      background: hasExplicitPodcastVoiceSelection
+                                        ? 'rgba(37, 99, 235, 0.88)'
+                                        : 'rgba(14,21,31,0.3)',
+                                      borderColor: hasExplicitPodcastVoiceSelection ? 'rgba(125, 211, 252, 0.72)' : 'rgba(120,171,226,0.3)',
                                       color: '#ffffff',
                                       boxShadow: hasExplicitPodcastVoiceSelection
-                                        ? 'inset 0 0 0 1px rgba(255,244,214,0.12), 0 0 0 3px rgba(245,158,11,0.18), 0 10px 20px rgba(76,48,8,0.18)'
-                                        : 'inset 0 0 0 1px rgba(255,244,214,0.05), 0 8px 16px rgba(0,0,0,0.14)'
+                                        ? '0 10px 20px rgba(8,47,73,0.2)'
+                                        : '0 8px 16px rgba(0,0,0,0.14)'
                                     }}
                                   >
                                     {isExportBusy ? <FaviconSpinner size={14} /> : <AudioLines size={14} className="text-white" />}
@@ -3166,7 +4478,86 @@ export default function CourseFlowView({
               </button>
             )}
             <div className={`${isReadingFullscreen ? 'pt-0' : 'pt-12'} space-y-7`}>
-              {orderedTabNodes.map((node, index) => {
+	              {hasFullscreenStickyImages ? (
+	                <>
+	                  <div className="sticky top-0 z-20 pb-4 pt-1">
+	                    <button
+	                      type="button"
+	                      className="block w-full overflow-hidden rounded-[18px] bg-black/20"
+	                      style={{ height: 'clamp(148px, 28dvh, 220px)' }}
+	                      onTouchStart={handleFullscreenImageTouchStart}
+	                      onTouchEnd={handleFullscreenImageTouchEnd}
+	                      onClick={() => setCoverPreviewImageUrl(fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src || null)}
+	                      aria-label={t('Tam ekran aç')}
+	                      title={t('Tam ekran aç')}
+	                    >
+	                      <img
+	                        key={fullscreenReaderContent.images[fullscreenActiveImageIndex]?.key || 'fullscreen-sticky-image'}
+	                        src={fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src}
+	                        alt={fullscreenReaderContent.images[fullscreenActiveImageIndex]?.alt || fullscreenReaderContent.images[fullscreenActiveImageIndex]?.heading || t('İçerik görseli')}
+	                        className="h-full w-full object-contain"
+	                        loading="eager"
+	                        decoding="async"
+	                      />
+	                    </button>
+	                    <div className="mt-2 flex items-center justify-center gap-1.5 px-1">
+	                        {fullscreenReaderContent.images.map((image, imageIndex) => (
+	                          <button
+	                            key={image.key}
+                            type="button"
+                            onClick={() => scrollToFullscreenImageSection(imageIndex)}
+                            className={`h-1.5 rounded-full transition-all duration-200 ${imageIndex === fullscreenActiveImageIndex ? 'w-8 bg-white/88' : 'w-2.5 bg-white/18'}`}
+                            aria-label={`${imageIndex + 1}. ${t('görsele git')}`}
+                            title={`${imageIndex + 1}. ${t('görsele git')}`}
+                          />
+                        ))}
+	                      </div>
+	                  </div>
+
+                  <div className="space-y-7 pb-2">
+                    {fullscreenReaderContent.textSections.map((section, index) => (
+                      <article
+                        key={section.key}
+                        ref={(element) => {
+                          fullscreenReaderSectionRefs.current[section.key] = element;
+                        }}
+                        className="px-0 py-1.5 border-b border-dashed"
+                        style={{
+                          borderColor: 'rgba(173,149,124,0.12)',
+                          scrollMarginTop: 'calc(env(safe-area-inset-top, 0px) + 60dvh)'
+                        }}
+                      >
+                        {section.heading && (
+                          <header className="mb-4 border-b border-dashed pb-3" style={{ borderColor: 'rgba(173,149,124,0.12)' }}>
+                            <div className="flex items-center justify-between gap-2">
+                              <h2 className="text-base md:text-[17px] font-bold text-white/95 leading-[1.3]">{section.heading}</h2>
+                              {section.durationLabel && (
+                                <span className="text-[11px] font-bold text-white/55">{section.durationLabel}</span>
+                              )}
+                            </div>
+                            {section.subtitle && (
+                              <p className="mt-1 text-[11px] md:text-[12px] text-white/60">{section.subtitle}</p>
+                            )}
+                          </header>
+                        )}
+
+                        {section.markdown.trim() ? (
+                          <StyledMarkdown
+                            content={section.markdown}
+                            variant="inline"
+                            className="text-sm md:text-[15px]"
+                            quoteFirstParagraph={Boolean(section.heading) && index === 0 && !isNarrativeBook}
+                            readerMode="default"
+                            fullscreenFontScale={readingFullscreenFontScale}
+                          />
+                        ) : (
+                          <div className="min-h-8" />
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </>
+              ) : orderedTabNodes.map((node, index) => {
                 const sectionTitle = getFlowTabLabel(node, index);
                 const isLocked = (node.status === 'locked' || node.status === 'conditional') && !node.content && !node.isLoading;
                 const isGen = generatingNodeId === node.id;
@@ -3268,7 +4659,7 @@ export default function CourseFlowView({
                         variant="inline"
                         className="text-sm md:text-[15px]"
                         quoteFirstParagraph={node.type === 'lecture' && !isNarrativeBook}
-                        readerMode={isReadingFullscreen && isFairyTaleBook ? 'fairytale-fullscreen' : 'default'}
+                        readerMode="default"
                         fullscreenFontScale={isReadingFullscreen ? readingFullscreenFontScale : 1}
                       />
                     )}
@@ -3498,17 +4889,19 @@ function PodcastInlinePlayer({
 
   return (
     <div
-      className="rounded-xl border border-dashed p-3 space-y-3"
-      style={{ background: 'rgba(17,22,29,0.86)', borderColor: 'rgba(173,149,124,0.12)' }}
+      className="rounded-xl p-3 space-y-3"
+      style={{
+        background: 'rgba(21, 35, 54, 0.74)'
+      }}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="pointer-events-none min-w-0 flex-1">
           <div className="flex h-4 max-w-full items-center justify-start gap-[3px] opacity-95">
             {[
-              '#34d399', '#fbbf24', '#60a5fa', '#fb7185',
-              '#a78bfa', '#22d3ee', '#f97316', '#38bdf8',
-              '#f43f5e', '#4ade80', '#facc15', '#818cf8',
-              '#06b6d4', '#fb7185', '#f59e0b', '#2dd4bf',
+              '#34d399', '#38bdf8', '#60a5fa', '#fb7185',
+              '#a78bfa', '#22d3ee', '#10b981', '#38bdf8',
+              '#f43f5e', '#4ade80', '#06b6d4', '#818cf8',
+              '#06b6d4', '#fb7185', '#0ea5e9', '#2dd4bf',
               '#60a5fa', '#f43f5e', '#34d399', '#a78bfa'
             ].map((color, idx) => (
               <span
@@ -3531,12 +4924,11 @@ function PodcastInlinePlayer({
           type="button"
           onClick={onDownload}
           disabled={isDownloadBusy || !currentAudioSrc}
-          className={`h-7 rounded-lg border border-dashed px-2 text-[10px] font-bold inline-flex items-center justify-center gap-1 whitespace-nowrap active:scale-95 ${isDownloadBusy ? 'opacity-80 cursor-wait' : ''}`}
+          className={`h-7 rounded-lg px-2 text-[10px] font-bold inline-flex items-center justify-center gap-1 whitespace-nowrap active:scale-95 ${isDownloadBusy ? 'opacity-80 cursor-wait' : ''}`}
           style={{
-            borderColor: 'rgba(143,197,255,0.46)',
-            background: 'linear-gradient(135deg, rgba(31,64,102,0.98) 0%, rgba(24,46,72,0.96) 100%)',
+            background: 'rgba(31, 64, 102, 0.92)',
             color: 'rgba(225,240,255,0.95)',
-            boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.22), 0 4px 10px rgba(11,23,38,0.24)'
+            boxShadow: '0 4px 10px rgba(11,23,38,0.24)'
           }}
           aria-label={t('Podcast indir')}
           title={t('Podcast indir')}
@@ -3586,8 +4978,8 @@ function PodcastInlinePlayer({
             type="button"
             onClick={() => setActiveAudioSegmentIndex((current) => Math.max(0, current - 1))}
             disabled={activeAudioSegmentIndex <= 0}
-            className="h-8 rounded-lg border border-dashed px-3 text-[10px] font-bold disabled:opacity-45 disabled:cursor-not-allowed"
-            style={{ borderColor: 'rgba(181,201,228,0.22)', color: 'rgba(215,229,247,0.96)', background: 'rgba(17,22,29,0.92)' }}
+            className="h-8 rounded-lg px-3 text-[10px] font-bold disabled:opacity-45 disabled:cursor-not-allowed"
+            style={{ color: 'rgba(215,229,247,0.96)', background: 'rgba(17,22,29,0.92)' }}
           >
             {t('Önceki Parça')}
           </button>
@@ -3598,8 +4990,8 @@ function PodcastInlinePlayer({
             type="button"
             onClick={() => setActiveAudioSegmentIndex((current) => Math.min(normalizedAudioSegments.length - 1, current + 1))}
             disabled={activeAudioSegmentIndex >= normalizedAudioSegments.length - 1}
-            className="h-8 rounded-lg border border-dashed px-3 text-[10px] font-bold disabled:opacity-45 disabled:cursor-not-allowed"
-            style={{ borderColor: 'rgba(181,201,228,0.22)', color: 'rgba(215,229,247,0.96)', background: 'rgba(17,22,29,0.92)' }}
+            className="h-8 rounded-lg px-3 text-[10px] font-bold disabled:opacity-45 disabled:cursor-not-allowed"
+            style={{ color: 'rgba(215,229,247,0.96)', background: 'rgba(17,22,29,0.92)' }}
           >
             {t('Sonraki Parça')}
           </button>
