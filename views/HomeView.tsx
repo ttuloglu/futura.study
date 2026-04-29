@@ -2745,7 +2745,7 @@ export default function HomeView({
   return (
     <div className="view-container fortale-home-view">
       {/* Yıldız ve peri tozu — header altından tüm sayfayı kaplar */}
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden>
+      <div className="fixed inset-0 z-[300] overflow-hidden pointer-events-none" aria-hidden>
         {homeStars.map((star, idx) => (
           <span
             key={`hs-${idx}`}
