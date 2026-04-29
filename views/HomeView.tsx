@@ -2471,17 +2471,9 @@ export default function HomeView({
         className={`fortale-shelf-card group ${isOpenReady ? 'is-ready' : ''}`}
       >
         <div className="fortale-shelf-cover">
-          {course.coverImageUrl ? (
-            <img
-              src={course.coverImageUrl}
-              alt={`${course.topic} ${t('Fortale kapağı')}`}
-              className="h-full w-full object-cover object-center border-0"
-            />
-          ) : (
-            <div className="fortale-shelf-cover-empty">
-              <BookOpen size={24} />
-            </div>
-          )}
+          <div className="fortale-shelf-cover-empty">
+            <BookOpen size={24} />
+          </div>
           <div className="fortale-shelf-cover-fade" />
           <span className="fortale-shelf-type">{t(bookTypeToLabel(course.bookType))}</span>
           {isOpenDownloading && (
