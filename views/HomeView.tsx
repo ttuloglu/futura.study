@@ -12,14 +12,14 @@ import {
   SmartBookEndingStyle,
   CourseOpenUiState
 } from '../types';
-import { Plus, BookOpen, Clock3, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft } from 'lucide-react';
-import { extractDocumentContext, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
+import { Plus, BookOpen, Clock3, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Feather, ScrollText } from 'lucide-react';
+import { extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
+import FLogo from '../components/FLogo';
 import { SMARTBOOK_AGE_GROUP_OPTIONS, getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from '../utils/contentSafety';
 import {
-  SMARTBOOK_BOOK_TYPE_OPTIONS,
   SMARTBOOK_SUBGENRE_OPTIONS,
   SMARTBOOK_ENDING_OPTIONS,
   buildTargetPageFromBrief,
@@ -28,6 +28,7 @@ import {
 } from '../utils/bookGeneration';
 import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
 import { useUiI18n } from '../i18n/uiI18n';
+import type { AppLanguageCode } from '../data/appLanguages';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
@@ -89,6 +90,565 @@ const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation
 const GENERIC_TRANSIENT_ERROR_MESSAGE = 'Bir sorun oluştu. Lütfen kısa bir süre sonra tekrar deneyin.';
 const GENERIC_AUTH_REQUIRED_MESSAGE = 'Oturum doğrulanamadı. Lütfen tekrar giriş yapın.';
 
+type GenerationStatusCopy = {
+  bookQueued: string;
+  planning: string;
+  writingSections: string;
+  chapterWriting: (current: string, total: string) => string;
+  chapterCompleted: (current: string, total: string) => string;
+  coverPreparing: string;
+  ready: string;
+  opening: string;
+  serverPreparing: string;
+  checking: string;
+  rechecking: string;
+  documentAnalyzing: string;
+  starting: string;
+  visualGenerating: string;
+  visualsGenerating: string;
+};
+
+type SimpleGenerationStatusCopy = {
+  contentPreparing: string;
+  contentPreparingProgress: (current: string, total: string) => string;
+  visualsPreparing: string;
+  visualPreparingProgress: (current: string, total: string) => string;
+  assemblingBook: string;
+};
+
+const GENERATION_STATUS_COPY: Record<AppLanguageCode, GenerationStatusCopy> = {
+  ar: {
+    bookQueued: 'تمت إضافة الكتاب إلى قائمة الإنشاء',
+    planning: 'يتم تخطيط مسار الكتاب',
+    writingSections: 'تتم كتابة الفصول',
+    chapterWriting: (current, total) => `جارٍ كتابة الفصل ${current}/${total}`,
+    chapterCompleted: (current, total) => `اكتمل الفصل ${current}/${total}`,
+    coverPreparing: 'يتم تجهيز الغلاف',
+    ready: 'الكتاب جاهز',
+    opening: 'يتم فتح الكتاب...',
+    serverPreparing: 'يتم تجهيز الكتاب على الخادم...',
+    checking: 'يتم التحقق من حالة الإنشاء...',
+    rechecking: 'تتم إعادة التحقق من حالة الإنشاء...',
+    documentAnalyzing: 'يتم تحليل المستند...',
+    starting: 'يتم بدء الإنشاء على الخادم...',
+    visualGenerating: 'يتم إنشاء الصورة...',
+    visualsGenerating: 'يتم إنشاء الصور...'
+  },
+  da: {
+    bookQueued: 'Bogen er sat i kø til oprettelse',
+    planning: 'Bogens forløb planlægges',
+    writingSections: 'Afsnittene skrives',
+    chapterWriting: (current, total) => `Afsnit ${current}/${total} skrives`,
+    chapterCompleted: (current, total) => `Afsnit ${current}/${total} er færdigt`,
+    coverPreparing: 'Omslaget forberedes',
+    ready: 'Bogen er klar',
+    opening: 'Bogen åbnes...',
+    serverPreparing: 'Bogen forberedes på serveren...',
+    checking: 'Oprettelsesstatus kontrolleres...',
+    rechecking: 'Oprettelsesstatus kontrolleres igen...',
+    documentAnalyzing: 'Dokumentet analyseres...',
+    starting: 'Oprettelsen startes på serveren...',
+    visualGenerating: 'Billedet genereres...',
+    visualsGenerating: 'Billederne genereres...'
+  },
+  de: {
+    bookQueued: 'Das Buch wurde zur Erstellung eingereiht',
+    planning: 'Der Buchablauf wird geplant',
+    writingSections: 'Kapitel werden geschrieben',
+    chapterWriting: (current, total) => `Kapitel ${current}/${total} wird geschrieben`,
+    chapterCompleted: (current, total) => `Kapitel ${current}/${total} abgeschlossen`,
+    coverPreparing: 'Cover wird vorbereitet',
+    ready: 'Buch ist bereit',
+    opening: 'Buch wird geöffnet...',
+    serverPreparing: 'Buch wird auf dem Server vorbereitet...',
+    checking: 'Erstellungsstatus wird geprüft...',
+    rechecking: 'Erstellungsstatus wird erneut geprüft...',
+    documentAnalyzing: 'Dokument wird analysiert...',
+    starting: 'Erstellung wird auf dem Server gestartet...',
+    visualGenerating: 'Bild wird generiert...',
+    visualsGenerating: 'Bilder werden generiert...'
+  },
+  el: {
+    bookQueued: 'Το βιβλίο μπήκε στην ουρά δημιουργίας',
+    planning: 'Σχεδιάζεται η ροή του βιβλίου',
+    writingSections: 'Γράφονται οι ενότητες',
+    chapterWriting: (current, total) => `Γράφεται η ενότητα ${current}/${total}`,
+    chapterCompleted: (current, total) => `Η ενότητα ${current}/${total} ολοκληρώθηκε`,
+    coverPreparing: 'Προετοιμάζεται το εξώφυλλο',
+    ready: 'Το βιβλίο είναι έτοιμο',
+    opening: 'Άνοιγμα βιβλίου...',
+    serverPreparing: 'Το βιβλίο προετοιμάζεται στον διακομιστή...',
+    checking: 'Ελέγχεται η κατάσταση δημιουργίας...',
+    rechecking: 'Επανελέγχεται η κατάσταση δημιουργίας...',
+    documentAnalyzing: 'Αναλύεται το έγγραφο...',
+    starting: 'Η δημιουργία ξεκινά στον διακομιστή...',
+    visualGenerating: 'Δημιουργείται εικόνα...',
+    visualsGenerating: 'Δημιουργούνται εικόνες...'
+  },
+  en: {
+    bookQueued: 'Book generation queued',
+    planning: 'Planning the book flow',
+    writingSections: 'Writing sections',
+    chapterWriting: (current, total) => `Writing section ${current}/${total}`,
+    chapterCompleted: (current, total) => `Section ${current}/${total} completed`,
+    coverPreparing: 'Preparing the cover',
+    ready: 'Book ready',
+    opening: 'Opening book...',
+    serverPreparing: 'Preparing the book on the server...',
+    checking: 'Checking generation status...',
+    rechecking: 'Checking generation status again...',
+    documentAnalyzing: 'Analyzing document...',
+    starting: 'Starting generation on the server...',
+    visualGenerating: 'Generating image...',
+    visualsGenerating: 'Generating images...'
+  },
+  es: {
+    bookQueued: 'El libro se puso en cola para generarse',
+    planning: 'Planificando el flujo del libro',
+    writingSections: 'Escribiendo secciones',
+    chapterWriting: (current, total) => `Escribiendo sección ${current}/${total}`,
+    chapterCompleted: (current, total) => `Sección ${current}/${total} completada`,
+    coverPreparing: 'Preparando la portada',
+    ready: 'Libro listo',
+    opening: 'Abriendo libro...',
+    serverPreparing: 'Preparando el libro en el servidor...',
+    checking: 'Comprobando el estado de generación...',
+    rechecking: 'Volviendo a comprobar el estado de generación...',
+    documentAnalyzing: 'Analizando documento...',
+    starting: 'Iniciando generación en el servidor...',
+    visualGenerating: 'Generando imagen...',
+    visualsGenerating: 'Generando imágenes...'
+  },
+  fi: {
+    bookQueued: 'Kirja on lisätty luontijonoon',
+    planning: 'Kirjan rakennetta suunnitellaan',
+    writingSections: 'Osioita kirjoitetaan',
+    chapterWriting: (current, total) => `Kirjoitetaan osiota ${current}/${total}`,
+    chapterCompleted: (current, total) => `Osio ${current}/${total} valmis`,
+    coverPreparing: 'Kantta valmistellaan',
+    ready: 'Kirja on valmis',
+    opening: 'Kirjaa avataan...',
+    serverPreparing: 'Kirjaa valmistellaan palvelimella...',
+    checking: 'Luonnin tilaa tarkistetaan...',
+    rechecking: 'Luonnin tilaa tarkistetaan uudelleen...',
+    documentAnalyzing: 'Dokumenttia analysoidaan...',
+    starting: 'Luonti käynnistetään palvelimella...',
+    visualGenerating: 'Kuvaa luodaan...',
+    visualsGenerating: 'Kuvia luodaan...'
+  },
+  fr: {
+    bookQueued: 'Le livre est en file de génération',
+    planning: 'Planification du parcours du livre',
+    writingSections: 'Rédaction des sections',
+    chapterWriting: (current, total) => `Rédaction de la section ${current}/${total}`,
+    chapterCompleted: (current, total) => `Section ${current}/${total} terminée`,
+    coverPreparing: 'Préparation de la couverture',
+    ready: 'Livre prêt',
+    opening: 'Ouverture du livre...',
+    serverPreparing: 'Préparation du livre sur le serveur...',
+    checking: 'Vérification de l’état de génération...',
+    rechecking: 'Nouvelle vérification de l’état de génération...',
+    documentAnalyzing: 'Analyse du document...',
+    starting: 'Démarrage de la génération sur le serveur...',
+    visualGenerating: 'Génération de l’image...',
+    visualsGenerating: 'Génération des images...'
+  },
+  hi: {
+    bookQueued: 'पुस्तक निर्माण कतार में जोड़ दी गई है',
+    planning: 'पुस्तक प्रवाह की योजना बन रही है',
+    writingSections: 'खंड लिखे जा रहे हैं',
+    chapterWriting: (current, total) => `खंड ${current}/${total} लिखा जा रहा है`,
+    chapterCompleted: (current, total) => `खंड ${current}/${total} पूरा हुआ`,
+    coverPreparing: 'कवर तैयार हो रहा है',
+    ready: 'पुस्तक तैयार है',
+    opening: 'पुस्तक खोली जा रही है...',
+    serverPreparing: 'सर्वर पर पुस्तक तैयार हो रही है...',
+    checking: 'निर्माण स्थिति जांची जा रही है...',
+    rechecking: 'निर्माण स्थिति फिर से जांची जा रही है...',
+    documentAnalyzing: 'दस्तावेज़ का विश्लेषण हो रहा है...',
+    starting: 'सर्वर पर निर्माण शुरू हो रहा है...',
+    visualGenerating: 'चित्र बनाया जा रहा है...',
+    visualsGenerating: 'चित्र बनाए जा रहे हैं...'
+  },
+  id: {
+    bookQueued: 'Buku masuk antrean pembuatan',
+    planning: 'Merencanakan alur buku',
+    writingSections: 'Menulis bagian',
+    chapterWriting: (current, total) => `Menulis bagian ${current}/${total}`,
+    chapterCompleted: (current, total) => `Bagian ${current}/${total} selesai`,
+    coverPreparing: 'Menyiapkan sampul',
+    ready: 'Buku siap',
+    opening: 'Membuka buku...',
+    serverPreparing: 'Menyiapkan buku di server...',
+    checking: 'Memeriksa status pembuatan...',
+    rechecking: 'Memeriksa ulang status pembuatan...',
+    documentAnalyzing: 'Menganalisis dokumen...',
+    starting: 'Memulai pembuatan di server...',
+    visualGenerating: 'Membuat gambar...',
+    visualsGenerating: 'Membuat gambar...'
+  },
+  it: {
+    bookQueued: 'Libro in coda per la creazione',
+    planning: 'Pianificazione del flusso del libro',
+    writingSections: 'Scrittura delle sezioni',
+    chapterWriting: (current, total) => `Scrittura sezione ${current}/${total}`,
+    chapterCompleted: (current, total) => `Sezione ${current}/${total} completata`,
+    coverPreparing: 'Preparazione della copertina',
+    ready: 'Libro pronto',
+    opening: 'Apertura del libro...',
+    serverPreparing: 'Preparazione del libro sul server...',
+    checking: 'Controllo dello stato di generazione...',
+    rechecking: 'Nuovo controllo dello stato di generazione...',
+    documentAnalyzing: 'Analisi del documento...',
+    starting: 'Avvio della generazione sul server...',
+    visualGenerating: 'Generazione immagine...',
+    visualsGenerating: 'Generazione immagini...'
+  },
+  ja: {
+    bookQueued: '本の生成キューに追加しました',
+    planning: '本の構成を計画しています',
+    writingSections: 'セクションを執筆しています',
+    chapterWriting: (current, total) => `セクション ${current}/${total} を執筆中`,
+    chapterCompleted: (current, total) => `セクション ${current}/${total} が完了しました`,
+    coverPreparing: '表紙を準備しています',
+    ready: '本の準備ができました',
+    opening: '本を開いています...',
+    serverPreparing: 'サーバーで本を準備しています...',
+    checking: '生成状況を確認しています...',
+    rechecking: '生成状況を再確認しています...',
+    documentAnalyzing: 'ドキュメントを分析しています...',
+    starting: 'サーバーで生成を開始しています...',
+    visualGenerating: '画像を生成しています...',
+    visualsGenerating: '画像を生成しています...'
+  },
+  ko: {
+    bookQueued: '책 생성 대기열에 추가되었습니다',
+    planning: '책 흐름을 계획하는 중',
+    writingSections: '섹션을 작성하는 중',
+    chapterWriting: (current, total) => `섹션 ${current}/${total} 작성 중`,
+    chapterCompleted: (current, total) => `섹션 ${current}/${total} 완료`,
+    coverPreparing: '표지를 준비하는 중',
+    ready: '책이 준비되었습니다',
+    opening: '책을 여는 중...',
+    serverPreparing: '서버에서 책을 준비하는 중...',
+    checking: '생성 상태 확인 중...',
+    rechecking: '생성 상태를 다시 확인하는 중...',
+    documentAnalyzing: '문서를 분석하는 중...',
+    starting: '서버에서 생성을 시작하는 중...',
+    visualGenerating: '이미지를 생성하는 중...',
+    visualsGenerating: '이미지를 생성하는 중...'
+  },
+  nl: {
+    bookQueued: 'Boekgeneratie staat in de wachtrij',
+    planning: 'Boekstructuur wordt gepland',
+    writingSections: 'Secties worden geschreven',
+    chapterWriting: (current, total) => `Sectie ${current}/${total} wordt geschreven`,
+    chapterCompleted: (current, total) => `Sectie ${current}/${total} voltooid`,
+    coverPreparing: 'Omslag wordt voorbereid',
+    ready: 'Boek is klaar',
+    opening: 'Boek wordt geopend...',
+    serverPreparing: 'Boek wordt op de server voorbereid...',
+    checking: 'Generatiestatus wordt gecontroleerd...',
+    rechecking: 'Generatiestatus wordt opnieuw gecontroleerd...',
+    documentAnalyzing: 'Document wordt geanalyseerd...',
+    starting: 'Generatie wordt op de server gestart...',
+    visualGenerating: 'Afbeelding wordt gegenereerd...',
+    visualsGenerating: 'Afbeeldingen worden gegenereerd...'
+  },
+  no: {
+    bookQueued: 'Boken er lagt i genereringskø',
+    planning: 'Bokflyten planlegges',
+    writingSections: 'Deler skrives',
+    chapterWriting: (current, total) => `Del ${current}/${total} skrives`,
+    chapterCompleted: (current, total) => `Del ${current}/${total} fullført`,
+    coverPreparing: 'Omslaget klargjøres',
+    ready: 'Boken er klar',
+    opening: 'Åpner boken...',
+    serverPreparing: 'Boken klargjøres på serveren...',
+    checking: 'Sjekker genereringsstatus...',
+    rechecking: 'Sjekker genereringsstatus på nytt...',
+    documentAnalyzing: 'Dokumentet analyseres...',
+    starting: 'Starter generering på serveren...',
+    visualGenerating: 'Genererer bilde...',
+    visualsGenerating: 'Genererer bilder...'
+  },
+  pl: {
+    bookQueued: 'Książka trafiła do kolejki tworzenia',
+    planning: 'Planowanie struktury książki',
+    writingSections: 'Pisanie sekcji',
+    chapterWriting: (current, total) => `Pisanie sekcji ${current}/${total}`,
+    chapterCompleted: (current, total) => `Sekcja ${current}/${total} ukończona`,
+    coverPreparing: 'Przygotowywanie okładki',
+    ready: 'Książka gotowa',
+    opening: 'Otwieranie książki...',
+    serverPreparing: 'Książka jest przygotowywana na serwerze...',
+    checking: 'Sprawdzanie statusu tworzenia...',
+    rechecking: 'Ponowne sprawdzanie statusu tworzenia...',
+    documentAnalyzing: 'Analizowanie dokumentu...',
+    starting: 'Uruchamianie tworzenia na serwerze...',
+    visualGenerating: 'Generowanie obrazu...',
+    visualsGenerating: 'Generowanie obrazów...'
+  },
+  'pt-BR': {
+    bookQueued: 'Livro na fila de criação',
+    planning: 'Planejando o fluxo do livro',
+    writingSections: 'Escrevendo seções',
+    chapterWriting: (current, total) => `Escrevendo seção ${current}/${total}`,
+    chapterCompleted: (current, total) => `Seção ${current}/${total} concluída`,
+    coverPreparing: 'Preparando a capa',
+    ready: 'Livro pronto',
+    opening: 'Abrindo livro...',
+    serverPreparing: 'Preparando o livro no servidor...',
+    checking: 'Verificando o status da criação...',
+    rechecking: 'Verificando novamente o status da criação...',
+    documentAnalyzing: 'Analisando documento...',
+    starting: 'Iniciando criação no servidor...',
+    visualGenerating: 'Gerando imagem...',
+    visualsGenerating: 'Gerando imagens...'
+  },
+  sv: {
+    bookQueued: 'Boken har lagts i skapandekön',
+    planning: 'Bokflödet planeras',
+    writingSections: 'Avsnitt skrivs',
+    chapterWriting: (current, total) => `Avsnitt ${current}/${total} skrivs`,
+    chapterCompleted: (current, total) => `Avsnitt ${current}/${total} klart`,
+    coverPreparing: 'Omslaget förbereds',
+    ready: 'Boken är klar',
+    opening: 'Öppnar boken...',
+    serverPreparing: 'Boken förbereds på servern...',
+    checking: 'Kontrollerar skapandestatus...',
+    rechecking: 'Kontrollerar skapandestatus igen...',
+    documentAnalyzing: 'Dokumentet analyseras...',
+    starting: 'Startar skapande på servern...',
+    visualGenerating: 'Genererar bild...',
+    visualsGenerating: 'Genererar bilder...'
+  },
+  th: {
+    bookQueued: 'เพิ่มหนังสือเข้าคิวสร้างแล้ว',
+    planning: 'กำลังวางแผนลำดับหนังสือ',
+    writingSections: 'กำลังเขียนส่วนต่างๆ',
+    chapterWriting: (current, total) => `กำลังเขียนส่วน ${current}/${total}`,
+    chapterCompleted: (current, total) => `ส่วน ${current}/${total} เสร็จแล้ว`,
+    coverPreparing: 'กำลังเตรียมปก',
+    ready: 'หนังสือพร้อมแล้ว',
+    opening: 'กำลังเปิดหนังสือ...',
+    serverPreparing: 'กำลังเตรียมหนังสือบนเซิร์ฟเวอร์...',
+    checking: 'กำลังตรวจสอบสถานะการสร้าง...',
+    rechecking: 'กำลังตรวจสอบสถานะการสร้างอีกครั้ง...',
+    documentAnalyzing: 'กำลังวิเคราะห์เอกสาร...',
+    starting: 'กำลังเริ่มสร้างบนเซิร์ฟเวอร์...',
+    visualGenerating: 'กำลังสร้างรูปภาพ...',
+    visualsGenerating: 'กำลังสร้างรูปภาพ...'
+  },
+  tr: {
+    bookQueued: 'Kitap üretim sırasına alındı',
+    planning: 'Kitap akışı planlanıyor',
+    writingSections: 'Bölümler yazılıyor',
+    chapterWriting: (current, total) => `Bölüm ${current}/${total} yazılıyor`,
+    chapterCompleted: (current, total) => `Bölüm ${current}/${total} tamamlandı`,
+    coverPreparing: 'Kapak hazırlanıyor',
+    ready: 'Kitap hazır',
+    opening: 'Kitap açılıyor...',
+    serverPreparing: 'Kitap sunucuda hazırlanıyor...',
+    checking: 'Üretim durumu kontrol ediliyor...',
+    rechecking: 'Üretim durumu yeniden kontrol ediliyor...',
+    documentAnalyzing: 'Doküman analiz ediliyor...',
+    starting: 'Sunucuda üretim başlatılıyor...',
+    visualGenerating: 'Görsel üretiliyor...',
+    visualsGenerating: 'Görseller üretiliyor...'
+  }
+};
+
+const SIMPLE_GENERATION_STATUS_COPY: Record<AppLanguageCode, SimpleGenerationStatusCopy> = {
+  ar: {
+    contentPreparing: 'يتم تجهيز المحتوى',
+    contentPreparingProgress: (current, total) => `يتم تجهيز المحتوى ${current}/${total}`,
+    visualsPreparing: 'يتم تجهيز الصور',
+    visualPreparingProgress: (current, total) => `يتم تجهيز الصورة ${current}/${total}`,
+    assemblingBook: 'يتم تجميع كتابك'
+  },
+  da: {
+    contentPreparing: 'Indholdet forberedes',
+    contentPreparingProgress: (current, total) => `Indhold ${current}/${total} forberedes`,
+    visualsPreparing: 'Billederne forberedes',
+    visualPreparingProgress: (current, total) => `Billede ${current}/${total} forberedes`,
+    assemblingBook: 'Din bog samles'
+  },
+  de: {
+    contentPreparing: 'Inhalt wird vorbereitet',
+    contentPreparingProgress: (current, total) => `Inhalt ${current}/${total} wird vorbereitet`,
+    visualsPreparing: 'Bilder werden vorbereitet',
+    visualPreparingProgress: (current, total) => `Bild ${current}/${total} wird vorbereitet`,
+    assemblingBook: 'Dein Buch wird zusammengesetzt'
+  },
+  el: {
+    contentPreparing: 'Προετοιμάζεται το περιεχόμενο',
+    contentPreparingProgress: (current, total) => `Προετοιμάζεται το περιεχόμενο ${current}/${total}`,
+    visualsPreparing: 'Προετοιμάζονται οι εικόνες',
+    visualPreparingProgress: (current, total) => `Προετοιμάζεται η εικόνα ${current}/${total}`,
+    assemblingBook: 'Το βιβλίο σου συντίθεται'
+  },
+  en: {
+    contentPreparing: 'Preparing content',
+    contentPreparingProgress: (current, total) => `Preparing content ${current}/${total}`,
+    visualsPreparing: 'Preparing visuals',
+    visualPreparingProgress: (current, total) => `Preparing visual ${current}/${total}`,
+    assemblingBook: 'Assembling your book'
+  },
+  es: {
+    contentPreparing: 'Preparando el contenido',
+    contentPreparingProgress: (current, total) => `Preparando contenido ${current}/${total}`,
+    visualsPreparing: 'Preparando las imágenes',
+    visualPreparingProgress: (current, total) => `Preparando imagen ${current}/${total}`,
+    assemblingBook: 'Se está ensamblando tu libro'
+  },
+  fi: {
+    contentPreparing: 'Sisältöä valmistellaan',
+    contentPreparingProgress: (current, total) => `Sisältöä valmistellaan ${current}/${total}`,
+    visualsPreparing: 'Kuvia valmistellaan',
+    visualPreparingProgress: (current, total) => `Kuvaa ${current}/${total} valmistellaan`,
+    assemblingBook: 'Kirjaasi kootaan'
+  },
+  fr: {
+    contentPreparing: 'Préparation du contenu',
+    contentPreparingProgress: (current, total) => `Préparation du contenu ${current}/${total}`,
+    visualsPreparing: 'Préparation des visuels',
+    visualPreparingProgress: (current, total) => `Préparation du visuel ${current}/${total}`,
+    assemblingBook: 'Votre livre est en cours d’assemblage'
+  },
+  hi: {
+    contentPreparing: 'सामग्री तैयार की जा रही है',
+    contentPreparingProgress: (current, total) => `सामग्री ${current}/${total} तैयार की जा रही है`,
+    visualsPreparing: 'चित्र तैयार किए जा रहे हैं',
+    visualPreparingProgress: (current, total) => `चित्र ${current}/${total} तैयार किया जा रहा है`,
+    assemblingBook: 'आपकी पुस्तक जोड़ी जा रही है'
+  },
+  id: {
+    contentPreparing: 'Menyiapkan konten',
+    contentPreparingProgress: (current, total) => `Menyiapkan konten ${current}/${total}`,
+    visualsPreparing: 'Menyiapkan gambar',
+    visualPreparingProgress: (current, total) => `Menyiapkan gambar ${current}/${total}`,
+    assemblingBook: 'Bukumu sedang dirangkai'
+  },
+  it: {
+    contentPreparing: 'Preparazione dei contenuti',
+    contentPreparingProgress: (current, total) => `Preparazione contenuto ${current}/${total}`,
+    visualsPreparing: 'Preparazione delle immagini',
+    visualPreparingProgress: (current, total) => `Preparazione immagine ${current}/${total}`,
+    assemblingBook: 'Il tuo libro viene assemblato'
+  },
+  ja: {
+    contentPreparing: 'コンテンツを準備しています',
+    contentPreparingProgress: (current, total) => `コンテンツ ${current}/${total} を準備しています`,
+    visualsPreparing: '画像を準備しています',
+    visualPreparingProgress: (current, total) => `画像 ${current}/${total} を準備しています`,
+    assemblingBook: '本をまとめています'
+  },
+  ko: {
+    contentPreparing: '콘텐츠를 준비하는 중',
+    contentPreparingProgress: (current, total) => `콘텐츠 ${current}/${total} 준비 중`,
+    visualsPreparing: '이미지를 준비하는 중',
+    visualPreparingProgress: (current, total) => `이미지 ${current}/${total} 준비 중`,
+    assemblingBook: '책을 조합하는 중'
+  },
+  nl: {
+    contentPreparing: 'Inhoud wordt voorbereid',
+    contentPreparingProgress: (current, total) => `Inhoud ${current}/${total} wordt voorbereid`,
+    visualsPreparing: 'Beelden worden voorbereid',
+    visualPreparingProgress: (current, total) => `Beeld ${current}/${total} wordt voorbereid`,
+    assemblingBook: 'Je boek wordt samengesteld'
+  },
+  no: {
+    contentPreparing: 'Innhold forberedes',
+    contentPreparingProgress: (current, total) => `Innhold ${current}/${total} forberedes`,
+    visualsPreparing: 'Bildene forberedes',
+    visualPreparingProgress: (current, total) => `Bilde ${current}/${total} forberedes`,
+    assemblingBook: 'Boken din settes sammen'
+  },
+  pl: {
+    contentPreparing: 'Przygotowywanie treści',
+    contentPreparingProgress: (current, total) => `Przygotowywanie treści ${current}/${total}`,
+    visualsPreparing: 'Przygotowywanie ilustracji',
+    visualPreparingProgress: (current, total) => `Przygotowywanie ilustracji ${current}/${total}`,
+    assemblingBook: 'Twoja książka jest składana'
+  },
+  'pt-BR': {
+    contentPreparing: 'Preparando o conteúdo',
+    contentPreparingProgress: (current, total) => `Preparando conteúdo ${current}/${total}`,
+    visualsPreparing: 'Preparando as imagens',
+    visualPreparingProgress: (current, total) => `Preparando imagem ${current}/${total}`,
+    assemblingBook: 'Seu livro está sendo montado'
+  },
+  sv: {
+    contentPreparing: 'Innehåll förbereds',
+    contentPreparingProgress: (current, total) => `Innehåll ${current}/${total} förbereds`,
+    visualsPreparing: 'Bilder förbereds',
+    visualPreparingProgress: (current, total) => `Bild ${current}/${total} förbereds`,
+    assemblingBook: 'Din bok sätts samman'
+  },
+  th: {
+    contentPreparing: 'กำลังเตรียมเนื้อหา',
+    contentPreparingProgress: (current, total) => `กำลังเตรียมเนื้อหา ${current}/${total}`,
+    visualsPreparing: 'กำลังเตรียมภาพ',
+    visualPreparingProgress: (current, total) => `กำลังเตรียมภาพ ${current}/${total}`,
+    assemblingBook: 'กำลังรวมหนังสือของคุณ'
+  },
+  tr: {
+    contentPreparing: 'İçerik hazırlanıyor',
+    contentPreparingProgress: (current, total) => `İçerik ${current}/${total} hazırlanıyor`,
+    visualsPreparing: 'Görseller hazırlanıyor',
+    visualPreparingProgress: (current, total) => `Görsel ${current}/${total} hazırlanıyor`,
+    assemblingBook: 'Kitabınız birleştiriliyor'
+  }
+};
+
+function translateGenerationStatusLabel(rawStatus: string, language: AppLanguageCode): string {
+  const raw = String(rawStatus || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return raw;
+  const copy = GENERATION_STATUS_COPY[language] || GENERATION_STATUS_COPY.en;
+  const simpleCopy = SIMPLE_GENERATION_STATUS_COPY[language] || SIMPLE_GENERATION_STATUS_COPY.en;
+  const withoutEllipsis = raw.replace(/\s*(?:\.\.\.|…)$/u, '').trim();
+  const contentPreparingMatch = withoutEllipsis.match(/^İçerik\s+(\d+)\s*\/\s*(\d+)\s+hazırlanıyor$/iu);
+  if (contentPreparingMatch) return simpleCopy.contentPreparingProgress(contentPreparingMatch[1], contentPreparingMatch[2]);
+  const visualPreparingMatch = withoutEllipsis.match(/^Görsel\s+(\d+)\s*\/\s*(\d+)\s+(?:hazırlanıyor|tamamlandı)$/iu);
+  if (visualPreparingMatch) return simpleCopy.visualPreparingProgress(visualPreparingMatch[1], visualPreparingMatch[2]);
+  const writingMatch = withoutEllipsis.match(/^Bölüm\s+(\d+)\s*\/\s*(\d+)\s+yazılıyor$/iu);
+  if (writingMatch) return copy.chapterWriting(writingMatch[1], writingMatch[2]);
+  const completedMatch = withoutEllipsis.match(/^Bölüm\s+(\d+)\s*\/\s*(\d+)\s+tamamlandı$/iu);
+  if (completedMatch) return copy.chapterCompleted(completedMatch[1], completedMatch[2]);
+
+  const simpleStatusMap: Record<string, keyof SimpleGenerationStatusCopy> = {
+    'İçerik hazırlanıyor': 'contentPreparing',
+    'Görseller hazırlanıyor': 'visualsPreparing',
+    'Kitabınız birleştiriliyor': 'assemblingBook',
+    'Görsel masal planlanıyor': 'contentPreparing',
+    'Görsel masal sayfaları çiziliyor': 'visualsPreparing',
+    'Görseller paralel hazırlanıyor': 'visualsPreparing'
+  };
+  const simpleKey = simpleStatusMap[withoutEllipsis.replace(/\s*\(\d+\s+sayfa\)$/iu, '')];
+  if (simpleKey) return simpleCopy[simpleKey];
+
+  const statusMap: Record<string, keyof Omit<GenerationStatusCopy, 'chapterWriting' | 'chapterCompleted'>> = {
+    'Kitap üretim sırasına alındı': 'bookQueued',
+    'Kitap akışı planlanıyor': 'planning',
+    'Bölümler yazılıyor': 'writingSections',
+    'Kapak hazırlanıyor': 'coverPreparing',
+    'Kitap hazır': 'ready',
+    'Kitap açılıyor': 'opening',
+    'Kitap sunucuda hazırlanıyor': 'serverPreparing',
+    'Üretim durumu kontrol ediliyor': 'checking',
+    'Üretim durumu yeniden kontrol ediliyor': 'rechecking',
+    'Doküman analiz ediliyor': 'documentAnalyzing',
+    'Sunucuda üretim başlatılıyor': 'starting',
+    'Görsel üretiliyor': 'visualGenerating',
+    'Görseller üretiliyor': 'visualsGenerating',
+    'Görsel oluşturuluyor': 'visualGenerating',
+    'Görseller oluşturuluyor': 'visualsGenerating'
+  };
+  const key = statusMap[withoutEllipsis];
+  return key ? copy[key] : rawStatus;
+}
+
 type StoryInputMode = 'auto' | 'manual' | null;
 type WizardTone = {
   border: string;
@@ -113,13 +673,19 @@ const WIZARD_TONES: WizardTone[] = [
   { border: 'rgba(59, 130, 246, 0.62)', fill: 'rgba(59, 130, 246, 0.16)', glow: 'rgba(59, 130, 246, 0.22)' }
 ];
 
+const CREATE_FORM_GREEN_TONE: WizardTone = {
+  border: 'rgba(126, 183, 155, 0.42)',
+  fill: 'rgba(42, 77, 68, 0.24)',
+  glow: 'rgba(126, 183, 155, 0.16)'
+};
+
 const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
   fairy_tale: {
-    tone: { border: 'rgba(245, 158, 11, 0.68)', fill: 'rgba(245, 158, 11, 0.2)', glow: 'rgba(245, 158, 11, 0.28)' },
-    progress: 'linear-gradient(90deg, #f59e0b 0%, #facc15 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(168,104,22,0.94) 0%, rgba(133,79,14,0.94) 100%)',
-    actionBorder: 'rgba(251, 191, 36, 0.7)',
-    actionGlow: 'rgba(245, 158, 11, 0.28)'
+    tone: { border: 'rgba(217, 174, 74, 0.5)', fill: 'rgba(171, 125, 42, 0.16)', glow: 'rgba(171, 125, 42, 0.18)' },
+    progress: 'linear-gradient(90deg, #ab7d2a 0%, #d9ae4a 100%)',
+    actionBackground: 'linear-gradient(135deg, rgba(171,125,42,0.88) 0%, rgba(105,76,29,0.94) 100%)',
+    actionBorder: 'rgba(222, 184, 89, 0.62)',
+    actionGlow: 'rgba(171, 125, 42, 0.18)'
   },
   story: {
     tone: { border: 'rgba(16, 185, 129, 0.68)', fill: 'rgba(16, 185, 129, 0.2)', glow: 'rgba(16, 185, 129, 0.28)' },
@@ -136,6 +702,44 @@ const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
     actionGlow: 'rgba(227, 10, 23, 0.28)'
   }
 };
+
+const NEUTRAL_BOOK_TYPE_THEME: BookTypeTheme = {
+  tone: { border: 'rgba(230, 245, 238, 0.2)', fill: 'rgba(230, 245, 238, 0.1)', glow: 'rgba(130, 178, 169, 0.16)' },
+  progress: 'linear-gradient(90deg, #dcefd7 0%, #7fb2bd 100%)',
+  actionBackground: 'linear-gradient(135deg, rgba(44,82,72,0.94) 0%, rgba(20,52,43,0.94) 100%)',
+  actionBorder: 'rgba(220, 239, 215, 0.42)',
+  actionGlow: 'rgba(130, 178, 169, 0.18)'
+};
+
+const HOME_SPLIT_BOOK_TYPES: Array<{
+  value: SmartBookBookType;
+  label: string;
+  hint: string;
+  placement: 'top' | 'bottom-left' | 'bottom-right';
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+}> = [
+  {
+    value: 'fairy_tale',
+    label: 'Masal',
+    hint: 'Anlatı + değer aktarımı + hayal gücü',
+    placement: 'top',
+    icon: BookOpen
+  },
+  {
+    value: 'novel',
+    label: 'Roman',
+    hint: 'Uzun anlatı, karakter ve dünya derinliği',
+    placement: 'bottom-left',
+    icon: ScrollText
+  },
+  {
+    value: 'story',
+    label: 'Hikaye',
+    hint: 'Kısa-orta anlatı, güçlü olay örgüsü',
+    placement: 'bottom-right',
+    icon: Feather
+  }
+];
 
 function resolveWizardTone(index: number): WizardTone {
   return WIZARD_TONES[((index % WIZARD_TONES.length) + WIZARD_TONES.length) % WIZARD_TONES.length];
@@ -790,11 +1394,13 @@ export default function HomeView({
   isLoggedIn = true,
   onRequestLogin
 }: HomeViewProps) {
-  const { locale, t } = useUiI18n();
+  const { language, locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('4-6');
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('7+');
   const [bookLanguageInput, setBookLanguageInput] = useState<string>(defaultBookLanguage);
   const [selectedBookType, setSelectedBookType] = useState<SmartBookBookType>('fairy_tale');
+  const [isCreationWizardOpen, setCreationWizardOpen] = useState(false);
+  const [accentedBookType, setAccentedBookType] = useState<SmartBookBookType | null>(null);
   const [selectedSubGenre, setSelectedSubGenre] = useState<string>(SMARTBOOK_SUBGENRE_OPTIONS.fairy_tale[0]);
   const [selectedEndingStyle, setSelectedEndingStyle] = useState<SmartBookEndingStyle>('happy');
   const [creatorNameInput, setCreatorNameInput] = useState('');
@@ -879,9 +1485,11 @@ export default function HomeView({
   function logGenerationJobUsage(job: BookGenerationJobResult) {
     const usageEntries = Array.isArray(job.usageEntries) ? job.usageEntries : [];
     const seen = loggedGenerationUsageEntryKeysRef.current;
+    const jobPrefix = `[job ${job.jobId}]`;
     let loggedNewEntry = false;
     for (const entry of usageEntries) {
       const key = [
+        job.jobId,
         entry.label,
         entry.provider,
         entry.model,
@@ -894,7 +1502,7 @@ export default function HomeView({
       seen.add(key);
       loggedNewEntry = true;
       console.info(
-        `[BOOK AI COST] ${entry.label}: ${entry.provider} ${entry.model} in ${entry.inputTokens} out ${entry.outputTokens} total ${entry.totalTokens} price ${Number(entry.estimatedCostUsd || 0).toFixed(6)} usd`
+        `[BOOK AI COST] ${jobPrefix} ${formatAiUsageEntryForConsole(entry)}`
       );
     }
     if (job.status === 'completed' || job.status === 'failed') {
@@ -908,8 +1516,13 @@ export default function HomeView({
       if (loggedGenerationUsageFinalKeysRef.current.has(finalKey)) return;
       loggedGenerationUsageFinalKeysRef.current.add(finalKey);
       console.info(
-        `[BOOK AI COST] final in ${job.usage.inputTokens} out ${job.usage.outputTokens} total ${job.usage.totalTokens} price ${Number(job.usage.estimatedCostUsd || 0).toFixed(6)} usd`
+        `[BOOK AI COST] ${jobPrefix} final in ${job.usage.inputTokens} out ${job.usage.outputTokens} total ${job.usage.totalTokens} price ${Number(job.usage.estimatedCostUsd || 0).toFixed(6)} usd`
       );
+      if (job.status === 'completed') {
+        console.info(
+          `[BOOK AI COST] ${jobPrefix} ${formatBookGenerationCostSummaryForConsole(job)}`
+        );
+      }
       return;
     }
 
@@ -926,6 +1539,8 @@ export default function HomeView({
     setCreatorNameInput('');
     setBookLanguageInput(defaultBookLanguage);
     setCreationStep(1);
+    setCreationWizardOpen(false);
+    setAccentedBookType(null);
     clearSourceFile();
   }
 
@@ -1168,7 +1783,7 @@ export default function HomeView({
     return stickyTintById.get(stickyModal.noteId) || stickyTintPalette[0];
   }, [stickyModal.noteId, stickyTintById]);
 
-  const homeShelfCourses = sortedCourses.slice(0, 4);
+  const homeShelfCourses = sortedCourses.slice(0, 12);
   const renderBootstrapShelf = () => (
     <div
       className="relative overflow-hidden rounded-[28px] border p-5 text-center"
@@ -1539,6 +2154,27 @@ export default function HomeView({
     }
   };
 
+  const handleBookTypeSelect = (bookType: SmartBookBookType) => {
+    if (isCreationWizardOpen && selectedBookType === bookType) {
+      setCreationWizardOpen(false);
+      setAccentedBookType(null);
+      setCreationStep(1);
+      return;
+    }
+    setCreationWizardOpen(true);
+    setSelectedBookType(bookType);
+    setAccentedBookType(bookType);
+    setCreationStep(1);
+    if (bookType === 'fairy_tale') {
+      setSelectedEndingStyle('happy');
+    }
+    if (bookType === 'fairy_tale' && !['1-6', '7+'].includes(selectedAgeGroup)) {
+      setSelectedAgeGroup('7+');
+    } else if (bookType !== 'fairy_tale' && ['1-6', '7+'].includes(selectedAgeGroup)) {
+      setSelectedAgeGroup('general');
+    }
+  };
+
   const pageRange = getPageRangeByBookType(selectedBookType, selectedAgeGroup);
   const selectedCreateCreditCost = getBookTypeCreateCreditCost(selectedBookType);
   const targetPageCountPreview = buildTargetPageFromBrief({
@@ -1683,6 +2319,8 @@ export default function HomeView({
         ? toTitleCaseTr(resolvedTopic)
         : compactInlineText(resolvedTopic);
       const allowAiBookTitleGeneration = !topicHint;
+      stopBookGenerationPolling(true);
+      writePendingBookGenerationJob(null);
       setActiveGeneratingBookType(selectedBookType);
       setGenerationStatus('Sunucuda üretim başlatılıyor...');
       raiseGenerationProgress(6);
@@ -1743,7 +2381,7 @@ export default function HomeView({
       <button
         key={note.id}
         onClick={() => openStickyModal(note)}
-        className={`${fullWidth ? 'w-full' : 'shrink-0'} min-h-[58px] rounded-xl border border-dashed px-3 py-2 text-left transition-colors hover:border-white/60`}
+        className={`${fullWidth ? 'w-full' : 'shrink-0'} min-h-[58px] rounded-xl border px-3 py-2 text-left transition-colors hover:border-white/60`}
         style={fullWidth
           ? { backgroundColor: tint.bg, borderColor: tint.border }
           : {
@@ -1778,7 +2416,6 @@ export default function HomeView({
     const isOpenDownloading = openState.status === 'downloading';
     const isOpenReady = openState.status === 'ready';
     const isOpenFailed = openState.status === 'failed';
-    const isOpenIdle = !isOpenDownloading && !isOpenReady && !isOpenFailed;
     const openProgress = Math.max(0, Math.min(100, Math.round(openState.progress || 0)));
 
     const actionLabel = isOpenReady
@@ -1800,23 +2437,23 @@ export default function HomeView({
     const actionButtonStyle: React.CSSProperties = isOpenReady
       ? {
         borderColor: 'rgba(110, 231, 183, 0.55)',
-        background: 'linear-gradient(135deg, rgba(16,72,46,0.85) 0%, rgba(12,58,36,0.82) 100%)',
-        boxShadow: 'inset 0 0 0 1px rgba(110,231,183,0.18), 0 0 10px rgba(52,211,153,0.15)'
+        background: 'linear-gradient(135deg, rgba(110, 231, 183, 0.28) 0%, rgba(61, 117, 78, 0.34) 100%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), 0 10px 24px rgba(52,211,153,0.14)'
       }
       : isOpenDownloading
         ? {
           borderColor: 'rgba(96, 165, 250, 0.5)',
-          background: 'linear-gradient(135deg, rgba(29,78,216,0.55) 0%, rgba(30,64,175,0.5) 100%)',
-          boxShadow: 'inset 0 0 0 1px rgba(96,165,250,0.2), 0 0 10px rgba(59,130,246,0.15)'
+          background: 'linear-gradient(135deg, rgba(92, 170, 213, 0.32) 0%, rgba(60, 111, 143, 0.32) 100%)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 24px rgba(59,130,246,0.14)'
         }
         : isOpenFailed
           ? {
             borderColor: 'rgba(248, 113, 113, 0.45)',
-            background: 'rgba(127, 29, 29, 0.75)'
+            background: 'rgba(127, 29, 29, 0.48)'
           }
           : {
-            borderColor: 'rgba(148, 163, 184, 0.4)',
-            background: 'rgba(23, 38, 58, 0.78)'
+            borderColor: 'rgba(255, 255, 255, 0.18)',
+            background: 'rgba(255, 255, 255, 0.12)'
           };
 
     return (
@@ -1831,157 +2468,81 @@ export default function HomeView({
             onCourseSelect(course.id);
           }
         }}
-        className="group h-full cursor-pointer rounded-[24px] border border-dashed p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
-        style={{
-          background: isOpenReady
-            ? 'rgba(12, 38, 24, 0.25)'
-            : 'rgba(17, 22, 29, 0.3)',
-          borderColor: isOpenReady
-            ? 'rgba(110, 231, 183, 0.15)'
-            : 'rgba(188, 194, 203, 0.1)',
-          boxShadow: isOpenReady
-            ? 'inset 0 0 0 1px rgba(110, 231, 183, 0.08)'
-            : 'inset 0 0 0 1px rgba(188, 194, 203, 0.06)'
-        }}
+        className={`fortale-shelf-card group ${isOpenReady ? 'is-ready' : ''}`}
       >
-        <div className="flex items-start gap-3.5">
-          <div
-            className="relative shrink-0 h-[92px] w-[69px] overflow-hidden rounded-[4px] md:h-[104px] md:w-[78px]"
-            style={course.coverImageUrl
-              ? { background: 'transparent' }
-              : { background: 'rgba(44, 48, 53, 0.72)' }}
+        <div className="fortale-shelf-cover">
+          {course.coverImageUrl ? (
+            <img
+              src={course.coverImageUrl}
+              alt={`${course.topic} ${t('Fortale kapağı')}`}
+              className="h-full w-full object-cover object-center border-0"
+            />
+          ) : (
+            <div className="fortale-shelf-cover-empty">
+              <BookOpen size={24} />
+            </div>
+          )}
+          <div className="fortale-shelf-cover-fade" />
+          <span className="fortale-shelf-type">{t(bookTypeToLabel(course.bookType))}</span>
+          {isOpenDownloading && (
+            <div className="fortale-shelf-download-overlay">
+              <div className="fortale-shelf-download-bar">
+                <span style={{ width: `${openProgress}%` }} />
+              </div>
+            </div>
+          )}
+          {isOpenReady && (
+            <div className="fortale-shelf-ready-badge">
+              <Check size={10} />
+            </div>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openCourseDeleteModal(course);
+              }}
+              className="fortale-shelf-delete"
+              title={t('Sil')}
+              aria-label={t('Sil')}
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (isOpenDownloading) return;
+              onCourseSelect(course.id);
+            }}
+            disabled={isOpenDownloading}
+            data-no-ui-translate="true"
+            className={`fortale-shelf-action ${isOpenReady ? 'is-ready' : isOpenDownloading ? 'is-loading' : ''}`}
+            style={actionButtonStyle}
+            title={actionLabel}
+            aria-label={actionLabel}
           >
-            {course.coverImageUrl ? (
-              <img
-                src={course.coverImageUrl}
-                alt={`${course.topic} ${t('Fortale kapağı')}`}
-                className="h-full w-full object-contain object-center border-0"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <BookOpen size={20} className="text-zinc-500" />
-              </div>
-            )}
-            {/* Download progress overlay on cover */}
-            {isOpenDownloading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-end" style={{ background: 'rgba(15,23,42,0.55)' }}>
-                <div className="w-full px-1 pb-1">
-                  <div className="h-[3px] w-full overflow-hidden rounded-full bg-blue-950/60">
-                    <div
-                      className="h-full rounded-full transition-all duration-200"
-                      style={{
-                        width: `${openProgress}%`,
-                        background: 'linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%)'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Ready checkmark badge on cover */}
-            {isOpenReady && (
-              <div
-                className="absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
-                style={{ background: 'rgba(16,72,46,0.92)', boxShadow: '0 0 6px rgba(52,211,153,0.35)' }}
-              >
-                <Check size={10} className="text-emerald-300" />
-              </div>
-            )}
+            {actionIcon}
+            {actionLabel}
+          </button>
+        </div>
+
+        <div className="fortale-shelf-body">
+          <p className="fortale-shelf-title">{course.topic}</p>
+          <p className="fortale-shelf-subtitle">{nextStep?.title || t('Fortale Tamamlandı')}</p>
+          <div className="fortale-shelf-meta">
+            <span>{formatCourseCreatedDate(course.createdAt || course.lastActivity, locale)}</span>
+            <span className="inline-flex items-center gap-1" title={t('Tahmini okuma süresi')}>
+              <Clock3 size={10} />
+              {estimateCourseReadingDuration(course, t)}
+            </span>
           </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="min-w-0">
-              <p className="line-clamp-2 text-[13px] font-bold leading-[1.25] text-white">
-                {course.topic}
-              </p>
-              <p className="mt-1 line-clamp-1 text-[10px] text-zinc-300">
-                {nextStep?.title || t('Fortale Tamamlandı')}
-              </p>
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span
-                className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
-              >
-                {t(bookTypeToLabel(course.bookType))}
-              </span>
-              {course.subGenre?.trim() && (
-                <span
-                  className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                  style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
-                >
-                  {t(course.subGenre.trim())}
-                </span>
-              )}
-              <span
-                className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
-              >
-                {t(getSmartBookAgeGroupLabel(course.ageGroup))}
-              </span>
-              <div className="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(23,38,58,0.68)] px-2 py-1" title={t('Tahmini okuma süresi')}>
-                <Clock3 size={10} className="text-[#7fb1ec]" />
-                <span className="text-[10px] text-[#b9cde8]">
-                  {estimateCourseReadingDuration(course, t)}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-3">
-              <div className="h-1.5 overflow-hidden rounded-full bg-[rgba(35,50,70,0.72)]">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${progress}%`,
-                    background: 'linear-gradient(90deg, #5aa9ff 0%, #3b82f6 100%)'
-                  }}
-                />
-              </div>
-
-              <div
-                className="mt-2 flex items-center justify-between gap-2 border-t border-dashed pt-2"
-                style={{ borderColor: 'rgba(96, 129, 164, 0.3)' }}
-              >
-                <span className="text-[10px] text-[#9cb9d7]">
-                  {formatCourseCreatedDate(course.createdAt || course.lastActivity, locale)}
-                </span>
-                <div className="flex items-center gap-2">
-                  {canDelete && (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        openCourseDeleteModal(course);
-                      }}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-xl text-[#fca5a5] transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fecaca]"
-                      title={t('Sil')}
-                      aria-label={t('Sil')}
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (isOpenDownloading) return;
-                      onCourseSelect(course.id);
-                    }}
-                    disabled={isOpenDownloading}
-                    data-no-ui-translate="true"
-                    className={`inline-flex items-center rounded-xl border border-dashed px-2.5 py-1 text-[10px] font-bold transition-all group-active:scale-95 disabled:cursor-not-allowed disabled:opacity-80 ${isOpenReady ? 'text-emerald-200' : isOpenDownloading ? 'text-blue-200' : 'text-white'
-                      }`}
-                    style={actionButtonStyle}
-                  >
-                    {actionIcon}
-                    {actionLabel}
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div className="fortale-shelf-progress">
+            <span style={{ width: `${progress}%` }} />
           </div>
         </div>
       </div>
@@ -1989,11 +2550,23 @@ export default function HomeView({
   };
 
   const hasStickyContent = Boolean(stickyModal.title.trim() || stickyModal.text.trim());
+  const isCreationIntroOnly = !isCreationWizardOpen && !isGenerating;
   const selectedBookTheme = resolveBookTypeTheme(selectedBookType);
+  const visibleWizardTheme = accentedBookType ? resolveBookTypeTheme(accentedBookType) : NEUTRAL_BOOK_TYPE_THEME;
   const activeProgressTheme = resolveBookTypeTheme(activeGeneratingBookType || selectedBookType);
+  const hasFinalPreferenceStep = selectedBookType !== 'fairy_tale';
+  const finalPreferenceStep = hasFinalPreferenceStep ? 3 : null;
+  const ageLanguageStep = hasFinalPreferenceStep ? 4 : 3;
+  const storyModeStep = hasFinalPreferenceStep ? 5 : 4;
+  const settingDetailsStep = hasFinalPreferenceStep ? 6 : 5;
+  const creatorDetailsStep = hasFinalPreferenceStep ? 7 : 6;
   const visibleCreationSteps = useMemo<number[]>(
-    () => (storyInputMode === 'auto' ? [1, 2, 3, 4] : [1, 2, 3, 4, 5, 6]),
-    [storyInputMode]
+    () => {
+      const steps = hasFinalPreferenceStep ? [1, 2, 3, 4, 5] : [1, 2, 3, 4];
+      if (storyInputMode === 'auto') return steps;
+      return hasFinalPreferenceStep ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5, 6];
+    },
+    [hasFinalPreferenceStep, storyInputMode]
   );
   const currentVisibleStepIndexRaw = visibleCreationSteps.indexOf(creationStep);
   const currentVisibleStepIndex = currentVisibleStepIndexRaw >= 0 ? currentVisibleStepIndexRaw : 0;
@@ -2010,10 +2583,11 @@ export default function HomeView({
   const isCreationStepComplete = (step: number): boolean => {
     if (step === 1) return Boolean(selectedBookType);
     if (step === 2) return Boolean(selectedSubGenre);
-    if (step === 3) return Boolean(selectedAgeGroup) && Boolean(bookLanguageInput.trim());
-    if (step === 4) return storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
-    if (step === 5) return true;
-    if (step === 6) return true;
+    if (step === finalPreferenceStep) return Boolean(selectedEndingStyle);
+    if (step === ageLanguageStep) return Boolean(selectedAgeGroup) && Boolean(bookLanguageInput.trim());
+    if (step === storyModeStep) return storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
+    if (step === settingDetailsStep) return true;
+    if (step === creatorDetailsStep) return true;
     return false;
   };
   const getNextCreationStep = (step: number): number => {
@@ -2030,55 +2604,158 @@ export default function HomeView({
   const isAllStepsComplete = visibleCreationSteps.every((step) => isCreationStepComplete(step));
   const stepProgressPercent = Math.round((currentVisibleStepNumber / totalVisibleStepCount) * 100);
   const currentStepTitle = (() => {
-    const safeStep = Math.max(1, Math.min(6, creationStep));
-    if (safeStep === 1) return t('Kitap Türü');
-    if (safeStep === 2) return t('Alt Tür');
-    if (safeStep === 3) return `${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
-    if (safeStep === 4) return t('Kurgu Modu');
-    if (safeStep === 5) return `${t('Hikayenin Mekanı')} + ${t('Hikayenin Zamanı')} + ${t('Kitabın Adı')}`;
+    if (creationStep === 1) return t('Kitap Türü');
+    if (creationStep === 2) return t('Alt Tür');
+    if (creationStep === finalPreferenceStep) return t('Final Tercihi');
+    if (creationStep === ageLanguageStep) return `${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
+    if (creationStep === storyModeStep) return t('Kurgu Modu');
+    if (creationStep === settingDetailsStep) return `${t('Hikayenin Mekanı')} + ${t('Hikayenin Zamanı')} + ${t('Kitabın Adı')}`;
     return t('Kahramanlar ve Oluşturucu');
   })();
   const canMoveNext = currentVisibleStepIndex < totalVisibleStepCount - 1 && isCurrentStepComplete && !isGenerating;
   const canCreateOnFinalStep = currentVisibleStepIndex === totalVisibleStepCount - 1 && isAllStepsComplete && !isGenerating;
-  const wizardFieldClass = 'mt-1 h-10 w-full rounded-xl border border-dashed px-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] focus:outline-none';
-  const wizardFieldStyle = (tone: WizardTone = selectedBookTheme.tone): React.CSSProperties => ({
-    borderColor: tone.border,
-    background: 'linear-gradient(180deg, rgba(21,35,54,0.74) 0%, rgba(17,27,40,0.78) 100%)',
-    boxShadow: `inset 0 0 0 1px ${tone.fill}`
+  const wizardFieldClass = 'fortale-input-surface mt-1 h-10 w-full rounded-xl border px-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] focus:outline-none';
+  const wizardFieldStyle = (): React.CSSProperties => ({
+    borderColor: CREATE_FORM_GREEN_TONE.border,
+    background: 'linear-gradient(180deg, rgba(42,77,68,0.82) 0%, rgba(13,35,29,0.84) 100%)',
+    backgroundColor: 'rgba(18, 47, 39, 0.72)',
+    boxShadow: `inset 0 0 0 1px ${CREATE_FORM_GREEN_TONE.fill}, 0 0 12px ${CREATE_FORM_GREEN_TONE.glow}`
   });
-  const wizardTextareaClass = 'mt-1 w-full rounded-xl border border-dashed px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] resize-none focus:outline-none';
-  const wizardOptionButtonStyle = (isSelected: boolean, tone: WizardTone = selectedBookTheme.tone): React.CSSProperties => ({
-    borderColor: tone.border,
-    background: isSelected ? `linear-gradient(135deg, ${tone.fill} 0%, rgba(18,31,45,0.88) 100%)` : 'rgba(14,21,31,0.3)',
+  const wizardTextareaClass = 'fortale-input-surface mt-1 w-full rounded-xl border px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#8ca7c6] resize-none focus:outline-none';
+  const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
+    borderColor: isSelected ? selectedBookTheme.actionBorder : CREATE_FORM_GREEN_TONE.border,
+    background: isSelected
+      ? selectedBookTheme.actionBackground
+      : 'linear-gradient(180deg, rgba(42,77,68,0.64) 0%, rgba(13,35,29,0.76) 100%)',
     boxShadow: isSelected
-      ? `inset 0 0 0 1px ${tone.border}, 0 0 16px ${tone.glow}`
-      : `inset 0 0 0 1px ${tone.fill}`
+      ? `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 16px ${selectedBookTheme.actionGlow}`
+      : `inset 0 0 0 1px ${CREATE_FORM_GREEN_TONE.fill}, 0 0 12px ${CREATE_FORM_GREEN_TONE.glow}`
   });
   const primaryActionButtonStyle: React.CSSProperties = {
-    borderColor: selectedBookTheme.actionBorder,
-    background: selectedBookTheme.actionBackground,
-    boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 14px ${selectedBookTheme.actionGlow}`
+    borderColor: visibleWizardTheme.actionBorder,
+    background: visibleWizardTheme.actionBackground,
+    boxShadow: `inset 0 0 0 1px ${visibleWizardTheme.tone.fill}, 0 0 14px ${visibleWizardTheme.actionGlow}`
   };
+  const wizardThemeVars = {
+    '--fortale-wizard-progress': visibleWizardTheme.progress,
+    '--fortale-wizard-action-bg': visibleWizardTheme.actionBackground,
+    '--fortale-wizard-action-border': visibleWizardTheme.actionBorder,
+    '--fortale-wizard-action-glow': visibleWizardTheme.actionGlow,
+    '--fortale-wizard-tone-fill': visibleWizardTheme.tone.fill,
+    '--fortale-wizard-tone-border': visibleWizardTheme.tone.border
+  } as React.CSSProperties;
   const showStickyNotes = false;
   const stickyModalTop =
     stickyRowContainerRef.current
       ? `${Math.round(stickyRowContainerRef.current.getBoundingClientRect().bottom)}px`
       : STICKY_MODAL_TOP_INSET;
 
+  const homeStars = useMemo(() => [
+    { x: 7,  y: 9,  s: 1.4, dur: 2.8, delay: 0.0, lo: 0.10, hi: 0.84 },
+    { x: 17, y: 24, s: 1.0, dur: 3.5, delay: 0.6, lo: 0.08, hi: 0.68 },
+    { x: 31, y: 7,  s: 1.9, dur: 2.2, delay: 1.1, lo: 0.14, hi: 0.94 },
+    { x: 44, y: 20, s: 1.2, dur: 3.9, delay: 0.3, lo: 0.09, hi: 0.76 },
+    { x: 57, y: 5,  s: 2.0, dur: 2.6, delay: 0.9, lo: 0.16, hi: 0.96 },
+    { x: 69, y: 17, s: 1.1, dur: 4.1, delay: 0.2, lo: 0.08, hi: 0.64 },
+    { x: 81, y: 29, s: 2.3, dur: 3.0, delay: 1.4, lo: 0.18, hi: 1.00 },
+    { x: 92, y: 9,  s: 1.3, dur: 2.9, delay: 0.7, lo: 0.10, hi: 0.80 },
+    { x: 13, y: 52, s: 1.1, dur: 3.7, delay: 0.4, lo: 0.08, hi: 0.70 },
+    { x: 25, y: 40, s: 1.7, dur: 2.4, delay: 1.2, lo: 0.12, hi: 0.88 },
+    { x: 37, y: 66, s: 1.0, dur: 4.3, delay: 0.1, lo: 0.07, hi: 0.60 },
+    { x: 51, y: 46, s: 2.5, dur: 2.7, delay: 0.8, lo: 0.20, hi: 1.00 },
+    { x: 63, y: 71, s: 1.2, dur: 3.2, delay: 1.5, lo: 0.10, hi: 0.74 },
+    { x: 75, y: 56, s: 1.6, dur: 2.1, delay: 0.5, lo: 0.13, hi: 0.90 },
+    { x: 87, y: 42, s: 1.0, dur: 4.0, delay: 1.0, lo: 0.08, hi: 0.66 },
+    { x: 4,  y: 78, s: 1.8, dur: 2.5, delay: 0.3, lo: 0.14, hi: 0.86 },
+    { x: 21, y: 83, s: 1.3, dur: 4.1, delay: 0.6, lo: 0.10, hi: 0.72 },
+    { x: 39, y: 88, s: 2.0, dur: 3.3, delay: 1.3, lo: 0.16, hi: 0.92 },
+    { x: 54, y: 76, s: 1.1, dur: 2.8, delay: 0.2, lo: 0.09, hi: 0.64 },
+    { x: 67, y: 86, s: 1.5, dur: 3.6, delay: 0.9, lo: 0.12, hi: 0.80 },
+    { x: 79, y: 73, s: 1.9, dur: 2.3, delay: 1.6, lo: 0.18, hi: 0.96 },
+    { x: 94, y: 60, s: 1.2, dur: 4.2, delay: 0.4, lo: 0.10, hi: 0.70 },
+    { x: 9,  y: 36, s: 2.6, dur: 3.1, delay: 0.7, lo: 0.22, hi: 1.00 },
+    { x: 47, y: 33, s: 1.0, dur: 2.6, delay: 1.1, lo: 0.08, hi: 0.62 },
+    { x: 72, y: 38, s: 1.4, dur: 3.5, delay: 0.5, lo: 0.11, hi: 0.78 },
+  ], []);
+
+  const homeDust = useMemo(() => [
+    { x: 14, y: 58, s: 3.4, dur: 4.2, delay: 0.0, op: 0.62 },
+    { x: 27, y: 73, s: 4.0, dur: 5.1, delay: 1.0, op: 0.56 },
+    { x: 41, y: 48, s: 3.0, dur: 3.8, delay: 1.8, op: 0.70 },
+    { x: 57, y: 80, s: 4.5, dur: 4.7, delay: 0.5, op: 0.58 },
+    { x: 69, y: 63, s: 3.2, dur: 5.4, delay: 2.1, op: 0.54 },
+    { x: 82, y: 44, s: 4.0, dur: 4.0, delay: 1.3, op: 0.66 },
+    { x: 6,  y: 38, s: 3.8, dur: 4.8, delay: 0.8, op: 0.60 },
+    { x: 91, y: 76, s: 3.5, dur: 3.6, delay: 2.4, op: 0.68 },
+    { x: 35, y: 18, s: 2.8, dur: 5.0, delay: 0.3, op: 0.50 },
+    { x: 61, y: 28, s: 3.2, dur: 4.4, delay: 1.6, op: 0.61 },
+    // 2. set
+    { x: 8,  y: 92, s: 3.6, dur: 4.6, delay: 0.4, op: 0.64 },
+    { x: 20, y: 15, s: 2.6, dur: 5.2, delay: 1.2, op: 0.52 },
+    { x: 33, y: 67, s: 4.2, dur: 3.9, delay: 2.3, op: 0.68 },
+    { x: 48, y: 35, s: 3.0, dur: 4.9, delay: 0.7, op: 0.57 },
+    { x: 53, y: 55, s: 4.8, dur: 4.3, delay: 1.5, op: 0.72 },
+    { x: 74, y: 22, s: 3.4, dur: 5.6, delay: 0.2, op: 0.55 },
+    { x: 85, y: 84, s: 3.8, dur: 4.1, delay: 2.0, op: 0.63 },
+    { x: 97, y: 51, s: 2.9, dur: 3.7, delay: 0.9, op: 0.59 },
+    { x: 18, y: 42, s: 4.1, dur: 5.3, delay: 1.7, op: 0.66 },
+    { x: 44, y: 89, s: 3.3, dur: 4.0, delay: 0.6, op: 0.60 },
+    // 3. set
+    { x: 3,  y: 62, s: 3.7, dur: 4.5, delay: 1.1, op: 0.58 },
+    { x: 16, y: 30, s: 2.7, dur: 5.8, delay: 0.0, op: 0.54 },
+    { x: 29, y: 77, s: 4.3, dur: 3.6, delay: 2.5, op: 0.70 },
+    { x: 38, y: 12, s: 3.1, dur: 4.7, delay: 1.4, op: 0.56 },
+    { x: 50, y: 70, s: 4.6, dur: 5.0, delay: 0.3, op: 0.65 },
+    { x: 65, y: 40, s: 3.0, dur: 4.2, delay: 1.9, op: 0.61 },
+    { x: 78, y: 58, s: 3.9, dur: 3.8, delay: 0.5, op: 0.67 },
+    { x: 88, y: 33, s: 2.8, dur: 5.5, delay: 2.2, op: 0.53 },
+    { x: 22, y: 95, s: 4.4, dur: 4.4, delay: 0.8, op: 0.69 },
+    { x: 72, y: 88, s: 3.2, dur: 4.8, delay: 1.3, op: 0.62 },
+  ], []);
+
   return (
-    <div
-      className="view-container"
-      style={{
-        background:
-          'radial-gradient(circle at 12% 7%, rgba(182, 223, 255, 0.24), transparent 44%), radial-gradient(circle at 88% 11%, rgba(143, 206, 255, 0.2), transparent 42%), linear-gradient(180deg, #1f3a57 0%, #162b42 100%)'
-      }}
-    >
-      <div className="app-content-width space-y-6">
+    <div className="view-container fortale-home-view">
+      {/* Yıldız ve peri tozu — header altından tüm sayfayı kaplar */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden>
+        {homeStars.map((star, idx) => (
+          <span
+            key={`hs-${idx}`}
+            className="home-star"
+            style={{
+              left: `${star.x}%`,
+              top: `${star.y}%`,
+              width: `${star.s}px`,
+              height: `${star.s}px`,
+              ['--star-dur' as string]: `${star.dur}s`,
+              ['--star-delay' as string]: `${star.delay}s`,
+              ['--star-lo' as string]: `${star.lo}`,
+              ['--star-hi' as string]: `${star.hi}`,
+            } as React.CSSProperties}
+          />
+        ))}
+        {homeDust.map((dust, idx) => (
+          <span
+            key={`hd-${idx}`}
+            className="home-fairy-dust"
+            style={{
+              left: `${dust.x}%`,
+              top: `${dust.y}%`,
+              width: `${dust.s}px`,
+              height: `${dust.s}px`,
+              ['--dust-dur' as string]: `${dust.dur}s`,
+              ['--dust-delay' as string]: `${dust.delay}s`,
+              ['--dust-op' as string]: `${dust.op}`,
+            } as React.CSSProperties}
+          />
+        ))}
+      </div>
+
+      <div className="app-content-width fortale-home-content space-y-4">
         {showStickyNotes && (
           <section ref={stickyRowContainerRef} className="relative">
             {isStickyRowExpanded && (
               <div
-                className="absolute left-0 right-0 top-full z-30 rounded-2xl border border-dashed border-zinc-500/45 p-2 shadow-[0_20px_30px_-24px_rgba(0,0,0,0.75)]"
+                className="absolute left-0 right-0 top-full z-30 rounded-2xl border border-zinc-500/45 p-2 shadow-[0_20px_30px_-24px_rgba(0,0,0,0.75)]"
                 style={{ background: 'rgba(17, 22, 29, 0.94)' }}
               >
                 <div className="max-h-[58vh] overflow-y-auto hide-scrollbar space-y-2">
@@ -2094,12 +2771,12 @@ export default function HomeView({
             <div className="overflow-x-auto overflow-y-hidden pb-1 hide-scrollbar">
               <div className="flex items-stretch gap-2 min-w-full">
                 <div
-                  className="shrink-0 min-h-[58px] rounded-xl border border-dashed border-zinc-500/65 bg-white/[0.04] overflow-hidden flex"
+                  className="shrink-0 min-h-[58px] rounded-xl border border-zinc-500/65 bg-white/[0.04] overflow-hidden flex"
                   style={{ flex: '0 0 clamp(128px, 30vw, 220px)' }}
                 >
                   <button
                     onClick={() => setIsStickyRowExpanded((prev) => !prev)}
-                    className={`flex-1 border-r border-dashed transition-colors flex items-center justify-center ${isStickyRowExpanded
+                    className={`flex-1 border-r transition-colors flex items-center justify-center ${isStickyRowExpanded
                       ? 'border-[#6287b3]/60 bg-[#1d3855]/22 text-[#c4dbf5]'
                       : 'border-[#5a7aa0]/45 text-[#abc7e7] hover:bg-[#1d3855]/16'
                       }`}
@@ -2123,6 +2800,14 @@ export default function HomeView({
           </section>
         )}
 
+        {/* "Fortale" yazısı — header altında, form üstünde; kitap türü seçilince kaybolur */}
+        <div
+          className={`fortale-home-brand-title${isCreationWizardOpen ? ' is-gone' : ''}`}
+          aria-hidden
+        >
+          Fortale
+        </div>
+
         <section className="relative">
           <input
             ref={sourceFileInputRef}
@@ -2137,26 +2822,15 @@ export default function HomeView({
             className="relative z-10 rounded-2xl"
           >
             <div
-              className="rounded-2xl border border-dashed p-2.5 overflow-hidden"
+              className={`fortale-create-panel ${isCreationIntroOnly ? 'is-type-only' : 'is-open'} rounded-2xl border p-2.5 overflow-hidden`}
               style={{
-                background: 'linear-gradient(160deg, rgba(24,38,57,0.78) 0%, rgba(17,22,29,0.78) 55%, rgba(14,24,38,0.8) 100%)',
-                borderColor: selectedBookTheme.tone.border,
-                boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.fill}`
+                ...wizardThemeVars,
+                borderColor: visibleWizardTheme.tone.border,
+                boxShadow: `inset 0 0 0 1px ${visibleWizardTheme.tone.fill}`
               }}
             >
-              <div className="px-1.5 pb-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-semibold tracking-wide text-[#d4e6fa]">{t('Kitabınızı Oluşturun')}</span>
-                  {!isGenerating && (
-                    <span
-                      className="text-[11px] font-semibold"
-                      style={{ color: selectedBookTheme.actionBorder }}
-                    >
-                      {currentVisibleStepNumber}/{totalVisibleStepCount}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-[15px] font-bold text-white">
+              <div className={`px-1.5 pb-2 ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
+                <p className="text-[15px] font-bold text-white">
                   {isGenerating ? t('Fortale oluşturuluyor...') : currentStepTitle}
                 </p>
                 <div className="mt-2 h-1.5 rounded-full bg-[#152131] overflow-hidden">
@@ -2164,40 +2838,20 @@ export default function HomeView({
                     className="h-full rounded-full transition-all duration-300"
                     style={{
                       width: `${isGenerating ? Math.max(1, Math.min(100, generationProgress || 0)) : stepProgressPercent}%`,
-                      background: isGenerating ? activeProgressTheme.progress : selectedBookTheme.progress
+                      background: isGenerating ? activeProgressTheme.progress : visibleWizardTheme.progress
                     }}
                   />
                 </div>
                 {!isGenerating && (
-                  <div className="mt-2 grid gap-1" style={{ gridTemplateColumns: `repeat(${totalVisibleStepCount}, minmax(0, 1fr))` }}>
+                  <div className="fortale-step-rail" style={{ gridTemplateColumns: `repeat(${totalVisibleStepCount}, minmax(0, 1fr))` }}>
                     {visibleCreationSteps.map((_, index) => {
                       const stepNo = index + 1;
                       const isDone = index < currentVisibleStepIndex;
                       const isCurrent = index === currentVisibleStepIndex;
-                      const tone = resolveWizardTone(index);
                       return (
                         <span
                           key={stepNo}
-                          className="h-7 rounded-md border border-dashed flex items-center justify-center text-[11px] font-bold"
-                          style={isCurrent
-                            ? {
-                              color: selectedBookTheme.actionBorder,
-                              borderColor: selectedBookTheme.tone.border,
-                              background: `linear-gradient(135deg, ${selectedBookTheme.tone.fill} 0%, rgba(24,44,70,0.92) 100%)`,
-                              boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.border}, 0 0 12px ${selectedBookTheme.actionGlow}`
-                            }
-                            : isDone
-                              ? {
-                                color: selectedBookTheme.actionBorder,
-                                borderColor: selectedBookTheme.tone.border,
-                                background: 'rgba(18,31,45,0.74)',
-                                boxShadow: `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 12px ${selectedBookTheme.actionGlow}`
-                              }
-                              : {
-                                color: selectedBookTheme.actionBorder,
-                                borderColor: tone.border,
-                                background: 'rgba(18,28,40,0.5)'
-                              }}
+                          className={`fortale-step-dot ${isDone ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''}`}
                         >
                           {stepNo}
                         </span>
@@ -2208,46 +2862,37 @@ export default function HomeView({
               </div>
 
               {!isGenerating && (
-              <fieldset className="px-1.5 pb-1">
+              <fieldset className={`fortale-create-fields ${isCreationIntroOnly ? 'is-type-only' : ''} px-1.5 pb-1`}>
                 {creationStep === 1 && (
-                  <div>
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Kitap Türünü Seç')}</span>
+                  <div className="fortale-type-step">
+                    <div className={`fortale-type-copy ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
+                      <span>{t('Kitap Türünü Seç')}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      {SMARTBOOK_BOOK_TYPE_OPTIONS.map((option) => {
-                        const isSelected = selectedBookType === option.value;
-                        const createCost = getBookTypeCreateCreditCost(option.value);
-                        const optionTheme = resolveBookTypeTheme(option.value);
+                    <div className="fortale-type-orb" role="group" aria-label={t('Kitap Türünü Seç')}>
+                      <span className="fortale-type-ring" aria-hidden="true" />
+                      <span className="fortale-type-ring forte" aria-hidden="true" />
+                      <span className="fortale-type-shine" aria-hidden="true" />
+                      <span className="fortale-type-divider horizontal" aria-hidden="true" />
+                      <span className="fortale-type-divider left" aria-hidden="true" />
+                      <span className="fortale-type-divider right" aria-hidden="true" />
+                      <span className="fortale-type-core" aria-hidden="true">
+                        <FLogo size={22} />
+                      </span>
+                      {HOME_SPLIT_BOOK_TYPES.map((option) => {
+                        const isSelected = isCreationWizardOpen && selectedBookType === option.value;
+                        const isAccented = accentedBookType === option.value;
+                        const Icon = option.icon;
                         return (
                           <button
                             key={option.value}
                             type="button"
-                            onClick={() => {
-                              setSelectedBookType(option.value);
-                              if (option.value === 'fairy_tale') {
-                                setSelectedEndingStyle('happy');
-                              }
-                              if (option.value === 'fairy_tale' && !['1-3', '4-6', '7-9'].includes(selectedAgeGroup)) {
-                                setSelectedAgeGroup('4-6');
-                              } else if (option.value !== 'fairy_tale' && ['1-3', '4-6', '7-9'].includes(selectedAgeGroup)) {
-                                setSelectedAgeGroup('general');
-                              }
-                            }}
-                            className="w-full rounded-xl border border-dashed px-3 py-2 text-left transition-colors"
-                            style={wizardOptionButtonStyle(isSelected, optionTheme.tone)}
+                            onClick={() => handleBookTypeSelect(option.value)}
+                            className={`fortale-type-choice ${option.placement} accent-${option.value} ${isSelected ? 'selected' : ''} ${isAccented ? 'is-accented' : ''}`}
                             aria-pressed={isSelected}
                             title={t(option.hint)}
                           >
-                            <span className="flex items-start justify-between gap-2">
-                              <span className="min-w-0">
-                                <span className="block text-[13px] font-bold text-white">{t(option.label)}</span>
-                                <span className="mt-0.5 block text-[10px] text-[#bfd6f1]">{t(option.hint)}</span>
-                              </span>
-                              <span className="shrink-0 rounded-lg border border-dashed px-2 py-0.5 text-[10px] font-semibold text-[#d7e9ff]" style={{ borderColor: optionTheme.tone.border }}>
-                                {createCost} {t('kredi')}
-                              </span>
-                            </span>
+                            <Icon size={option.placement === 'top' ? 22 : 18} strokeWidth={1.8} />
+                            <span className="fortale-type-label">{t(option.label)}</span>
                           </button>
                         );
                       })}
@@ -2266,10 +2911,10 @@ export default function HomeView({
                             key={sub}
                             type="button"
                             onClick={() => setSelectedSubGenre(sub)}
-                            className="rounded-xl border border-dashed px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                            className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                             style={{
                               color: isSelected ? '#ffffff' : '#c6d9ef',
-                              ...wizardOptionButtonStyle(isSelected, resolveWizardTone(index))
+                              ...wizardOptionButtonStyle(isSelected)
                             }}
                           >
                             {t(sub)}
@@ -2278,47 +2923,48 @@ export default function HomeView({
                       })}
                     </div>
 
-                    {selectedBookType !== 'fairy_tale' && (
-                      <>
-                        <p className="mt-2 mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Final Tercihi')}</p>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {SMARTBOOK_ENDING_OPTIONS.map((option, index) => {
-                            const isSelected = selectedEndingStyle === option.value;
-                            return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => setSelectedEndingStyle(option.value)}
-                                className="rounded-xl border border-dashed px-2 py-1.5 text-[12px] font-bold transition-colors"
-                                style={{
-                                  color: isSelected ? '#ffffff' : '#c6d9ef',
-                                  ...wizardOptionButtonStyle(isSelected, resolveWizardTone(index + 2))
-                                }}
-                                title={t(option.hint)}
-                              >
-                                {t(option.label)}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
 
-                {creationStep === 3 && (
+                {creationStep === finalPreferenceStep && selectedBookType !== 'fairy_tale' && (
+                  <div>
+                    <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Final Tercihi')}</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {SMARTBOOK_ENDING_OPTIONS.map((option, index) => {
+                        const isSelected = selectedEndingStyle === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setSelectedEndingStyle(option.value)}
+                            className="fortale-form-button rounded-xl border px-2 py-1.5 text-[12px] font-bold transition-colors"
+                            style={{
+                              color: isSelected ? '#ffffff' : '#c6d9ef',
+                              ...wizardOptionButtonStyle(isSelected)
+                            }}
+                            title={t(option.hint)}
+                          >
+                            {t(option.label)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {creationStep === ageLanguageStep && (
                   <div>
                     <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Yaş Grubunu Seç')}</p>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-3', '4-6', '7-9'].includes(opt.value) : !['1-3', '4-6', '7-9'].includes(opt.value)).map((option, index) => {
+                      {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-6', '7+'].includes(opt.value) : !['1-6', '7+', '1-3', '4-6', '7-9'].includes(opt.value)).map((option, index) => {
                         const isSelected = selectedAgeGroup === option.value;
                         return (
                           <button
                             key={option.value}
                             type="button"
                             onClick={() => setSelectedAgeGroup(option.value)}
-                            className="rounded-xl border border-dashed px-1.5 py-1.5 text-center transition-colors"
-                            style={wizardOptionButtonStyle(isSelected, resolveWizardTone(index))}
+                            className="fortale-form-button rounded-xl border px-1.5 py-1.5 text-center transition-colors"
+                            style={wizardOptionButtonStyle(isSelected)}
                             aria-pressed={isSelected}
                             title={t(option.hint)}
                           >
@@ -2334,12 +2980,12 @@ export default function HomeView({
                       maxLength={64}
                       placeholder={t('Örn: Türkçe, English, Español')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle(resolveWizardTone(4))}
+                      style={wizardFieldStyle()}
                     />
                   </div>
                 )}
 
-                {creationStep === 4 && (
+                {creationStep === storyModeStep && (
                   <div className="space-y-2">
                     <div>
                       <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#cfe2f7]">{t('Kurgu Modu')}</p>
@@ -2347,10 +2993,10 @@ export default function HomeView({
                         <button
                           type="button"
                           onClick={() => setStoryInputMode('manual')}
-                          className="rounded-xl border border-dashed px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                          className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                           style={{
                             color: storyInputMode === 'manual' ? '#ffffff' : '#c6d9ef',
-                            ...wizardOptionButtonStyle(storyInputMode === 'manual', resolveWizardTone(0))
+                            ...wizardOptionButtonStyle(storyInputMode === 'manual')
                           }}
                         >
                           {t('Detay Gireceğim')}
@@ -2358,10 +3004,10 @@ export default function HomeView({
                         <button
                           type="button"
                           onClick={() => setStoryInputMode('auto')}
-                          className="rounded-xl border border-dashed px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
+                          className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                           style={{
                             color: storyInputMode === 'auto' ? '#ffffff' : '#c6d9ef',
-                            ...wizardOptionButtonStyle(storyInputMode === 'auto', resolveWizardTone(1))
+                            ...wizardOptionButtonStyle(storyInputMode === 'auto')
                           }}
                         >
                           {t('Otomatik Oluştur')}
@@ -2380,7 +3026,7 @@ export default function HomeView({
                             rows={5}
                             placeholder={t('Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın')}
                             className={wizardTextareaClass}
-                            style={wizardFieldStyle(resolveWizardTone(2))}
+                            style={wizardFieldStyle()}
                           />
                         </>
                       ) : (
@@ -2395,7 +3041,7 @@ export default function HomeView({
                             maxLength={180}
                             placeholder={t('Örn: Elara, Aras, Mira')}
                             className={wizardFieldClass}
-                            style={wizardFieldStyle(resolveWizardTone(3))}
+                            style={wizardFieldStyle()}
                           />
                           <label className="mt-1 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
                           <input
@@ -2404,7 +3050,7 @@ export default function HomeView({
                             maxLength={90}
                             placeholder={t('Örn: Ayşe Demir')}
                             className={wizardFieldClass}
-                            style={wizardFieldStyle(resolveWizardTone(4))}
+                            style={wizardFieldStyle()}
                           />
                         </div>
                       )}
@@ -2412,7 +3058,7 @@ export default function HomeView({
                   </div>
                 )}
 
-                {creationStep === 5 && (
+                {creationStep === settingDetailsStep && (
                   <div className="space-y-2">
                     <label className="text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Zamanı')}</label>
                     <input
@@ -2421,7 +3067,7 @@ export default function HomeView({
                       maxLength={120}
                       placeholder={t("Örn: 1800'ler, günümüz, 2090 sonrası")}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle(resolveWizardTone(0))}
+                      style={wizardFieldStyle()}
                     />
                     <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Hikayenin Mekanı')}</label>
                     <input
@@ -2430,7 +3076,7 @@ export default function HomeView({
                       maxLength={120}
                       placeholder={t('Örn: İstanbul, antik kent, Mars kolonisi')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle(resolveWizardTone(1))}
+                      style={wizardFieldStyle()}
                     />
                     <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kitabın Adı')}</label>
                     <input
@@ -2442,12 +3088,12 @@ export default function HomeView({
                       maxLength={140}
                       placeholder={t('Örn: Albert Einstein ve Kuramları')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle(resolveWizardTone(2))}
+                      style={wizardFieldStyle()}
                     />
                   </div>
                 )}
 
-                {creationStep === 6 && (
+                {creationStep === creatorDetailsStep && (
                   <div>
                     <label className="block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
                     <input
@@ -2456,7 +3102,7 @@ export default function HomeView({
                       maxLength={180}
                       placeholder={t('Örn: Elara, Aras, Mira')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle(resolveWizardTone(3))}
+                      style={wizardFieldStyle()}
                     />
                     <label className="mt-2 block text-[12px] text-[#cfe2f7] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
                     <input
@@ -2465,7 +3111,7 @@ export default function HomeView({
                       maxLength={90}
                       placeholder={t('Örn: Ayşe Demir')}
                       className={wizardFieldClass}
-                      style={wizardFieldStyle(resolveWizardTone(4))}
+                      style={wizardFieldStyle()}
                     />
                   </div>
                 )}
@@ -2473,8 +3119,8 @@ export default function HomeView({
               )}
 
               {isGenerating ? (
-                <div className="mt-3 rounded-2xl border border-dashed border-[#6c90ba]/35 bg-[rgba(19,33,51,0.86)] p-3">
-                  <div className="mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border border-dashed border-[#7da3cf]/40 bg-[#0f1b2a]">
+                <div className="mt-3 rounded-2xl border border-[#6c90ba]/35 bg-[rgba(19,33,51,0.86)] p-3">
+                  <div className="mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border border-[#7da3cf]/40 bg-[#0f1b2a]">
                     <video
                       className="h-auto w-full"
                       src={BOOK_CREATING_LOOP_VIDEO_SRC}
@@ -2486,7 +3132,7 @@ export default function HomeView({
                     />
                   </div>
                   <p className="mt-2 text-center text-[11px] font-bold text-white">
-                    {generationStatus || t('Fortale oluşturuluyor...')}
+                    {generationStatus ? translateGenerationStatusLabel(generationStatus, language) : t('Fortale oluşturuluyor...')}
                   </p>
                   <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
                     {t('Tahmini okuma süresi')}: {displayedGenerationMinutes} {t('dk')}
@@ -2504,12 +3150,12 @@ export default function HomeView({
                 </div>
               ) : (
                 <>
-                <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'}`}>
+                <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'} ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
                   {currentVisibleStepIndex > 0 && (
                     <button
                       type="button"
                       onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
-                      className="h-10 px-3.5 rounded-2xl border border-dashed text-[12px] font-semibold inline-flex items-center gap-1.5 border-[#759fd0]/48 text-[#d0e4fb] bg-[#163052] hover:bg-[#1a3a63]"
+                      className="fortale-action-button h-10 px-3.5 rounded-2xl border text-[12px] font-semibold inline-flex items-center gap-1.5"
                     >
                       <ArrowLeft size={14} />
                       {t('Geri')}
@@ -2524,10 +3170,10 @@ export default function HomeView({
                         setCreationStep((prev) => getNextCreationStep(prev));
                       }}
                       disabled={!canMoveNext}
-                      className={`h-10 px-4 rounded-2xl border border-dashed text-[12px] font-bold inline-flex items-center gap-1.5 ${canMoveNext
+                      className={`fortale-action-button h-10 px-4 rounded-2xl border text-[12px] font-bold inline-flex items-center gap-1.5 ${canMoveNext
                         ? 'text-white active:scale-95'
                         : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
-                        }`}
+                        } ${canMoveNext ? 'is-primary' : ''}`}
                       style={canMoveNext ? primaryActionButtonStyle : undefined}
                     >
                       {t('İleri')}
@@ -2538,10 +3184,10 @@ export default function HomeView({
                       type="button"
                       onClick={() => void handleCreateSmartBook()}
                       disabled={!canCreateOnFinalStep}
-                      className={`h-10 px-4 rounded-2xl border border-dashed text-[12px] font-bold inline-flex items-center gap-1.5 ${canCreateOnFinalStep
+                      className={`fortale-action-button h-10 px-4 rounded-2xl border text-[12px] font-bold inline-flex items-center gap-1.5 ${canCreateOnFinalStep
                         ? 'text-white active:scale-95'
                         : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
-                        }`}
+                        } ${canCreateOnFinalStep ? 'is-primary' : ''}`}
                       style={canCreateOnFinalStep ? primaryActionButtonStyle : undefined}
                     >
                       <BookPlus size={15} />
@@ -2605,18 +3251,8 @@ export default function HomeView({
         )}
 
         {homeShelfCourses.length > 0 ? (
-          <section className="pb-4">
-            <div className="mb-3 flex items-center justify-between gap-3 px-1">
-              <div>
-                <h2 className="text-[10px] font-bold tracking-[0.24em] text-text-secondary opacity-70">{t('Kitap Rafın')}</h2>
-                <p className="mt-1 text-[12px] font-semibold text-white">{t('Son açtığın kitaplar burada.')}</p>
-              </div>
-              <span className="rounded-full border border-dashed border-[rgba(120,171,226,0.22)] bg-[rgba(18,31,48,0.84)] px-2.5 py-1 text-[10px] font-bold text-[#cfe4fb]">
-                {sortedCourses.length} {t('kitap')}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <section className="fortale-shelf-section pb-4">
+            <div className="fortale-shelf-scroll touch-scroll-x">
               {homeShelfCourses.map((course) => renderHomeCourseCard(course))}
             </div>
           </section>
@@ -2698,14 +3334,14 @@ export default function HomeView({
             }}
           >
             <div
-              className="h-full rounded-2xl border border-dashed shadow-[0_24px_36px_-24px_rgba(0,0,0,0.78)] overflow-hidden flex flex-col"
+              className="h-full rounded-2xl border shadow-[0_24px_36px_-24px_rgba(0,0,0,0.78)] overflow-hidden flex flex-col"
               style={{
                 borderColor: activeStickyTint.border,
                 backgroundColor: APP_SURFACE_COLOR
               }}
             >
               <div
-                className="px-4 py-3 border-b border-dashed flex items-center gap-3"
+                className="px-4 py-3 border-b flex items-center gap-3"
                 style={{
                   borderColor: activeStickyTint.border,
                   backgroundColor: APP_SURFACE_COLOR
@@ -2747,7 +3383,7 @@ export default function HomeView({
 
               {isReminderPickerOpen && (
                 <div
-                  className="px-3 py-3 border-t border-dashed"
+                  className="px-3 py-3 border-t"
                   style={{
                     borderColor: activeStickyTint.border,
                     backgroundColor: APP_SURFACE_COLOR
@@ -2767,7 +3403,7 @@ export default function HomeView({
                         void handleReminderClear();
                       }}
                       disabled={!stickyModal.reminderAt && !reminderDraft}
-                      className="px-3 h-8 rounded-lg border border-dashed border-red-500/70 text-[11px] text-red-400 hover:bg-red-500/10 disabled:opacity-45 disabled:hover:bg-transparent transition-colors"
+                      className="px-3 h-8 rounded-lg border border-red-500/70 text-[11px] text-red-400 hover:bg-red-500/10 disabled:opacity-45 disabled:hover:bg-transparent transition-colors"
                     >
                       {t('Kaldır')}
                     </button>
@@ -2777,7 +3413,7 @@ export default function HomeView({
                         void handleReminderApply();
                       }}
                       disabled={!reminderDraft}
-                      className="px-3 h-8 rounded-lg border border-dashed border-emerald-400/70 text-[11px] text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-45 disabled:hover:bg-transparent transition-colors"
+                      className="px-3 h-8 rounded-lg border border-emerald-400/70 text-[11px] text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-45 disabled:hover:bg-transparent transition-colors"
                     >
                       {t('Kaydet')}
                     </button>
@@ -2786,7 +3422,7 @@ export default function HomeView({
               )}
 
               <div
-                className="px-3 py-2 border-t border-dashed flex items-center justify-between gap-2"
+                className="px-3 py-2 border-t flex items-center justify-between gap-2"
                 style={{
                   borderColor: activeStickyTint.border,
                   backgroundColor: APP_SURFACE_COLOR
