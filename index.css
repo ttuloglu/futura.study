@@ -2649,10 +2649,12 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 /* "Fortale" brand başlık — header altında, form üstünde */
 .fortale-home-brand-title {
-  position: relative;
+  position: fixed;
+  top: calc(var(--app-header-row-top, 0px) + 108px);
+  left: 0;
+  right: 0;
   z-index: 2;
   text-align: center;
-  padding: 96px 0 0;
   color: rgba(255, 255, 255, 0.96);
   font-size: 38px;
   font-weight: 860;
