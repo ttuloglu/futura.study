@@ -2533,7 +2533,7 @@ export default function HomeView({
 
         <div className="fortale-shelf-body">
           <p className="fortale-shelf-title">{course.topic}</p>
-          <p className="fortale-shelf-subtitle">{nextStep?.title || t('Fortale Tamamlandı')}</p>
+          {nextStep?.title && <p className="fortale-shelf-subtitle">{nextStep.title}</p>}
           <div className="fortale-shelf-meta">
             <span>{formatCourseCreatedDate(course.createdAt || course.lastActivity, locale)}</span>
             <span className="inline-flex items-center gap-1" title={t('Tahmini okuma süresi')}>
