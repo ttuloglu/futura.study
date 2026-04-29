@@ -2652,7 +2652,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: 2px 0 0;
+  padding: 96px 0 0;
   color: rgba(255, 255, 255, 0.96);
   font-size: 38px;
   font-weight: 860;

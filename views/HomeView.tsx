@@ -2711,6 +2711,27 @@ export default function HomeView({
     { x: 88, y: 33, s: 2.8, dur: 5.5, delay: 2.2, op: 0.53 },
     { x: 22, y: 95, s: 4.4, dur: 4.4, delay: 0.8, op: 0.69 },
     { x: 72, y: 88, s: 3.2, dur: 4.8, delay: 1.3, op: 0.62 },
+    // 4. set (toplam 50)
+    { x: 11, y: 47, s: 3.6, dur: 4.3, delay: 0.2, op: 0.64 },
+    { x: 24, y: 8,  s: 2.9, dur: 5.7, delay: 1.9, op: 0.51 },
+    { x: 36, y: 59, s: 4.1, dur: 3.5, delay: 0.6, op: 0.67 },
+    { x: 46, y: 24, s: 3.3, dur: 4.9, delay: 2.2, op: 0.58 },
+    { x: 59, y: 91, s: 4.7, dur: 4.0, delay: 1.0, op: 0.71 },
+    { x: 71, y: 16, s: 3.0, dur: 5.3, delay: 0.4, op: 0.54 },
+    { x: 80, y: 68, s: 3.9, dur: 4.6, delay: 1.7, op: 0.63 },
+    { x: 93, y: 37, s: 2.7, dur: 3.9, delay: 0.1, op: 0.57 },
+    { x: 2,  y: 82, s: 4.3, dur: 5.1, delay: 2.6, op: 0.65 },
+    { x: 55, y: 6,  s: 3.5, dur: 4.2, delay: 1.4, op: 0.60 },
+    { x: 43, y: 43, s: 2.8, dur: 5.6, delay: 0.7, op: 0.53 },
+    { x: 66, y: 97, s: 4.0, dur: 3.7, delay: 2.0, op: 0.68 },
+    { x: 77, y: 54, s: 3.2, dur: 4.5, delay: 0.9, op: 0.61 },
+    { x: 89, y: 20, s: 3.7, dur: 5.0, delay: 1.5, op: 0.56 },
+    { x: 31, y: 85, s: 4.5, dur: 3.8, delay: 2.3, op: 0.70 },
+    { x: 10, y: 25, s: 3.0, dur: 4.7, delay: 0.3, op: 0.55 },
+    { x: 52, y: 72, s: 3.8, dur: 5.2, delay: 1.1, op: 0.64 },
+    { x: 84, y: 8,  s: 2.6, dur: 4.1, delay: 2.8, op: 0.50 },
+    { x: 19, y: 53, s: 4.2, dur: 3.6, delay: 0.5, op: 0.66 },
+    { x: 63, y: 38, s: 3.4, dur: 4.8, delay: 1.8, op: 0.59 },
   ], []);
 
   return (
