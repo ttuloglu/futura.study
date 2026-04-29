@@ -2676,6 +2676,14 @@ export default function HomeView({
     { x: 9,  y: 36, s: 2.6, dur: 3.1, delay: 0.7, lo: 0.22, hi: 1.00 },
     { x: 47, y: 33, s: 1.0, dur: 2.6, delay: 1.1, lo: 0.08, hi: 0.62 },
     { x: 72, y: 38, s: 1.4, dur: 3.5, delay: 0.5, lo: 0.11, hi: 0.78 },
+    { x: 28, y: 15, s: 1.6, dur: 3.2, delay: 0.4, lo: 0.12, hi: 0.86 },
+    { x: 60, y: 92, s: 1.1, dur: 4.4, delay: 1.7, lo: 0.08, hi: 0.64 },
+    { x: 83, y: 14, s: 2.1, dur: 2.3, delay: 0.8, lo: 0.17, hi: 0.98 },
+    { x: 15, y: 68, s: 1.3, dur: 3.8, delay: 1.3, lo: 0.10, hi: 0.74 },
+    { x: 42, y: 57, s: 1.8, dur: 2.7, delay: 0.0, lo: 0.14, hi: 0.90 },
+    { x: 58, y: 23, s: 1.0, dur: 4.6, delay: 2.0, lo: 0.07, hi: 0.60 },
+    { x: 77, y: 80, s: 2.4, dur: 3.0, delay: 0.6, lo: 0.19, hi: 1.00 },
+    { x: 96, y: 45, s: 1.2, dur: 3.7, delay: 1.5, lo: 0.09, hi: 0.70 },
   ], []);
 
   const homeDust = useMemo(() => [
