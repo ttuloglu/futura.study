@@ -12110,14 +12110,106 @@ async function failPodcastJob(
   }
 }
 
+async function resolveLatestJobData(
+  jobRef: FirebaseFirestore.DocumentReference,
+  fallbackData: Record<string, unknown> | undefined
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    const latestSnap = await jobRef.get();
+    if (latestSnap.exists) {
+      return latestSnap.data() as Record<string, unknown> | undefined;
+    }
+  } catch (error) {
+    logger.warn("Latest book job data could not be read", {
+      jobId: jobRef.id,
+      error: toErrorMessage(error)
+    });
+  }
+  return fallbackData;
+}
+
+async function getPublishedBookPayloadForJob(
+  uid: string,
+  courseId: string
+): Promise<Record<string, unknown> | null> {
+  if (!uid || !courseId) return null;
+  const bookSnap = await getUserBookRef(uid, courseId).get();
+  if (!bookSnap.exists) return null;
+  const payload = bookSnap.data() as Record<string, unknown> | undefined;
+  if (!payload) return null;
+  const bundle = isRecord(payload.bundle) ? payload.bundle : null;
+  const bundlePath = firstNonEmptyString(bundle?.path, payload.contentPackagePath);
+  const status = String(payload.status || "");
+  if (status !== "ready" || !bundlePath) return null;
+  return payload;
+}
+
+function buildCompletedBookJobPatchFromPublishedBook(
+  bookPayload: Record<string, unknown>,
+  fallbackJobData: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  const bundle = isRecord(bookPayload.bundle) ? bookPayload.bundle : null;
+  const bundlePath = firstNonEmptyString(bundle?.path, bookPayload.contentPackagePath, fallbackJobData?.resultPath);
+  const totalSections = Math.max(
+    toNonNegativeInt(fallbackJobData?.totalSections),
+    Array.isArray(bookPayload.nodes) ? bookPayload.nodes.length + 2 : 0,
+    1
+  );
+  return {
+    status: "completed",
+    totalSections,
+    completedSections: totalSections,
+    currentSectionIndex: Array.isArray(bookPayload.nodes) ? bookPayload.nodes.length : fallbackJobData?.currentSectionIndex ?? null,
+    currentSectionTitle: firstNonEmptyString(bookPayload.title, bookPayload.topic, fallbackJobData?.currentSectionTitle) || null,
+    currentStepLabel: bookPayload.visualStoryMode === true ? "Görsel masal hazır" : "Kitap hazır",
+    resultPath: bundlePath || FieldValue.delete(),
+    bundleVersion: Number.isFinite(Number(bundle?.version)) ? Math.max(1, Math.floor(Number(bundle?.version))) : FieldValue.delete(),
+    bundleIncludesPodcast: bundle?.includesPodcast === true,
+    bundleChecksumSha256: firstNonEmptyString(bundle?.checksumSha256) || FieldValue.delete(),
+    bundleSizeBytes: Number.isFinite(Number(bundle?.sizeBytes)) ? Math.max(0, Math.floor(Number(bundle?.sizeBytes))) : FieldValue.delete(),
+    bundleGeneratedAt: firstNonEmptyString(bundle?.generatedAt, bookPayload.contentPackageUpdatedAt) || FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+    completedAt: FieldValue.serverTimestamp(),
+    errorMessage: FieldValue.delete(),
+    creditRefundPending: FieldValue.delete(),
+    creditRefundError: FieldValue.delete(),
+    creditRefundErrorAt: FieldValue.delete()
+  };
+}
+
 async function failBookJob(
   jobRef: FirebaseFirestore.DocumentReference,
   jobData: Record<string, unknown> | undefined,
   error: unknown
 ): Promise<void> {
-  const uid = typeof jobData?.uid === "string" ? jobData.uid : "";
-  const receiptId = typeof jobData?.creditReceiptId === "string" ? jobData.creditReceiptId : "";
-  const alreadyRefunded = jobData?.creditRefunded === true;
+  const latestJobData = await resolveLatestJobData(jobRef, jobData);
+  const uid = typeof latestJobData?.uid === "string" ? latestJobData.uid : "";
+  const courseId = typeof latestJobData?.courseId === "string" ? latestJobData.courseId : "";
+  const receiptId = typeof latestJobData?.creditReceiptId === "string" ? latestJobData.creditReceiptId : "";
+  const alreadyRefunded = latestJobData?.creditRefunded === true;
+
+  try {
+    const publishedBook = await getPublishedBookPayloadForJob(uid, courseId);
+    if (publishedBook) {
+      await jobRef.set(
+        buildCompletedBookJobPatchFromPublishedBook(publishedBook, latestJobData),
+        { merge: true }
+      );
+      logger.info("Book job failure ignored because book is already published", {
+        jobId: jobRef.id,
+        courseId,
+        error: toErrorMessage(error)
+      });
+      return;
+    }
+  } catch (lookupError) {
+    logger.warn("Published book lookup before refund failed", {
+      jobId: jobRef.id,
+      courseId,
+      error: toErrorMessage(lookupError)
+    });
+  }
+
   const shouldAttemptRefund = Boolean(uid && receiptId && !alreadyRefunded);
 
   await jobRef.set(
@@ -14036,6 +14128,32 @@ export const getBookGenerationJob = onCall(
       );
       const refreshedSnap = await jobRef.get();
       data = refreshedSnap.data() as Record<string, unknown> | undefined;
+    }
+
+    if (String(data?.status || "") === "completed") {
+      const completedCourseId = typeof data?.courseId === "string" ? data.courseId : "";
+      try {
+        const publishedBook = await getPublishedBookPayloadForJob(uid, completedCourseId);
+        if (!publishedBook) {
+          logger.error("Completed book job has no published book; marking as failed for refund", {
+            jobId,
+            courseId: completedCourseId
+          });
+          await failBookJob(
+            jobRef,
+            data,
+            new HttpsError("internal", "Kitap kitaplığa kaydedilemediği için üretim başarısız sayıldı.")
+          );
+          const refreshedSnap = await jobRef.get();
+          data = refreshedSnap.data() as Record<string, unknown> | undefined;
+        }
+      } catch (lookupError) {
+        logger.warn("Completed book publication check failed", {
+          jobId,
+          courseId: completedCourseId,
+          error: toErrorMessage(lookupError)
+        });
+      }
     }
 
     const pendingRefundReceiptId =
