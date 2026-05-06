@@ -69,10 +69,10 @@ type PageRange = { min: number; max: number; suggested: number };
 
 export function getPageRangeByBookType(bookType: SmartBookBookType, ageGroup: SmartBookAgeGroup = 'general'): PageRange {
   if (bookType === 'fairy_tale') {
-    if (ageGroup === '1-3') return { min: 6, max: 7, suggested: 6 };
-    if (ageGroup === '4-6') return { min: 10, max: 10, suggested: 10 };
-    if (ageGroup === '7-9') return { min: 12, max: 14, suggested: 13 };
-    return { min: 10, max: 12, suggested: 11 };
+    if (ageGroup === '1-3') return { min: 6, max: 6, suggested: 6 };
+    if (ageGroup === '4-6') return { min: 8, max: 8, suggested: 8 };
+    if (ageGroup === '7-9') return { min: 10, max: 10, suggested: 10 };
+    return { min: 8, max: 8, suggested: 8 };
   }
   if (bookType === 'story') return { min: 20, max: 25, suggested: 22 };
   return { min: 30, max: 35, suggested: 32 };

@@ -1,0 +1,1 @@
+Dans cette version, nous avons amélioré l'affichage des images sur iOS : le zoom est plus fluide et la fermeture par glissement vers le bas est plus naturelle. Nous avons également optimisé la lecture et la stabilité globale.

@@ -1,0 +1,1 @@
+I denna version har vi förbättrat bildupplevelsen på iOS: zoomgester är nu smidigare och att stänga bilder genom att dra nedåt känns mer naturligt. Vi har även gjort justeringar för läsupplevelsen och den allmänna stabiliteten.

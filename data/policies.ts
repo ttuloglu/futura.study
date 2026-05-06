@@ -81,7 +81,7 @@ export const defaultTermsPolicy: PolicyDocument = {
     {
       title: '12. Güncellemeler ve İletişim',
       content:
-        'Bu şartları zaman zaman güncelleyebiliriz. Yeni sürüm yayınlandığında üstteki son güncelleme tarihi yenilenir ve güncel metin, yayınlandığı tarihten itibaren geçerli olur. Önemli değişikliklerde uygulama içinde ek bildirim göstermeyi tercih edebiliriz.\n\nKullanım Şartları ile ilgili sorular için bizimle şu adresten iletişime geçebilirsiniz: admin@futurumapps.online'
+        'Bu şartları zaman zaman güncelleyebiliriz. Yeni sürüm yayınlandığında üstteki son güncelleme tarihi yenilenir ve güncel metin, yayınlandığı tarihten itibaren geçerli olur. Önemli değişikliklerde uygulama içinde ek bildirim göstermeyi tercih edebiliriz.\n\nKullanım Şartları ile ilgili sorular için bizimle şu adresten iletişime geçebilirsiniz: fortale@sponelabs.com'
     }
   ]
 };
@@ -100,7 +100,7 @@ export const defaultPrivacyPolicy: PolicyDocument = {
       title: '2. Veri Sorumlusu ve İletişim',
       content:
         'Veri sorumlusu: Fortale\n' +
-        'İletişim: admin@futurumapps.online'
+        'İletişim: fortale@sponelabs.com'
     },
     {
       title: '3. Toplanan Veri Türleri',
@@ -164,7 +164,7 @@ export const defaultPrivacyPolicy: PolicyDocument = {
     {
       title: '12. Haklarınız',
       content:
-        'Uygulanabilir mevzuata göre erişim, düzeltme, silme, işlemeyi sınırlama, itiraz, veri taşınabilirliği ve şikayet gibi haklara sahip olabilirsiniz.\n\nCCPA/CPRA kapsamındaki haklar (bilme, silme, düzeltme, paylaşım/satışa itiraz, hassas veri kullanımını sınırlama) ilgili uygunluk şartlarına göre değerlendirilebilir.\n\nHak talepleri için: admin@futurumapps.online'
+        'Uygulanabilir mevzuata göre erişim, düzeltme, silme, işlemeyi sınırlama, itiraz, veri taşınabilirliği ve şikayet gibi haklara sahip olabilirsiniz.\n\nCCPA/CPRA kapsamındaki haklar (bilme, silme, düzeltme, paylaşım/satışa itiraz, hassas veri kullanımını sınırlama) ilgili uygunluk şartlarına göre değerlendirilebilir.\n\nHak talepleri için: fortale@sponelabs.com'
     },
     {
       title: '13. Politika Güncellemeleri',

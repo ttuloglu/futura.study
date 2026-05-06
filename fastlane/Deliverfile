@@ -1,0 +1,12 @@
+app_identifier(ENV['APP_IDENTIFIER']) if ENV['APP_IDENTIFIER']
+platform('ios')
+app_version('1.0.1')
+
+metadata_path('fastlane/metadata')
+skip_binary_upload(true)
+skip_metadata(false)
+skip_screenshots(true)
+submit_for_review(false)
+run_precheck_before_submit(false)
+precheck_include_in_app_purchases(false)
+force(true)

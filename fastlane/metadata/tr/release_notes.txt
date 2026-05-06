@@ -1,0 +1,3 @@
+Bu sürümde iOS'ta görsel görüntüleme deneyimini iyileştirdik: yakınlaştırma hareketleri daha akıcı çalışıyor ve görseli aşağı çekerek kapatmak artık daha doğal hissettiriyor.
+
+Okuma deneyimi ve genel kararlılık için ek düzenlemeler de yaptık.

@@ -19,7 +19,7 @@ export interface Subject {
 
 export type NodeType = 'lecture' | 'podcast' | 'quiz' | 'reinforce' | 'exam' | 'retention';
 
-export type SmartBookAgeGroup = '1-3' | '4-6' | '7-9' | '7-11' | '12-18' | 'general';
+export type SmartBookAgeGroup = '1-6' | '7+' | '1-3' | '4-6' | '7-9' | '7-11' | '12-18' | 'general';
 
 export type SmartBookBookType = 'fairy_tale' | 'story' | 'novel';
 
@@ -68,6 +68,8 @@ export interface PodcastSegment {
   duration?: string;
 }
 
+export type VisualStoryAudioStatus = 'pending' | 'ready' | 'failed' | 'partial';
+
 export type PodcastVoiceName =
   | 'Kore'
   | 'Leda'
@@ -101,6 +103,12 @@ export interface TimelineNode {
     usage?: PodcastUsageSummary;
     voiceName?: PodcastVoiceName;
   }>;
+  pageText?: string;
+  pageImageUrl?: string;
+  pageAudioUrl?: string;
+  pageAudioStatus?: VisualStoryAudioStatus;
+  pageAudioStoragePath?: string;
+  pageSequence?: number;
   questions?: QuizQuestion[]; // For quizzes/exams
   isLoading?: boolean; // To show loading state during generation
 }
@@ -141,6 +149,11 @@ export interface BookMeta {
   category?: string;
   searchTags?: string[];
   totalDuration?: string;
+  visualStoryMode?: boolean;
+  visualStoryAudioStatus?: VisualStoryAudioStatus;
+  coverNarrationText?: string;
+  coverNarrationAudioUrl?: string;
+  coverNarrationAudioStoragePath?: string;
   cover?: BookCoverDescriptor;
   bundle?: BookBundleDescriptor;
   status?: 'processing' | 'ready' | 'failed';
@@ -164,6 +177,11 @@ export interface BookBundleManifest {
   category?: string;
   searchTags?: string[];
   totalDuration?: string;
+  visualStoryMode?: boolean;
+  visualStoryAudioStatus?: VisualStoryAudioStatus;
+  coverNarrationText?: string;
+  coverNarrationAudioUrl?: string;
+  coverNarrationAudioStoragePath?: string;
   cover?: BookCoverDescriptor;
   includesPodcast?: boolean;
   nodes: TimelineNode[];
@@ -193,6 +211,11 @@ export interface CourseData {
   category?: string;
   searchTags?: string[];
   totalDuration?: string;
+  visualStoryMode?: boolean;
+  visualStoryAudioStatus?: VisualStoryAudioStatus;
+  coverNarrationText?: string;
+  coverNarrationAudioUrl?: string;
+  coverNarrationAudioStoragePath?: string;
   coverImageUrl?: string;
   contentPackageUrl?: string;
   contentPackagePath?: string;

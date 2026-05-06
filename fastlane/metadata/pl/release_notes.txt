@@ -1,0 +1,1 @@
+W tej wersji poprawiliśmy wyświetlanie obrazów na iOS: gesty powiększania są płynniejsze, a zamykanie obrazu gestem przeciągnięcia w dół jest bardziej naturalne. Wprowadziliśmy również poprawki poprawiające komfort czytania i ogólną stabilność aplikacji.

@@ -1339,7 +1339,7 @@ export default function ExploreView({
                   className="h-10 px-5 rounded-2xl border border-dashed text-[12px] font-black text-white active:scale-95"
                   style={{ backgroundColor: 'rgba(17, 22, 29, 0.3)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
                 >
-                  Oku
+                  {t('Oku')}
                 </button>
               </div>
             </div>

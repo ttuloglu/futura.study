@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import ReactMarkdown from 'react-markdown';
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -21,6 +21,7 @@ import {
   Download,
   History,
   Lock,
+  Mic,
   PauseCircle,
   PlayCircle,
   Target,
@@ -107,6 +108,7 @@ const QUIZ_TIME_LIMIT_SECONDS = 300;
 const READING_WORDS_PER_MINUTE = 180;
 const QUIZ_FEEDBACK_DELAY_MS = 2000;
 const PODCAST_CREATING_LOOP_VIDEO_SRC = '/animations/podcast-creating-loop.mp4';
+const VISUAL_STORY_SLIDE_TRANSITION_MS = 1000;
 const PDF_BACKGROUND_PRESETS = [
   { id: 'milk-white', label: 'Süt beyaz', color: '#fffaf0' },
   { id: 'candy-blue', label: 'Şeker mavi', color: '#d9f2ff' },
@@ -133,6 +135,12 @@ const FULLSCREEN_READER_FONT_STEP_MIN = -1;
 const FULLSCREEN_READER_FONT_STEP_MAX = 3;
 const DEFAULT_PODCAST_VOICE_NAME: PodcastVoiceName = PODCAST_VOICE_OPTIONS[0].voiceName;
 const IMAGE_PREVIEW_ACTION_TOP = 'calc(env(safe-area-inset-top, 0px) + 76px)';
+
+type ImagePreviewState = {
+  url: string;
+  fileName: string;
+  alt: string;
+};
 const PODCAST_VOICE_PREVIEW_TEXTS: Record<string, string> = {
   ar: 'مرحبًا بكم في Fortale. اصنعوا حكاياتكم الملحمية.',
   da: 'Velkommen til Fortale. Skab jeres episke historier.',
@@ -166,28 +174,28 @@ type FairyTaleBackgroundTrack = {
 const FAIRY_TALE_BACKGROUND_TRACKS: Record<FairyTaleBackgroundTrackKey, FairyTaleBackgroundTrack> = {
   classic: {
     key: 'classic',
-    label: 'Fairy Tale - Fairy Flute',
-    src: '/audio/fairy-tales/fairy-tale-fairy-flute-2585.mp3'
+    label: 'Under the Quilt - 20s Loop',
+    src: '/audio/fairy-tales/under-the-quilt-loop-20s.mp3'
   },
   modern: {
     key: 'modern',
-    label: 'Cinematic Music Sketches - 05 - Fairy Tale Sketch',
-    src: '/audio/fairy-tales/cinematic-music-sketches-05-fairy-tale-sketch.mp3'
+    label: "The Herald's Ascent",
+    src: '/audio/fairy-tales/the-heralds-ascent.mp3'
   },
   adventure: {
     key: 'adventure',
-    label: 'Cinematic Fairy Tale Story (Main)',
-    src: '/audio/fairy-tales/cinematic-fairy-tale-story-main-8697.mp3'
+    label: "The Herald's Ascent",
+    src: '/audio/fairy-tales/the-heralds-ascent.mp3'
   },
   mythic: {
     key: 'mythic',
-    label: 'Look Up to the Stars - Ambient Fairy Tale Music',
-    src: '/audio/fairy-tales/look-up-to-the-stars-ambient-fairy-tale-music.mp3'
+    label: 'Lanterns of the Glade',
+    src: '/audio/fairy-tales/lanterns-of-the-glade.mp3'
   },
   educational: {
     key: 'educational',
-    label: 'Cinematic Fairy Tale Intro Sketch',
-    src: '/audio/fairy-tales/cinematic-fairy-tale-intro-sketch-115538.mp3'
+    label: 'Under the Quilt - 20s Loop',
+    src: '/audio/fairy-tales/under-the-quilt-loop-20s.mp3'
   }
 };
 
@@ -720,8 +728,32 @@ type VisualStoryPage = {
   pageSequence?: number;
 };
 
-const VISUAL_STORY_NARRATION_PRE_DELAY_MS = 2000;
-const VISUAL_STORY_NARRATION_POST_DELAY_MS = 5000;
+const VISUAL_STORY_NARRATION_PRE_DELAY_MS = 1000;
+const VISUAL_STORY_NARRATION_POST_DELAY_MS = 2500;
+const VISUAL_STORY_TRANSITION_SFX_SRC = '/audio/glass-canopy-transition.mp3';
+const VISUAL_STORY_TRANSITION_SFX_GAIN = 0.05;
+const VISUAL_STORY_BACKGROUND_IDLE_GAIN = 0.18;
+const VISUAL_STORY_BACKGROUND_NARRATION_GAIN = 0.08;
+const VISUAL_STORY_BACKGROUND_GAIN_RAMP_SECONDS = 0.28;
+
+type VisualStoryMotionPoint = {
+  left: number;
+  top: number;
+  size: number;
+  delay: number;
+  duration: number;
+};
+
+type VisualStoryMood = 'calm' | 'magic' | 'joy' | 'tension';
+
+type VisualStoryMotionProfile = {
+  mood: VisualStoryMood;
+  panX: number;
+  panY: number;
+  endScale: number;
+  duration: number;
+  sparkleCount: number;
+};
 
 function normalizeVisualStoryNarrationSource(value: string | undefined | null): string {
   return String(value || '')
@@ -734,10 +766,138 @@ function normalizeVisualStoryNarrationSource(value: string | undefined | null): 
     .trim();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripLeadingTopicMention(value: string, topic: string | undefined | null): string {
+  const normalizedValue = normalizeVisualStoryNarrationSource(value);
+  const normalizedTopic = normalizeVisualStoryNarrationSource(topic);
+  if (!normalizedValue || !normalizedTopic) return normalizedValue;
+
+  const topicPattern = escapeRegExp(normalizedTopic);
+  const leadingTopicRegex = new RegExp(
+    `^(?:["“”'‘’\\s]*${topicPattern}["“”'‘’]*[\\s:,.!?-]*)+`,
+    'i'
+  );
+
+  return normalizedValue.replace(leadingTopicRegex, '').trim() || normalizedValue;
+}
+
+function resolveVisualStoryNarrationLanguage(
+  courseData: CourseData,
+  fallbackText: string
+): ReturnType<typeof normalizeAppLanguageCode> {
+  return (
+    normalizeAppLanguageCode(courseData.language) ||
+    detectLikelyBookLanguageFromText(fallbackText) ||
+    detectLikelyBookLanguageFromText(courseData.topic || '') ||
+    'tr'
+  );
+}
+
+function buildVisualStoryIntroSpell(languageCode: ReturnType<typeof normalizeAppLanguageCode>): string {
+  switch (languageCode) {
+    case 'ar':
+      return 'في قديم الزمان، حين كانت النجوم تُصغي بهدوء، تبدأ حكاية دافئة للصغار.';
+    case 'da':
+      return 'Der var engang, mens stjernerne lyttede stille, begyndte et varmt og blidt eventyr.';
+    case 'de':
+      return 'Vor langer, langer Zeit, als der Wind noch leise Geschichten trug, beginnt ein warmes Märchen.';
+    case 'el':
+      return 'Μια φορά κι έναν καιρό, όταν τ’ αστέρια άκουγαν σιωπηλά, άρχιζε ένα τρυφερό παραμύθι.';
+    case 'es':
+      return 'Hace mucho, muchísimo tiempo, cuando los susurros también contaban cuentos, empieza una historia muy tierna.';
+    case 'fi':
+      return 'Olipa kerran, kun tähdet kuuntelivat hiljaa, alkoi lempeä pieni satu.';
+    case 'fr':
+      return 'Il était une fois, au creux du vent et des étoiles, une douce histoire qui commence.';
+    case 'hi':
+      return 'बहुत समय पहले, जब तारे चुपचाप सुनते थे, एक प्यारी-सी कहानी शुरू हुई।';
+    case 'id':
+      return 'Pada suatu waktu, saat bintang-bintang mendengarkan dengan tenang, dimulailah sebuah dongeng yang hangat.';
+    case 'it':
+      return 'C’era una volta, tra vento leggero e piccole stelle, una storia dolce che sta per iniziare.';
+    case 'ja':
+      return 'むかしむかし、星たちが静かに耳をすますころ、やさしい物語が始まりました。';
+    case 'ko':
+      return '옛날 옛적, 별들이 조용히 귀 기울이던 때에 다정한 이야기가 시작되었어요.';
+    case 'nl':
+      return 'Er was eens, terwijl de sterren stil meeluisterden, een warm en zacht verhaal dat begon.';
+    case 'no':
+      return 'Det var en gang, mens stjernene lyttet stille, begynte et varmt og mildt eventyr.';
+    case 'pl':
+      return 'Dawno, dawno temu, gdy gwiazdy słuchały w ciszy, zaczęła się ciepła opowieść.';
+    case 'pt-BR':
+      return 'Era uma vez, entre o vento macio e as estrelinhas curiosas, uma história bem doce começando agora.';
+    case 'sv':
+      return 'Det var en gång, medan stjärnorna lyssnade tyst, började en varm och mild saga.';
+    case 'th':
+      return 'กาลครั้งหนึ่งนานมาแล้ว ขณะที่ดวงดาวเงียบฟังอยู่ ก็มีนิทานอบอุ่นเรื่องหนึ่งเริ่มต้นขึ้น';
+    case 'tr':
+      return 'Evvel zaman içinde, kalbur saman içinde, minik kalpler için sıcacık bir masal başlıyor.';
+    case 'en':
+    default:
+      return 'Once upon a time, while the stars listened quietly, a gentle little story began.';
+  }
+}
+
+function buildVisualStoryTitleLine(
+  topic: string | undefined | null,
+  languageCode: ReturnType<typeof normalizeAppLanguageCode>
+): string {
+  const normalizedTopic = normalizeVisualStoryNarrationSource(topic);
+  if (!normalizedTopic) return '';
+  switch (languageCode) {
+    case 'ar':
+      return `اسم هذه الحكاية هو ${normalizedTopic}.`;
+    case 'da':
+      return `Denne historie hedder ${normalizedTopic}.`;
+    case 'el':
+      return `Αυτή η ιστορία λέγεται ${normalizedTopic}.`;
+    case 'fi':
+      return `Tämän sadun nimi on ${normalizedTopic}.`;
+    case 'hi':
+      return `इस कहानी का नाम ${normalizedTopic} है।`;
+    case 'id':
+      return `Judul cerita ini adalah ${normalizedTopic}.`;
+    case 'ja':
+      return `このお話の題名は「${normalizedTopic}」です。`;
+    case 'ko':
+      return `이 이야기의 제목은 ${normalizedTopic}예요.`;
+    case 'nl':
+      return `Dit verhaal heet ${normalizedTopic}.`;
+    case 'no':
+      return `Denne historien heter ${normalizedTopic}.`;
+    case 'pl':
+      return `Ta historia nosi tytuł ${normalizedTopic}.`;
+    case 'sv':
+      return `Den här sagan heter ${normalizedTopic}.`;
+    case 'th':
+      return `นิทานเรื่องนี้มีชื่อว่า ${normalizedTopic}`;
+    case 'tr':
+      return `Bu masalın adı ${normalizedTopic}.`;
+    case 'es':
+      return `Esta historia se llama ${normalizedTopic}.`;
+    case 'fr':
+      return `Cette histoire s'appelle ${normalizedTopic}.`;
+    case 'de':
+      return `Diese Geschichte heißt ${normalizedTopic}.`;
+    case 'it':
+      return `Questa storia si chiama ${normalizedTopic}.`;
+    case 'pt-BR':
+      return `Esta história se chama ${normalizedTopic}.`;
+    case 'en':
+    default:
+      return `This story is called ${normalizedTopic}.`;
+  }
+}
+
 function deriveVisualStoryPageScript(
   node: TimelineNode,
   index: number,
-  t: (key: string) => string
+  t: (key: string) => string,
+  topic?: string
 ): string {
   const candidates = [
     node.pageText,
@@ -747,17 +907,131 @@ function deriveVisualStoryPageScript(
   ];
   for (const candidate of candidates) {
     const normalized = normalizeVisualStoryNarrationSource(candidate);
-    if (normalized) return normalized;
+    if (normalized) return stripLeadingTopicMention(normalized, topic);
   }
-  return normalizeVisualStoryNarrationSource(node.title || `${t('Sayfa')} ${index + 1}`);
+  return stripLeadingTopicMention(
+    normalizeVisualStoryNarrationSource(node.title || `${t('Sayfa')} ${index + 1}`),
+    topic
+  );
 }
 
 function deriveVisualStoryCoverScript(courseData: CourseData): string {
-  return normalizeVisualStoryNarrationSource(
+  const coverBody = stripLeadingTopicMention(
+    normalizeVisualStoryNarrationSource(
     courseData.coverNarrationText ||
     courseData.description ||
     courseData.topic
+    ),
+    courseData.topic
   );
+  const languageCode = resolveVisualStoryNarrationLanguage(courseData, coverBody);
+  return [
+    buildVisualStoryIntroSpell(languageCode),
+    buildVisualStoryTitleLine(courseData.topic, languageCode),
+    coverBody
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+function inferVisualStoryMood(text: string | undefined): VisualStoryMood {
+  const normalized = String(text || '').toLocaleLowerCase('tr-TR');
+  if (!normalized) return 'calm';
+  if (/(parla|isik|ışık|yildiz|yıldız|peri|sihir|buyu|büyü|moon|star|magic|spark)/.test(normalized)) return 'magic';
+  if (/(kos|koş|gul|gül|nese|neşe|sev|oyna|dans|kahkaha|joy|happy|laugh)/.test(normalized)) return 'joy';
+  if (/(kork|gece|golge|gölge|firtina|fırtına|dus|düş|agla|ağla|dark|storm|fear|shadow)/.test(normalized)) return 'tension';
+  return 'calm';
+}
+
+function buildUniqueOverlayBands(
+  count: number,
+  next: () => number,
+  verticalBands: Array<[number, number]>,
+  horizontalRange: [number, number]
+): Array<{ left: number; top: number }> {
+  const used = new Set<string>();
+  const points: Array<{ left: number; top: number }> = [];
+  let attempts = 0;
+  while (points.length < count && attempts < count * 40) {
+    const band = verticalBands[Math.min(verticalBands.length - 1, Math.floor(next() * verticalBands.length))];
+    const left = horizontalRange[0] + (next() * (horizontalRange[1] - horizontalRange[0]));
+    const top = band[0] + (next() * (band[1] - band[0]));
+    const key = `${Math.round(left)}:${Math.round(top)}`;
+    if (!used.has(key)) {
+      used.add(key);
+      points.push({
+        left: Number(left.toFixed(2)),
+        top: Number(top.toFixed(2))
+      });
+    }
+    attempts += 1;
+  }
+  return points;
+}
+
+function createSeededRandom(seed: string | number | undefined) {
+  let state = 2166136261;
+  const normalizedSeed = String(seed || 'fortale-fairy-overlay');
+  for (let index = 0; index < normalizedSeed.length; index += 1) {
+    state ^= normalizedSeed.charCodeAt(index);
+    state = Math.imul(state, 16777619);
+  }
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967295;
+  };
+}
+
+function buildVisualStoryMotionProfile(seed: string | undefined, text: string | undefined): VisualStoryMotionProfile {
+  let state = 0;
+  const normalizedSeed = `${String(seed || 'visual-story')}|${String(text || '')}`;
+  for (let index = 0; index < normalizedSeed.length; index += 1) {
+    state = ((state * 31) + normalizedSeed.charCodeAt(index)) >>> 0;
+  }
+  const next = () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967295;
+  };
+  const mood = inferVisualStoryMood(text);
+  const sparkleCount = mood === 'magic' ? 2 : 1;
+  return {
+    mood,
+    panX: Number((((next() * 2.8) - 1.4)).toFixed(2)),
+    panY: Number((((next() * 2.4) - 1.2)).toFixed(2)),
+    endScale: Number((1.035 + next() * 0.03).toFixed(3)),
+    duration: Number((12.5 + next() * 4.5).toFixed(2)),
+    sparkleCount
+  };
+}
+
+function buildVisualStoryMotionPoints(seed: string | undefined, profile: VisualStoryMotionProfile): {
+  sparkles: VisualStoryMotionPoint[];
+} {
+  let state = 0;
+  const normalizedSeed = String(seed || 'visual-story');
+  for (let index = 0; index < normalizedSeed.length; index += 1) {
+    state = ((state * 31) + normalizedSeed.charCodeAt(index)) >>> 0;
+  }
+  const next = () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967295;
+  };
+  const sparklePoints = buildUniqueOverlayBands(
+    profile.sparkleCount,
+    next,
+    [[6, 22], [74, 95]],
+    [10, 90]
+  );
+  return {
+    sparkles: sparklePoints.map(({ left, top }) => ({
+      left,
+      top,
+      size: 3 + Math.round(next() * 3),
+      delay: 0,
+      duration: 0
+    }))
+  };
 }
 
 function logVisualStoryNarrationCosts(
@@ -766,6 +1040,290 @@ function logVisualStoryNarrationCosts(
   usageEntries.forEach((entry) => {
     console.info(`[ai-cost] seslendirme - ${formatAiUsageEntryForConsole(entry)}`);
   });
+}
+
+const _FAIRY_COLORS = ['#60a5fa', '#f87171', '#e879f9', '#4ade80', '#22d3ee', '#fb923c', '#fbbf24', '#a78bfa'];
+
+type FairyOverlayStar = {
+  id: number;
+  cycle: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  delay: number;
+  duration: number;
+  color: string;
+  tilt: number;
+  glow: number;
+  driftX: number;
+  driftY: number;
+  variant: 'sparkle' | 'snowflake';
+};
+
+type FairyAmbientParticle = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  delay: number;
+  duration: number;
+  color: string;
+  tilt: number;
+  glow: number;
+  driftX: number;
+  driftY: number;
+  variant: 'sparkle' | 'snowflake';
+};
+
+type FairyAmbientDust = {
+  left: number;
+  bottom: number;
+  size: number;
+  delay: number;
+  duration: number;
+  color: string;
+};
+
+function buildStoryTextAmbient(seed: string | undefined) {
+  const next = createSeededRandom(`${String(seed || 'visual-story')}|text-ambient`);
+  const starPoints = buildUniqueOverlayBands(5, next, [[8, 42], [56, 94]], [6, 94]);
+  const dust: FairyAmbientDust[] = Array.from({ length: 72 }, (_, index) => ({
+    left: Number((8 + (next() * 86)).toFixed(2)),
+    bottom: Number((4 + (next() * 70)).toFixed(2)),
+    size: Number((1.4 + (next() * 1.1)).toFixed(2)),
+    delay: Number((next() * 4.4).toFixed(2)),
+    duration: Number((4 + (next() * 2.4)).toFixed(2)),
+    color: _FAIRY_COLORS[index % _FAIRY_COLORS.length]
+  }));
+  return {
+    stars: starPoints.map((point, index) => {
+      const width = 7 + Math.round(next() * 3);
+      return {
+        left: point.left,
+        top: point.top,
+        width,
+        height: Number((width * (0.84 + next() * 0.18)).toFixed(2)),
+        delay: Number((next() * 4.6).toFixed(2)),
+        duration: Number((3.6 + (next() * 2)).toFixed(2)),
+        color: _FAIRY_COLORS[index % _FAIRY_COLORS.length],
+        tilt: Number(((-12 + (next() * 24))).toFixed(2)),
+        glow: Number((0.18 + (next() * 0.12)).toFixed(2)),
+        driftX: Number(((-0.9 + (next() * 1.8))).toFixed(2)),
+        driftY: Number(((-1.2 + (next() * 2.4))).toFixed(2)),
+        variant: index % 2 === 0 ? 'sparkle' : 'snowflake'
+      } satisfies FairyAmbientParticle;
+    }),
+    dust
+  };
+}
+
+function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
+  const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const stars = useMemo(() => [
+    // 30 beyaz yıldız
+    { x: 5,  y: 8,  s: 1.4, dur: 2.8, delay: 0.0, lo: 0.10, hi: 0.84 },
+    { x: 15, y: 22, s: 1.0, dur: 3.5, delay: 0.6, lo: 0.08, hi: 0.68 },
+    { x: 27, y: 6,  s: 1.9, dur: 2.2, delay: 1.1, lo: 0.14, hi: 0.94 },
+    { x: 38, y: 18, s: 1.2, dur: 3.9, delay: 0.3, lo: 0.09, hi: 0.76 },
+    { x: 51, y: 4,  s: 2.0, dur: 2.6, delay: 0.9, lo: 0.16, hi: 0.96 },
+    { x: 63, y: 15, s: 1.1, dur: 4.1, delay: 0.2, lo: 0.08, hi: 0.64 },
+    { x: 74, y: 27, s: 2.3, dur: 3.0, delay: 1.4, lo: 0.18, hi: 1.00 },
+    { x: 88, y: 9,  s: 1.3, dur: 2.9, delay: 0.7, lo: 0.10, hi: 0.80 },
+    { x: 11, y: 48, s: 1.1, dur: 3.7, delay: 0.4, lo: 0.08, hi: 0.70 },
+    { x: 23, y: 38, s: 1.7, dur: 2.4, delay: 1.2, lo: 0.12, hi: 0.88 },
+    { x: 35, y: 62, s: 1.0, dur: 4.3, delay: 0.1, lo: 0.07, hi: 0.60 },
+    { x: 47, y: 44, s: 2.5, dur: 2.7, delay: 0.8, lo: 0.20, hi: 1.00 },
+    { x: 59, y: 68, s: 1.2, dur: 3.2, delay: 1.5, lo: 0.10, hi: 0.74 },
+    { x: 71, y: 53, s: 1.6, dur: 2.1, delay: 0.5, lo: 0.13, hi: 0.90 },
+    { x: 83, y: 40, s: 1.0, dur: 4.0, delay: 1.0, lo: 0.08, hi: 0.66 },
+    { x: 3,  y: 74, s: 1.8, dur: 2.5, delay: 0.3, lo: 0.14, hi: 0.86 },
+    { x: 19, y: 81, s: 1.3, dur: 4.1, delay: 0.6, lo: 0.10, hi: 0.72 },
+    { x: 33, y: 86, s: 2.0, dur: 3.3, delay: 1.3, lo: 0.16, hi: 0.92 },
+    { x: 50, y: 73, s: 1.1, dur: 2.8, delay: 0.2, lo: 0.09, hi: 0.64 },
+    { x: 65, y: 84, s: 1.5, dur: 3.6, delay: 0.9, lo: 0.12, hi: 0.80 },
+    { x: 78, y: 70, s: 1.9, dur: 2.3, delay: 1.6, lo: 0.18, hi: 0.96 },
+    { x: 93, y: 57, s: 1.2, dur: 4.2, delay: 0.4, lo: 0.10, hi: 0.70 },
+    { x: 8,  y: 33, s: 2.6, dur: 3.1, delay: 0.7, lo: 0.22, hi: 1.00 },
+    { x: 44, y: 31, s: 1.0, dur: 2.6, delay: 1.1, lo: 0.08, hi: 0.62 },
+    { x: 69, y: 36, s: 1.4, dur: 3.5, delay: 0.5, lo: 0.11, hi: 0.78 },
+    { x: 26, y: 13, s: 1.6, dur: 3.2, delay: 0.4, lo: 0.12, hi: 0.86 },
+    { x: 57, y: 90, s: 1.1, dur: 4.4, delay: 1.7, lo: 0.08, hi: 0.64 },
+    { x: 82, y: 12, s: 2.1, dur: 2.3, delay: 0.8, lo: 0.17, hi: 0.98 },
+    { x: 14, y: 65, s: 1.3, dur: 3.8, delay: 1.3, lo: 0.10, hi: 0.74 },
+    { x: 40, y: 55, s: 1.8, dur: 2.7, delay: 0.0, lo: 0.14, hi: 0.90 },
+    // 20 renkli yıldız
+    { x: 55, y: 21, s: 1.0, dur: 4.6, delay: 2.0, lo: 0.07, hi: 0.60, color: '#60a5fa' },
+    { x: 76, y: 78, s: 2.4, dur: 3.0, delay: 0.6, lo: 0.19, hi: 1.00, color: '#f87171' },
+    { x: 95, y: 43, s: 1.2, dur: 3.7, delay: 1.5, lo: 0.09, hi: 0.70, color: '#e879f9' },
+    { x: 30, y: 92, s: 1.5, dur: 2.5, delay: 0.3, lo: 0.12, hi: 0.80, color: '#4ade80' },
+    { x: 6,  y: 58, s: 1.8, dur: 3.4, delay: 1.0, lo: 0.14, hi: 0.88, color: '#22d3ee' },
+    { x: 42, y: 77, s: 1.1, dur: 4.2, delay: 0.5, lo: 0.09, hi: 0.66, color: '#fb923c' },
+    { x: 86, y: 49, s: 2.0, dur: 2.8, delay: 1.8, lo: 0.16, hi: 0.92, color: '#fbbf24' },
+    { x: 18, y: 10, s: 1.3, dur: 3.6, delay: 0.2, lo: 0.10, hi: 0.72, color: '#a78bfa' },
+    { x: 62, y: 59, s: 1.6, dur: 2.1, delay: 0.9, lo: 0.13, hi: 0.86, color: '#60a5fa' },
+    { x: 91, y: 26, s: 1.0, dur: 4.5, delay: 1.4, lo: 0.08, hi: 0.64, color: '#f87171' },
+    { x: 34, y: 46, s: 2.2, dur: 3.0, delay: 0.7, lo: 0.18, hi: 0.96, color: '#e879f9' },
+    { x: 53, y: 83, s: 1.4, dur: 2.6, delay: 1.2, lo: 0.11, hi: 0.78, color: '#4ade80' },
+    { x: 76, y: 37, s: 1.7, dur: 3.8, delay: 0.1, lo: 0.14, hi: 0.88, color: '#22d3ee' },
+    { x: 22, y: 70, s: 1.0, dur: 4.0, delay: 1.6, lo: 0.08, hi: 0.62, color: '#fb923c' },
+    { x: 48, y: 14, s: 2.5, dur: 2.4, delay: 0.4, lo: 0.20, hi: 1.00, color: '#fbbf24' },
+    { x: 68, y: 94, s: 1.1, dur: 3.9, delay: 2.1, lo: 0.09, hi: 0.68, color: '#a78bfa' },
+    { x: 9,  y: 87, s: 1.9, dur: 2.9, delay: 0.8, lo: 0.15, hi: 0.90, color: '#60a5fa' },
+    { x: 37, y: 24, s: 1.3, dur: 4.3, delay: 1.3, lo: 0.10, hi: 0.74, color: '#f87171' },
+    { x: 80, y: 61, s: 1.6, dur: 3.1, delay: 0.6, lo: 0.12, hi: 0.82, color: '#e879f9' },
+    { x: 16, y: 42, s: 2.1, dur: 2.7, delay: 1.9, lo: 0.17, hi: 0.94, color: '#4ade80' },
+  ], []);
+
+  const dust = useMemo(() => [
+    // 40 beyaz peri tozu
+    { x: 10, y: 62, s: 3.2, dur: 4.2, delay: 0.0, op: 0.70 },
+    { x: 23, y: 75, s: 3.8, dur: 5.1, delay: 1.0, op: 0.62 },
+    { x: 36, y: 50, s: 2.8, dur: 3.8, delay: 1.8, op: 0.76 },
+    { x: 50, y: 82, s: 4.2, dur: 4.7, delay: 0.5, op: 0.65 },
+    { x: 63, y: 66, s: 3.0, dur: 5.4, delay: 2.1, op: 0.60 },
+    { x: 77, y: 47, s: 3.8, dur: 4.0, delay: 1.3, op: 0.72 },
+    { x: 5,  y: 40, s: 3.5, dur: 4.8, delay: 0.8, op: 0.68 },
+    { x: 88, y: 78, s: 3.2, dur: 3.6, delay: 2.4, op: 0.74 },
+    { x: 30, y: 20, s: 2.6, dur: 5.0, delay: 0.3, op: 0.58 },
+    { x: 57, y: 30, s: 3.0, dur: 4.4, delay: 1.6, op: 0.67 },
+    { x: 7,  y: 94, s: 3.4, dur: 4.6, delay: 0.4, op: 0.70 },
+    { x: 18, y: 17, s: 2.4, dur: 5.2, delay: 1.2, op: 0.60 },
+    { x: 29, y: 69, s: 4.0, dur: 3.9, delay: 2.3, op: 0.74 },
+    { x: 44, y: 37, s: 2.8, dur: 4.9, delay: 0.7, op: 0.63 },
+    { x: 49, y: 57, s: 4.6, dur: 4.3, delay: 1.5, op: 0.78 },
+    { x: 70, y: 24, s: 3.2, dur: 5.6, delay: 0.2, op: 0.61 },
+    { x: 81, y: 86, s: 3.6, dur: 4.1, delay: 2.0, op: 0.69 },
+    { x: 94, y: 53, s: 2.7, dur: 3.7, delay: 0.9, op: 0.65 },
+    { x: 15, y: 44, s: 3.9, dur: 5.3, delay: 1.7, op: 0.72 },
+    { x: 41, y: 91, s: 3.1, dur: 4.0, delay: 0.6, op: 0.67 },
+    { x: 2,  y: 64, s: 3.5, dur: 4.5, delay: 1.1, op: 0.64 },
+    { x: 13, y: 32, s: 2.5, dur: 5.8, delay: 0.0, op: 0.60 },
+    { x: 26, y: 79, s: 4.1, dur: 3.6, delay: 2.5, op: 0.76 },
+    { x: 34, y: 14, s: 2.9, dur: 4.7, delay: 1.4, op: 0.62 },
+    { x: 46, y: 72, s: 4.4, dur: 5.0, delay: 0.3, op: 0.71 },
+    { x: 61, y: 42, s: 2.8, dur: 4.2, delay: 1.9, op: 0.67 },
+    { x: 74, y: 60, s: 3.7, dur: 3.8, delay: 0.5, op: 0.73 },
+    { x: 85, y: 35, s: 2.6, dur: 5.5, delay: 2.2, op: 0.59 },
+    { x: 20, y: 97, s: 4.2, dur: 4.4, delay: 0.8, op: 0.75 },
+    { x: 68, y: 90, s: 3.0, dur: 4.8, delay: 1.3, op: 0.68 },
+    { x: 9,  y: 49, s: 3.4, dur: 4.3, delay: 0.2, op: 0.70 },
+    { x: 22, y: 10, s: 2.7, dur: 5.7, delay: 1.9, op: 0.57 },
+    { x: 33, y: 61, s: 3.9, dur: 3.5, delay: 0.6, op: 0.73 },
+    { x: 43, y: 26, s: 3.1, dur: 4.9, delay: 2.2, op: 0.64 },
+    { x: 56, y: 93, s: 4.5, dur: 4.0, delay: 1.0, op: 0.77 },
+    { x: 67, y: 18, s: 2.8, dur: 5.3, delay: 0.4, op: 0.60 },
+    { x: 76, y: 70, s: 3.7, dur: 4.6, delay: 1.7, op: 0.69 },
+    { x: 90, y: 39, s: 2.5, dur: 3.9, delay: 0.1, op: 0.63 },
+    { x: 1,  y: 84, s: 4.1, dur: 5.1, delay: 2.6, op: 0.71 },
+    { x: 52, y: 8,  s: 3.3, dur: 4.2, delay: 1.4, op: 0.66 },
+    // 60 renkli peri tozu
+    { x: 38, y: 45, s: 2.6, dur: 5.6, delay: 0.7, op: 0.59, color: '#60a5fa' },
+    { x: 62, y: 99, s: 3.8, dur: 3.7, delay: 2.0, op: 0.74, color: '#f87171' },
+    { x: 73, y: 56, s: 3.0, dur: 4.5, delay: 0.9, op: 0.67, color: '#e879f9' },
+    { x: 86, y: 22, s: 3.5, dur: 5.0, delay: 1.5, op: 0.62, color: '#4ade80' },
+    { x: 28, y: 87, s: 4.3, dur: 3.8, delay: 2.3, op: 0.76, color: '#22d3ee' },
+    { x: 11, y: 55, s: 3.1, dur: 4.6, delay: 0.4, op: 0.68, color: '#fb923c' },
+    { x: 47, y: 33, s: 3.6, dur: 5.2, delay: 1.2, op: 0.63, color: '#fbbf24' },
+    { x: 66, y: 80, s: 2.9, dur: 4.1, delay: 2.1, op: 0.71, color: '#a78bfa' },
+    { x: 83, y: 16, s: 4.0, dur: 3.6, delay: 0.6, op: 0.65, color: '#60a5fa' },
+    { x: 4,  y: 73, s: 3.3, dur: 4.9, delay: 1.8, op: 0.59, color: '#f87171' },
+    { x: 21, y: 41, s: 3.7, dur: 5.3, delay: 0.2, op: 0.70, color: '#e879f9' },
+    { x: 55, y: 67, s: 2.7, dur: 4.0, delay: 1.6, op: 0.62, color: '#4ade80' },
+    { x: 79, y: 28, s: 4.4, dur: 3.5, delay: 0.9, op: 0.77, color: '#22d3ee' },
+    { x: 16, y: 95, s: 3.0, dur: 4.8, delay: 2.4, op: 0.64, color: '#fb923c' },
+    { x: 40, y: 12, s: 3.8, dur: 5.1, delay: 0.3, op: 0.69, color: '#fbbf24' },
+    { x: 60, y: 51, s: 2.5, dur: 4.3, delay: 1.0, op: 0.58, color: '#a78bfa' },
+    { x: 92, y: 36, s: 4.1, dur: 3.9, delay: 2.2, op: 0.73, color: '#60a5fa' },
+    { x: 8,  y: 88, s: 3.4, dur: 5.4, delay: 0.5, op: 0.66, color: '#f87171' },
+    { x: 32, y: 23, s: 2.8, dur: 4.2, delay: 1.4, op: 0.61, color: '#e879f9' },
+    { x: 54, y: 74, s: 3.9, dur: 3.7, delay: 2.0, op: 0.74, color: '#4ade80' },
+    { x: 71, y: 43, s: 3.2, dur: 5.0, delay: 0.7, op: 0.67, color: '#22d3ee' },
+    { x: 89, y: 65, s: 2.6, dur: 4.5, delay: 1.3, op: 0.60, color: '#fb923c' },
+    { x: 17, y: 29, s: 4.2, dur: 3.8, delay: 2.8, op: 0.75, color: '#fbbf24' },
+    { x: 39, y: 82, s: 3.0, dur: 5.2, delay: 0.1, op: 0.63, color: '#a78bfa' },
+    { x: 58, y: 15, s: 3.6, dur: 4.0, delay: 1.7, op: 0.70, color: '#60a5fa' },
+    { x: 75, y: 58, s: 2.4, dur: 4.7, delay: 0.8, op: 0.57, color: '#f87171' },
+    { x: 96, y: 77, s: 4.0, dur: 3.6, delay: 2.3, op: 0.72, color: '#e879f9' },
+    { x: 12, y: 34, s: 3.3, dur: 5.5, delay: 0.4, op: 0.65, color: '#4ade80' },
+    { x: 31, y: 91, s: 2.7, dur: 4.2, delay: 1.9, op: 0.59, color: '#22d3ee' },
+    { x: 48, y: 19, s: 4.5, dur: 3.9, delay: 0.6, op: 0.78, color: '#fb923c' },
+    { x: 64, y: 63, s: 3.1, dur: 5.0, delay: 2.1, op: 0.66, color: '#fbbf24' },
+    { x: 87, y: 46, s: 2.8, dur: 4.4, delay: 1.0, op: 0.61, color: '#a78bfa' },
+    { x: 6,  y: 77, s: 3.7, dur: 3.7, delay: 2.6, op: 0.69, color: '#60a5fa' },
+    { x: 25, y: 52, s: 3.0, dur: 5.1, delay: 0.3, op: 0.63, color: '#f87171' },
+    { x: 43, y: 38, s: 4.1, dur: 4.3, delay: 1.5, op: 0.72, color: '#e879f9' },
+    { x: 59, y: 85, s: 2.5, dur: 3.8, delay: 0.9, op: 0.58, color: '#4ade80' },
+    { x: 77, y: 11, s: 3.8, dur: 4.9, delay: 2.0, op: 0.70, color: '#22d3ee' },
+    { x: 93, y: 54, s: 3.2, dur: 5.3, delay: 0.2, op: 0.64, color: '#fb923c' },
+    { x: 19, y: 70, s: 4.3, dur: 4.0, delay: 1.6, op: 0.74, color: '#fbbf24' },
+    { x: 35, y: 25, s: 2.9, dur: 4.6, delay: 2.4, op: 0.62, color: '#a78bfa' },
+    { x: 51, y: 92, s: 3.5, dur: 3.5, delay: 0.7, op: 0.68, color: '#60a5fa' },
+    { x: 69, y: 48, s: 2.6, dur: 5.2, delay: 1.3, op: 0.59, color: '#f87171' },
+    { x: 84, y: 31, s: 4.0, dur: 4.1, delay: 0.5, op: 0.73, color: '#e879f9' },
+    { x: 3,  y: 60, s: 3.3, dur: 4.8, delay: 2.2, op: 0.66, color: '#4ade80' },
+    { x: 24, y: 6,  s: 2.7, dur: 5.6, delay: 0.8, op: 0.60, color: '#22d3ee' },
+    { x: 45, y: 76, s: 4.4, dur: 3.7, delay: 1.8, op: 0.76, color: '#fb923c' },
+    { x: 72, y: 21, s: 3.1, dur: 4.5, delay: 0.1, op: 0.65, color: '#fbbf24' },
+    { x: 91, y: 68, s: 2.8, dur: 5.0, delay: 2.7, op: 0.61, color: '#a78bfa' },
+    { x: 14, y: 84, s: 3.6, dur: 4.2, delay: 0.6, op: 0.70, color: '#60a5fa' },
+    { x: 37, y: 17, s: 4.1, dur: 3.9, delay: 1.4, op: 0.74, color: '#f87171' },
+    { x: 53, y: 59, s: 2.4, dur: 5.4, delay: 2.0, op: 0.57, color: '#e879f9' },
+    { x: 70, y: 89, s: 3.9, dur: 4.0, delay: 0.4, op: 0.72, color: '#4ade80' },
+    { x: 88, y: 44, s: 3.0, dur: 4.7, delay: 1.1, op: 0.65, color: '#22d3ee' },
+    { x: 7,  y: 27, s: 4.2, dur: 3.6, delay: 2.5, op: 0.77, color: '#fb923c' },
+    { x: 27, y: 97, s: 2.7, dur: 5.1, delay: 0.3, op: 0.62, color: '#fbbf24' },
+    { x: 46, y: 33, s: 3.5, dur: 4.4, delay: 1.7, op: 0.68, color: '#a78bfa' },
+    { x: 65, y: 72, s: 2.9, dur: 3.8, delay: 0.9, op: 0.63, color: '#60a5fa' },
+    { x: 82, y: 13, s: 4.0, dur: 5.2, delay: 2.1, op: 0.71, color: '#f87171' },
+    { x: 20, y: 47, s: 3.3, dur: 4.1, delay: 0.5, op: 0.66, color: '#e879f9' },
+    { x: 42, y: 63, s: 3.7, dur: 4.9, delay: 1.3, op: 0.69, color: '#4ade80' },
+  ], []);
+
+  return (
+    <div className="pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: 141 }} aria-hidden="true">
+      {!reduced && stars.map((star, idx) => (
+        <span
+          key={`rs-${idx}`}
+          className="home-star"
+          style={{
+            left: `${star.x}%`,
+            top: `${star.y}%`,
+            width: `${star.s}px`,
+            height: `${star.s}px`,
+            ['--star-dur' as string]: `${star.dur}s`,
+            ['--star-delay' as string]: `${star.delay}s`,
+            ['--star-lo' as string]: `${star.lo}`,
+            ['--star-hi' as string]: `${star.hi}`,
+            ...('color' in star && star.color ? { ['--star-color' as string]: star.color } : {}),
+          } as React.CSSProperties}
+        />
+      ))}
+      {!reduced && dust.map((d, idx) => {
+        const color = 'color' in d ? (d as { color?: string }).color : undefined;
+        const bg = color
+          ? `radial-gradient(circle, ${color}ee 0%, ${color}88 42%, transparent 100%)`
+          : 'radial-gradient(circle, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.55) 42%, transparent 100%)';
+        return (
+          <span
+            key={`rd-${idx}`}
+            className="home-fairy-dust"
+            style={{
+              left: `${d.x}%`,
+              top: `${d.y}%`,
+              width: `${d.s}px`,
+              height: `${d.s}px`,
+              ['--dust-dur' as string]: `${d.dur}s`,
+              ['--dust-delay' as string]: `${d.delay}s`,
+              ['--dust-op' as string]: `${d.op}`,
+              background: bg,
+            } as React.CSSProperties}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function VisualStoryReader({
@@ -781,8 +1339,9 @@ function VisualStoryReader({
 }) {
   const { t } = useUiI18n();
   const [pageIndex, setPageIndex] = useState(0);
-  const [rotationDeg, setRotationDeg] = useState(0);
-  const [zoomScale, setZoomScale] = useState(1);
+  const [isPortraitViewport, setIsPortraitViewport] = useState<boolean>(() => (
+    typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true
+  ));
   const [isPdfDownloading, setIsPdfDownloading] = useState(false);
   const [isEpubDownloading, setIsEpubDownloading] = useState(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
@@ -790,31 +1349,112 @@ function VisualStoryReader({
   const [backgroundMusicError, setBackgroundMusicError] = useState<string | null>(null);
   const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
   const [narrationError, setNarrationError] = useState<string | null>(null);
+  const [motionPhase, setMotionPhase] = useState<'idle' | 'pause' | 'reading'>('idle');
   const [isNarrationGenerating, setIsNarrationGenerating] = useState(false);
   const [narrationGenerationProgress, setNarrationGenerationProgress] = useState(0);
   const [coverAudioOverrideUrl, setCoverAudioOverrideUrl] = useState<string | null>(null);
   const [pageAudioOverrideUrls, setPageAudioOverrideUrls] = useState<Record<string, string>>({});
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
+  const [visualImageFullscreenPageIndex, setVisualImageFullscreenPageIndex] = useState<number | null>(null);
+  const [visualRotationOverride, setVisualRotationOverride] = useState<boolean | null>(null);
   const [selectedPdfBackgroundPresetId, setSelectedPdfBackgroundPresetId] = useState<PdfBackgroundPresetId>(PDF_BACKGROUND_PRESETS[0].id);
   const [nativeViewerLaunchToken, setNativeViewerLaunchToken] = useState(0);
   const [nativeViewerError, setNativeViewerError] = useState<string | null>(null);
   const swiperRef = useRef<SwiperType | null>(null);
   const nativeViewerOpenedRef = useRef(false);
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
+  const backgroundAudioContextRef = useRef<AudioContext | null>(null);
+  const backgroundAudioGainRef = useRef<GainNode | null>(null);
+  const backgroundAudioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const backgroundAudioSourceElementRef = useRef<HTMLAudioElement | null>(null);
+  const backgroundAudioMixerUnavailableRef = useRef(false);
+  const lastViewportPortraitRef = useRef(isPortraitViewport);
   const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const transitionAudioRef = useRef<HTMLAudioElement | null>(null);
   const activePageIndexRef = useRef(0);
   const narrationAdvanceLockRef = useRef(false);
   const narrationStartTimerRef = useRef<number | null>(null);
   const narrationAdvanceTimerRef = useRef<number | null>(null);
   const narrationRunIdRef = useRef(0);
-  const isLandscapePreview = rotationDeg === 90;
+  const visualStoryBundleZipPromiseRef = useRef<Promise<unknown> | null>(null);
+  const visualStoryBundleAudioObjectUrlsRef = useRef<string[]>([]);
   const backgroundTrack = useMemo(
     () => resolveVisualStoryBackgroundTrack(courseData.subGenre),
     [courseData.subGenre]
   );
+  const getOrCreateBackgroundAudioMixer = useCallback(() => {
+    const audio = backgroundAudioRef.current;
+    if (!audio || typeof window === 'undefined') return null;
+    if (backgroundAudioMixerUnavailableRef.current) return null;
+    const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return null;
+
+    const context = backgroundAudioContextRef.current || new AudioContextConstructor();
+    backgroundAudioContextRef.current = context;
+
+    const gainNode = backgroundAudioGainRef.current || context.createGain();
+    if (!backgroundAudioGainRef.current) {
+      gainNode.gain.value = VISUAL_STORY_BACKGROUND_NARRATION_GAIN;
+      gainNode.connect(context.destination);
+      backgroundAudioGainRef.current = gainNode;
+    }
+
+    if (backgroundAudioSourceElementRef.current !== audio) {
+      try {
+        backgroundAudioSourceRef.current?.disconnect();
+      } catch {
+        // Ignore stale Web Audio node cleanup failures.
+      }
+      backgroundAudioSourceRef.current = null;
+      backgroundAudioSourceElementRef.current = null;
+    }
+
+    if (!backgroundAudioSourceRef.current) {
+      try {
+        const source = context.createMediaElementSource(audio);
+        source.connect(gainNode);
+        backgroundAudioSourceRef.current = source;
+        backgroundAudioSourceElementRef.current = audio;
+      } catch (error) {
+        backgroundAudioMixerUnavailableRef.current = true;
+        if (audio) audio.volume = isNarrationPlaying ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
+        return null;
+      }
+    }
+
+    return { context, gainNode };
+  }, []);
+  const setBackgroundAudioLevel = useCallback((targetGain: number, rampSeconds = VISUAL_STORY_BACKGROUND_GAIN_RAMP_SECONDS) => {
+    const clampedGain = Math.max(0, Math.min(1, targetGain));
+    const audio = backgroundAudioRef.current;
+    const mixer = getOrCreateBackgroundAudioMixer();
+    if (!mixer) {
+      if (audio) {
+        audio.volume = clampedGain;
+      }
+      return;
+    }
+    if (audio) {
+      audio.volume = 1;
+    }
+
+    const now = mixer.context.currentTime;
+    mixer.gainNode.gain.cancelScheduledValues(now);
+    mixer.gainNode.gain.setValueAtTime(mixer.gainNode.gain.value, now);
+    mixer.gainNode.gain.linearRampToValueAtTime(clampedGain, now + rampSeconds);
+  }, [getOrCreateBackgroundAudioMixer]);
+  const prepareBackgroundAudioMixer = useCallback(async () => {
+    const mixer = getOrCreateBackgroundAudioMixer();
+    if (!mixer || mixer.context.state !== 'suspended') return;
+    try {
+      await mixer.context.resume();
+    } catch (error) {
+      console.error('Visual story background audio context could not be resumed:', error);
+    }
+  }, [getOrCreateBackgroundAudioMixer]);
   // Keep the visual reader inline so the custom music control stays available on native.
   const isNativePhotoViewer = false;
   const derivedCoverNarrationScript = deriveVisualStoryCoverScript(courseData);
-  const rotatedIconStyle = isLandscapePreview ? { transform: 'rotate(90deg)' } : undefined;
   const derivedVisualStoryNarrationPages = useMemo(
     () =>
       (courseData.nodes || [])
@@ -830,7 +1470,7 @@ function VisualStoryReader({
         .map((node, index) => ({
           nodeId: node.id,
           title: node.title || `${t('Sayfa')} ${index + 1}`,
-          script: deriveVisualStoryPageScript(node, index, t),
+          script: deriveVisualStoryPageScript(node, index, t, courseData.topic),
           pageSequence: Number.isFinite(Number(node.pageSequence)) ? Number(node.pageSequence) : index + 1
         }))
         .filter((page) => page.script.length > 0),
@@ -861,16 +1501,122 @@ function VisualStoryReader({
         title: node.title || `${t('Sayfa')} ${index + 1}`,
         imageUrl: node.pageImageUrl,
         audioUrl: pageAudioOverrideUrls[node.id] || node.pageAudioUrl,
-        text: deriveVisualStoryPageScript(node, index, t),
+        text: deriveVisualStoryPageScript(node, index, t, courseData.topic),
         pageSequence: node.pageSequence
       }));
     return [coverPage, ...storyPages].filter((page) => Boolean(page.imageUrl?.trim()));
   }, [courseData, coverAudioOverrideUrl, derivedCoverNarrationScript, pageAudioOverrideUrls, t]);
 
   const currentPage = pages[pageIndex] || null;
-  const currentPageAudioUrl = String(currentPage?.audioUrl || '').trim();
+  const currentMotionProfile = useMemo(
+    () => buildVisualStoryMotionProfile(currentPage?.id, currentPage?.text || currentPage?.title),
+    [currentPage?.id, currentPage?.text, currentPage?.title]
+  );
+  const currentTextAmbient = useMemo(
+    () => buildStoryTextAmbient(currentPage?.id),
+    [currentPage?.id]
+  );
+  const isVisualImageFullscreenOpen = visualImageFullscreenPageIndex !== null;
+  const visualFullscreenPage = isVisualImageFullscreenOpen ? currentPage : null;
+  const shouldRotateVisualLayout = visualRotationOverride ?? isPortraitViewport;
+  const isRotatedVisualFullscreenLayout = isVisualImageFullscreenOpen && shouldRotateVisualLayout;
+  const fullscreenOverlayControlStyle = isRotatedVisualFullscreenLayout
+    ? { transform: 'rotate(90deg)' as const }
+    : undefined;
+  const toggleVisualStoryRotation = useCallback(() => {
+    setVisualRotationOverride((currentOverride) => !(currentOverride ?? isPortraitViewport));
+  }, [isPortraitViewport]);
+  const isBundledVisualStoryAssetPath = useCallback((rawUrl: string | null | undefined) => {
+    const normalizedUrl = String(rawUrl || '').trim();
+    return Boolean(
+      normalizedUrl &&
+      !/^https?:\/\//i.test(normalizedUrl) &&
+      !/^data:/i.test(normalizedUrl) &&
+      !normalizedUrl.startsWith('blob:')
+    );
+  }, []);
+  const buildPreviewImageState = useCallback((url: string, suffix: string, alt: string): ImagePreviewState | null => {
+    const normalizedUrl = String(url || '').trim();
+    if (!normalizedUrl) return null;
+    const topicSlug = String(courseData.topic || 'gorsel')
+      .trim()
+      .toLocaleLowerCase('tr-TR')
+      .replace(/[^a-z0-9çğıöşü_-]+/gi, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'gorsel';
+    return {
+      url: normalizedUrl,
+      fileName: `${topicSlug}-${suffix}.jpg`,
+      alt
+    };
+  }, [courseData.topic]);
+  const showVisualStoryDownloadError = useCallback(() => {
+    window.alert(t('İndirilecek dosya bulunamadı.'));
+  }, [t]);
+  const handleVisualStoryPageImageDownload = useCallback(async (page: VisualStoryPage | null) => {
+    if (!page?.imageUrl) {
+      showVisualStoryDownloadError();
+      return;
+    }
+    try {
+      const preview = buildPreviewImageState(
+        page.imageUrl,
+        `gorsel-${page.pageSequence || 1}`,
+        page.text || page.title || `${courseData.topic || t('Masal')} ${t('Görsel')}`
+      );
+      if (!preview) {
+        showVisualStoryDownloadError();
+        return;
+      }
+      await downloadFile({
+        url: preview.url,
+        fileName: preview.fileName
+      });
+    } catch (error) {
+      console.error('Visual story image download failed:', error);
+      showVisualStoryDownloadError();
+    }
+  }, [buildPreviewImageState, courseData.topic, showVisualStoryDownloadError, t]);
+  const [resolvedBundledVisualStoryAudioUrls, setResolvedBundledVisualStoryAudioUrls] = useState<Record<string, string>>({});
+  const loadVisualStoryBundleZip = useCallback(async () => {
+    const packageUrl = String(courseData.contentPackageUrl || '').trim();
+    if (!packageUrl) return null;
+    if (!visualStoryBundleZipPromiseRef.current) {
+      visualStoryBundleZipPromiseRef.current = (async () => {
+        const JSZipModule = await import('jszip');
+        const response = await fetch(packageUrl);
+        if (!response.ok) {
+          throw new Error(`Bundle fetch failed: ${response.status}`);
+        }
+        return JSZipModule.default.loadAsync(await response.arrayBuffer());
+      })();
+    }
+    return visualStoryBundleZipPromiseRef.current;
+  }, [courseData.contentPackageUrl]);
+  const ensureBundledVisualStoryAudioUrl = useCallback(async (rawUrl: string | null | undefined) => {
+    const normalizedUrl = String(rawUrl || '').trim().replace(/^\.?\//, '');
+    if (!normalizedUrl) return '';
+    if (!isBundledVisualStoryAssetPath(normalizedUrl)) return normalizedUrl;
+    const existingUrl = resolvedBundledVisualStoryAudioUrls[normalizedUrl];
+    if (existingUrl) return existingUrl;
+    const zip = await loadVisualStoryBundleZip();
+    if (!zip || typeof (zip as { file?: unknown }).file !== 'function') return '';
+    const assetFile = (zip as { file: (path: string) => { async: (type: string) => Promise<Blob> } | null }).file(normalizedUrl);
+    if (!assetFile) return '';
+    const blob = await assetFile.async('blob');
+    const objectUrl = URL.createObjectURL(blob);
+    visualStoryBundleAudioObjectUrlsRef.current.push(objectUrl);
+    setResolvedBundledVisualStoryAudioUrls((current) => (
+      current[normalizedUrl] ? current : { ...current, [normalizedUrl]: objectUrl }
+    ));
+    return objectUrl;
+  }, [isBundledVisualStoryAssetPath, loadVisualStoryBundleZip, resolvedBundledVisualStoryAudioUrls]);
+  const currentPageAudioRawUrl = String(currentPage?.audioUrl || '').trim();
+  const currentPageAudioUrl = isBundledVisualStoryAssetPath(currentPageAudioRawUrl)
+    ? (resolvedBundledVisualStoryAudioUrls[currentPageAudioRawUrl.replace(/^\.?\//, '')] || '')
+    : currentPageAudioRawUrl;
   const hasMissingNarrationAudio = pages.some((page) => !page.audioUrl?.trim());
-  const isCurrentPageNarratable = Boolean(currentPageAudioUrl);
+  const isCurrentPageNarratable = Boolean(currentPageAudioUrl) || isBundledVisualStoryAssetPath(currentPageAudioRawUrl);
   const canGenerateNarrationAudio = Boolean(
     courseData.id &&
     isFairyTaleBookType(courseData.bookType) &&
@@ -894,37 +1640,63 @@ function VisualStoryReader({
   );
 
   useEffect(() => {
+    const handleViewportResize = () => {
+      const nextIsPortrait = window.innerHeight >= window.innerWidth;
+      setIsPortraitViewport(nextIsPortrait);
+      if (lastViewportPortraitRef.current !== nextIsPortrait) {
+        lastViewportPortraitRef.current = nextIsPortrait;
+        setVisualRotationOverride(null);
+      }
+    };
+    handleViewportResize();
+    window.addEventListener('resize', handleViewportResize);
+    window.addEventListener('orientationchange', handleViewportResize);
+    return () => {
+      window.removeEventListener('resize', handleViewportResize);
+      window.removeEventListener('orientationchange', handleViewportResize);
+    };
+  }, []);
+
+  useEffect(() => {
     setBackgroundMusicError(null);
   }, [backgroundTrack.src]);
 
   useEffect(() => {
     const audio = backgroundAudioRef.current;
     if (!audio) return;
-    audio.loop = true;
-    audio.preload = 'auto';
-    audio.volume = isNarrationPlaying ? 0.12 : 0.24;
-    if (!isBackgroundMusicEnabled) {
-      audio.pause();
-      return;
-    }
-    if (audio.paused) {
-      audio.currentTime = 0;
-    }
-    const playback = audio.paused ? audio.play() : undefined;
-    if (!playback || typeof playback.catch !== 'function') return;
-    playback.catch((error) => {
-      console.error('Visual story background music failed to play:', error);
-      setBackgroundMusicError(t('Masal müziği başlatılamadı.'));
-      setIsBackgroundMusicEnabled(false);
-    });
-    return () => {
-      audio.pause();
-    };
-  }, [backgroundTrack.src, isBackgroundMusicEnabled, isNarrationPlaying, t]);
+    audio.volume = isNarrationPlaying ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
+  }, [isNarrationPlaying]);
 
   useEffect(() => {
     activePageIndexRef.current = pageIndex;
   }, [pageIndex]);
+
+  const stopAudioElement = (audio: HTMLAudioElement | null | undefined, resetTime = true) => {
+    if (!audio) return;
+    audio.pause();
+    if (resetTime) {
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // Ignore media state races during teardown.
+      }
+    }
+  };
+
+  const stopTransitionSound = () => {
+    stopAudioElement(transitionAudioRef.current);
+  };
+
+  const playTransitionSound = () => {
+    const audio = transitionAudioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = VISUAL_STORY_TRANSITION_SFX_GAIN;
+    const playback = audio.play();
+    if (!playback || typeof playback.catch !== 'function') return;
+    playback.catch(() => undefined);
+  };
 
   useEffect(() => {
     const swiper = swiperRef.current;
@@ -944,24 +1716,83 @@ function VisualStoryReader({
       narrationAdvanceTimerRef.current = null;
     }
     narrationAdvanceLockRef.current = false;
+    stopTransitionSound();
     if (options?.pauseAudio) {
-      narrationAudioRef.current?.pause();
+      stopAudioElement(narrationAudioRef.current);
     }
   };
+
+  const stopAllVisualStoryAudio = () => {
+    clearNarrationTimers({ pauseAudio: true });
+    stopAudioElement(backgroundAudioRef.current);
+    stopAudioElement(narrationAudioRef.current);
+    stopAudioElement(transitionAudioRef.current);
+    setIsNarrationPlaying(false);
+    setIsBackgroundMusicEnabled(false);
+    setMotionPhase('idle');
+  };
+
+  useEffect(() => {
+    const stopForDocumentExit = () => {
+      stopAllVisualStoryAudio();
+    };
+    const stopForHiddenDocument = () => {
+      if (document.visibilityState === 'hidden') {
+        stopAllVisualStoryAudio();
+      }
+    };
+    document.addEventListener('visibilitychange', stopForHiddenDocument);
+    window.addEventListener('pagehide', stopForDocumentExit);
+    return () => {
+      document.removeEventListener('visibilitychange', stopForHiddenDocument);
+      window.removeEventListener('pagehide', stopForDocumentExit);
+    };
+  });
+
+  useEffect(() => {
+    return () => {
+      visualStoryBundleAudioObjectUrlsRef.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+      visualStoryBundleAudioObjectUrlsRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isBundledVisualStoryAssetPath(currentPageAudioRawUrl)) return;
+    if (currentPageAudioUrl) return;
+    void ensureBundledVisualStoryAudioUrl(currentPageAudioRawUrl).catch((error) => {
+      console.error('Visual story bundled audio resolution failed:', error);
+    });
+  }, [currentPageAudioRawUrl, currentPageAudioUrl, ensureBundledVisualStoryAudioUrl, isBundledVisualStoryAssetPath]);
 
   useEffect(() => {
     clearNarrationTimers({ pauseAudio: true });
     if (!isNarrationPlaying) {
+      setMotionPhase('idle');
       return;
     }
     if (!currentPageAudioUrl) {
+      if (isBundledVisualStoryAssetPath(currentPageAudioRawUrl)) {
+        setMotionPhase('pause');
+        void ensureBundledVisualStoryAudioUrl(currentPageAudioRawUrl).catch((error) => {
+          console.error('Visual story narration bundled audio could not be prepared:', error);
+          setNarrationError(t('Masal sesi başlatılamadı.'));
+          setIsNarrationPlaying(false);
+          setIsBackgroundMusicEnabled(false);
+          setMotionPhase('idle');
+        });
+        return;
+      }
       setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
       setIsNarrationPlaying(false);
       setIsBackgroundMusicEnabled(false);
+      setMotionPhase('idle');
       return;
     }
 
     setNarrationError(null);
+    setMotionPhase('pause');
     const runId = narrationRunIdRef.current;
     narrationStartTimerRef.current = window.setTimeout(() => {
       if (runId !== narrationRunIdRef.current) return;
@@ -970,8 +1801,11 @@ function VisualStoryReader({
       if (currentAudio.src !== currentPageAudioUrl) {
         currentAudio.src = currentPageAudioUrl;
       }
+      currentAudio.volume = 1;
       currentAudio.load();
       currentAudio.currentTime = 0;
+      stopTransitionSound();
+      setMotionPhase('reading');
       const playback = currentAudio.play();
       if (!playback || typeof playback.catch !== 'function') return;
       playback.catch((error) => {
@@ -980,19 +1814,43 @@ function VisualStoryReader({
         setNarrationError(t('Masal sesi başlatılamadı.'));
         setIsNarrationPlaying(false);
         setIsBackgroundMusicEnabled(false);
+        setMotionPhase('idle');
       });
     }, VISUAL_STORY_NARRATION_PRE_DELAY_MS);
 
     return () => {
       clearNarrationTimers({ pauseAudio: true });
     };
-  }, [currentPage?.id, currentPage?.title, currentPageAudioUrl, isNarrationPlaying, pageIndex, t]);
+  }, [
+    currentPage?.id,
+    currentPage?.title,
+    currentPageAudioRawUrl,
+    currentPageAudioUrl,
+    ensureBundledVisualStoryAudioUrl,
+    isBundledVisualStoryAssetPath,
+    isNarrationPlaying,
+    pageIndex,
+    t
+  ]);
 
   useEffect(() => {
     return () => {
       clearNarrationTimers({ pauseAudio: true });
-      backgroundAudioRef.current?.pause();
-      narrationAudioRef.current?.pause();
+      stopAudioElement(backgroundAudioRef.current);
+      stopAudioElement(narrationAudioRef.current);
+      stopAudioElement(transitionAudioRef.current);
+      try {
+        backgroundAudioSourceRef.current?.disconnect();
+        backgroundAudioGainRef.current?.disconnect();
+      } catch {
+        // Ignore Web Audio cleanup errors during unmount.
+      }
+      void backgroundAudioContextRef.current?.close().catch(() => undefined);
+      backgroundAudioSourceRef.current = null;
+      backgroundAudioSourceElementRef.current = null;
+      backgroundAudioGainRef.current = null;
+      backgroundAudioContextRef.current = null;
+      backgroundAudioMixerUnavailableRef.current = false;
     };
   }, []);
 
@@ -1002,11 +1860,60 @@ function VisualStoryReader({
     setPageIndex(maxIndex);
   }, [pageIndex, pages.length]);
 
-  const scrollToPage = (nextIndex: number, speed = 280) => {
+  useEffect(() => {
+    if (!isVisualImageFullscreenOpen) return;
+
+    const resumeFullscreenAudioIfNeeded = () => {
+      const narrationAudio = narrationAudioRef.current;
+      if (
+        isNarrationPlaying &&
+        motionPhase === 'reading' &&
+        narrationAudio &&
+        narrationAudio.paused &&
+        currentPageAudioUrl &&
+        narrationAudio.src === currentPageAudioUrl
+      ) {
+        const playback = narrationAudio.play();
+        if (playback && typeof playback.catch === 'function') {
+          playback.catch(() => undefined);
+        }
+      }
+
+      const backgroundAudio = backgroundAudioRef.current;
+      if (
+        isBackgroundMusicEnabled &&
+        backgroundAudio &&
+        backgroundAudio.paused
+      ) {
+        const playback = backgroundAudio.play();
+        if (playback && typeof playback.catch === 'function') {
+          playback.catch(() => undefined);
+        }
+      }
+    };
+
+    resumeFullscreenAudioIfNeeded();
+    const retryTimer = window.setTimeout(() => {
+      resumeFullscreenAudioIfNeeded();
+    }, 220);
+
+    return () => {
+      window.clearTimeout(retryTimer);
+    };
+  }, [
+    currentPageAudioUrl,
+    isBackgroundMusicEnabled,
+    isNarrationPlaying,
+    isPortraitViewport,
+    isVisualImageFullscreenOpen,
+    motionPhase,
+    pageIndex
+  ]);
+
+  const scrollToPage = (nextIndex: number, speed = VISUAL_STORY_SLIDE_TRANSITION_MS) => {
     const clampedIndex = Math.max(0, Math.min(pages.length - 1, nextIndex));
     activePageIndexRef.current = clampedIndex;
     setPageIndex(clampedIndex);
-    swiperRef.current?.zoom?.out?.();
     swiperRef.current?.slideTo(clampedIndex, speed);
   };
 
@@ -1015,14 +1922,11 @@ function VisualStoryReader({
     scrollToPage(pageIndex, 0);
   }, [pages.length]);
 
-  const goToAdjacentPage = (delta: -1 | 1) => {
-    scrollToPage(pageIndex + delta);
-  };
-
   const advanceNarrationToNextPage = () => {
     if (narrationAdvanceLockRef.current) return;
     narrationAdvanceLockRef.current = true;
-    narrationAudioRef.current?.pause();
+    stopAudioElement(narrationAudioRef.current);
+    setMotionPhase('pause');
     if (narrationAdvanceTimerRef.current !== null) {
       window.clearTimeout(narrationAdvanceTimerRef.current);
       narrationAdvanceTimerRef.current = null;
@@ -1036,8 +1940,10 @@ function VisualStoryReader({
         scrollToPage(activePageIndexRef.current + 1);
         return;
       }
+      stopTransitionSound();
       setIsNarrationPlaying(false);
       setIsBackgroundMusicEnabled(false);
+      setMotionPhase('idle');
     }, VISUAL_STORY_NARRATION_POST_DELAY_MS);
   };
 
@@ -1056,9 +1962,7 @@ function VisualStoryReader({
 
   const handleNarrationPlayPause = async () => {
     if (isNarrationPlaying) {
-      clearNarrationTimers({ pauseAudio: true });
-      setIsNarrationPlaying(false);
-      setIsBackgroundMusicEnabled(false);
+      stopAllVisualStoryAudio();
       return;
     }
 
@@ -1074,9 +1978,39 @@ function VisualStoryReader({
       setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
       return;
     }
+    // Start background music synchronously inside the user-gesture call stack
+    // so Chrome/iOS autoplay policy allows it.
+    const bgAudio = backgroundAudioRef.current;
+    if (bgAudio) {
+      bgAudio.loop = true;
+      bgAudio.volume = VISUAL_STORY_BACKGROUND_NARRATION_GAIN;
+      if (bgAudio.paused) bgAudio.currentTime = 0;
+      void bgAudio.play().catch(() => undefined);
+    }
     setBackgroundMusicError(null);
     setIsBackgroundMusicEnabled(true);
     setIsNarrationPlaying(true);
+  };
+
+  const handleRestartNarrationFromBeginning = () => {
+    const shouldResume = isNarrationPlaying;
+    clearNarrationTimers({ pauseAudio: true });
+    stopTransitionSound();
+    if (narrationAudioRef.current) {
+      narrationAudioRef.current.pause();
+      narrationAudioRef.current.currentTime = 0;
+    }
+    setNarrationError(null);
+    setMotionPhase('idle');
+    setIsNarrationPlaying(false);
+    setIsBackgroundMusicEnabled(false);
+    scrollToPage(0, 220);
+    if (!shouldResume) return;
+    window.setTimeout(() => {
+      setBackgroundMusicError(null);
+      setIsBackgroundMusicEnabled(true);
+      setIsNarrationPlaying(true);
+    }, 180);
   };
 
   const handleGenerateVisualStoryNarration = async (): Promise<boolean> => {
@@ -1174,19 +2108,6 @@ function VisualStoryReader({
     }
   };
 
-  const renderRotatedToolbarText = (value: string, className: string) => (
-    <span
-      className={className}
-      style={isLandscapePreview ? { transform: 'rotate(90deg)', transformOrigin: 'center' } : undefined}
-    >
-      {value}
-    </span>
-  );
-
-  const toggleVisualStoryRotation = () => {
-    setRotationDeg((current) => (current === 90 ? 0 : 90));
-  };
-
   useEffect(() => {
     if (!isNativePhotoViewer) return;
     if (!nativeViewerImages.length) return;
@@ -1258,14 +2179,120 @@ function VisualStoryReader({
     }
   };
 
+  const visualStoryGlassControlStyle = {
+    background: 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
+    borderColor: 'rgba(96,165,250,0.34)',
+    color: '#eef7ff',
+    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 14px 28px rgba(59,130,246,0.16)',
+    backdropFilter: 'blur(14px)'
+  };
+
+  const renderVisualStoryDownloadMenu = () => (
+    <div
+      className="absolute right-3 bottom-[56px] z-[160] grid w-[228px] gap-2 rounded-2xl border p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
+      style={{
+        background: 'linear-gradient(180deg, rgba(12,23,39,0.94) 0%, rgba(8,21,16,0.92) 100%)',
+        borderColor: 'rgba(255,255,255,0.16)',
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 22px 42px rgba(0,0,0,0.32)',
+        backdropFilter: 'blur(18px)'
+      }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div
+        className="rounded-xl border p-2"
+        style={{
+          background: 'rgba(255,255,255,0.07)',
+          borderColor: 'rgba(255,255,255,0.14)'
+        }}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-bold leading-none text-white">
+            {t('Fortale PDF')}
+          </span>
+          <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#cfe2f7]">
+            {t(selectedPdfBackgroundPreset.label)}
+          </span>
+        </div>
+        <div className="mb-2 grid grid-cols-5 gap-2">
+          {PDF_BACKGROUND_PRESETS.map((preset) => {
+            const isSelected = preset.id === selectedPdfBackgroundPresetId;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
+                disabled={isPdfDownloading || isEpubDownloading}
+                className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
+                style={{
+                  background: preset.color,
+                  borderColor: isSelected ? '#9fd8e8' : 'rgba(255,255,255,0.46)',
+                  borderWidth: isSelected ? 2.5 : 1,
+                  boxShadow: isSelected ? '0 0 0 3px rgba(159,216,232,0.22)' : 'none'
+                }}
+                aria-label={t(preset.label)}
+                title={t(preset.label)}
+              />
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
+          disabled={isPdfDownloading || isEpubDownloading}
+          className="group h-10 w-full inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+          style={visualStoryGlassControlStyle}
+          aria-label={t('Fortale PDF')}
+          title={t('Fortale PDF')}
+        >
+          {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
+          <span className="text-[10px] font-bold leading-none">
+            {isPdfDownloading ? t('Hazırlanıyor') : t('İndir')}
+          </span>
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={handleVisualStoryEpubDownload}
+        disabled={isPdfDownloading || isEpubDownloading}
+        className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+        style={visualStoryGlassControlStyle}
+        aria-label={t('Fortale ePub')}
+        title={t('Fortale ePub')}
+      >
+        {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
+        <span className="text-[10px] font-bold leading-none">
+          {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
+        </span>
+      </button>
+    </div>
+  );
+
   if (!pages.length) {
     return (
-      <div className="view-container">
-        <div className="app-content-width px-4 pt-8">
-          <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
-            <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
-              <FaviconSpinner size={30} />
-            </div>
+      <div
+        className="relative min-h-dvh overflow-hidden text-white"
+        style={{ background: 'linear-gradient(180deg, #314b56 0%, #1c352f 44%, #081510 100%)' }}
+      >
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 18% 0%, rgba(126,166,176,0.24), transparent 36%), radial-gradient(circle at 86% 8%, rgba(118,146,109,0.2), transparent 34%), linear-gradient(180deg, rgba(232,245,241,0.12) 0%, rgba(1,8,6,0.22) 100%)'
+          }}
+          aria-hidden
+        />
+        <FairyTaleStarsOverlay seed={courseData.topic || 'visual-story-loading'} />
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white/70 active:scale-95"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          aria-label="Geri"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
+        <div className="relative z-10 grid min-h-dvh place-items-center px-4 text-center">
+          <div className="space-y-3">
+            <FaviconSpinner size={30} />
             <p className="text-[12px] font-semibold text-white/88">{t('Kitabınız yükleniyor')}</p>
           </div>
         </div>
@@ -1332,17 +2359,32 @@ function VisualStoryReader({
 
   return (
     <div
-      className="min-h-dvh overflow-hidden text-white"
+      className="relative min-h-dvh overflow-hidden text-white"
       style={{
-        background: 'linear-gradient(160deg, #ffe29a 0%, #ffc6a5 38%, #9ee4ff 100%)'
+        background: 'linear-gradient(180deg, #314b56 0%, #1c352f 44%, #081510 100%)'
       }}
     >
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: 'radial-gradient(circle at 18% 0%, rgba(126,166,176,0.24), transparent 36%), radial-gradient(circle at 86% 8%, rgba(118,146,109,0.2), transparent 34%), linear-gradient(180deg, rgba(232,245,241,0.12) 0%, rgba(1,8,6,0.22) 100%)'
+        }}
+        aria-hidden
+      />
+      <FairyTaleStarsOverlay seed={currentPage?.id || courseData.topic || 'visual-story'} />
 	      <audio
 	        key={backgroundTrack.src}
 	        ref={backgroundAudioRef}
 	        src={backgroundTrack.src}
         preload="auto"
         loop
+	        hidden
+	        aria-hidden="true"
+	      />
+	      <audio
+	        ref={transitionAudioRef}
+	        src={VISUAL_STORY_TRANSITION_SFX_SRC}
+	        preload="auto"
 	        hidden
 	        aria-hidden="true"
 	      />
@@ -1356,10 +2398,199 @@ function VisualStoryReader({
 		        onEnded={handleNarrationEnded}
 		        onTimeUpdate={handleNarrationTimeUpdate}
 		      />
+      {visualFullscreenPage && (
+        <div
+          className="fixed inset-0 z-[140]"
+          style={{
+            background: 'linear-gradient(180deg, #314b56 0%, #1c352f 44%, #081510 100%)'
+          }}
+          onClick={() => {
+            if (isDownloadMenuOpen) {
+              setIsDownloadMenuOpen(false);
+              return;
+            }
+            setVisualImageFullscreenPageIndex(null);
+          }}
+        >
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: 'radial-gradient(circle at 18% 0%, rgba(126,166,176,0.24), transparent 36%), radial-gradient(circle at 86% 8%, rgba(118,146,109,0.2), transparent 34%), linear-gradient(180deg, rgba(232,245,241,0.12) 0%, rgba(1,8,6,0.22) 100%)'
+            }}
+          />
+          <div
+            className="absolute inset-0 overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Swiper
+              direction="horizontal"
+              initialSlide={visualImageFullscreenPageIndex ?? pageIndex}
+              slidesPerView={1}
+              resistanceRatio={0.12}
+              shortSwipes
+              longSwipes
+              longSwipesRatio={0.14}
+              longSwipesMs={180}
+              threshold={8}
+              onSlideChange={(swiper) => {
+                setPageIndex(swiper.activeIndex);
+                setVisualImageFullscreenPageIndex(swiper.activeIndex);
+              }}
+              className="h-full w-full"
+            >
+              {pages.map((page, idx) => (
+                <SwiperSlide key={idx}>
+                  {isRotatedVisualFullscreenLayout ? (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={page.imageUrl || ''}
+                        alt={page.text || page.title}
+                        className="object-contain"
+                        style={{
+                          width: '100dvh',
+                          height: '100dvw',
+                          maxWidth: '100dvh',
+                          maxHeight: '100dvw',
+                          transform: 'rotate(90deg)'
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={page.imageUrl || ''}
+                        alt={page.text || page.title}
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  )}
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          </div>
+          <div
+            className="pointer-events-none absolute inset-x-0 z-[141]"
+            style={{
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
+            }}
+	          >
+	            <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
+	              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleNarrationPlayPause();
+                  }}
+                  disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
+                  className="relative h-10 rounded-2xl border inline-flex items-center justify-center overflow-hidden transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed px-4 gap-2 text-white"
+                  style={{
+                    minWidth: '90px',
+                    background: !hasMissingNarrationAudio
+                      ? isNarrationPlaying
+                        ? 'linear-gradient(135deg, rgba(30,10,10,0.94) 0%, rgba(87,29,29,0.88) 100%)'
+                        : 'linear-gradient(135deg, rgba(10,30,12,0.94) 0%, rgba(29,87,35,0.88) 100%)'
+                      : 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
+                    borderColor: !hasMissingNarrationAudio
+                      ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(34,197,94,0.38)'
+                      : 'rgba(96,165,250,0.34)',
+                    boxShadow: '0 12px 22px rgba(15,23,42,0.18)',
+                    backdropFilter: 'blur(14px)',
+                    opacity: isNarrationGenerating ? 1 : undefined
+                  }}
+                  aria-label={
+                    isNarrationGenerating ? `%${Math.round(narrationGenerationProgress)}`
+                      : !hasMissingNarrationAudio
+                        ? isNarrationPlaying ? t('Masalı duraklat') : t('Oynat')
+                        : t('Seslendir')
+                  }
+                >
+                  {isNarrationGenerating && (
+                    <span
+                      className="absolute inset-y-0 left-0 transition-all duration-700 ease-out"
+                      style={{ width: `${narrationGenerationProgress}%`, background: 'rgba(96,165,250,0.22)' }}
+                    />
+                  )}
+                  <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
+                    {isNarrationGenerating ? (
+                      <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
+                    ) : !hasMissingNarrationAudio ? (
+                      isNarrationPlaying
+                        ? <PauseCircle size={18} />
+                        : <><PlayCircle size={16} /><span>{t('Oynat')}</span></>
+                    ) : (
+                      <><Mic size={16} /><span>{t('Seslendir')}</span></>
+                    )}
+                  </span>
+                </button>
+		              </div>
+                <div
+                  className="text-center text-[12px] font-black tabular-nums text-white drop-shadow-[0_1px_5px_rgba(0,0,0,0.55)]"
+                  style={fullscreenOverlayControlStyle}
+                  aria-label={`${pageIndex + 1} / ${pages.length}`}
+                >
+                  {pageIndex + 1}/{pages.length}
+                </div>
+	              <div className="flex items-center gap-2">
+	                <button
+	                  type="button"
+	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+	                  style={{
+	                    ...visualStoryGlassControlStyle,
+	                    ...fullscreenOverlayControlStyle
+	                  }}
+	                  onClick={(event) => {
+	                    event.stopPropagation();
+	                    setIsDownloadMenuOpen((current) => !current);
+	                  }}
+	                  aria-label={t('İndir')}
+	                  title={t('İndir')}
+	                >
+	                  <Download size={14} />
+	                </button>
+	                <button
+	                  type="button"
+	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+                  style={{
+                    ...visualStoryGlassControlStyle,
+                    ...fullscreenOverlayControlStyle
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setVisualImageFullscreenPageIndex(null);
+                  }}
+                  aria-label={t('Tam ekrandan çık')}
+                  title={t('Tam ekrandan çık')}
+                >
+                  <Minimize2 size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+                  style={{
+                    ...visualStoryGlassControlStyle,
+                    ...fullscreenOverlayControlStyle
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    stopAllVisualStoryAudio();
+                    onBack();
+                  }}
+                  aria-label={t('Kapat')}
+                  title={t('Kapat')}
+                >
+                  <X size={14} />
+                </button>
+                {isDownloadMenuOpen && renderVisualStoryDownloadMenu()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 	      {isDownloadMenuOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-[105] cursor-default bg-transparent"
+          className="fixed inset-0 z-[109] cursor-default bg-transparent"
           aria-label={t('İndirme menüsünü kapat')}
           onClick={() => setIsDownloadMenuOpen(false)}
         />
@@ -1397,254 +2628,99 @@ function VisualStoryReader({
 	          </div>
 	        </div>
 	      )}
-	      <div
-	        className="fixed right-3 z-[112] pointer-events-auto"
-	        style={{
-	          top: 'calc(env(safe-area-inset-top, 0px) + 12px)'
-	        }}
-	      >
-	        <button
-	          type="button"
-	          onClick={() => {
-	            void handleNarrationPlayPause();
-	          }}
-	          disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
-	          className="h-11 w-11 rounded-2xl border border-dashed inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-	          style={{
-	            background: isNarrationPlaying ? 'rgba(255, 244, 230, 0.92)' : 'rgba(255,255,255,0.72)',
-	            borderColor: isNarrationPlaying ? 'rgba(255, 151, 110, 0.52)' : 'rgba(255,255,255,0.46)',
-	            color: '#27415f',
-	            boxShadow: 'none',
-	            backdropFilter: 'blur(10px)'
-	          }}
-	          aria-label={isNarrationPlaying ? t('Masalı duraklat') : t('Masalı başlat')}
-	          title={isNarrationGenerating ? `${t('Hazırlanıyor')} ${narrationGenerationProgress}%` : (isNarrationPlaying ? t('Masalı duraklat') : t('Masalı başlat'))}
-	        >
-	          <span className="inline-flex items-center justify-center" style={rotatedIconStyle}>
-	            {isNarrationGenerating
-	              ? <FaviconSpinner size={18} />
-	              : isNarrationPlaying
-	                ? <PauseCircle size={20} />
-	                : <PlayCircle size={20} />}
-	          </span>
-	        </button>
-	      </div>
-	      <div
-	        className="fixed inset-x-0 z-[110] pointer-events-none"
-	        style={{
-	          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
+      <div
+        className="fixed inset-x-0 z-[110] pointer-events-none"
+        style={{
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
         }}
       >
         <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
-          <button
-            type="button"
-            onClick={() => setIsDownloadMenuOpen((current) => !current)}
-            disabled={isPdfDownloading || isEpubDownloading}
-            className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-60"
-            style={{
-              background: 'rgba(17,22,29,0.78)',
-              borderColor: 'rgba(173,149,124,0.16)'
-            }}
-            aria-label={t('İndir')}
-            title={t('İndir')}
-          >
-            {isPdfDownloading || isEpubDownloading
-              ? <FaviconSpinner size={16} />
-              : (
-                <span
-                  className="inline-flex items-center justify-center"
-                  style={isLandscapePreview ? { transform: 'rotate(90deg)' } : undefined}
-                >
-                  <Download size={14} />
-                </span>
-              )}
-          </button>
-          {isDownloadMenuOpen && (
-            <div
-              className="absolute left-3 bottom-[48px] grid w-[220px] gap-2 rounded-2xl border border-dashed p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
-              style={{
-                background: 'rgba(12, 18, 28, 0.94)',
-                borderColor: 'rgba(143,197,255,0.26)',
-                backdropFilter: 'blur(12px)'
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void handleNarrationPlayPause();
               }}
+              disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
+              className="relative h-10 rounded-2xl border inline-flex items-center justify-center overflow-hidden transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed px-4 gap-2 text-white"
+              style={{
+                minWidth: '90px',
+                background: !hasMissingNarrationAudio
+                  ? isNarrationPlaying
+                    ? 'linear-gradient(135deg, rgba(30,10,10,0.94) 0%, rgba(87,29,29,0.88) 100%)'
+                    : 'linear-gradient(135deg, rgba(10,30,12,0.94) 0%, rgba(29,87,35,0.88) 100%)'
+                  : 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
+                borderColor: !hasMissingNarrationAudio
+                  ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(34,197,94,0.38)'
+                  : 'rgba(96,165,250,0.34)',
+                boxShadow: '0 12px 22px rgba(15,23,42,0.18)',
+                backdropFilter: 'blur(14px)',
+                opacity: isNarrationGenerating ? 1 : undefined
+              }}
+              aria-label={
+                isNarrationGenerating ? `%${Math.round(narrationGenerationProgress)}`
+                  : !hasMissingNarrationAudio
+                    ? isNarrationPlaying ? t('Masalı duraklat') : t('Oynat')
+                    : t('Seslendir')
+              }
             >
-              <div
-                className="rounded-xl border border-dashed p-2"
-                style={{
-                  background: 'rgba(16, 25, 37, 0.9)',
-                  borderColor: 'rgba(143,197,255,0.2)'
-                }}
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
-                    {t('Fortale PDF')}
-                  </span>
-                  <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#9ec8f5]">
-                    {t(selectedPdfBackgroundPreset.label)}
-                  </span>
-                </div>
-                <div className="mb-2 grid grid-cols-5 gap-2">
-                  {PDF_BACKGROUND_PRESETS.map((preset) => {
-                    const isSelected = preset.id === selectedPdfBackgroundPresetId;
-                    return (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
-                        disabled={isPdfDownloading || isEpubDownloading}
-                        className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
-                        style={{
-                          background: preset.color,
-                          borderColor: isSelected ? '#f04e5e' : 'rgba(210,231,255,0.42)',
-                          borderWidth: isSelected ? 2.5 : 1,
-                          boxShadow: isSelected ? '0 0 0 3px rgba(240,78,94,0.18)' : 'none'
-                        }}
-                        aria-label={t(preset.label)}
-                        title={t(preset.label)}
-                      />
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
-                  disabled={isPdfDownloading || isEpubDownloading}
-                  className="group h-9 w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(28,57,91,0.98) 0%, rgba(22,42,67,0.96) 100%)',
-                    borderColor: 'rgba(143,197,255,0.45)',
-                    boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.24), 0 6px 14px rgba(11,23,38,0.28)'
-                  }}
-                  aria-label={t('Fortale PDF')}
-                  title={t('Fortale PDF')}
-                >
-                  {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} className="text-[#d9ecff]" />}
-                  <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
-                    {isPdfDownloading ? t('Hazırlanıyor') : t('İndir')}
-                  </span>
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={handleVisualStoryEpubDownload}
-                disabled={isPdfDownloading || isEpubDownloading}
-                className="group h-9 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(28,57,91,0.98) 0%, rgba(22,42,67,0.96) 100%)',
-                  borderColor: 'rgba(143,197,255,0.45)',
-                  boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.24), 0 6px 14px rgba(11,23,38,0.28)'
-                }}
-                aria-label={t('Fortale ePub')}
-                title={t('Fortale ePub')}
-              >
-                {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} className="text-[#d9ecff]" />}
-                <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
-                  {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
-                </span>
-              </button>
-	            </div>
-	          )}
-	
-	          <div
-	            className="inline-flex items-center overflow-visible rounded-xl border border-dashed"
-	            style={{
-              background: 'rgba(17,22,29,0.78)',
-              borderColor: 'rgba(173,149,124,0.16)'
-            }}
+              {isNarrationGenerating && (
+                <span
+                  className="absolute inset-y-0 left-0 transition-all duration-700 ease-out"
+                  style={{ width: `${narrationGenerationProgress}%`, background: 'rgba(96,165,250,0.22)' }}
+                />
+              )}
+              <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
+                {isNarrationGenerating ? (
+                  <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
+                ) : !hasMissingNarrationAudio ? (
+                  isNarrationPlaying
+                    ? <PauseCircle size={18} />
+                    : <><PlayCircle size={16} /><span>{t('Oynat')}</span></>
+                ) : (
+                  <><Mic size={16} /><span>{t('Seslendir')}</span></>
+                )}
+              </span>
+            </button>
+          </div>
+          {isDownloadMenuOpen && renderVisualStoryDownloadMenu()}
+
+          <div
+            className="flex-1 text-center text-[12px] font-black tabular-nums text-white drop-shadow-[0_1px_5px_rgba(0,0,0,0.55)]"
+            aria-label={`${pageIndex + 1} / ${pages.length}`}
           >
-            <button
-              type="button"
-              onClick={() => goToAdjacentPage(-1)}
-              disabled={pageIndex <= 0}
-              className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
-              aria-label={t('Önceki sayfa')}
-              title={t('Önceki sayfa')}
-            >
-              {isLandscapePreview ? <ArrowUp size={14} /> : <ArrowLeft size={14} />}
-            </button>
-            <div
-              className="fortale-story-toolbar-slot h-9 min-w-[58px] border-x border-dashed px-2 inline-flex items-center justify-center text-[11px] font-black tabular-nums text-white/88"
-              style={{ borderColor: 'rgba(173,149,124,0.16)' }}
-              aria-label={`${pageIndex + 1} / ${pages.length}`}
-            >
-              {renderRotatedToolbarText(`${pageIndex + 1}/${pages.length}`, 'fortale-story-toolbar-text text-[10px]')}
-            </div>
-            <button
-              type="button"
-              onClick={() => goToAdjacentPage(1)}
-              disabled={pageIndex >= pages.length - 1}
-              className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
-              aria-label={t('Sonraki sayfa')}
-              title={t('Sonraki sayfa')}
-            >
-              {isLandscapePreview ? <ArrowDown size={14} /> : <ArrowRight size={14} />}
-            </button>
+            {pageIndex + 1}/{pages.length}
           </div>
 
           <div className="flex items-center gap-2">
-            <div
-              className="inline-flex items-center overflow-visible rounded-xl border border-dashed"
-              style={{
-                background: 'rgba(17,22,29,0.78)',
-                borderColor: 'rgba(173,149,124,0.16)'
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  swiperRef.current?.zoom?.out();
-                  const nextScale = Number(swiperRef.current?.zoom?.scale || 1);
-                  setZoomScale(Math.max(1, Number(nextScale.toFixed(2))));
-                }}
-                disabled={zoomScale <= 1.01}
-                className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
-                aria-label={t('Zoom out')}
-                title={t('Zoom out')}
-              >
-                <Minimize2 size={14} />
-              </button>
-              <div
-                className="fortale-story-toolbar-slot h-9 min-w-[52px] border-x border-dashed px-2 inline-flex items-center justify-center text-[10px] font-black tabular-nums text-white/88"
-                style={{ borderColor: 'rgba(173,149,124,0.16)' }}
-              >
-                {renderRotatedToolbarText(`${Math.round(zoomScale * 100)}%`, 'fortale-story-toolbar-text text-[9px]')}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  swiperRef.current?.zoom?.in();
-                  const nextScale = Number(swiperRef.current?.zoom?.scale || zoomScale || 1);
-                  setZoomScale(Math.min(4, Number(nextScale.toFixed(2))));
-                }}
-                disabled={zoomScale >= 3.95}
-                className="h-9 w-9 inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed"
-                aria-label={t('Zoom in')}
-                title={t('Zoom in')}
-              >
-                <Maximize2 size={14} />
-              </button>
-            </div>
             <button
               type="button"
-              onClick={toggleVisualStoryRotation}
-              className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
-              style={{
-                background: 'rgba(17,22,29,0.78)',
-                borderColor: 'rgba(173,149,124,0.16)'
-              }}
-              aria-label={t('Sayfayı döndür')}
-              title={t('Sayfayı döndür')}
+              onClick={() => setIsDownloadMenuOpen((current) => !current)}
+              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+              style={visualStoryGlassControlStyle}
+              aria-label={t('İndir')}
+              title={t('İndir')}
             >
-              <RotateCw size={14} />
+              <Download size={14} />
             </button>
             <button
               type="button"
-              onClick={onBack}
-              className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
-              style={{
-                background: 'rgba(17,22,29,0.78)',
-                borderColor: 'rgba(173,149,124,0.16)'
+              onClick={() => setVisualImageFullscreenPageIndex(pageIndex)}
+              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+              style={visualStoryGlassControlStyle}
+              aria-label={t('Görseli tam ekranda aç')}
+              title={t('Görseli tam ekranda aç')}
+            >
+              <Maximize2 size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                stopAllVisualStoryAudio();
+                onBack();
               }}
+              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+              style={visualStoryGlassControlStyle}
               aria-label={t('Kapat')}
               title={t('Kapat')}
             >
@@ -1654,12 +2730,11 @@ function VisualStoryReader({
         </div>
       </div>
 
-      <div className="mx-auto flex h-dvh w-full max-w-[960px] flex-col px-0 pb-[calc(env(safe-area-inset-bottom,0px)+70px)] pt-[env(safe-area-inset-top,0px)]">
-        <main className="grid min-h-0 flex-1 place-items-center overflow-hidden">
+      <div className="relative mx-auto flex h-dvh w-full max-w-[960px] flex-col px-0 pb-[calc(env(safe-area-inset-bottom,0px)+70px)] pt-0">
+        <main className="grid min-h-0 flex-1 place-items-stretch overflow-hidden px-0 pb-0 pt-0">
           <Swiper
-            key={isLandscapePreview ? 'visual-story-landscape' : 'visual-story-portrait'}
             modules={[Zoom]}
-            direction={isLandscapePreview ? 'vertical' : 'horizontal'}
+            direction="horizontal"
             onSwiper={(swiper) => {
               swiperRef.current = swiper;
               swiper.slideTo(pageIndex, 0);
@@ -1667,15 +2742,10 @@ function VisualStoryReader({
             onSlideChange={(swiper) => {
               activePageIndexRef.current = swiper.activeIndex;
               setPageIndex(swiper.activeIndex);
-              const nextScale = Number(swiper.zoom?.scale || 1);
-              setZoomScale(Math.max(1, Number(nextScale.toFixed(2))));
-            }}
-            onZoomChange={(swiper, scale) => {
-              const nextScale = Number(scale || swiper.zoom?.scale || 1);
-              setZoomScale(Math.max(1, Number(nextScale.toFixed(2))));
             }}
             initialSlide={pageIndex}
             slidesPerView={1}
+            speed={VISUAL_STORY_SLIDE_TRANSITION_MS}
             resistanceRatio={0.12}
             shortSwipes
             longSwipes
@@ -1683,7 +2753,7 @@ function VisualStoryReader({
             longSwipesMs={180}
             threshold={8}
             zoom={{
-              maxRatio: 4,
+              maxRatio: 2.5,
               minRatio: 1,
               toggle: false
             }}
@@ -1695,54 +2765,132 @@ function VisualStoryReader({
               overflow: 'hidden'
             }}
           >
-            {pages.map((page) => (
+            {pages.map((page, visualPageIndex) => {
+              const isActiveVisualPage = visualPageIndex === pageIndex;
+              return (
               <SwiperSlide
                 key={page.id}
                 aria-label={page.title}
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: 'stretch',
                   justifyContent: 'center',
                   height: '100%',
                   overflow: 'hidden'
                 }}
               >
                 <div
-                  className="swiper-zoom-container relative flex h-full w-full items-center justify-center"
+                  className="fortale-story-slide-surface relative flex h-full w-full flex-col overflow-hidden bg-transparent px-0 pb-0 pt-0"
                   style={{
                     height: '100%',
                     minHeight: '100%',
-                    overflow: 'visible'
+                    opacity: isActiveVisualPage ? 1 : 0.82,
+                    transform: isActiveVisualPage ? 'scale(1)' : 'scale(0.988)'
                   }}
                 >
-                  <img
-                    src={page.imageUrl || ''}
-                    alt={page.text || page.title}
-                    loading="eager"
-                    decoding="async"
-                    className="fortale-story-glow-image relative z-10 select-none object-contain transition-transform duration-200 ease-out"
-                    draggable={false}
-                    style={isLandscapePreview
-                      ? {
-                        transform: 'rotate(90deg)',
-                        transformOrigin: 'center',
-                        width: 'auto',
-                        height: 'auto',
-                        maxWidth: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 116px)',
-                        maxHeight: 'calc(100vw - 24px)'
-                      }
-                      : {
-                        transform: 'rotate(0deg)',
-                        transformOrigin: 'center',
-                        width: 'auto',
-                        height: 'auto',
-                        maxWidth: 'calc(100vw - 24px)',
-                        maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 116px)'
-                      }}
-                  />
+	                  <div
+	                    className="relative z-10 grid min-h-0 flex-1 grid-rows-[auto_minmax(0,52%)_minmax(0,1fr)] pt-[calc(env(safe-area-inset-top,0px)+10px)]"
+	                    style={{
+	                      background: 'linear-gradient(180deg, rgba(49,75,86,0.94) 0%, rgba(28,53,47,0.94) 52%, rgba(8,21,16,0.96) 100%)'
+	                    }}
+	                  >
+                      <div className="px-4 pb-2 text-center text-[15px] font-bold leading-tight text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.72)]">
+                        {String(courseData.topic || t('Masal')).trim()}
+                      </div>
+	                    <div className="relative min-h-0 overflow-hidden">
+                      <div className="swiper-zoom-container fortele-story-page-image-shell h-full w-full overflow-hidden">
+                        <img
+                          src={page.imageUrl || ''}
+                          alt={page.text || page.title}
+                          loading="eager"
+                          decoding="async"
+                          className={`fortale-story-glow-image select-none object-cover object-center transition-transform duration-700 ease-out ${isNarrationPlaying ? 'fortale-story-image-motion' : ''}`}
+                          draggable={false}
+                          data-motion-mood={currentMotionProfile.mood}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            touchAction: 'pan-x pan-y pinch-zoom',
+                            ['--story-pan-x' as string]: `${currentMotionProfile.panX}%`,
+                            ['--story-pan-y' as string]: `${currentMotionProfile.panY}%`,
+                            ['--story-scale-end' as string]: currentMotionProfile.endScale,
+                            ['--story-motion-duration' as string]: `${currentMotionProfile.duration}s`
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="relative -mt-9 flex min-h-0 items-stretch justify-center overflow-hidden px-4 pb-5 pt-0">
+                      {isActiveVisualPage && (
+                        <div className="fortale-story-text-ambient" aria-hidden="true">
+                          {currentTextAmbient.stars.map((star, starIndex) => (
+                            <div
+                              key={`ta-s${starIndex}`}
+                              className={`fortale-story-ambient-star ${star.variant === 'snowflake' ? 'is-snowflake' : 'is-sparkle'}`}
+                              style={{
+                                left: `${star.left}%`,
+                                top: `${star.top}%`,
+                                width: `${star.width}px`,
+                                height: `${star.height}px`,
+                                ['--fairy-star-color' as string]: star.color,
+                                ['--fairy-star-glow' as string]: star.glow,
+                                ['--fairy-star-tilt' as string]: `${star.tilt}deg`,
+                                ['--fairy-star-drift-x' as string]: `${star.driftX}px`,
+                                ['--fairy-star-drift-y' as string]: `${star.driftY}px`,
+                                animationDelay: `${star.delay}s`,
+                                animationDuration: `${star.duration}s`
+                              }}
+                            />
+                          ))}
+                          {currentTextAmbient.dust.map((particle, particleIndex) => (
+                            <div
+                              key={`ta-d${particleIndex}`}
+                              className="fortale-story-ambient-dust"
+                              style={{
+                                left: `${particle.left}%`,
+                                bottom: `${particle.bottom}%`,
+                                width: `${particle.size}px`,
+                                height: `${particle.size}px`,
+                                backgroundColor: particle.color,
+                                boxShadow: `0 0 ${particle.size * 1.3}px ${particle.size * 0.38}px ${particle.color}88`,
+                                animationDelay: `${particle.delay}s`,
+                                animationDuration: `${particle.duration}s`
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      <div
+                        className="relative z-20 h-full min-h-0 w-full max-w-[820px] overflow-y-auto overscroll-y-contain px-1 pt-3"
+                        style={{
+                          WebkitOverflowScrolling: 'touch'
+                        }}
+                      >
+                        {page.text?.trim() ? (
+                          <p
+                            className="m-0 text-center font-semibold text-white"
+                            style={{
+                              fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+                              fontSize: '17px',
+                              lineHeight: 1.62,
+                              letterSpacing: '0.01em',
+                              textShadow: '0 2px 8px rgba(0,0,0,0.46)'
+                            }}
+                          >
+                            {page.text}
+                          </p>
+                        ) : (
+                          <p className="m-0 text-center text-[17px] leading-[1.62] text-white/76 drop-shadow-[0_2px_8px_rgba(0,0,0,0.46)]">
+                            {page.title}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </SwiperSlide>
-            ))}
+            )})}
           </Swiper>
         </main>
       </div>
@@ -3554,10 +4702,19 @@ export default function CourseFlowView({
 	  }
   if (!orderedTabNodes.length) {
     return (
-      <div className="view-container">
+      <div className="view-container fortale-loading-view">
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white/70 active:scale-95"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          aria-label="Geri"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
         <div className="app-content-width px-4 pt-8">
           <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
-            <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
+            <div className="fortale-loading-spinner-shell w-16 h-16 rounded-full border flex items-center justify-center mx-auto">
               <FaviconSpinner size={30} />
             </div>
             <p className="text-[12px] font-semibold text-white/88">
@@ -3871,7 +5028,7 @@ export default function CourseFlowView({
           </div>
           <img
             src={coverPreviewImageUrl}
-            alt={`${courseData.topic} ${t('Kitap kapağı')}`}
+            alt={`${courseData.topic} ${t('Görsel')}`}
             className="max-h-[92vh] max-w-[95vw] object-contain rounded-md shadow-[0_22px_40px_-24px_rgba(0,0,0,0.95)]"
             onClick={(event) => event.stopPropagation()}
           />
@@ -3900,12 +5057,12 @@ export default function CourseFlowView({
                         <img
                           src={courseData.coverImageUrl}
                           alt={`${courseData.topic} ${t('Kitap kapağı')}`}
-                          className="absolute inset-0 w-full h-full object-contain object-center border-0 cursor-zoom-in"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setCoverPreviewImageUrl(courseData.coverImageUrl || null);
-                          }}
-                        />
+	                          className="absolute inset-0 w-full h-full object-contain object-center border-0 cursor-zoom-in"
+	                          onClick={(event) => {
+	                            event.stopPropagation();
+	                            setCoverPreviewImageUrl(courseData.coverImageUrl || null);
+	                          }}
+	                        />
                       </>
                     )}
                     {!courseData.coverImageUrl && (
@@ -4027,7 +5184,7 @@ export default function CourseFlowView({
                             ) : (
                               <AudioLines size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
                             )}
-                            <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+                            <span className="text-[10px] font-bold leading-none text-white">
                               {isPodcastExporting
                                 ? t('Oluşturuluyor')
                                 : t('Masalı Seslendir')}
@@ -4137,7 +5294,7 @@ export default function CourseFlowView({
                               }}
                             />
                           </div>
-                          <p className="mt-1 text-center text-[10px] text-[#d5e8ff]">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
+                          <p className="mt-1 text-center text-[10px] font-bold text-white">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
                           <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
                             {getPodcastGenerationStatusText()}
                           </p>
@@ -4488,7 +5645,7 @@ export default function CourseFlowView({
 	                      style={{ height: 'clamp(148px, 28dvh, 220px)' }}
 	                      onTouchStart={handleFullscreenImageTouchStart}
 	                      onTouchEnd={handleFullscreenImageTouchEnd}
-	                      onClick={() => setCoverPreviewImageUrl(fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src || null)}
+		                      onClick={() => setCoverPreviewImageUrl(fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src || null)}
 	                      aria-label={t('Tam ekran aç')}
 	                      title={t('Tam ekran aç')}
 	                    >
@@ -4610,7 +5767,7 @@ export default function CourseFlowView({
 
                     {isBookLoadingPlaceholder && (
                       <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
-                        <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
+                        <div className="fortale-loading-spinner-shell w-16 h-16 rounded-full border flex items-center justify-center mx-auto">
                           <FaviconSpinner size={30} />
                         </div>
                         <p className="text-[12px] font-semibold text-white/88">

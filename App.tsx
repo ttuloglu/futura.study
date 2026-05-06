@@ -40,6 +40,7 @@ import {
 } from './ai';
 import {
   ensureRevenueCatConfigured,
+  getRevenueCatCreditPackPriceStrings,
   isRevenueCatEnabled,
   isRevenueCatPurchaseCancelledError,
   purchaseRevenueCatCreditPack
@@ -102,16 +103,18 @@ const SHARE_DEEP_LINK_SECONDARY_SCHEME_DELAY_MS = 350;
 const FREE_STARTER_CREDITS: CreditWallet = { createCredits: 3 };
 const DEFAULT_ACTION_CREDIT_COST: Record<CreditActionType, number> = { create: 1 };
 const CREDIT_PACKS: CreditPackOption[] = [
-  { id: 'pack-5', createCredits: 5, priceUsd: 4.99 },
-  { id: 'pack-15', createCredits: 15, priceUsd: 12.99 },
-  { id: 'pack-30', createCredits: 30, priceUsd: 19.99 }
+  { id: 'pack-5', createCredits: 10, priceUsd: 4.99 },
+  { id: 'pack-15', createCredits: 25, priceUsd: 12.99 },
+  { id: 'pack-30', createCredits: 50, priceUsd: 19.99 }
 ];
 
 function FullScreenFallback({ message }: { message: string }) {
   return (
-    <div className="fixed inset-0 bg-background flex items-center justify-center">
+    <div className="fortale-loading-screen fixed inset-0 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3 px-6 text-center">
-        <FaviconSpinner size={44} />
+        <div className="fortale-loading-spinner-shell">
+          <FaviconSpinner size={44} />
+        </div>
         <p className="text-[12px] font-semibold text-white/78">{message}</p>
       </div>
     </div>
@@ -178,6 +181,12 @@ type StoredStickyNote = Omit<StickyNoteData, 'createdAt' | 'lastActivity'> & {
 
 type StoredCreditWallet = CreditWallet & {
   updatedAt: string;
+};
+
+type NativeLibraryIndexPayload = {
+  schemaVersion: number;
+  updatedAt: string;
+  courses: StoredCourse[];
 };
 
 type CreditGatewayOperation = 'getWallet' | 'consume' | 'refund';
@@ -586,6 +595,11 @@ function buildBookDocumentPayload(
   const includesPodcast = Array.isArray(course.nodes)
     ? course.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim()))
     : false;
+  const includesVisualStoryAudio =
+    Boolean(course.coverNarrationAudioUrl?.trim()) ||
+    (Array.isArray(course.nodes)
+      ? course.nodes.some((node) => Boolean(node.pageAudioUrl?.trim()))
+      : false);
   const nextCover: Record<string, unknown> = {};
   if (typeof course.cover?.path === 'string' && course.cover.path.trim()) {
     nextCover.path = course.cover.path.trim();
@@ -602,7 +616,7 @@ function buildBookDocumentPayload(
       version: bundleVersion,
       checksumSha256: typeof course.bundle?.checksumSha256 === 'string' ? course.bundle.checksumSha256 : undefined,
       sizeBytes: Number.isFinite(course.bundle?.sizeBytes) ? course.bundle?.sizeBytes : undefined,
-      includesPodcast: course.bundle?.includesPodcast ?? includesPodcast,
+      includesPodcast: course.bundle?.includesPodcast ?? (includesPodcast || includesVisualStoryAudio),
       generatedAt
     }
     : undefined;
@@ -625,6 +639,11 @@ function buildBookDocumentPayload(
     category: course.category,
     searchTags: Array.isArray(course.searchTags) ? course.searchTags : undefined,
     totalDuration: course.totalDuration,
+    visualStoryMode: course.visualStoryMode === true,
+    visualStoryAudioStatus: course.visualStoryAudioStatus,
+    coverNarrationText: course.coverNarrationText,
+    coverNarrationAudioUrl: course.coverNarrationAudioUrl,
+    coverNarrationAudioStoragePath: course.coverNarrationAudioStoragePath,
     status,
     cover: Object.keys(nextCover).length > 0 ? nextCover : undefined,
     bundle,
@@ -1050,6 +1069,7 @@ async function hydrateCourseFromBundleBlob(
   const manifestRaw = JSON.parse(await manifestFile.async('string')) as Record<string, unknown>;
   const imageAssetCache = new Map<string, string>();
   const audioAssetCache = new Map<string, string>();
+  const audioDataAssetCache = new Map<string, string>();
 
   const resolveAssetImageDataUrl = async (rawPath: string): Promise<string | undefined> => {
     const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
@@ -1081,6 +1101,24 @@ async function hydrateCourseFromBundleBlob(
     const objectUrl = URL.createObjectURL(blob);
     audioAssetCache.set(normalizedPath, objectUrl);
     return objectUrl;
+  };
+
+  const resolveAssetAudioDataUrl = async (rawPath: string): Promise<string | undefined> => {
+    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
+    if (!normalizedPath) return undefined;
+    const cached = audioDataAssetCache.get(normalizedPath);
+    if (cached) return cached;
+    const assetFile = zip.file(normalizedPath);
+    if (!assetFile) return undefined;
+    const mimeType = inferMimeTypeFromAssetPath(normalizedPath);
+    const blob = await assetFile.async('blob');
+    const typedBlob = (blob.type || '').trim()
+      ? blob
+      : new Blob([blob], { type: mimeType });
+    const dataUrl = await blobToDataUrlInApp(typedBlob);
+    if (!dataUrl) return undefined;
+    audioDataAssetCache.set(normalizedPath, dataUrl);
+    return dataUrl;
   };
 
   const rewriteMarkdownImageUrls = async (markdown: string | undefined): Promise<string | undefined> => {
@@ -1120,6 +1158,8 @@ async function hydrateCourseFromBundleBlob(
         ? rawNode as Record<string, unknown>
         : {};
       const podcastAudioUrlRaw = typeof node.podcastAudioUrl === 'string' ? node.podcastAudioUrl : undefined;
+      const pageImageUrlRaw = typeof node.pageImageUrl === 'string' ? node.pageImageUrl : undefined;
+      const pageAudioUrlRaw = typeof node.pageAudioUrl === 'string' ? node.pageAudioUrl : undefined;
       const resolvedPodcastAudioUrl = (
         podcastAudioUrlRaw &&
         !/^https?:\/\//i.test(podcastAudioUrlRaw) &&
@@ -1128,6 +1168,22 @@ async function hydrateCourseFromBundleBlob(
       )
         ? await resolveAssetAudioUrl(podcastAudioUrlRaw)
         : podcastAudioUrlRaw;
+      const resolvedPageImageUrl = (
+        pageImageUrlRaw &&
+        !/^https?:\/\//i.test(pageImageUrlRaw) &&
+        !/^data:/i.test(pageImageUrlRaw) &&
+        !pageImageUrlRaw.startsWith('blob:')
+      )
+        ? await resolveAssetImageDataUrl(pageImageUrlRaw)
+        : pageImageUrlRaw;
+      const resolvedPageAudioUrl = (
+        pageAudioUrlRaw &&
+        !/^https?:\/\//i.test(pageAudioUrlRaw) &&
+        !/^data:/i.test(pageAudioUrlRaw) &&
+        !pageAudioUrlRaw.startsWith('blob:')
+      )
+        ? await resolveAssetAudioDataUrl(pageAudioUrlRaw)
+        : pageAudioUrlRaw;
       return {
         id: typeof node.id === 'string' ? node.id : `node-${index + 1}`,
         title: typeof node.title === 'string' ? node.title : '',
@@ -1140,6 +1196,12 @@ async function hydrateCourseFromBundleBlob(
         ) || undefined,
         podcastScript: typeof node.podcastScript === 'string' ? node.podcastScript : undefined,
         podcastAudioUrl: resolvedPodcastAudioUrl,
+        pageText: typeof node.pageText === 'string' ? node.pageText : undefined,
+        pageImageUrl: resolvedPageImageUrl,
+        pageAudioUrl: resolvedPageAudioUrl,
+        pageAudioStatus: typeof node.pageAudioStatus === 'string' ? node.pageAudioStatus as TimelineNode['pageAudioStatus'] : undefined,
+        pageAudioStoragePath: typeof node.pageAudioStoragePath === 'string' ? node.pageAudioStoragePath : undefined,
+        pageSequence: Number.isFinite(Number(node.pageSequence)) ? Math.max(1, Math.floor(Number(node.pageSequence))) : undefined,
         questions: Array.isArray(node.questions) ? node.questions : undefined
       } as TimelineNode;
     }))
@@ -1150,12 +1212,28 @@ async function hydrateCourseFromBundleBlob(
     : null;
   const coverPath = typeof rawCover?.path === 'string' ? rawCover.path : undefined;
   const coverDataUrl = coverPath ? await resolveAssetImageDataUrl(coverPath) : undefined;
+  const coverNarrationAudioRaw = typeof manifestRaw.coverNarrationAudioUrl === 'string'
+    ? manifestRaw.coverNarrationAudioUrl
+    : undefined;
+  const coverNarrationAudioUrl = (
+    coverNarrationAudioRaw &&
+    !/^https?:\/\//i.test(coverNarrationAudioRaw) &&
+    !/^data:/i.test(coverNarrationAudioRaw) &&
+    !coverNarrationAudioRaw.startsWith('blob:')
+  )
+    ? await resolveAssetAudioDataUrl(coverNarrationAudioRaw)
+    : coverNarrationAudioRaw;
 
   const materializedRawCourse: Record<string, unknown> = {
     ...manifestRaw,
     id: typeof manifestRaw.id === 'string' ? manifestRaw.id : courseId,
     topic: resolveCourseTopic(manifestRaw.topic, manifestRaw.title, manifestRaw.bookTitle),
     coverImageUrl: coverDataUrl,
+    visualStoryMode: manifestRaw.visualStoryMode === true,
+    visualStoryAudioStatus: typeof manifestRaw.visualStoryAudioStatus === 'string' ? manifestRaw.visualStoryAudioStatus : undefined,
+    coverNarrationText: typeof manifestRaw.coverNarrationText === 'string' ? manifestRaw.coverNarrationText : undefined,
+    coverNarrationAudioUrl,
+    coverNarrationAudioStoragePath: typeof manifestRaw.coverNarrationAudioStoragePath === 'string' ? manifestRaw.coverNarrationAudioStoragePath : undefined,
     contentPackagePath: pathOverride,
     contentPackageUrl: urlOverride,
     contentPackageUpdatedAt: typeof manifestRaw.generatedAt === 'string'
@@ -1172,11 +1250,25 @@ async function hydrateCourseFromBundleBlob(
   return fromStoredCourse(materializedRawCourse);
 }
 
+function isAudioDataOrBlobUrl(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  return url.startsWith('data:') || url.startsWith('blob:');
+}
+
 function sanitizeNodeForLocalStorage(node: TimelineNode): TimelineNode {
   const nextNode: TimelineNode = { ...node };
 
   if (typeof nextNode.content === 'string') {
     nextNode.content = stripEmbeddedDataImagesFromMarkdown(nextNode.content);
+  }
+
+  // Audio data/blob URLs are too large to persist (can be hundreds of MB in aggregate).
+  // They are re-loaded from Firebase Storage or the ZIP bundle on next book open.
+  if (isAudioDataOrBlobUrl(nextNode.pageAudioUrl)) {
+    nextNode.pageAudioUrl = undefined;
+  }
+  if (isAudioDataOrBlobUrl(nextNode.podcastAudioUrl)) {
+    nextNode.podcastAudioUrl = undefined;
   }
 
   return nextNode;
@@ -1188,6 +1280,9 @@ function hasRichNodeContent(node: TimelineNode | null | undefined): boolean {
     (typeof node.content === 'string' && node.content.trim().length > 0) ||
     (typeof node.podcastScript === 'string' && node.podcastScript.trim().length > 0) ||
     (typeof node.podcastAudioUrl === 'string' && node.podcastAudioUrl.trim().length > 0) ||
+    (typeof node.pageText === 'string' && node.pageText.trim().length > 0) ||
+    (typeof node.pageImageUrl === 'string' && node.pageImageUrl.trim().length > 0) ||
+    (typeof node.pageAudioUrl === 'string' && node.pageAudioUrl.trim().length > 0) ||
     (Array.isArray(node.questions) && node.questions.length > 0)
   );
 }
@@ -1197,6 +1292,9 @@ function hasCompleteLectureContent(course: CourseData | null | undefined): boole
   const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
   if (lectureNodes.length === 0) {
     return course.nodes.some((node) => hasRichNodeContent(node));
+  }
+  if (course.visualStoryMode === true) {
+    return lectureNodes.every((node) => Boolean(node.pageImageUrl?.trim()) && Boolean(node.pageText?.trim()));
   }
   return lectureNodes.every((node) => typeof node.content === 'string' && node.content.trim().length > 0);
 }
@@ -1214,6 +1312,9 @@ function hasMissingPrimaryNodeContent(course: CourseData | null | undefined): bo
   if (!course || !Array.isArray(course.nodes) || course.nodes.length === 0) return true;
   const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
   if (lectureNodes.length === 0) return false;
+  if (course.visualStoryMode === true) {
+    return lectureNodes.some((node) => !node.pageImageUrl?.trim() || !node.pageText?.trim());
+  }
   return lectureNodes.some((node) => !(typeof node.content === 'string' && node.content.trim().length > 0));
 }
 
@@ -1231,6 +1332,19 @@ function hasMissingNarrativeImagesForHydration(course: CourseData | null | undef
     Boolean(String(course.bundle?.path || '').trim());
   if (!hasBundleSource) return false;
 
+  // Visual-story books store images on `pageImageUrl`, not in markdown `content`.
+  if (course.visualStoryMode === true) {
+    return false;
+  }
+
+  const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
+  if (
+    lectureNodes.length > 0 &&
+    lectureNodes.every((node) => String(node.pageImageUrl || '').trim().length > 0)
+  ) {
+    return false;
+  }
+
   const lectureBodies = course.nodes
     .filter((node) => node.type === 'lecture' && typeof node.content === 'string' && node.content.trim().length > 0)
     .map((node) => String(node.content || ''));
@@ -1246,7 +1360,8 @@ function courseNeedsHydration(course: CourseData | null | undefined): boolean {
     !course?.coverImageUrl ||
     courseNeedsFullContentRepair(course) ||
     hasMissingPrimaryNodeContent(course) ||
-    hasMissingNarrativeImagesForHydration(course)
+    hasMissingNarrativeImagesForHydration(course) ||
+    courseNeedsPersistentAssetRepair(course)
   );
 }
 
@@ -1255,7 +1370,8 @@ function courseNeedsContentHydration(course: CourseData | null | undefined): boo
     isCourseProgressOnly(course) ||
     courseNeedsFullContentRepair(course) ||
     hasMissingPrimaryNodeContent(course) ||
-    hasMissingNarrativeImagesForHydration(course)
+    hasMissingNarrativeImagesForHydration(course) ||
+    courseNeedsPersistentAssetRepair(course)
   );
 }
 
@@ -1289,6 +1405,10 @@ function toStoredCourse(course: CourseData): StoredCourse {
       typeof course.coverImageUrl === 'string' && DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl)
         ? undefined
         : course.coverImageUrl,
+    // Cover narration audio data/blob URLs are too large to persist.
+    coverNarrationAudioUrl: isAudioDataOrBlobUrl(course.coverNarrationAudioUrl)
+      ? undefined
+      : course.coverNarrationAudioUrl,
     nodes: Array.isArray(course.nodes) ? course.nodes.map(sanitizeNodeForLocalStorage) : [],
     createdAt: course.createdAt.toISOString(),
     lastActivity: course.lastActivity.toISOString()
@@ -1392,6 +1512,10 @@ function getNativeFullCourseCacheDir(uid: string): string {
   return `${NATIVE_FULL_COURSE_CACHE_DIR}/${getNativeFullCourseCacheSafeUid(uid)}`;
 }
 
+function getNativeLibraryIndexPath(uid: string): string {
+  return `${getNativeFullCourseCacheDir(uid)}/library-index.json`;
+}
+
 function getNativeFullCourseLegacyCachePath(uid: string, courseId: string): string {
   return `${getNativeFullCourseCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}.json`;
 }
@@ -1426,6 +1550,15 @@ function getNativeFullCourseNodeRevision(node: TimelineNode): string {
   const normalizedPodcastAudioUrl = typeof node.podcastAudioUrl === 'string'
     ? node.podcastAudioUrl.trim()
     : '';
+  const normalizedPageText = typeof node.pageText === 'string'
+    ? node.pageText.trim()
+    : '';
+  const normalizedPageImageUrl = typeof node.pageImageUrl === 'string'
+    ? node.pageImageUrl.trim()
+    : '';
+  const normalizedPageAudioUrl = typeof node.pageAudioUrl === 'string'
+    ? node.pageAudioUrl.trim()
+    : '';
   const questionCount = Array.isArray(node.questions) ? node.questions.length : 0;
 
   return [
@@ -1437,6 +1570,11 @@ function getNativeFullCourseNodeRevision(node: TimelineNode): string {
     normalizedContent ? simpleStableHash(normalizedContent) : '',
     normalizedPodcastScript ? simpleStableHash(normalizedPodcastScript) : '',
     normalizedPodcastAudioUrl ? simpleStableHash(normalizedPodcastAudioUrl) : '',
+    normalizedPageText ? simpleStableHash(normalizedPageText) : '',
+    normalizedPageImageUrl ? simpleStableHash(normalizedPageImageUrl) : '',
+    normalizedPageAudioUrl ? simpleStableHash(normalizedPageAudioUrl) : '',
+    node.pageAudioStatus || '',
+    Number.isFinite(Number(node.pageSequence)) ? String(node.pageSequence) : '',
     String(questionCount)
   ].join(':');
 }
@@ -1465,6 +1603,46 @@ function getNativeFullCourseCacheRevision(course: CourseData): string {
     : '';
 
   return simpleStableHash(`${packageMarker}|${nodeMarker}`);
+}
+
+function isPersistentLocalAssetUrl(value: unknown): boolean {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return Boolean(
+    normalized &&
+    (
+      DATA_IMAGE_URL_PREFIX_RE.test(normalized) ||
+      /^data:audio\//i.test(normalized) ||
+      /^file:\/\//i.test(normalized) ||
+      /^capacitor:\/\//i.test(normalized)
+    )
+  );
+}
+
+function isRemoteOrUnresolvedAssetUrl(value: unknown): boolean {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) return true;
+  if (isPersistentLocalAssetUrl(normalized)) return false;
+  return true;
+}
+
+function courseNeedsPersistentAssetRepair(course: CourseData | null | undefined): boolean {
+  if (!isCapacitorNativeRuntime()) return false;
+  if (!course) return true;
+  if (course.visualStoryMode === true) {
+    if (isRemoteOrUnresolvedAssetUrl(course.coverImageUrl)) return true;
+    // Audio is NOT checked here: it lives in the ZIP bundle and is loaded on book open.
+    // If audio was never generated, absence is valid (not an error requiring repair).
+    const lectureNodes = (course.nodes || []).filter((node) => node.type === 'lecture');
+    if (lectureNodes.length === 0) return true;
+    return lectureNodes.some((node) => {
+      if (!node.pageText?.trim()) return true;
+      if (isRemoteOrUnresolvedAssetUrl(node.pageImageUrl)) return true;
+      return false;
+    });
+  }
+
+  if (hasMissingNarrativeImagesForHydration(course)) return true;
+  return false;
 }
 
 function isNativeFilesystemMissingError(error: unknown): boolean {
@@ -1521,8 +1699,9 @@ async function writeFullCourseToNativeCache(uid: string, course: CourseData): Pr
       missingNativeFullCourseCachePaths.delete(cachePath);
       missingNativeFullCourseCacheDirs.delete(courseCacheDir);
       nativeFullCourseCacheRevisionByPath.set(cachePath, nextRevision);
-    } catch {
-      // Ignore native cache failures.
+      void upsertCourseInNativeLibraryIndex(uid, course);
+    } catch (error) {
+      console.warn('Native full-course cache write failed:', error);
     }
   })();
 
@@ -1743,6 +1922,19 @@ function fromStoredCourse(raw: unknown): CourseData | null {
       ? item.searchTags.filter((tag): tag is string => typeof tag === 'string')
       : undefined,
     totalDuration: typeof item.totalDuration === 'string' ? item.totalDuration : undefined,
+    visualStoryMode: item.visualStoryMode === true,
+    visualStoryAudioStatus:
+      item.visualStoryAudioStatus === 'pending' ||
+      item.visualStoryAudioStatus === 'ready' ||
+      item.visualStoryAudioStatus === 'failed' ||
+      item.visualStoryAudioStatus === 'partial'
+        ? item.visualStoryAudioStatus
+        : undefined,
+    coverNarrationText: typeof item.coverNarrationText === 'string' ? item.coverNarrationText : undefined,
+    coverNarrationAudioUrl: typeof item.coverNarrationAudioUrl === 'string' ? item.coverNarrationAudioUrl : undefined,
+    coverNarrationAudioStoragePath: typeof item.coverNarrationAudioStoragePath === 'string'
+      ? item.coverNarrationAudioStoragePath
+      : undefined,
     coverImageUrl: resolvedCoverImageUrl,
     contentPackageUrl: typeof item.contentPackageUrl === 'string' ? item.contentPackageUrl : undefined,
     contentPackagePath: resolvedContentPackagePath,
@@ -1755,6 +1947,91 @@ function fromStoredCourse(raw: unknown): CourseData | null {
     createdAt: new Date(item.createdAt),
     lastActivity: new Date(item.lastActivity)
   };
+}
+
+function mergeCourseCacheLists(primary: CourseData[], secondary: CourseData[]): CourseData[] {
+  const byId = new Map<string, CourseData>();
+  const put = (course: CourseData) => {
+    const existing = byId.get(course.id);
+    if (!existing) {
+      byId.set(course.id, course);
+      return;
+    }
+    if (courseNeedsContentHydration(existing) && !courseNeedsContentHydration(course)) {
+      byId.set(course.id, mergeSharedCourseWithUserProgress(course, toProgressDocFromCourseSnapshot(existing)));
+      return;
+    }
+    if (!courseNeedsContentHydration(existing) && courseNeedsContentHydration(course)) {
+      return;
+    }
+    if (course.lastActivity > existing.lastActivity && !isCourseProgressOnly(course)) {
+      byId.set(course.id, course);
+    }
+  };
+
+  primary.forEach(put);
+  secondary.forEach(put);
+  return sortCoursesByLastActivity(Array.from(byId.values()));
+}
+
+async function readCoursesFromNativeLibraryIndex(uid: string): Promise<CourseData[]> {
+  if (!isCapacitorNativeRuntime()) return [];
+  try {
+    const result = await Filesystem.readFile({
+      path: getNativeLibraryIndexPath(uid),
+      directory: Directory.Data,
+      encoding: Encoding.UTF8
+    });
+    const raw = typeof result.data === 'string' ? result.data : '';
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<NativeLibraryIndexPayload>;
+    const indexCourses = Array.isArray(parsed.courses)
+      ? parsed.courses
+        .filter(shouldKeepSingleBundleStoredCourse)
+        .map(fromStoredCourse)
+        .filter((course): course is CourseData => course !== null)
+      : [];
+    if (indexCourses.length === 0) return [];
+
+    const fullCourses = await readFullCoursesFromNativeCache(uid, indexCourses.map((course) => course.id));
+    return mergeCourseCacheLists(Array.from(fullCourses.values()), indexCourses);
+  } catch (error) {
+    if (!isNativeFilesystemMissingError(error)) {
+      console.warn('Native library index read failed:', error);
+    }
+    return [];
+  }
+}
+
+async function writeCoursesToNativeLibraryIndex(uid: string, courses: CourseData[]): Promise<void> {
+  if (!isCapacitorNativeRuntime()) return;
+  const indexCourses = sortCoursesByLastActivity(courses)
+    .filter((course) => course.id)
+    .map(toQuotaSafeStoredCourse);
+
+  const payload: NativeLibraryIndexPayload = {
+    schemaVersion: 1,
+    updatedAt: new Date().toISOString(),
+    courses: indexCourses
+  };
+
+  try {
+    await Filesystem.writeFile({
+      path: getNativeLibraryIndexPath(uid),
+      data: JSON.stringify(payload),
+      directory: Directory.Data,
+      encoding: Encoding.UTF8,
+      recursive: true
+    });
+  } catch (error) {
+    console.warn('Native library index write failed:', error);
+  }
+}
+
+async function upsertCourseInNativeLibraryIndex(uid: string, course: CourseData): Promise<void> {
+  if (!isCapacitorNativeRuntime()) return;
+  const existing = await readCoursesFromNativeLibraryIndex(uid);
+  await writeCoursesToNativeLibraryIndex(uid, mergeCourseCacheLists([course], existing));
 }
 
 function toIsoStringForBookMetadata(value: unknown, fallback: string): string {
@@ -1874,6 +2151,11 @@ function mergeSharedCourseWithUserProgress(sharedCourse: CourseData, progress: U
     category: sharedCourse.category || progress.category,
     searchTags: sharedCourse.searchTags || progress.searchTags,
     totalDuration: sharedCourse.totalDuration || progress.totalDuration,
+    visualStoryMode: sharedCourse.visualStoryMode === true || progress.visualStoryMode === true,
+    visualStoryAudioStatus: sharedCourse.visualStoryAudioStatus || progress.visualStoryAudioStatus,
+    coverNarrationText: sharedCourse.coverNarrationText || progress.coverNarrationText,
+    coverNarrationAudioUrl: sharedCourse.coverNarrationAudioUrl || progress.coverNarrationAudioUrl,
+    coverNarrationAudioStoragePath: sharedCourse.coverNarrationAudioStoragePath || progress.coverNarrationAudioStoragePath,
     coverImageUrl: sharedCourse.coverImageUrl || progress.coverImageUrl,
     contentPackageUrl: sharedCourse.contentPackageUrl || progress.contentPackageUrl,
     contentPackagePath: sharedCourse.contentPackagePath || progress.contentPackagePath,
@@ -1904,6 +2186,11 @@ function toProgressDocFromCourseSnapshot(course: CourseData): UserCourseProgress
     category: course.category,
     searchTags: course.searchTags,
     totalDuration: course.totalDuration,
+    visualStoryMode: course.visualStoryMode,
+    visualStoryAudioStatus: course.visualStoryAudioStatus,
+    coverNarrationText: course.coverNarrationText,
+    coverNarrationAudioUrl: course.coverNarrationAudioUrl,
+    coverNarrationAudioStoragePath: course.coverNarrationAudioStoragePath,
     coverImageUrl: course.coverImageUrl,
     contentPackageUrl: course.contentPackageUrl,
     contentPackagePath: course.contentPackagePath,
@@ -2055,10 +2342,12 @@ function flushCoursesToLocalNow(uid: string, courses?: CourseData[]): void {
   }
 
   persistCoursesToLocal(uid, pendingLocalCourseWrites.get(uid) || []);
+  void writeCoursesToNativeLibraryIndex(uid, pendingLocalCourseWrites.get(uid) || []);
   pendingLocalCourseWrites.delete(uid);
 }
 
 function writeCoursesToLocal(uid: string, courses: CourseData[]): void {
+  void writeCoursesToNativeLibraryIndex(uid, courses);
   if (localCourseCacheDisabledByQuota.has(uid)) return;
   pendingLocalCourseWrites.set(uid, [...courses]);
   const existingTimer = localCourseWriteTimers.get(uid);
@@ -2270,6 +2559,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Kitaplar yükleniyor...');
   const [hasCompletedLocalBootstrap, setHasCompletedLocalBootstrap] = useState(false);
+  const [hasCompletedNativeCacheMerge, setHasCompletedNativeCacheMerge] = useState(false);
   const [isAuthLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [bootstrapAuthUid, setBootstrapAuthUid] = useState<string | null>(() => {
@@ -2288,6 +2578,7 @@ export default function App() {
   const [isCreditPaywallOpen, setCreditPaywallOpen] = useState(false);
   const [creditPaywallIntent, setCreditPaywallIntent] = useState<CreditActionType | null>(null);
   const [isCreditPurchaseBusy, setCreditPurchaseBusy] = useState(false);
+  const [creditPackDisplayPrices, setCreditPackDisplayPrices] = useState<Partial<Record<string, string>>>({});
   const [legalConsentState, setLegalConsentState] = useState<LegalConsentState>('unknown');
   const [isLegalConsentSaving, setIsLegalConsentSaving] = useState(false);
   const [legalConsentError, setLegalConsentError] = useState<string | null>(null);
@@ -2316,6 +2607,7 @@ export default function App() {
   const uploadingStorageAssetPromiseByKeyRef = useRef<Map<string, Promise<string>>>(new Map());
   const packageSyncAttemptedByCourseRef = useRef<Set<string>>(new Set());
   const coverRepairAttemptedByCourseRef = useRef<Set<string>>(new Set());
+  const coverLookupExhaustedRef = useRef<Set<string>>(new Set());
   const shareLinkRedirectAttemptedRef = useRef<Set<string>>(new Set());
   const shareLinkAutoOpenHandledRef = useRef<Set<string>>(new Set());
   const creditWalletRef = useRef<CreditWallet>(FREE_STARTER_CREDITS);
@@ -2610,6 +2902,11 @@ export default function App() {
       category: course.category,
       searchTags: course.searchTags,
       totalDuration: course.totalDuration,
+      visualStoryMode: course.visualStoryMode === true,
+      visualStoryAudioStatus: course.visualStoryAudioStatus,
+      coverNarrationText: course.coverNarrationText,
+      coverNarrationAudioUrl: course.coverNarrationAudioUrl,
+      coverNarrationAudioStoragePath: course.coverNarrationAudioStoragePath,
       generatedAt: new Date().toISOString(),
       createdAt: course.createdAt.toISOString(),
       lastActivity: course.lastActivity.toISOString(),
@@ -3106,6 +3403,11 @@ export default function App() {
         changed = true;
         return {
           ...course,
+          visualStoryMode: cloudCourse.visualStoryMode === true || course.visualStoryMode === true,
+          visualStoryAudioStatus: cloudCourse.visualStoryAudioStatus || course.visualStoryAudioStatus,
+          coverNarrationText: cloudCourse.coverNarrationText || course.coverNarrationText,
+          coverNarrationAudioUrl: cloudCourse.coverNarrationAudioUrl || course.coverNarrationAudioUrl,
+          coverNarrationAudioStoragePath: cloudCourse.coverNarrationAudioStoragePath || course.coverNarrationAudioStoragePath,
           coverImageUrl: cloudCourse.coverImageUrl || course.coverImageUrl,
           contentPackageUrl: cloudCourse.contentPackageUrl || course.contentPackageUrl,
           contentPackagePath: cloudCourse.contentPackagePath || course.contentPackagePath,
@@ -3128,6 +3430,7 @@ export default function App() {
     options?: {
       markNodesLoading?: boolean;
       force?: boolean;
+      snapshotHint?: CourseData;
     }
   ): Promise<boolean> => {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
@@ -3140,7 +3443,7 @@ export default function App() {
       return inFlightPromise;
     }
 
-    const snapshot = savedCoursesRef.current.find((course) => course.id === courseId);
+    const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || options?.snapshotHint || null;
     const markNodesLoading = options?.markNodesLoading === true;
 
     const applyHydratedCourseLocally = (hydrated: CourseData, progressSnapshot: CourseData) => {
@@ -3173,11 +3476,8 @@ export default function App() {
       return true;
     }
 
-    const nativeCachedCourse = await readFullCourseFromNativeCache(
-      localUserId,
-      courseId,
-      resolveNativeCourseCacheVersion(snapshot)
-    );
+    // Prefer any on-disk cached version (do not re-download on bundle version bumps until explicit open).
+    const nativeCachedCourse = await readFullCourseFromNativeCache(localUserId, courseId);
     if (nativeCachedCourse && !courseNeedsContentHydration(nativeCachedCourse)) {
       applyHydratedCourseLocally(nativeCachedCourse, snapshot);
       return true;
@@ -3454,6 +3754,19 @@ export default function App() {
           ? cloudPayload.searchTags.filter((tag): tag is string => typeof tag === 'string')
           : undefined,
         totalDuration: typeof cloudPayload.totalDuration === 'string' ? cloudPayload.totalDuration : undefined,
+        visualStoryMode: cloudPayload.visualStoryMode === true,
+        visualStoryAudioStatus:
+          cloudPayload.visualStoryAudioStatus === 'pending' ||
+          cloudPayload.visualStoryAudioStatus === 'ready' ||
+          cloudPayload.visualStoryAudioStatus === 'failed' ||
+          cloudPayload.visualStoryAudioStatus === 'partial'
+            ? cloudPayload.visualStoryAudioStatus
+            : undefined,
+        coverNarrationText: typeof cloudPayload.coverNarrationText === 'string' ? cloudPayload.coverNarrationText : undefined,
+        coverNarrationAudioUrl: typeof cloudPayload.coverNarrationAudioUrl === 'string' ? cloudPayload.coverNarrationAudioUrl : undefined,
+        coverNarrationAudioStoragePath: typeof cloudPayload.coverNarrationAudioStoragePath === 'string'
+          ? cloudPayload.coverNarrationAudioStoragePath
+          : undefined,
         coverImageUrl: typeof cloudPayload.coverImageUrl === 'string' ? cloudPayload.coverImageUrl : undefined,
         status: normalizeCourseStatus(cloudPayload.status),
         userId: pending.uid,
@@ -3699,15 +4012,14 @@ export default function App() {
 
     const localUserId = authUser.uid;
     const repairTargets = savedCourses.flatMap((course) => {
-      const hasStorageBackedCover = typeof course.coverImageUrl === 'string' && (
-        isFirebaseStorageDownloadUrl(course.coverImageUrl) ||
-        course.coverImageUrl.trim().startsWith('smartbooks/')
-      );
+      const hasUnresolvedStoragePath = typeof course.coverImageUrl === 'string' &&
+        course.coverImageUrl.trim().startsWith('smartbooks/');
       const needsCoverFromPackage = !course.coverImageUrl && Boolean(course.contentPackagePath);
       const needsLegacyCoverLookup = !course.coverImageUrl;
-      if (!hasStorageBackedCover && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
+      if (!hasUnresolvedStoragePath && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
 
       const repairKey = `${course.id}:${course.coverImageUrl || ''}:${course.contentPackagePath || ''}`;
+      if (coverLookupExhaustedRef.current.has(repairKey)) return [];
       if (!markRetriableAttemptWithCooldown(
         coverRepairAttemptedByCourseRef.current,
         repairKey,
@@ -3732,8 +4044,6 @@ export default function App() {
         }))
       );
 
-      if (isCancelled) return;
-
       const repairedById = new Map(
         resolvedCovers
           .filter((entry) => typeof entry.coverImageUrl === 'string' && entry.coverImageUrl.trim())
@@ -3743,6 +4053,14 @@ export default function App() {
             return [entry.courseId, repairedCover] as const;
           })
       );
+
+      for (const entry of resolvedCovers) {
+        if (!repairedById.has(entry.courseId)) {
+          coverLookupExhaustedRef.current.add(entry.repairKey);
+        }
+      }
+
+      if (isCancelled) return;
       if (repairedById.size === 0) return;
 
       setSavedCourses((prev) => {
@@ -3862,7 +4180,7 @@ export default function App() {
 
   const handleContactSupport = () => {
     const subject = encodeURIComponent('Fortale Destek');
-    const mailtoUrl = `mailto:admin@futurumapps.online?subject=${subject}`;
+    const mailtoUrl = `mailto:fortale@sponelabs.com?subject=${subject}`;
     window.location.href = mailtoUrl;
   };
 
@@ -4047,6 +4365,32 @@ export default function App() {
   }, [authUser?.uid, isGuestSession]);
 
   useEffect(() => {
+    if (!isCreditPaywallOpen) return;
+    if (!isCapacitorNativeRuntime() || !isRevenueCatEnabled()) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureRevenueCatConfigured({
+          appUserId: authUser?.uid ?? null,
+          email: authUser?.email ?? null,
+          displayName: authUser?.displayName ?? null
+        });
+        const nextPriceStrings = await getRevenueCatCreditPackPriceStrings();
+        if (!cancelled && Object.keys(nextPriceStrings).length > 0) {
+          setCreditPackDisplayPrices((current) => ({ ...current, ...nextPriceStrings }));
+        }
+      } catch (error) {
+        console.warn('Failed to load RevenueCat credit pack price strings:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.displayName, authUser?.email, authUser?.uid, isCreditPaywallOpen]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId) return;
@@ -4068,7 +4412,7 @@ export default function App() {
   }, [authUser?.uid, isGuestSession]);
 
   useEffect(() => {
-    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : (isAuthLoading ? bootstrapAuthUid : null));
 
     if (!localUserId) {
       progressOnlyFallbackCourseIdsRef.current.clear();
@@ -4079,19 +4423,25 @@ export default function App() {
       setLoadingMessage('Kitaplar yükleniyor...');
       setIsLoading(false);
       setHasCompletedLocalBootstrap(true);
+      setHasCompletedNativeCacheMerge(true);
       return;
     }
 
+    let isCancelled = false;
+
     const fetchCourses = async () => {
       setLoadingMessage('Kitaplar yükleniyor...');
-      setIsLoading(true);
       setHasCompletedLocalBootstrap(false);
+      setHasCompletedNativeCacheMerge(false);
+      eagerHydrationNativeCacheMergedIdsRef.current.clear();
       const mergeNativeFullCoursesIntoState = async (courseIds: string[]) => {
         if (courseIds.length === 0) return;
         try {
           const nativeFullCourseCache = await readFullCoursesFromNativeCache(localUserId, courseIds);
+          if (isCancelled) return;
           if (nativeFullCourseCache.size === 0) return;
 
+          let mergedCourses: CourseData[] | null = null;
           setSavedCourses((prev) => {
             let changed = false;
             const nextCourses = sortCoursesByLastActivity(
@@ -4101,6 +4451,7 @@ export default function App() {
                 if (!courseNeedsContentHydration(course)) return course;
 
                 changed = true;
+                eagerHydrationNativeCacheMergedIdsRef.current.add(course.id);
                 const mergedCourse = mergeSharedCourseWithUserProgress(
                   fullCachedCourse,
                   toProgressDocFromCourseSnapshot(course)
@@ -4111,14 +4462,50 @@ export default function App() {
             );
 
             if (!changed) return prev;
-            writeCoursesToLocal(localUserId, nextCourses);
-            writeFullCoursesToLocal(localUserId, nextCourses);
+            mergedCourses = nextCourses;
             return nextCourses;
           });
+          // Side effects outside the state updater.
+          if (mergedCourses) {
+            writeCoursesToLocal(localUserId, mergedCourses);
+            writeFullCoursesToLocal(localUserId, mergedCourses);
+          }
         } catch {
           // Ignore native cache read failures during bootstrap.
         }
       };
+
+      const localStorageCourses = readCoursesFromLocal(localUserId);
+      const nativeLibraryCourses = await readCoursesFromNativeLibraryIndex(localUserId);
+      const localCourses = mergeCourseCacheLists(nativeLibraryCourses, localStorageCourses);
+      const localStickyNotes = readStickyNotesFromLocal(localUserId);
+      const localLikedCourseIds = readLikedCourseIdsFromLocal(localUserId);
+      const progressOnlyFallbackCourseIds = new Set<string>();
+
+      if (isCancelled) return;
+
+      setIsLoading(localCourses.length === 0);
+      setSavedCourses(localCourses);
+      savedCoursesRef.current = localCourses;
+      setStickyNotes(localStickyNotes);
+      setLikedCourseIds(localLikedCourseIds);
+      setActiveCourseId((prev) => {
+        if (localCourses.length === 0) return null;
+        if (prev && localCourses.some((course) => course.id === prev)) return prev;
+        return localCourses[0].id;
+      });
+      setHasCompletedLocalBootstrap(true);
+
+      const nativeCacheMergePromise = localCourses.length > 0
+        ? mergeNativeFullCoursesIntoState(localCourses.map((course) => course.id))
+        : Promise.resolve();
+
+      void nativeCacheMergePromise.finally(() => {
+        if (!isCancelled) {
+          setHasCompletedNativeCacheMerge(true);
+        }
+      });
+
       const stickyNotesBootstrapPromise = (async () => {
         if (!authUser || !cloudSyncEnabled) return;
 
@@ -4156,29 +4543,18 @@ export default function App() {
         console.warn('Sticky notes bootstrap skipped:', error);
       });
 
-      const localCourses = readCoursesFromLocal(localUserId);
-      const localStickyNotes = readStickyNotesFromLocal(localUserId);
-      const localLikedCourseIds = readLikedCourseIdsFromLocal(localUserId);
-      const progressOnlyFallbackCourseIds = new Set<string>();
-      setSavedCourses(localCourses);
-      savedCoursesRef.current = localCourses;
-      setStickyNotes(localStickyNotes);
-      setLikedCourseIds(localLikedCourseIds);
-      setActiveCourseId((prev) => {
-        if (localCourses.length === 0) return null;
-        if (prev && localCourses.some((course) => course.id === prev)) return prev;
-        return localCourses[0].id;
-      });
-      setHasCompletedLocalBootstrap(true);
       if (localCourses.length > 0) {
         setIsLoading(false);
-        void mergeNativeFullCoursesIntoState(localCourses.map((course) => course.id));
       } else {
         setLoadingMessage('Kitaplar senkronize ediliyor...');
       }
 
       if (!authUser || !cloudSyncEnabled) {
         progressOnlyFallbackCourseIdsRef.current.clear();
+        if (!authUser && isAuthLoading && !isGuestSession && localCourses.length === 0) {
+          void stickyNotesBootstrapPromise;
+          return;
+        }
         setIsLoading(false);
         void stickyNotesBootstrapPromise;
         return;
@@ -4195,6 +4571,7 @@ export default function App() {
       try {
         setLoadingMessage('Kitaplar senkronize ediliyor...');
         backendBootstrapCourses = await fetchCourseListFromBackend();
+        if (isCancelled) return;
         didLoadBackendBootstrap = true;
       } catch (backendBootstrapError) {
         console.warn('Server-side book bootstrap skipped:', backendBootstrapError);
@@ -4203,33 +4580,8 @@ export default function App() {
       try {
         const byId = new Map<string, CourseData>();
 
-        if (didLoadBackendBootstrap) {
-          backendBootstrapCourses.forEach((course) => {
-            byId.set(course.id, course);
-            if (courseNeedsContentHydration(course)) {
-              progressOnlyFallbackCourseIds.add(course.id);
-            }
-          });
-        }
-
         localCourses.forEach((localCourse) => {
-          const existing = byId.get(localCourse.id);
-          if (!existing) {
-            byId.set(localCourse.id, localCourse);
-            return;
-          }
-
-          if (isCourseProgressOnly(existing) && !isCourseProgressOnly(localCourse)) {
-            byId.set(localCourse.id, mergeSharedCourseWithUserProgress(
-              localCourse,
-              toProgressDocFromCourseSnapshot(existing)
-            ));
-            return;
-          }
-
-          if (localCourse.lastActivity > existing.lastActivity && !isCourseProgressOnly(localCourse)) {
-            byId.set(localCourse.id, localCourse);
-          }
+          byId.set(localCourse.id, localCourse);
         });
 
         savedCoursesRef.current
@@ -4253,6 +4605,38 @@ export default function App() {
               byId.set(memoryCourse.id, memoryCourse);
             }
           });
+
+        if (didLoadBackendBootstrap) {
+          backendBootstrapCourses.forEach((cloudCourse) => {
+            const existing = byId.get(cloudCourse.id);
+            if (!existing) {
+              byId.set(cloudCourse.id, cloudCourse);
+              if (courseNeedsContentHydration(cloudCourse)) {
+                progressOnlyFallbackCourseIds.add(cloudCourse.id);
+              }
+              return;
+            }
+
+            if (!courseNeedsContentHydration(existing)) return;
+
+            const metadataMerged: CourseData = {
+              ...existing,
+              userId: existing.userId || cloudCourse.userId,
+              coverImageUrl: existing.coverImageUrl || cloudCourse.coverImageUrl,
+              contentPackagePath: existing.contentPackagePath || cloudCourse.contentPackagePath,
+              contentPackageUrl: existing.contentPackageUrl || cloudCourse.contentPackageUrl,
+              contentPackageUpdatedAt: existing.contentPackageUpdatedAt || cloudCourse.contentPackageUpdatedAt,
+              bundle: existing.bundle || cloudCourse.bundle,
+              cover: existing.cover || cloudCourse.cover,
+              status: normalizeCourseStatus(existing.status) || normalizeCourseStatus(cloudCourse.status),
+              nodes: existing.nodes.length > 0 ? existing.nodes : cloudCourse.nodes
+            };
+            byId.set(cloudCourse.id, metadataMerged);
+            if (courseNeedsContentHydration(metadataMerged)) {
+              progressOnlyFallbackCourseIds.add(cloudCourse.id);
+            }
+          });
+        }
 
         progressOnlyFallbackCourseIdsRef.current = new Set(
           Array.from(progressOnlyFallbackCourseIds).filter((courseId) => {
@@ -4281,7 +4665,7 @@ export default function App() {
             }
           );
           setIsLoading(false);
-          void mergeNativeFullCoursesIntoState(sortedCourses.map((course) => course.id));
+          await mergeNativeFullCoursesIntoState(sortedCourses.map((course) => course.id));
         } else if (localCourses.length === 0) {
           setSavedCourses([]);
           savedCoursesRef.current = [];
@@ -4297,14 +4681,19 @@ export default function App() {
         }
         await stickyNotesBootstrapPromise;
       } finally {
+        if (isCancelled) return;
         setLoadingMessage('Kitaplar yükleniyor...');
         setHasCompletedLocalBootstrap(true);
         setIsLoading(false);
+        setHasCompletedNativeCacheMerge(true);
       }
     };
 
     fetchCourses();
-  }, [authUser, cloudSyncEnabled, isGuestSession]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [authUser?.uid, bootstrapAuthUid, cloudSyncEnabled, isAuthLoading, isGuestSession]);
 
   useEffect(() => {
     if (!authUser?.uid || !cloudSyncEnabled) return;
@@ -4324,7 +4713,7 @@ export default function App() {
         .filter((course): course is CourseData => course !== null);
 
       setSavedCourses((prev) => {
-        const byId = new Map<string, CourseData>();
+        const byId = new Map<string, CourseData>(prev.map((course) => [course.id, course] as const));
 
         for (const cloudBook of cloudBooks) {
           const localBook = prev.find((course) => course.id === cloudBook.id) || savedCoursesRef.current.find((course) => course.id === cloudBook.id);
@@ -4333,43 +4722,36 @@ export default function App() {
             continue;
           }
 
+          if (!courseNeedsContentHydration(localBook)) {
+            byId.set(localBook.id, localBook);
+            continue;
+          }
+
           const mergedBook: CourseData = {
             ...localBook,
-            ...cloudBook,
-            topic: resolveCourseTopic(cloudBook.topic, localBook.topic),
-            description: cloudBook.description || localBook.description,
-            creatorName: cloudBook.creatorName || localBook.creatorName,
-            language: cloudBook.language || localBook.language,
-            ageGroup: cloudBook.ageGroup || localBook.ageGroup,
-            bookType: cloudBook.bookType || localBook.bookType,
-            subGenre: cloudBook.subGenre || localBook.subGenre,
-            category: cloudBook.category || localBook.category,
-            searchTags: cloudBook.searchTags || localBook.searchTags,
-            totalDuration: cloudBook.totalDuration || localBook.totalDuration,
-            coverImageUrl: cloudBook.coverImageUrl || localBook.coverImageUrl,
-            contentPackagePath: cloudBook.contentPackagePath || localBook.contentPackagePath,
-            contentPackageUrl: cloudBook.contentPackageUrl || localBook.contentPackageUrl,
-            contentPackageUpdatedAt: cloudBook.contentPackageUpdatedAt || localBook.contentPackageUpdatedAt,
-            bundle: cloudBook.bundle || localBook.bundle,
-            cover: cloudBook.cover || localBook.cover,
-            status: normalizeCourseStatus(cloudBook.status) || normalizeCourseStatus(localBook.status),
+            userId: localBook.userId || cloudBook.userId,
+            coverImageUrl: localBook.coverImageUrl || cloudBook.coverImageUrl,
+            contentPackagePath: localBook.contentPackagePath || cloudBook.contentPackagePath,
+            contentPackageUrl: localBook.contentPackageUrl || cloudBook.contentPackageUrl,
+            contentPackageUpdatedAt: localBook.contentPackageUpdatedAt || cloudBook.contentPackageUpdatedAt,
+            bundle: localBook.bundle || cloudBook.bundle,
+            cover: localBook.cover || cloudBook.cover,
+            status: normalizeCourseStatus(localBook.status) || normalizeCourseStatus(cloudBook.status),
             nodes: localBook.nodes.length > 0 ? localBook.nodes : cloudBook.nodes
           };
           byId.set(cloudBook.id, mergedBook);
         }
 
-        for (const localBook of prev) {
-          if (!byId.has(localBook.id) && sessionCreatedCourseIdsRef.current.has(localBook.id)) {
-            byId.set(localBook.id, localBook);
-          }
-        }
-
         const nextCourses = sortCoursesByLastActivity(Array.from(byId.values()));
         savedCoursesRef.current = nextCourses;
-        writeCoursesToLocal(uid, nextCourses);
-        writeFullCoursesToLocal(uid, nextCourses);
         return nextCourses;
       });
+      // Side effects must run outside the state updater (no heavy JSON work during React reconciliation).
+      const coursesToPersist = savedCoursesRef.current;
+      if (coursesToPersist.length > 0) {
+        writeCoursesToLocal(uid, coursesToPersist);
+        writeFullCoursesToLocal(uid, coursesToPersist);
+      }
     };
 
     const attachFallbackListener = () => {
@@ -4550,35 +4932,7 @@ export default function App() {
     };
   }, [savedCourses]);
 
-  // Eager background hydration: after bootstrap, silently download content for all courses
-  // so that book cards transition to green "Oku" without requiring user taps.
-  const eagerHydrationAttemptedRef = useRef(false);
-  useEffect(() => {
-    if (!hasCompletedLocalBootstrap) return;
-    if (eagerHydrationAttemptedRef.current) return;
-    if (savedCourses.length === 0) return;
-
-    eagerHydrationAttemptedRef.current = true;
-
-    const coursesNeedingHydration = savedCourses.filter((course) => {
-      const openState = courseOpenStateByIdRef.current[course.id];
-      return (
-        courseNeedsContentHydration(course) &&
-        (!openState || openState.status === 'idle') &&
-        !courseOpenInFlightByIdRef.current.has(course.id)
-      );
-    });
-
-    if (coursesNeedingHydration.length === 0) return;
-
-    void runTasksWithConcurrency(coursesNeedingHydration.slice(0, 6), 3, async (course) => {
-      try {
-        await ensureCourseReadyForOpen(course.id, course);
-      } catch {
-        // Best-effort background hydration; failures are silently ignored.
-      }
-    });
-  }, [hasCompletedLocalBootstrap, savedCourses]);
+  const eagerHydrationNativeCacheMergedIdsRef = useRef<Set<string>>(new Set());
 
   const userName = profileNameOverride?.trim()
     || authUser?.displayName?.trim()
@@ -4622,7 +4976,7 @@ export default function App() {
     }, {
       allowMasterWrite: !activeCourse.userId || activeCourse.userId === authUser.uid
     });
-  }, [activeCourse, authUser, cloudSyncEnabled]);
+  }, [activeCourse, authUser?.uid, cloudSyncEnabled]);
 
   useEffect(() => {
     if (!authUser || !cloudSyncEnabled || !activeCourse) return;
@@ -4639,7 +4993,7 @@ export default function App() {
     }, {
       allowMasterWrite: !activeCourse.userId || activeCourse.userId === authUser.uid
     });
-  }, [activeCourse, authUser, cloudSyncEnabled]);
+  }, [activeCourse, authUser?.uid, cloudSyncEnabled]);
 
   const getSavedCourseSnapshotById = (courseId: string): CourseData | undefined =>
     savedCoursesRef.current.find((course) => course.id === courseId);
@@ -4764,6 +5118,7 @@ export default function App() {
 
     const course = getSavedCourseSnapshotById(courseId);
     if (!course) return;
+    if (course.visualStoryMode === true) return;
     if (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim()) return;
 
     const lectureNodes = course.nodes.filter((node) => node.type === 'lecture' && Boolean(node.content?.trim()));
@@ -4844,6 +5199,7 @@ export default function App() {
 
     const course = getSavedCourseSnapshotById(courseId);
     if (!course) return;
+    if (course.visualStoryMode === true) return;
     const node = course.nodes.find((item) => item.id === nodeId);
     if (!node) return;
     const seededLectureLoadingWithoutContent =
@@ -5129,10 +5485,10 @@ export default function App() {
       return nextCourses;
     });
     openCourseFlow(seededCourse.id);
-    if (seededCourse.nodes.length > 0) {
+    // ZIP bundle'ı indir → savedCourses güncellenir → CourseFlowView tam içerikle açılır
+    void ensureCourseHydrated(seededCourse.id, { markNodesLoading: false, snapshotHint: seededCourse });
+    if (seededCourse.nodes.length > 0 && seededCourse.visualStoryMode !== true) {
       startBackgroundSmartBookPackaging(seededCourse.id);
-    } else {
-      void ensureCourseReadyForOpen(seededCourse.id, seededCourse);
     }
 
     if (!authUser || !cloudSyncEnabled) return;
@@ -5338,7 +5694,6 @@ export default function App() {
 
   const handleCourseSelect = (courseId: string) => {
     void (async () => {
-      const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
       let selectedSnapshot: CourseData | null = null;
       const existing = savedCoursesRef.current.find((course) => course.id === courseId)
         || savedCourses.find((course) => course.id === courseId)
@@ -5369,43 +5724,8 @@ export default function App() {
         return;
       }
 
-      // Course has 0 nodes or missing content — fetch full content from Storage/backend.
-      try {
-        updateCourseOpenState(courseId, { status: 'downloading', progress: 10 });
-
-        // fetchCoursePackageFromStorage tries: backend → Storage URL → Storage paths → backend fallback
-        const hydrated = await fetchCoursePackageFromStorage(
-          courseId,
-          selectedSnapshot.userId || authUser?.uid,
-          selectedSnapshot.contentPackageUrl,
-          selectedSnapshot.contentPackagePath,
-          { preferBackend: false, versionHint: selectedSnapshot.bundle?.version }
-        );
-
-        if (hydrated && hydrated.nodes.length > 0) {
-          const mergedCourse = mergeSharedCourseWithUserProgress(
-            hydrated,
-            toProgressDocFromCourseSnapshot(selectedSnapshot)
-          );
-          setSavedCourses((prev) => {
-            const nextCourses = prev.map((c) => (c.id === courseId ? mergedCourse : c));
-            savedCoursesRef.current = nextCourses;
-            if (localUserId) {
-              writeCoursesToLocal(localUserId, nextCourses);
-              writeFullCoursesToLocal(localUserId, nextCourses);
-            }
-            return nextCourses;
-          });
-          coursePackageByIdRef.current.set(courseId, mergedCourse);
-          updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
-          openCourseFlow(courseId);
-          return;
-        }
-
-        updateCourseOpenState(courseId, { status: 'failed', progress: 0 });
-        openCourseFlow(courseId);
-      } catch (error) {
-        updateCourseOpenState(courseId, { status: 'failed', progress: 0 });
+      const isReady = await ensureCourseReadyForOpen(courseId, selectedSnapshot);
+      if (isReady) {
         openCourseFlow(courseId);
       }
     })();
@@ -5924,13 +6244,13 @@ export default function App() {
     }
   };
 
-  const canRenderHomeWhileAuthBootstraps = Boolean(
+  const canRenderWhileAuthBootstraps = Boolean(
     isAuthLoading &&
-    currentView === 'HOME' &&
+    currentView !== 'COURSE_FLOW' &&
     (isGuestSession || bootstrapAuthUid || savedCourses.length > 0)
   );
 
-  if (isAuthLoading && !canRenderHomeWhileAuthBootstraps) {
+  if (isAuthLoading && !canRenderWhileAuthBootstraps) {
     return (
       <UiI18nProvider key={appLanguage} language={appLanguage}>
         <FullScreenFallback message={loadingMessage} />
@@ -5961,6 +6281,13 @@ export default function App() {
     );
   }
 
+  const shouldWaitForCreditStorePrices = Boolean(
+    isCreditPaywallOpen &&
+    isCapacitorNativeRuntime() &&
+    isRevenueCatEnabled() &&
+    CREDIT_PACKS.some((pack) => !creditPackDisplayPrices[pack.id])
+  );
+
   return (
     <UiI18nProvider key={appLanguage} language={appLanguage}>
       <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
@@ -5973,7 +6300,11 @@ export default function App() {
                 setCreditPaywallIntent(null);
               }}
               wallet={creditWallet}
-              packs={CREDIT_PACKS}
+              packs={CREDIT_PACKS.map((pack) => ({
+                ...pack,
+                displayPrice: creditPackDisplayPrices[pack.id]
+              }))}
+              waitForStorePrices={shouldWaitForCreditStorePrices}
               insufficientAction={creditPaywallIntent}
               isPurchasing={isCreditPurchaseBusy}
               onPurchase={handleCreditPackPurchase}
@@ -6013,10 +6344,10 @@ export default function App() {
 
             {!isReaderFullscreen && (
               <GlobalHeader
-                onToggleSettings={handleToggleSettings}
-                isSettingsOpen={isSettingsOpen}
                 credits={creditWallet}
                 onOpenPaywall={() => openCreditPaywall()}
+                showBackButton={currentView !== 'HOME'}
+                onBack={() => setCurrentView('HOME')}
               />
             )}
 
@@ -6032,6 +6363,8 @@ export default function App() {
               <BottomNav
                 currentView={currentView}
                 onViewChange={setCurrentView}
+                onToggleSettings={handleToggleSettings}
+                isSettingsOpen={isSettingsOpen}
               />
             )}
           </div>

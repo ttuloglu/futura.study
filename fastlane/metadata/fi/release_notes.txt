@@ -1,0 +1,1 @@
+Tässä versiossa paransimme kuvien katselukokemusta iOS-laitteilla: zoomaus on sujuvampaa ja kuvan sulkeminen vetämällä tuntuu luonnollisemmalta. Teimme myös lukukokemusta ja vakautta parantavia korjauksia.

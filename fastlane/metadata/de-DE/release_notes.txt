@@ -1,0 +1,1 @@
+In dieser Version haben wir die Bildanzeige unter iOS verbessert: Zoomgesten sind flüssiger und das Schließen durch Herunterziehen fühlt sich natürlicher an. Zudem gab es Optimierungen für das Leseerlebnis und die allgemeine Stabilität.

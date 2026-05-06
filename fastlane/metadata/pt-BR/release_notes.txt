@@ -1,0 +1,1 @@
+Nesta versão, melhoramos a visualização de imagens no iOS: os gestos de zoom estão mais fluidos e fechar a imagem arrastando para baixo parece mais natural. Também fizemos ajustes na experiência de leitura e na estabilidade geral.

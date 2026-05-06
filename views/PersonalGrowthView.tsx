@@ -184,36 +184,20 @@ export default function PersonalGrowthView({
   }, [coursesWithMeta, filter]);
 
   const filterButtonClass = (kind: CourseFilter) =>
-    `flex-1 min-w-0 py-2 rounded-lg text-[10px] font-bold transition-all border border-dashed whitespace-nowrap ${filter === kind
-      ? 'text-[#efe7db] border-transparent'
-      : 'text-[#b7ab9b] border-transparent hover:text-[#efe7db] hover:bg-[rgba(60,52,45,0.35)]'
+    `fortale-library-filter-button flex-1 min-w-0 py-2 rounded-lg text-[10px] font-bold transition-all border whitespace-nowrap ${filter === kind
+      ? 'is-active text-white'
+      : 'text-[#d7efe6] border-transparent hover:text-white'
     }`;
 
-  const filterButtonStyle = (kind: CourseFilter): React.CSSProperties =>
-    filter === kind
-      ? {
-        background: 'linear-gradient(135deg, rgba(35,67,103,0.95) 0%, rgba(24,44,70,0.92) 100%)',
-        boxShadow: 'inset 0 0 0 1px rgba(165,207,255,0.3), 0 0 14px rgba(94,141,198,0.22)',
-        border: '1px dashed rgba(146,194,246,0.42)',
-        color: '#ffffff'
-      }
-      : {};
+  const filterButtonStyle = (_kind: CourseFilter): React.CSSProperties => ({});
 
   const viewModeButtonClass = (kind: CourseViewMode) =>
-    `h-8 rounded-xl px-3 text-[10px] font-bold transition-all ${viewMode === kind
+    `fortale-library-mode-button h-8 rounded-xl px-3 text-[10px] font-bold transition-all ${viewMode === kind
       ? 'text-white'
       : 'text-[#b7cbe0] hover:text-white'
     }`;
 
-  const viewModeButtonStyle = (kind: CourseViewMode): React.CSSProperties =>
-    viewMode === kind
-      ? {
-        background: 'linear-gradient(135deg, rgba(35,67,103,0.95) 0%, rgba(24,44,70,0.92) 100%)',
-        boxShadow: 'inset 0 0 0 1px rgba(165,207,255,0.3), 0 0 14px rgba(94,141,198,0.18)'
-      }
-      : {
-        background: 'transparent'
-      };
+  const viewModeButtonStyle = (_kind: CourseViewMode): React.CSSProperties => ({});
 
   const openCourseDeleteModal = (course: CourseData) => {
     if (!onDeleteCourse) return;
@@ -263,22 +247,21 @@ export default function PersonalGrowthView({
         ? `${t('İndiriliyor')} %${progress}`
         : isFailed
           ? t('Tekrar dene')
-          : t('Aç');
+          : t('İndir');
     return { state, progress, isDownloading, isReady, isFailed, label };
   };
 
   return (
-    <div
-      className="view-container"
-      style={{
-        background:
-          'radial-gradient(circle at 12% 7%, rgba(182, 223, 255, 0.24), transparent 44%), radial-gradient(circle at 88% 11%, rgba(143, 206, 255, 0.2), transparent 42%), linear-gradient(180deg, #1f3a57 0%, #162b42 100%)'
-      }}
-    >
-      <div className="app-content-width space-y-5 pb-24">
+    <div className="view-container fortale-library-view">
+      <div className="app-content-width fortale-library-content space-y-5 pb-24">
+        <section className="fortale-library-hero">
+          <p>{t('Fortale')}</p>
+          <h1>{t('Kitaplarım')}</h1>
+          <span>{t('Build Your Epic')}</span>
+        </section>
         <section className="space-y-3">
           <div
-            className="flex items-center gap-1 rounded-xl border border-dashed p-1"
+            className="fortale-library-panel flex items-center gap-1 rounded-xl border p-1"
             style={{
               background: 'rgba(17, 22, 29, 0.45)',
               borderColor: 'rgba(173, 149, 124, 0.12)',
@@ -303,7 +286,7 @@ export default function PersonalGrowthView({
 
           {savedCourses.length > 0 && (
             <div
-              className="flex items-center justify-between gap-3 rounded-2xl border border-dashed px-3 py-2.5"
+              className="fortale-library-panel flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5"
               style={{
                 background: 'rgba(17, 22, 29, 0.3)',
                 borderColor: 'rgba(188, 194, 203, 0.1)',
@@ -312,7 +295,7 @@ export default function PersonalGrowthView({
             >
               <p className="text-[11px] font-bold text-[#d9e9f8]">{t('Görünüm değiştir')}</p>
               <div
-                className="inline-flex items-center gap-1 rounded-xl border border-dashed p-1"
+                className="fortale-library-mode-switch inline-flex items-center gap-1 rounded-xl border p-1"
                 style={{
                   background: 'rgba(15, 24, 36, 0.62)',
                   borderColor: 'rgba(135, 164, 197, 0.18)'
@@ -340,7 +323,7 @@ export default function PersonalGrowthView({
 
           {filteredCourses.length === 0 ? (
             <div
-              className="rounded-2xl border border-dashed p-5 text-center"
+              className="fortale-library-panel rounded-2xl border p-5 text-center"
               style={{
                 background: 'rgba(17, 22, 29, 0.3)',
                 borderColor: 'rgba(188, 194, 203, 0.1)',
@@ -357,7 +340,7 @@ export default function PersonalGrowthView({
             <div className={viewMode === 'cover' ? 'grid grid-cols-2 gap-3 md:grid-cols-3' : 'grid grid-cols-1 gap-3 md:grid-cols-2'}>
               {filteredCourses.map(({ course, meta }) => {
                 const openUi = getCourseOpenUi(course.id);
-                const openButtonClass = 'inline-flex items-center rounded-xl border border-dashed px-2.5 py-1 text-[10px] font-bold text-white transition-transform group-active:scale-95 disabled:cursor-not-allowed disabled:opacity-80';
+                const openButtonClass = 'fortale-library-open-button inline-flex items-center rounded-xl border px-2.5 py-1 text-[10px] font-bold text-white transition-transform group-active:scale-95 disabled:cursor-not-allowed disabled:opacity-80';
                 return viewMode === 'cover' ? (
                   <div
                     key={course.id}
@@ -370,7 +353,7 @@ export default function PersonalGrowthView({
                         onCourseSelect(course.id);
                       }
                     }}
-                    className="group cursor-pointer rounded-[24px] border border-dashed p-2.5 text-left transition-all active:scale-[0.99]"
+                    className="fortale-library-card group cursor-pointer rounded-[24px] border p-2.5 text-left transition-all active:scale-[0.99]"
                     style={{
                       background: 'rgba(17, 22, 29, 0.3)',
                       borderColor: 'rgba(188, 194, 203, 0.1)',
@@ -388,7 +371,7 @@ export default function PersonalGrowthView({
                           <img
                             src={course.coverImageUrl}
                             alt={`${course.topic} ${t('Fortale kapağı')}`}
-                            className="h-full w-full object-contain object-center"
+                            className="h-full w-full scale-[1.08] object-cover object-center"
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
@@ -400,7 +383,7 @@ export default function PersonalGrowthView({
 
                     <div className="mt-2 min-w-0">
                       <div
-                        className="flex items-center justify-between gap-2 border-t border-dashed pt-2"
+                        className="flex items-center justify-between gap-2 border-t pt-2"
                         style={{ borderColor: 'rgba(96, 129, 164, 0.3)' }}
                       >
                         <p className="text-[10px] text-[#d2e3f3]">
@@ -457,7 +440,7 @@ export default function PersonalGrowthView({
                         onCourseSelect(course.id);
                       }
                     }}
-                    className="group h-full cursor-pointer rounded-[24px] border border-dashed p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
+                    className="fortale-library-card group h-full cursor-pointer rounded-[24px] border p-3 text-left transition-all active:scale-[0.99] md:p-3.5"
                     style={{
                       background: 'rgba(17, 22, 29, 0.3)',
                       borderColor: 'rgba(188, 194, 203, 0.1)',
@@ -475,7 +458,7 @@ export default function PersonalGrowthView({
                           <img
                             src={course.coverImageUrl}
                             alt={`${course.topic} ${t('Fortale kapağı')}`}
-                            className="h-full w-full object-contain object-center border-0"
+                            className="h-full w-full scale-[1.08] object-cover object-center border-0"
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
@@ -535,7 +518,7 @@ export default function PersonalGrowthView({
                           </div>
 
                           <div
-                            className="mt-2 flex items-center justify-between gap-2 border-t border-dashed pt-2"
+                            className="mt-2 flex items-center justify-between gap-2 border-t pt-2"
                             style={{ borderColor: 'rgba(96, 129, 164, 0.3)' }}
                           >
                             <span className="text-[10px] text-[#9cb9d7]">

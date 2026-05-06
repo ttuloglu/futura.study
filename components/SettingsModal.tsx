@@ -32,10 +32,10 @@ interface SettingsModalProps {
 }
 
 const tileButtonClass =
-  'w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border border-dashed text-xs font-semibold text-white transition-all';
+  'fortale-settings-surface w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-white transition-all';
 
-const SMARTBOOK_SURFACE_BG = 'rgba(17, 22, 29, 0.42)';
-const SMARTBOOK_SURFACE_BORDER = 'rgba(173, 149, 124, 0.09)';
+const SMARTBOOK_SURFACE_BG = 'rgba(14, 38, 31, 0.78)';
+const SMARTBOOK_SURFACE_BORDER = 'rgba(230, 245, 238, 0.16)';
 
 export default function SettingsModal({
   isOpen,
@@ -164,7 +164,7 @@ export default function SettingsModal({
       >
         <div
           ref={panelRef}
-          className="mx-auto w-full max-w-[480px] overflow-y-auto rounded-[24px] border border-dashed shadow-[0_20px_38px_-18px_rgba(0,0,0,0.7)] backdrop-blur-[22px] animate-enter md:max-w-[520px]"
+          className="fortale-settings-panel mx-auto w-full max-w-[480px] overflow-y-auto rounded-[24px] border shadow-[0_20px_38px_-18px_rgba(0,0,0,0.7)] backdrop-blur-[22px] animate-enter md:max-w-[520px]"
           style={modalPanelStyle}
         >
           <div className="w-full p-4 space-y-4">
@@ -175,7 +175,7 @@ export default function SettingsModal({
               </div>
               <button
                 onClick={onClose}
-                className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full border border-dashed text-white leading-none transition-colors hover:bg-[rgba(23,28,36,0.52)]"
+                className="fortale-settings-surface shrink-0 flex items-center justify-center w-8 h-8 rounded-full border text-white leading-none transition-colors hover:bg-[rgba(23,28,36,0.52)]"
                 style={smartbookSurfaceStyle}
               >
                 <X size={14} />
@@ -184,7 +184,7 @@ export default function SettingsModal({
 
             <button
               onClick={() => { onOpenPaywall(); onClose(); }}
-              className="w-full rounded-2xl border border-dashed px-3 py-2.5 text-left transition-all hover:bg-[rgba(23,28,36,0.52)]"
+              className="fortale-settings-surface w-full rounded-2xl border px-3 py-2.5 text-left transition-all hover:bg-[rgba(23,28,36,0.52)]"
               style={smartbookSurfaceStyle}
             >
               <div className="flex items-center gap-2">
@@ -222,13 +222,13 @@ export default function SettingsModal({
                     event.stopPropagation();
                     setIsLanguageMenuOpen((prev) => !prev);
                   }}
-                  className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-dashed px-3 py-3 text-left text-white transition-all hover:bg-[rgba(23,28,36,0.52)]"
+                  className="fortale-settings-surface flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-3 text-left text-white transition-all hover:bg-[rgba(23,28,36,0.52)]"
                   style={smartbookSurfaceStyle}
                   aria-haspopup="listbox"
                   aria-expanded={isLanguageMenuOpen}
                 >
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-dashed border-[rgba(120,171,226,0.2)] bg-[rgba(17,28,41,0.9)]">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[rgba(230,245,238,0.18)] bg-[rgba(19,48,40,0.82)]">
                       <Globe2 size={15} className="text-accent-green" />
                     </div>
                     <div className="min-w-0">
@@ -247,7 +247,7 @@ export default function SettingsModal({
             {isLoggedIn ? (
               <button
                 onClick={onAuthAction}
-                className="w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border border-dashed text-xs font-semibold text-red-200 transition-all hover:bg-[rgba(23,28,36,0.52)]"
+                className="fortale-settings-surface w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-red-200 transition-all hover:bg-[rgba(23,28,36,0.52)]"
                 style={smartbookSurfaceStyle}
               >
                 <LogOut size={14} />
@@ -256,7 +256,7 @@ export default function SettingsModal({
             ) : (
               <button
                 onClick={onAuthAction}
-                className="w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border border-dashed text-xs font-semibold text-accent-green transition-all hover:bg-[rgba(23,28,36,0.52)]"
+                className="fortale-settings-surface w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-accent-green transition-all hover:bg-[rgba(23,28,36,0.52)]"
                 style={smartbookSurfaceStyle}
               >
                 <LogIn size={14} />
@@ -288,7 +288,7 @@ export default function SettingsModal({
             ref={languageMenuRef}
             role="listbox"
             aria-label={t('Dil seçenekleri')}
-            className="overflow-hidden rounded-[22px] border border-dashed shadow-[0_22px_34px_-24px_rgba(0,0,0,0.9)] backdrop-blur-[20px]"
+            className="fortale-settings-menu overflow-hidden rounded-[22px] border shadow-[0_22px_34px_-24px_rgba(0,0,0,0.9)] backdrop-blur-[20px]"
             onMouseDown={(event) => {
               event.stopPropagation();
             }}
@@ -301,7 +301,7 @@ export default function SettingsModal({
               borderColor: 'rgba(120,171,226,0.24)'
             }}
           >
-            <div className="border-b border-dashed border-[rgba(120,171,226,0.14)] px-3 py-2.5">
+            <div className="border-b border-[rgba(230,245,238,0.14)] px-3 py-2.5">
               <p className="text-[10px] font-bold tracking-[0.18em] text-[#92aeca]">{t('Diller')}</p>
             </div>
             <div className="overflow-y-auto p-2" style={{ maxHeight: 'min(42vh, 304px)' }}>

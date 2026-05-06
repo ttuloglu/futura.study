@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import JSZip from "jszip";
+import { buildTransactionalEmail, buildAdminActionEmail } from './emailTemplates';
 
 let dotEnvCache: Map<string, string> | null = null;
 
@@ -84,8 +85,8 @@ const OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_TTS_API_URL = "https://api.openai.com/v1/audio/speech";
 const CONTENT_COMPLETION_MARKER = "[[SMARTBOOK_END]]";
 const FAIRY_TALE_TOTAL_IMAGE_COUNT = 4;
-const STORY_TOTAL_IMAGE_COUNT = 4;
-const NOVEL_TOTAL_IMAGE_COUNT = 5;
+const STORY_TOTAL_IMAGE_COUNT = 5;
+const NOVEL_TOTAL_IMAGE_COUNT = 6;
 const VISUAL_FAIRY_TALE_PAGE_COUNT = 8;
 const IMAGE_PROMPT_MAX_CHARS = 7_500;
 const PODCAST_VOICE_OPTIONS = [
@@ -148,9 +149,9 @@ const BOOK_TYPE_CREATE_CREDIT_COST: Record<string, number> = {
   novel: 2
 };
 const CREDIT_PACKS: Record<string, { createCredits: number }> = {
-  "pack-5": { createCredits: 5 },
-  "pack-15": { createCredits: 15 },
-  "pack-30": { createCredits: 30 }
+  "pack-5": { createCredits: 10 },
+  "pack-15": { createCredits: 25 },
+  "pack-30": { createCredits: 50 }
 };
 const BOOK_JOB_COLLECTION = "bookJobs";
 const BOOK_JOB_TASK_COLLECTION = "bookJobTasks";
@@ -1537,9 +1538,9 @@ function localizedRemedialImageCaption(
 
 function languageInstruction(language: PreferredLanguage): string {
   if (language === "tr") {
-    return "Dil kuralı: İçeriğin tamamını Türkçe yaz ve yazım, noktalama, dil bilgisi kurallarına tam uy.";
+    return "Dil kuralı: İçeriğin tamamını Türkçe yaz ve yazım, noktalama, dil bilgisi kurallarına tam uy. Türkçenin özel karakterlerini doğru kullan; ç, ğ, ı, İ, ö, ş, ü harflerini asla ASCII karşılıklarına düşürme.";
   }
-  return `Language rule: Write the entire output in ${preferredLanguageLabel(language)} and strictly follow that language's grammar, punctuation, orthography, literary flow, and natural phrasing. Do not switch languages.`;
+  return `Language rule: Write the entire output in ${preferredLanguageLabel(language)} and strictly follow that language's grammar, punctuation, orthography, literary flow, and natural phrasing. Use the language's native script, accents, and diacritics correctly. Never transliterate into plain ASCII or another alphabet. Do not switch languages.`;
 }
 
 function normalizeSmartBookAudienceLevel(raw: unknown): SmartBookAudienceLevel {
@@ -1557,7 +1558,7 @@ function normalizeSmartBookAudienceLevel(raw: unknown): SmartBookAudienceLevel {
 }
 
 function isVisualFairyTaleAudienceLevel(audienceLevel: SmartBookAudienceLevel): boolean {
-  return audienceLevel === "1-6" || audienceLevel === "1-3" || audienceLevel === "4-6";
+  return audienceLevel === "1-6" || audienceLevel === "1-3" || audienceLevel === "4-6" || audienceLevel === "7+" || audienceLevel === "7-9";
 }
 
 function normalizeFairyTaleStoredAudienceLevel(audienceLevel: SmartBookAudienceLevel): SmartBookAudienceLevel {
@@ -3485,158 +3486,129 @@ async function requestLowQualityLessonImages(
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, IMAGE_PROMPT_MAX_CHARS);
-  const modelCandidates = Array.from(new Set([OPENAI_IMAGE_MODEL, "gpt-image-1.5"].filter(Boolean)));
+  const resolvedModel = String(options?.modelOverride || OPENAI_IMAGE_MODEL || "").trim() || OPENAI_IMAGE_MODEL;
   const sizeMode = options?.sizeMode || "cover-3x4";
   const size = resolveOpenAiLowImageSize(sizeMode);
-
-  const buildPayloadVariants = (model: string): Array<Record<string, unknown>> => {
-    return [
-      {
-        model,
-        prompt: normalizedPrompt,
-        n: count,
-        size,
-        quality: OPENAI_IMAGE_QUALITY,
-        response_format: "b64_json"
-      },
-      {
-        model,
-        prompt: normalizedPrompt,
-        n: count,
-        size,
-        quality: OPENAI_IMAGE_QUALITY
-      }
-    ];
+  const payload: Record<string, unknown> = {
+    model: resolvedModel,
+    prompt: normalizedPrompt,
+    n: count,
+    size,
+    quality: OPENAI_IMAGE_QUALITY
   };
 
   let lastErrorMessage = "OpenAI görsel üretimi başarısız oldu.";
   let lastErrorCode: "internal" | "unavailable" | "resource-exhausted" = "internal";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 95_000);
 
-  for (const model of modelCandidates) {
-    for (const payload of buildPayloadVariants(model)) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+  try {
+    const response = await fetch(OPENAI_IMAGE_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
 
-      try {
-        const response = await fetch(OPENAI_IMAGE_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-
-        const rawBody = await response.text();
-        let json: {
-          data?: Array<Record<string, unknown>>;
-          error?: { message?: string };
-          usage?: unknown;
-        } = {};
-        try {
-          json = rawBody ? JSON.parse(rawBody) as typeof json : {};
-        } catch {
-          json = {};
-        }
-
-        if (!response.ok) {
-          const rawBodyPreview = rawBody.replace(/\s+/g, " ").trim().slice(0, 220);
-          lastErrorMessage =
-            typeof json.error?.message === "string" && json.error.message.trim()
-              ? json.error.message.trim()
-              : rawBodyPreview
-                ? `OpenAI image API error: ${response.status} - ${rawBodyPreview}`
-                : `OpenAI image API error: ${response.status}`;
-          lastErrorCode =
-            response.status === 429
-              ? "resource-exhausted"
-              : response.status >= 500
-                ? "unavailable"
-                : "internal";
-          if (response.status === 400) {
-            logger.warn("OpenAI image request rejected", {
-              model,
-              size,
-              count,
-              promptChars: normalizedPrompt.length,
-              error: lastErrorMessage.slice(0, 220)
-            });
-          } else if (response.status === 429 || response.status >= 500) {
-            logger.warn("OpenAI image transient provider error", {
-              model,
-              size,
-              count,
-              status: response.status,
-              promptChars: normalizedPrompt.length,
-              error: lastErrorMessage.slice(0, 220)
-            });
-          }
-          continue;
-        }
-
-        const items = Array.isArray(json.data) ? json.data : [];
-        const images: string[] = [];
-        for (const item of items) {
-          const b64 =
-            typeof item.b64_json === "string"
-              ? item.b64_json
-              : typeof item.b64 === "string"
-                ? item.b64
-                : "";
-
-          if (b64) {
-            const dataUrl = toDataImageUrlFromPayload(
-              b64,
-              item.mime_type ?? item.mimeType ?? item.content_type ?? item.contentType ?? item.format
-            );
-            if (dataUrl) {
-              images.push(dataUrl);
-            }
-          } else {
-            const imageUrl = typeof item.url === "string" ? item.url : "";
-            const dataUrl = await convertImageUrlToDataUrl(imageUrl);
-            if (dataUrl) images.push(dataUrl);
-          }
-
-          if (images.length >= count) break;
-        }
-
-        if (images.length >= count) {
-          const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
-          const finalUsage: TokenUsageMetrics = {
-            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
-            inputTextTokens: usage.inputTextTokens > 0
-              ? usage.inputTextTokens
-              : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt)),
-            inputImageTokens: usage.inputImageTokens,
-            outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
-          };
-          return { images: images.slice(0, count), model, usage: finalUsage };
-        }
-
-        if (images.length > 0) {
-          const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
-          const finalUsage: TokenUsageMetrics = {
-            inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
-            inputTextTokens: usage.inputTextTokens > 0
-              ? usage.inputTextTokens
-              : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt)),
-            inputImageTokens: usage.inputImageTokens,
-            outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
-          };
-          return { images, model, usage: finalUsage };
-        }
-      } catch (error) {
-        lastErrorMessage =
-          error instanceof Error ? error.message : "OpenAI görsel üretimi başarısız oldu.";
-        lastErrorCode = "unavailable";
-      } finally {
-        clearTimeout(timeoutId);
-      }
+    const rawBody = await response.text();
+    let json: {
+      data?: Array<Record<string, unknown>>;
+      error?: { message?: string };
+      usage?: unknown;
+    } = {};
+    try {
+      json = rawBody ? JSON.parse(rawBody) as typeof json : {};
+    } catch {
+      json = {};
     }
+
+    if (!response.ok) {
+      const rawBodyPreview = rawBody.replace(/\s+/g, " ").trim().slice(0, 220);
+      lastErrorMessage =
+        typeof json.error?.message === "string" && json.error.message.trim()
+          ? json.error.message.trim()
+          : rawBodyPreview
+            ? `OpenAI image API error: ${response.status} - ${rawBodyPreview}`
+            : `OpenAI image API error: ${response.status}`;
+      lastErrorCode =
+        response.status === 429
+          ? "resource-exhausted"
+          : response.status >= 500
+            ? "unavailable"
+            : "internal";
+      if (response.status === 400) {
+        logger.warn("OpenAI image request rejected", {
+          model: resolvedModel,
+          size,
+          count,
+          promptChars: normalizedPrompt.length,
+          error: lastErrorMessage.slice(0, 220)
+        });
+      } else if (response.status === 429 || response.status >= 500) {
+        logger.warn("OpenAI image transient provider error", {
+          model: resolvedModel,
+          size,
+          count,
+          status: response.status,
+          promptChars: normalizedPrompt.length,
+          error: lastErrorMessage.slice(0, 220)
+        });
+      }
+      throw new HttpsError(lastErrorCode, lastErrorMessage);
+    }
+
+    const items = Array.isArray(json.data) ? json.data : [];
+    const images: string[] = [];
+    for (const item of items) {
+      const b64 =
+        typeof item.b64_json === "string"
+          ? item.b64_json
+          : typeof item.b64 === "string"
+            ? item.b64
+            : "";
+
+      if (b64) {
+        const dataUrl = toDataImageUrlFromPayload(
+          b64,
+          item.mime_type ?? item.mimeType ?? item.content_type ?? item.contentType ?? item.format
+        );
+        if (dataUrl) {
+          images.push(dataUrl);
+        }
+      } else {
+        const imageUrl = typeof item.url === "string" ? item.url : "";
+        const dataUrl = await convertImageUrlToDataUrl(imageUrl);
+        if (dataUrl) images.push(dataUrl);
+      }
+
+      if (images.length >= count) break;
+    }
+
+    if (images.length > 0) {
+      const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
+      const finalUsage: TokenUsageMetrics = {
+        inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
+        inputTextTokens: usage.inputTextTokens > 0
+          ? usage.inputTextTokens
+          : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt)),
+        inputImageTokens: usage.inputImageTokens,
+        outputTokens: usage.outputTokens,
+        totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
+      };
+      return { images: images.slice(0, count), model: resolvedModel, usage: finalUsage };
+    }
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    lastErrorMessage =
+      error instanceof Error ? error.message : "OpenAI görsel üretimi başarısız oldu.";
+    lastErrorCode = "unavailable";
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   throw new HttpsError(lastErrorCode, lastErrorMessage);
@@ -7724,6 +7696,140 @@ const CLASSIC_FAIRY_TALE_REFERENCE_TITLES = [
   "Nasreddin Hoca hikayeleri"
 ];
 
+type VisualFairyTaleAudienceBucket = "1-6" | "7+";
+
+function resolveVisualFairyTaleAudienceBucket(audienceLevel: SmartBookAudienceLevel): VisualFairyTaleAudienceBucket {
+  if (audienceLevel === "7+" || audienceLevel === "7-9") return "7+";
+  return "1-6";
+}
+
+function getVisualFairyTaleSentenceTargets(audienceLevel: SmartBookAudienceLevel): {
+  minTotal: number;
+  maxTotal: number;
+  minPerPage: number;
+  maxPerPage: number;
+} {
+  const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
+  if (bucket === "7+") {
+    return { minTotal: 56, maxTotal: 72, minPerPage: 7, maxPerPage: 9 };
+  }
+  return { minTotal: 48, maxTotal: 56, minPerPage: 6, maxPerPage: 7 };
+}
+
+function buildVisualFairyTaleAudienceNarrativeDirective(
+  audienceLevel: SmartBookAudienceLevel,
+  preferredLanguage: PreferredLanguage
+): string {
+  const isEn = usesEnglishPromptScaffold(preferredLanguage);
+  const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
+  if (bucket === "7+") {
+    return isEn
+      ? "Audience lock (7+): write for early school-age readers. Keep the story emotionally safe and very readable, but allow richer scene detail, curiosity, mild symbolism, inner questions, and slightly more layered cause-effect. Some gentle abstraction is allowed only if the scene remains easy to visualize."
+      : "Yaş kilidi (7+): ilk okul çağındaki çocuklar için yaz. Hikaye duygusal olarak güvenli ve çok okunur kalsın; ama sahne ayrıntısını, merak duygusunu, hafif sembolik dokunuşları, iç soruları ve biraz daha katmanlı neden-sonucu artır. Hafif soyutluk yalnızca sahne kolayca gözde canlanıyorsa kullanılabilir.";
+  }
+  return isEn
+    ? "Audience lock (1-6): write for preschool/early childhood. Keep every beat concrete, warm, emotionally safe, and instantly understandable. One clear action at a time, minimal cognitive load, familiar vocabulary, and no abstract moral lecture."
+    : "Yaş kilidi (1-6): okul öncesi/erken çocukluk için yaz. Her an çok somut, sıcak, duygusal olarak güvenli ve anında anlaşılır olsun. Her anda tek net eylem ilerlet; bilişsel yük düşük kalsın; tanıdık kelimeler kullan; soyut ahlak nutku kurma.";
+}
+
+function buildVisualFairyTaleSubGenreNarrativeDirective(
+  subGenre: string | undefined,
+  preferredLanguage: PreferredLanguage
+): string {
+  const isEn = usesEnglishPromptScaffold(preferredLanguage);
+  const key = normalizeStoryPathKey(subGenre);
+  if (key.includes("klasik")) {
+    return isEn
+      ? "Subgenre lock (Classic): timeless fairy-tale atmosphere, warm wonder, clean symbolic clarity, and memorable simplicity."
+      : "Alt tür kilidi (Klasik): zamansız masal atmosferi, sıcak hayranlık hissi, temiz sembolik berraklık ve akılda kalan sadelik kur.";
+  }
+  if (key.includes("modern")) {
+    return isEn
+      ? "Subgenre lock (Modern): contemporary child energy, polished immediacy, bright freshness, and present-tense relevance without slang overload."
+      : "Alt tür kilidi (Modern): çağdaş çocuk enerjisi, cilalı yakınlık hissi, parlak tazelik ve aşırı argo olmadan bugüne yakın bir dünya kur.";
+  }
+  if (key.includes("macer")) {
+    return isEn
+      ? "Subgenre lock (Adventure): forward momentum, discovery, travel feel, brave choices, and lively obstacle-solving."
+      : "Alt tür kilidi (Macera): ileri taşıyan tempo, keşif duygusu, yolculuk hissi, cesur seçimler ve canlı engel aşma anları kur.";
+  }
+  if (key.includes("mitolojik")) {
+    return isEn
+      ? "Subgenre lock (Mythic): luminous legend mood, ancient echoes, ceremonial wonder, and child-safe mythic scale."
+      : "Alt tür kilidi (Mitolojik): ışıklı efsane havası, kadim yankılar, törensel hayranlık ve çocuk güvenliğinde mitik ölçek kur.";
+  }
+  if (key.includes("eğitici") || key.includes("egitici")) {
+    return isEn
+      ? "Subgenre lock (Educational): curiosity-first storytelling, discovery through action, natural learning moments, and zero textbook tone."
+      : "Alt tür kilidi (Eğitici): merak odaklı anlatım, eylem içinden keşif, doğal öğrenme anları ve sıfır ders kitabı tonu kur.";
+  }
+  return isEn
+    ? "Subgenre lock: stay fully faithful to the selected fairy-tale subgenre."
+    : "Alt tür kilidi: seçilen masal alt türüne tam sadık kal.";
+}
+
+function buildVisualFairyTaleStyleAnchor(
+  subGenre: string | undefined,
+  audienceLevel: SmartBookAudienceLevel,
+  preferredLanguage: PreferredLanguage
+): string {
+  const isEn = usesEnglishPromptScaffold(preferredLanguage);
+  const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
+  const key = normalizeStoryPathKey(subGenre);
+  if (key.includes("klasik")) {
+    return bucket === "7+"
+      ? (isEn
+        ? "lush classic fairy-tale animation illustration, detailed hand-painted cartoon backgrounds, glowing storybook light, timeless European fairy-tale warmth"
+        : "zengin klasik masal animasyon ilustrasyonu, detaylı elde boyanmış çizgi film arka planları, parlayan hikaye kitabı ışığı, zamansız Avrupa masalı sıcaklığı")
+      : (isEn
+        ? "vivid classic storybook illustration, bright gouache-watercolor feel, clear shapes, golden glow, warm fairy-tale charm"
+        : "canlı klasik hikaye kitabı ilustrasyonu, parlak guaj-sulu boya hissi, net şekiller, altın ışıma, sıcak masal cazibesi");
+  }
+  if (key.includes("modern")) {
+    return bucket === "7+"
+      ? (isEn
+        ? "detailed modern animated-feature illustration, crisp cartoon rendering, saturated playful palette, expressive contemporary children's-book energy"
+        : "detaylı modern animasyon filmi ilustrasyonu, temiz çizgi film renderı, doygun oyunlu palet, çağdaş çocuk kitabı enerjisi")
+      : (isEn
+        ? "bright modern storybook cartoon illustration, clean rounded shapes, colorful contemporary warmth, lively kid-friendly polish"
+        : "parlak modern hikaye kitabı çizgi film ilustrasyonu, temiz yuvarlak formlar, renkli çağdaş sıcaklık, canlı çocuk dostu cila");
+  }
+  if (key.includes("macer")) {
+    return bucket === "7+"
+      ? (isEn
+        ? "cinematic adventure cartoon illustration, detailed environment storytelling, dynamic movement, heroic child-safe animated action"
+        : "sinematik macera çizgi film ilustrasyonu, detaylı çevre hikaye anlatımı, dinamik hareket, kahramansı ama çocuk güvenli animasyon aksiyonu")
+      : (isEn
+        ? "vivid magical adventure storybook illustration, bold motion, bright scenic rhythm, readable quest energy"
+        : "canlı büyülü macera hikaye kitabı ilustrasyonu, cesur hareket, parlak sahne ritmi, okunaklı görev/yolculuk enerjisi");
+  }
+  if (key.includes("mitolojik")) {
+    return bucket === "7+"
+      ? (isEn
+        ? "mythic animated illustration, luminous ancient motifs, ceremonial atmosphere, detailed fantasy cartoon worldbuilding"
+        : "mitolojik animasyon ilustrasyonu, ışıklı kadim motifler, törensel atmosfer, detaylı fantastik çizgi film dünya kurma")
+      : (isEn
+        ? "luminous mythic storybook illustration, magical glow, simple sacred motifs, child-safe legendary wonder"
+        : "ışıklı mitolojik hikaye kitabı ilustrasyonu, büyülü parlama, sade kutsal motifler, çocuk güvenli efsanevi hayranlık");
+  }
+  if (key.includes("eğitici") || key.includes("egitici")) {
+    return bucket === "7+"
+      ? (isEn
+        ? "detailed discovery-cartoon illustration, bright educational adventure look, tactile nature details, joyful animated clarity"
+        : "detaylı keşif-çizgi film ilustrasyonu, parlak eğitici macera görünümü, dokulu doğa ayrıntıları, neşeli animasyon berraklığı")
+      : (isEn
+        ? "vivid educational storybook illustration, cheerful discovery mood, clean readable objects, bright reassuring colors"
+        : "canlı eğitici hikaye kitabı ilustrasyonu, neşeli keşif havası, temiz okunaklı nesneler, parlak güven veren renkler");
+  }
+  return bucket === "7+"
+    ? (isEn
+      ? "detailed colorful children's animation illustration, rich cartoon environments, lively child-safe fantasy warmth"
+      : "detaylı renkli çocuk animasyon ilustrasyonu, zengin çizgi film çevreleri, canlı ve çocuk güvenli fantastik sıcaklık")
+    : (isEn
+      ? "vivid colorful children's storybook illustration, warm magical cartoon look"
+      : "canlı renkli çocuk hikaye kitabı ilustrasyonu, sıcak büyülü çizgi film görünümü");
+}
+
 function stripVisualStoryCoverHeading(value: string, title: string): string {
   const lines = String(value || "")
     .split(/\r?\n+/)
@@ -7753,16 +7859,18 @@ function normalizeVisualStoryCoverText(
 
 function buildVisualFairyTalePlanInputBlock(
   brief: SmartBookCreativeBrief,
-  preferredLanguage: PreferredLanguage
+  preferredLanguage: PreferredLanguage,
+  audienceLevel: SmartBookAudienceLevel
 ): string {
   const isEn = usesEnglishPromptScaffold(preferredLanguage);
+  const audienceBucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
   const lines = [
     isEn ? "LOCKED INPUTS:" : "KİLİTLİ GİRDİLER:",
     isEn ? "- Type: Fairy tale" : "- Tür: Masal",
     brief.subGenre
       ? (isEn ? `- Subgenre: ${brief.subGenre}` : `- Alt tür: ${brief.subGenre}`)
       : (isEn ? "- Subgenre: not specified" : "- Alt tür: belirtilmedi"),
-    isEn ? "- Audience: ages 1-6" : "- Yaş grubu: 1-6",
+    isEn ? `- Audience: ages ${audienceBucket}` : `- Yaş grubu: ${audienceBucket}`,
     brief.languageText
       ? (isEn ? `- Output language: ${brief.languageText}` : `- Çıktı dili: ${brief.languageText}`)
       : (isEn ? "- Output language: follow detected user language" : "- Çıktı dili: tespit edilen kullanıcı dili"),
@@ -7785,17 +7893,21 @@ function buildVisualFairyTalePlanInputBlock(
   return lines.filter(Boolean).join("\n");
 }
 
-function splitVisualStorySentencesIntoPages(sentences: string[]): string[] {
+function splitVisualStorySentencesIntoPages(
+  sentences: string[],
+  audienceLevel: SmartBookAudienceLevel
+): string[] {
+  const targets = getVisualFairyTaleSentenceTargets(audienceLevel);
   const cleanSentences = sentences.map((sentence) => sentence.replace(/\s+/g, " ").trim()).filter(Boolean);
   const pages: string[] = [];
   let cursor = 0;
   for (let index = 0; index < VISUAL_FAIRY_TALE_PAGE_COUNT; index += 1) {
     const remainingSentences = cleanSentences.length - cursor;
     const remainingPages = VISUAL_FAIRY_TALE_PAGE_COUNT - index;
-    const minForLaterPages = Math.max(0, (remainingPages - 1) * 3);
-    const maxForLaterPages = Math.max(0, (remainingPages - 1) * 5);
-    const minForThisPage = Math.max(3, remainingSentences - maxForLaterPages);
-    const maxForThisPage = Math.min(5, remainingSentences - minForLaterPages);
+    const minForLaterPages = Math.max(0, (remainingPages - 1) * targets.minPerPage);
+    const maxForLaterPages = Math.max(0, (remainingPages - 1) * targets.maxPerPage);
+    const minForThisPage = Math.max(targets.minPerPage, remainingSentences - maxForLaterPages);
+    const maxForThisPage = Math.min(targets.maxPerPage, remainingSentences - minForLaterPages);
     const balancedCount = Math.ceil(remainingSentences / remainingPages);
     const sentenceCount = Math.max(minForThisPage, Math.min(maxForThisPage, balancedCount));
     pages.push(cleanSentences.slice(cursor, cursor + sentenceCount).join(" ").trim());
@@ -7809,28 +7921,34 @@ async function generateVisualFairyTalePlan(
   topic: string | undefined,
   sourceContent: string | undefined,
   creativeBrief: SmartBookCreativeBrief | undefined,
-  allowAiBookTitleGeneration: boolean
+  allowAiBookTitleGeneration: boolean,
+  audienceLevel: SmartBookAudienceLevel
 ): Promise<{ plan: VisualStoryPlan; courseMeta: CourseOutlineMeta; usageEntry: UsageReportEntry }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, "fairy_tale", creativeBrief?.subGenre);
   const preferredLanguage = resolvePreferredLanguageFromBrief(normalizedBrief, topic, sourceContent);
+  const audienceBucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
+  const sentenceTargets = getVisualFairyTaleSentenceTargets(audienceLevel);
   const referenceTitles = CLASSIC_FAIRY_TALE_REFERENCE_TITLES.join(", ");
   const promptBase = `
-${topic ? `"${topic}" girdisi için 1-6 yaş görsel masal metni üret.` : "1-6 yaş görsel masal metni üret."}
+${topic ? `"${topic}" girdisi için ${audienceBucket} yaş görsel masal metni üret.` : `${audienceBucket} yaş görsel masal metni üret.`}
 ${sourceContent ? `Kaynak özeti:\n"""\n${sourceContent.slice(0, 7000)}\n"""\n` : ""}
-${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage)}
+${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienceLevel)}
 
 Kurallar:
-1) storyText alanına tek parça, özgün, 30-40 cümlelik bir masal yaz.
+1) storyText alanına tek parça, özgün, ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümlelik bir masal yaz.
 2) Masal seçilen alt türde olsun, ama alt tür adını bookTitle olarak kullanma.
 3) ${allowAiBookTitleGeneration ? "bookTitle özgün, doğal ve kitap adı gibi olsun. 'Klasik Masal', 'Modern Masal', 'Macera Masalı', 'Eğitici Masal', 'Masal Kitabı', 'Hikaye' gibi alt tür/jenerik adlar yasak." : "Kullanıcı başlığını bozma; ama başlık alt tür veya jenerik etiket gibi kaldıysa doğal ve özgün kitap adına yumuşat."}
 4) Üslup referansı: ${referenceTitles}. Bu masallar gibi zamansız, net, akılda kalan ve çocukların takip edebileceği bir masal yaz; bu eserlerden karakter, olay veya cümle kopyalama.
-5) 1-6 yaşa uygun kısa, somut, güvenli ve anlaşılır cümleler kullan.
-6) Olay örgüsü için sana kalıp verilmiyor. Zorunlu problem/çözüm, zorunlu kahraman tipi, zorunlu ders veya aşama şeması yok. Yaratıcı kararı kendin ver.
-7) storyText dışındaki alanlara hikaye metnini bölme. Bölmeyi backend yapacak.
-8) coverText sadece kapak içindir: ilk satır bookTitle olsun; altında en fazla 1 kısa kapak cümlesi olabilir.
-9) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
-10) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
-11) ${languageInstruction(preferredLanguage)}
+5) ${buildVisualFairyTaleAudienceNarrativeDirective(audienceLevel, preferredLanguage)}
+6) ${buildVisualFairyTaleSubGenreNarrativeDirective(normalizedBrief.subGenre, preferredLanguage)}
+7) Görsel sayfa metinleri backend tarafından 8 parçaya bölünecek. Bu yüzden her doğal anlatı bloğu sayfa başına yaklaşık ${sentenceTargets.minPerPage}-${sentenceTargets.maxPerPage} cümle taşıyacak kadar dengeli aksın.
+8) Dünya masalı rafı hissi ver: Grimm, Andersen, Keloğlan, Nasreddin Hoca, Binbir Gece gibi kaynakların zamansız tadını anımsa; ama hiçbirini taklit etme veya kopyalama.
+9) Olay örgüsü için sana kalıp verilmiyor. Zorunlu problem/çözüm, zorunlu kahraman tipi, zorunlu ders veya aşama şeması yok. Yaratıcı kararı kendin ver.
+10) storyText dışındaki alanlara hikaye metnini bölme. Bölmeyi backend yapacak.
+11) coverText sadece kapak içindir: ilk satır bookTitle olsun; altında en fazla 1 kısa kapak cümlesi olabilir.
+12) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
+13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
+14) ${languageInstruction(preferredLanguage)}
 
 Sadece JSON döndür.
 `.trim();
@@ -7852,7 +7970,7 @@ Sadece JSON döndür.
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
-          required: ["bookTitle", "bookDescription", "coverText", "storyText", "characterBible", "styleAnchor"],
+          required: ["bookTitle", "bookDescription", "coverText", "storyText", "characterBible"],
           properties: {
             bookTitle: { type: Type.STRING },
             bookDescription: { type: Type.STRING },
@@ -7886,8 +8004,8 @@ Sadece JSON döndür.
       issues.push("bookTitle özgün değil veya alt tür/jenerik ad gibi.");
     }
     const sentences = splitVisualStorySentences(String(candidate.storyText || ""));
-    if (sentences.length < 30 || sentences.length > 40) {
-      issues.push(`storyText 30-40 cümle olmalı; şu an ${sentences.length} cümle.`);
+    if (sentences.length < sentenceTargets.minTotal || sentences.length > sentenceTargets.maxTotal) {
+      issues.push(`storyText ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümle olmalı; şu an ${sentences.length} cümle.`);
     }
     if (sentences.some((sentence) => sentence.split(/\s+/).filter(Boolean).length < 3)) {
       issues.push("storyText içinde aşırı kısa/eksik cümle var.");
@@ -7895,10 +8013,6 @@ Sadece JSON döndür.
     if (!String(candidate.characterBible || "").trim()) {
       issues.push("characterBible boş.");
     }
-    if (!String(candidate.styleAnchor || "").trim()) {
-      issues.push("styleAnchor boş.");
-    }
-
     if (issues.length === 0) {
       parsed = candidate;
       storySentences = sentences;
@@ -7907,13 +8021,13 @@ Sadece JSON döndür.
     retryHint = issues.map((issue) => `- ${issue}`).join("\n");
   }
 
-  if (!parsed || storySentences.length < 30 || storySentences.length > 40) {
-    throw new HttpsError("internal", "1-6 yaş görsel masal metni 30-40 cümle olarak üretilemedi.");
+  if (!parsed || storySentences.length < sentenceTargets.minTotal || storySentences.length > sentenceTargets.maxTotal) {
+    throw new HttpsError("internal", `${audienceBucket} yaş görsel masal metni istenen cümle aralığında üretilemedi.`);
   }
 
   const rawBookTitle = String(parsed.bookTitle || "").replace(/\s+/g, " ").trim();
   const bookTitle = rawBookTitle;
-  const pageTexts = splitVisualStorySentencesIntoPages(storySentences);
+  const pageTexts = splitVisualStorySentencesIntoPages(storySentences, audienceLevel);
   const pages: VisualStoryPagePlan[] = pageTexts.map((pageText, index) => ({
     id: `lecture-${index + 1}`,
     title: `Görsel ${index + 1}`,
@@ -7933,7 +8047,7 @@ Sadece JSON döndür.
       { maxSentences: 1 }
     ),
     characterBible: String(parsed.characterBible || normalizedBrief.characters || "ana karakter").replace(/\s+/g, " ").trim(),
-    styleAnchor: String(parsed.styleAnchor || "soft watercolor children's book illustration").replace(/\s+/g, " ").trim(),
+    styleAnchor: buildVisualFairyTaleStyleAnchor(normalizedBrief.subGenre, audienceLevel, preferredLanguage),
     pages
   };
   const usageEntry: UsageReportEntry = {
@@ -7976,11 +8090,23 @@ function buildVisualStoryPageImagePrompt(params: {
   creativeBrief?: SmartBookCreativeBrief;
   pageNumber: number;
   totalPages: number;
+  audienceLevel: SmartBookAudienceLevel;
   isCover?: boolean;
 }): string {
-  const visibleText = params.isCover
-    ? String(params.pageText || "").trim()
-    : normalizeVisualStoryText(params.pageText, [], { minSentences: 3, maxSentences: 5 });
+  const audienceBucket = resolveVisualFairyTaleAudienceBucket(params.audienceLevel);
+  const subGenreKey = normalizeStoryPathKey(params.creativeBrief?.subGenre);
+  const subGenreVisualRule =
+    subGenreKey.includes("klasik")
+      ? "Subgenre image rule: timeless fairy-tale glow, elegant storybook staging, and classic magical charm."
+      : subGenreKey.includes("modern")
+        ? "Subgenre image rule: polished contemporary cartoon finish, crisp forms, bright upbeat energy, and fresh present-day appeal."
+        : subGenreKey.includes("macer")
+          ? "Subgenre image rule: dynamic movement, quest energy, scenic scale, and bold adventurous rhythm."
+          : subGenreKey.includes("mitolojik")
+            ? "Subgenre image rule: luminous mythic atmosphere, ancient-symbol feel, ceremonial wonder, and legendary child-safe grandeur."
+            : subGenreKey.includes("eğitici") || subGenreKey.includes("egitici")
+              ? "Subgenre image rule: discovery-first visual clarity, bright curiosity, tactile objects/nature details, and playful learning warmth."
+              : "Subgenre image rule: vivid magical children's-book appeal with strong readability.";
   return `
 Create exactly 1 landscape 15:10 children's picture-book spread illustration.
 
@@ -7992,17 +8118,20 @@ Style anchor: ${params.styleAnchor}
 Character roster: ${compactInline(params.creativeBrief?.characters, 220) || "main child character"}
 Place: ${compactInline(params.creativeBrief?.settingPlace, 160) || "storybook setting"}
 Time: ${compactInline(params.creativeBrief?.settingTime, 160) || "gentle fairy tale time"}
-Render this exact visible text in the illustration: "${visibleText}"
+Story text is rendered separately by the app. This illustration must be text-free.
 
 Rules:
 1) Landscape 15:10 only. Wide picture-book spread composition.
-2) Beautiful, hand-painted children's book illustration style.
-3) Integrate the text naturally and keep it large, clean, and readable.
-4) Render only the requested text. No extra letters, no watermark, no logo.
-5) Keep recurring characters visually identical across pages.
-6) Do not place characters or props on top of the text area.
-7) Depict the requested event clearly and warmly.
-8) No prompt/system/backend/meta text anywhere.
+2) ${audienceBucket === "7+"
+    ? "Detailed animated-feature / premium cartoon illustration for ages 7+. Rich environment storytelling, expressive lighting, readable detail, and slightly more layered visual ideas are welcome."
+    : "Beautiful children's storybook illustration for ages 1-6. Keep shapes readable, expressions warm, props concrete, and the focal action instantly understandable."}
+3) Depict the requested event clearly, warmly, and with one readable focal action.
+4) ${subGenreVisualRule}
+5) No written words, letters, subtitles, watermark, logo, UI, signage, speech bubble, or decorative typography.
+6) Keep recurring characters visually identical across pages.
+7) Keep the composition clean and uncluttered so separate story text can be read comfortably in the app.
+8) STRICTLY non-photorealistic. Lively, colorful, child-safe illustration only.
+9) No prompt/system/backend/meta text anywhere.
 `.trim();
 }
 
@@ -8052,23 +8181,20 @@ async function generateVisualStoryImage(
 async function validateVisualStoryImage(
   ai: GoogleGenAI,
   imageUrl: string,
-  expectedText: string,
   label: string,
-  options?: { isCover?: boolean }
+  options?: { isCover?: boolean; audienceLevel?: SmartBookAudienceLevel }
 ): Promise<{ passed: boolean; reason: string; usageEntry: UsageReportEntry }> {
   const imageAsset = await loadBinaryAssetFromSource(imageUrl);
+  const audienceBucket = resolveVisualFairyTaleAudienceBucket(options?.audienceLevel || "1-6");
   const prompt = `
-Validate this children's visual story image.
-
-Expected visible text:
-"""${options?.isCover ? String(expectedText || "").trim() : clampVisualStoryText(expectedText)}"""
+Review this children's picture-book illustration for production readiness.
 
 Rules:
-1) The image must contain visible story text.
-2) The visible text must be in the same language as the expected text.
-3) ${options?.isCover ? "For a cover, the visible text must contain the book title and may include at most one short cover sentence." : "The visible story text must contain 3 to 5 short story sentences."}
-4) The main character must not have obvious broken anatomy or unreadable face.
-5) Text must not be badly overlapped by characters or props.
+1) ${options?.isCover ? "It should read clearly as a children's book front cover scene." : "It should read clearly as a single children's book page scene."}
+2) The main character must not have obvious broken anatomy, mangled hands, or unreadable face.
+3) The scene must look coherent and intentional, not like a random collage of unrelated objects.
+4) No visible words, letters, subtitles, watermark, logo, UI, prompt text, or gibberish typography.
+5) The image should feel safe, warm, and suitable for ages ${audienceBucket}.
 
 Return JSON only:
 {
@@ -8126,56 +8252,39 @@ async function generateValidatedVisualStoryImage(params: {
   ai: GoogleGenAI;
   openAiApiKey: string;
   prompt: string;
-  expectedText: string;
   label: string;
+  audienceLevel: SmartBookAudienceLevel;
   isCover?: boolean;
 }): Promise<{ imageUrl: string; usageEntries: UsageReportEntry[] }> {
   const usageEntries: UsageReportEntry[] = [];
-  let lastImageUrl = "";
-  let lastFailureReason = "";
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const imageResult = await generateVisualStoryImage(
-      params.openAiApiKey,
-      `${params.prompt}\n\nValidation attempt ${attempt}: ensure the requested visible text is present and readable${params.isCover ? ", with the book title and no story paragraph on the cover" : ", with 3 to 5 short story sentences"}.`
-    );
-    lastImageUrl = imageResult.imageUrl;
-    usageEntries.push({
-      ...imageResult.usageEntry,
-      label: `${params.label}: görsel deneme ${attempt}`
-    });
+  const imageResult = await generateVisualStoryImage(params.openAiApiKey, params.prompt);
+  usageEntries.push({
+    ...imageResult.usageEntry,
+    label: `${params.label}: görsel üretim`
+  });
 
-    try {
-      const validation = await validateVisualStoryImage(
-        params.ai,
-        imageResult.imageUrl,
-        params.expectedText,
-        `${params.label} deneme ${attempt}`,
-        { isCover: params.isCover === true }
-      );
-      usageEntries.push(validation.usageEntry);
-      if (validation.passed) {
-        return { imageUrl: imageResult.imageUrl, usageEntries };
-      }
-      lastFailureReason = validation.reason;
-    } catch (error) {
-      lastFailureReason = toErrorMessage(error);
-      logger.warn("Visual story image validation failed; retrying if possible.", {
+  try {
+    const validation = await validateVisualStoryImage(
+      params.ai,
+      imageResult.imageUrl,
+      `${params.label} kalite kontrol`,
+      { isCover: params.isCover === true, audienceLevel: params.audienceLevel }
+    );
+    usageEntries.push(validation.usageEntry);
+    if (!validation.passed) {
+      logger.warn("Visual story image soft validation flagged the generated image; keeping first render for speed.", {
         label: params.label,
-        attempt,
-        error: lastFailureReason
+        reason: validation.reason
       });
     }
+  } catch (error) {
+    logger.warn("Visual story image validation crashed; keeping first render for speed.", {
+      label: params.label,
+      error: toErrorMessage(error)
+    });
   }
 
-  logger.warn("Visual story image validation did not pass after retries; keeping last generated image.", {
-    label: params.label,
-    reason: lastFailureReason
-  });
-  if (!lastImageUrl) {
-    throw new HttpsError("internal", "Görsel masal sayfası doğrulama sonrası üretilemedi.");
-  }
-  return { imageUrl: lastImageUrl, usageEntries };
+  return { imageUrl: imageResult.imageUrl, usageEntries };
 }
 
 function stripCompletionMarker(text: string): string {
@@ -14067,7 +14176,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
       completedSections: 0,
       currentSectionIndex: null,
       currentSectionTitle: topic || null,
-      currentStepLabel: "Görsel masal planlanıyor",
+      currentStepLabel: "İçerik hazırlanıyor",
       updatedAt: FieldValue.serverTimestamp()
     },
     { merge: true }
@@ -14080,7 +14189,8 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         topic,
         sourceContent,
         creativeBrief,
-        allowAiBookTitleGeneration
+        allowAiBookTitleGeneration,
+        ageGroup
       ),
       420_000,
       () => new HttpsError("deadline-exceeded", "Görsel masal planı zaman aşımına uğradı.")
@@ -14101,7 +14211,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     {
       completedSections: 1,
       currentSectionTitle: bookTitle,
-      currentStepLabel: "Görsel masal sayfaları çiziliyor",
+      currentStepLabel: "Görseller hazırlanıyor",
       ...buildBookJobUsageSnapshot(usageEntries),
       updatedAt: FieldValue.serverTimestamp()
     },
@@ -14118,6 +14228,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     creativeBrief,
     pageNumber: 0,
     totalPages: VISUAL_FAIRY_TALE_PAGE_COUNT,
+    audienceLevel: ageGroup,
     isCover: true
   });
   const coverResult = await withTransientProviderRetry(
@@ -14126,83 +14237,122 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         ai,
         openAiApiKey: imageApiKey,
         prompt: coverPrompt,
-        expectedText: plan.coverText,
         label: "Görsel masal kapağı",
+        audienceLevel: ageGroup,
         isCover: true
       }),
-      420_000,
+      240_000,
       () => new HttpsError("deadline-exceeded", "Görsel masal kapağı zaman aşımına uğradı.")
     ),
     {
       stage: "visual-book-cover",
       jobId: jobRef.id,
-      maxAttempts: 5,
-      minDelayMs: 1800,
-      maxDelayMs: 60_000
+      maxAttempts: 2,
+      minDelayMs: 1000,
+      maxDelayMs: 8_000
     }
   );
   usageEntries.push(...coverResult.usageEntries);
 
-  const generatedNodes: TimelineNode[] = [];
-  for (let index = 0; index < plan.pages.length; index += 1) {
-    const page = plan.pages[index];
-    await jobRef.set(
-      {
-        currentSectionIndex: index + 1,
+  await jobRef.set(
+    {
+      currentSectionIndex: null,
+      currentSectionTitle: bookTitle,
+      currentStepLabel: "Görseller hazırlanıyor",
+      ...buildBookJobUsageSnapshot(usageEntries),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+
+  const generatedNodes: Array<TimelineNode | null> = new Array(plan.pages.length).fill(null);
+  const pageConcurrency = Math.min(2, Math.max(1, plan.pages.length));
+  let nextPageIndex = 0;
+  let completedPageCount = 0;
+  let progressWriteChain: Promise<void> = Promise.resolve();
+  const enqueueProgressWrite = (payload: Record<string, unknown>): Promise<void> => {
+    progressWriteChain = progressWriteChain
+      .catch(() => undefined)
+      .then(async () => {
+        await jobRef.set(payload, { merge: true });
+      });
+    return progressWriteChain;
+  };
+
+  const runPageWorker = async (): Promise<void> => {
+    while (true) {
+      const pageIndex = nextPageIndex;
+      nextPageIndex += 1;
+      if (pageIndex >= plan.pages.length) return;
+
+      const page = plan.pages[pageIndex];
+      const pagePrompt = buildVisualStoryPageImagePrompt({
+        bookTitle,
+        pageTitle: page.title,
+        pageText: page.pageText,
+        scenePrompt: page.scenePrompt,
+        characterBible: plan.characterBible,
+        styleAnchor: plan.styleAnchor,
+        creativeBrief,
+        pageNumber: pageIndex + 1,
+        totalPages: plan.pages.length,
+        audienceLevel: ageGroup
+      });
+      const pageImageResult = await withTransientProviderRetry(
+        () => withTimeout(
+          generateValidatedVisualStoryImage({
+            ai,
+            openAiApiKey: imageApiKey,
+            prompt: pagePrompt,
+            label: `${page.title}: Görsel masal sayfası`,
+            audienceLevel: ageGroup
+          }),
+          240_000,
+          () => new HttpsError("deadline-exceeded", `Görsel masal sayfası zaman aşımına uğradı: ${page.title}`)
+        ),
+        {
+          stage: "visual-book-page",
+          jobId: jobRef.id,
+          maxAttempts: 2,
+          minDelayMs: 1000,
+          maxDelayMs: 8_000,
+          stepIndex: pageIndex + 1,
+          stepTotal: plan.pages.length
+        }
+      );
+
+      usageEntries.push(...pageImageResult.usageEntries);
+      generatedNodes[pageIndex] = {
+        id: page.id,
+        title: page.title,
+        description: page.scenePrompt,
+        type: "lecture",
+        status: pageIndex === 0 ? "current" : "locked",
+        duration: "1 dk",
+        pageText: page.pageText,
+        pageImageUrl: pageImageResult.imageUrl,
+        pageSequence: pageIndex + 1
+      };
+
+      completedPageCount += 1;
+      await enqueueProgressWrite({
+        completedSections: 1 + completedPageCount,
+        currentSectionIndex: pageIndex + 1,
         currentSectionTitle: page.title,
-        currentStepLabel: `Görsel ${index + 1}/${plan.pages.length} hazırlanıyor`,
+        currentStepLabel: `Görsel ${completedPageCount}/${plan.pages.length} hazırlanıyor`,
         ...buildBookJobUsageSnapshot(usageEntries),
         updatedAt: FieldValue.serverTimestamp()
-      },
-      { merge: true }
-    );
+      });
+    }
+  };
 
-    const pagePrompt = buildVisualStoryPageImagePrompt({
-      bookTitle,
-      pageTitle: page.title,
-      pageText: page.pageText,
-      scenePrompt: page.scenePrompt,
-      characterBible: plan.characterBible,
-      styleAnchor: plan.styleAnchor,
-      creativeBrief,
-      pageNumber: index + 1,
-      totalPages: plan.pages.length
-    });
-    const pageImageResult = await withTransientProviderRetry(
-      () => withTimeout(
-        generateValidatedVisualStoryImage({
-          ai,
-          openAiApiKey: imageApiKey,
-          prompt: pagePrompt,
-          expectedText: page.pageText,
-          label: `${page.title}: Görsel masal sayfası`
-        }),
-        420_000,
-        () => new HttpsError("deadline-exceeded", `Görsel masal sayfası zaman aşımına uğradı: ${page.title}`)
-      ),
-      {
-        stage: "visual-book-page",
-        jobId: jobRef.id,
-        maxAttempts: 5,
-        minDelayMs: 1800,
-        maxDelayMs: 60_000,
-        stepIndex: index + 1,
-        stepTotal: plan.pages.length
-      }
-    );
-    usageEntries.push(...pageImageResult.usageEntries);
-    generatedNodes.push({
-      id: page.id,
-      title: page.title,
-      description: page.scenePrompt,
-      type: "lecture",
-      status: index === 0 ? "current" : "locked",
-      duration: "1 dk",
-      pageText: page.pageText,
-      pageImageUrl: pageImageResult.imageUrl,
-      pageSequence: index + 1
-    });
-  }
+  await Promise.all(Array.from({ length: pageConcurrency }, () => runPageWorker()));
+
+  const finalizedNodes = generatedNodes.map((node, index) => {
+    if (node) return node;
+    const page = plan.pages[index];
+    throw new HttpsError("internal", `Görsel masal sayfası eksik kaldı: ${page?.title || index + 1}`);
+  });
 
   const initialCoursePayload = buildGeneratedBookCoursePayload({
     uid,
@@ -14215,12 +14365,22 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     targetPageCount: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
     courseMeta,
     coverImageUrl: coverResult.imageUrl,
-    nodes: generatedNodes,
+    nodes: finalizedNodes,
     contentPackagePath: resultPath,
     visualStoryMode: true,
     coverNarrationText: plan.coverText
   });
   const normalizedCourse = normalizeCoursePayloadForClient(courseId, initialCoursePayload, uid, resultPath);
+  await jobRef.set(
+    {
+      currentSectionIndex: null,
+      currentSectionTitle: bookTitle,
+      currentStepLabel: "Kitabınız birleştiriliyor",
+      ...buildBookJobUsageSnapshot(usageEntries),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
   const publishedBook = await buildAndPublishBookBundle({
     uid,
     bookId: courseId,
@@ -14233,7 +14393,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
       status: "completed",
       totalSections: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
       completedSections: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
-      currentSectionIndex: generatedNodes.length,
+      currentSectionIndex: finalizedNodes.length,
       currentSectionTitle: bookTitle,
       currentStepLabel: "Görsel masal hazır",
       resultPath: publishedBook.bundle.path,
@@ -14278,11 +14438,11 @@ async function runBookGenerationJobTask(
     transaction.set(
       jobRef,
       {
-        status: "processing",
-        currentStepLabel: "Kitap akışı planlanıyor",
-        updatedAt: FieldValue.serverTimestamp(),
-        errorMessage: FieldValue.delete()
-      },
+      status: "processing",
+      currentStepLabel: "İçerik hazırlanıyor",
+      updatedAt: FieldValue.serverTimestamp(),
+      errorMessage: FieldValue.delete()
+    },
       { merge: true }
     );
     return latestData || null;
@@ -14410,7 +14570,7 @@ async function runBookGenerationJobTask(
       completedSections: 1,
       currentSectionIndex: null,
       currentSectionTitle: bookTitle,
-      currentStepLabel: "Bölümler yazılıyor",
+      currentStepLabel: "İçerik hazırlanıyor",
       ...buildBookJobUsageSnapshot(usageEntries),
       updatedAt: FieldValue.serverTimestamp()
     },
@@ -14426,7 +14586,7 @@ async function runBookGenerationJobTask(
       {
         currentSectionIndex: index + 1,
         currentSectionTitle: node.title,
-        currentStepLabel: `Bölüm ${index + 1}/${lectureNodes.length} yazılıyor`,
+        currentStepLabel: `İçerik ${index + 1}/${lectureNodes.length} hazırlanıyor`,
         updatedAt: FieldValue.serverTimestamp()
       },
       { merge: true }
@@ -14482,7 +14642,7 @@ async function runBookGenerationJobTask(
         completedSections: index + 2,
         currentSectionIndex: index + 1,
         currentSectionTitle: node.title,
-        currentStepLabel: `Bölüm ${index + 1}/${lectureNodes.length} tamamlandı`,
+        currentStepLabel: `İçerik ${index + 1}/${lectureNodes.length} hazırlanıyor`,
         ...buildBookJobUsageSnapshot(usageEntries),
         updatedAt: FieldValue.serverTimestamp()
       },
@@ -14494,7 +14654,7 @@ async function runBookGenerationJobTask(
     {
       currentSectionIndex: null,
       currentSectionTitle: bookTitle,
-      currentStepLabel: "Kapak hazırlanıyor",
+      currentStepLabel: "Kitabınız birleştiriliyor",
       updatedAt: FieldValue.serverTimestamp()
     },
     { merge: true }
@@ -14541,6 +14701,16 @@ async function runBookGenerationJobTask(
     contentPackagePath: resultPath
   });
   const normalizedCourse = normalizeCoursePayloadForClient(courseId, coursePayload, uid, resultPath);
+  await jobRef.set(
+    {
+      currentSectionIndex: null,
+      currentSectionTitle: bookTitle,
+      currentStepLabel: "Kitabınız birleştiriliyor",
+      ...buildBookJobUsageSnapshot(usageEntries),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
   const publishedBook = await buildAndPublishBookBundle({
     uid,
     bookId: courseId,
@@ -15594,6 +15764,10 @@ export const revenueCatWebhook = onRequest(
         applied: result.applied
       });
 
+      if (result.applied && isMailProviderConfigured()) {
+        void sendFortalePackPurchaseEmail(event.appUserId, packId);
+      }
+
       response.status(200).json({
         ok: true,
         applied: result.applied,
@@ -15709,10 +15883,11 @@ function isMailProviderConfigured(): boolean {
   return resolveMailProvider() !== null;
 }
 
-function resolveEmailOtpSender(): { email: string; name: string } {
-  const email = "admin@futurumapps.online";
-  const name = "Fortale";
-  return { email, name };
+const APP_EMAIL_SENDER = { email: "fortale@sponelabs.com", name: "Fortale" };
+const CODE_EMAIL_SENDER = { email: "no-reply@sponelabs.com", name: "Fortale" };
+
+function resolveEmailSender(kind: "app" | "code" = "app"): { email: string; name: string } {
+  return kind === "code" ? CODE_EMAIL_SENDER : APP_EMAIL_SENDER;
 }
 
 function escapeHtml(value: string): string {
@@ -16000,29 +16175,7 @@ function buildOtpEmailMessage(code: string, language: EmailOtpLanguage): {
   text: string;
   html: string;
 } {
-  const copy = EMAIL_OTP_COPY[language] || EMAIL_OTP_COPY.en;
-  const safeCode = escapeHtml(code);
-  const text = [copy.intro, "", code, "", copy.instruction, copy.expires, copy.ignore].join("\n");
-
-  const html = `
-    <div style="background:#111827;padding:32px 0;">
-      <div style="max-width:520px;margin:0 auto;background:#1f2937;border:1px solid #374151;border-radius:20px;padding:32px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;">
-        <div style="margin-bottom:16px;font-size:20px;font-weight:700;color:#f9fafb;">Fortale</div>
-        <div style="font-size:16px;color:#e5e7eb;margin-bottom:10px;">${escapeHtml(copy.title)}</div>
-        <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#d1d5db;">${escapeHtml(copy.intro)}</p>
-        <div style="letter-spacing:0.22em;font-weight:700;font-size:32px;color:#93c5fd;background:rgba(147,197,253,0.12);border:1px solid rgba(147,197,253,0.35);border-radius:12px;padding:14px 16px;text-align:center;">${safeCode}</div>
-        <p style="margin:16px 0 0 0;font-size:13px;color:#9ca3af;">${escapeHtml(copy.instruction)}</p>
-        <p style="margin:6px 0 0 0;font-size:13px;color:#9ca3af;">${escapeHtml(copy.expires)}</p>
-        <p style="margin:12px 0 0 0;font-size:12px;color:#6b7280;">${escapeHtml(copy.ignore)}</p>
-      </div>
-    </div>
-  `;
-
-  return {
-    subject: copy.subject,
-    text,
-    html
-  };
+  return buildTransactionalEmail({ type: "loginCode", language, code, ttlMinutes: EMAIL_OTP_TTL_MS / 60000 });
 }
 
 const WELCOME_EMAIL_COPY: Record<EmailOtpLanguage, {
@@ -16033,16 +16186,16 @@ const WELCOME_EMAIL_COPY: Record<EmailOtpLanguage, {
   footer: string;
 }> = {
   tr: {
-    subject: "Fortale'ye Hoş Geldin! 🎓",
+    subject: "Fortale'ye Hoş Geldin! 📖",
     greeting: "Hoş Geldin!",
-    body: "Fortale hesabın oluşturuldu. Merak ettiğin her konuda kişiselleştirilmiş öğrenme yolları, podcast'ler ve quizlerle öğrenmeye hemen başlayabilirsin.",
+    body: "Fortale hesabın oluşturuldu. Masal, hikaye ve roman yaz; karakterler, dünyalar ve senaryolar oluştur; yapay zeka destekli yaratıcı yazarlık için Fortale hazır.",
     cta: "Uygulamayı Aç",
     footer: "Bu e-postayı bir hesap oluşturduğun için aldın."
   },
   en: {
-    subject: "Welcome to Fortale! 🎓",
+    subject: "Welcome to Fortale! 📖",
     greeting: "Welcome aboard!",
-    body: "Your Fortale account is ready. Start learning with personalized study paths, podcasts, and quizzes on any topic you're curious about.",
+    body: "Your Fortale account is ready. Write fairy tales, stories and novels; create characters, worlds and scenarios — AI-powered creative writing starts now.",
     cta: "Open the App",
     footer: "You received this email because you created an account."
   }
@@ -16053,20 +16206,7 @@ function buildWelcomeEmailMessage(
   language: EmailOtpLanguage
 ): { subject: string; text: string; html: string } {
   const copy = WELCOME_EMAIL_COPY[language] || WELCOME_EMAIL_COPY.en;
-  const namePart = displayName ? ` ${escapeHtml(displayName)}` : "";
-  const text = [copy.greeting + namePart, "", copy.body, "", copy.footer].join("\n");
-  const html = `
-    <div style="background:#111827;padding:32px 0;">
-      <div style="max-width:520px;margin:0 auto;background:#1f2937;border:1px solid #374151;border-radius:20px;padding:32px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;">
-        <div style="margin-bottom:16px;font-size:20px;font-weight:700;color:#f9fafb;">Fortale</div>
-        <div style="font-size:16px;color:#e5e7eb;margin-bottom:10px;">${escapeHtml(copy.greeting)}${namePart} 🎓</div>
-        <p style="margin:0 0 20px 0;font-size:14px;line-height:1.6;color:#d1d5db;">${escapeHtml(copy.body)}</p>
-        <a href="https://fortale.app" style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;">${escapeHtml(copy.cta)}</a>
-        <p style="margin:24px 0 0 0;font-size:12px;color:#6b7280;">${escapeHtml(copy.footer)}</p>
-      </div>
-    </div>
-  `;
-  return { subject: copy.subject, text, html };
+  return buildTransactionalEmail({ type: "welcome", language, recipientName: displayName, paragraphs: [copy.body, copy.footer] });
 }
 
 function buildAiSpendAlertEmailMessage(params: {
@@ -16135,13 +16275,14 @@ async function sendOtpEmail(params: {
   subject: string;
   text: string;
   html: string;
+  senderKind?: "app" | "code";
 }): Promise<void> {
   const provider = resolveMailProvider();
   if (!provider) {
     throw new HttpsError("failed-precondition", "E-posta servisi yapılandırılmadı.");
   }
 
-  const sender = resolveEmailOtpSender();
+  const sender = resolveEmailSender(params.senderKind);
 
   if (provider.type === "mailjet") {
     const response = await fetch("https://api.mailjet.com/v3.1/send", {
@@ -16372,7 +16513,21 @@ async function requestEmailLoginCodeCore(
       to: email,
       subject: emailMessage.subject,
       text: emailMessage.text,
-      html: emailMessage.html
+      html: emailMessage.html,
+      senderKind: "code"
+    });
+    const adminMessage = buildAdminActionEmail({
+      action: "loginCode",
+      userEmail: email,
+      occurredAt: new Date().toISOString(),
+      details: { Dil: language }
+    });
+    void sendOtpEmail({
+      to: "ttuloglu@gmail.com",
+      subject: adminMessage.subject,
+      text: adminMessage.text,
+      html: adminMessage.html,
+      senderKind: "code"
     });
   } catch (error) {
     logger.error("email otp send failed", {
@@ -16548,7 +16703,7 @@ async function verifyEmailLoginCodeCore(
 
   // Fire-and-forget welcome email for new users
   if (isNewUser) {
-    void sendWelcomeEmailIfNew(email, resolvedDisplayName, language);
+    await sendWelcomeEmailIfNew(email, resolvedDisplayName, language);
   }
 
   return {
@@ -16562,6 +16717,10 @@ async function verifyEmailLoginCodeCore(
   // Use void to fire-and-forget without blocking the response.
 }
 
+async function sendOtpEmailTo(to: string, params: { subject: string; text: string; html: string }): Promise<void> {
+  return sendOtpEmail({ to, ...params });
+}
+
 async function sendWelcomeEmailIfNew(
   email: string,
   displayName: string,
@@ -16572,6 +16731,19 @@ async function sendWelcomeEmailIfNew(
     const msg = buildWelcomeEmailMessage(displayName, language);
     await sendOtpEmail({ to: email, subject: msg.subject, text: msg.text, html: msg.html });
     logger.info("welcome email sent", { emailHash: hashValue(email).slice(0, 16) });
+    // Admin notification
+    const adminMsg = buildAdminActionEmail({
+      action: "welcome",
+      userEmail: email,
+      userName: displayName,
+      occurredAt: new Date().toISOString()
+    });
+    await sendOtpEmailTo("ttuloglu@gmail.com", {
+      subject: adminMsg.subject,
+      text: adminMsg.text,
+      html: adminMsg.html
+    });
+    logger.info("welcome admin email sent", { emailHash: hashValue(email).slice(0, 16) });
   } catch (error) {
     logger.warn("welcome email failed (non-blocking)", {
       emailHash: hashValue(email).slice(0, 16),
@@ -17027,5 +17199,124 @@ export const verifyEmailLoginCodeHttp = onRequest(
       });
       response.status(500).json({ success: false, error: "Internal server error", code: "internal" });
     }
+  }
+);
+
+async function sendFortalePackPurchaseEmail(uid: string, packId: string): Promise<void> {
+  try {
+    let userEmail = "";
+    let displayName = "";
+    let language: EmailOtpLanguage = "en";
+    try {
+      const userDoc = await firestore.collection("users").doc(uid).get();
+      if (userDoc.exists) {
+        const d = userDoc.data() as Record<string, unknown>;
+        userEmail = String(d?.email || "").trim();
+        displayName = String(d?.displayName || "").trim();
+        language = resolveEmailOtpLanguage(d?.language);
+      }
+    } catch { /* ignore */ }
+    if (!userEmail) {
+      try {
+        const authUser = await adminAuth.getUser(uid);
+        userEmail = authUser.email || "";
+        displayName = authUser.displayName || "";
+      } catch { /* ignore */ }
+    }
+
+    const isTr = language === "tr";
+    const packLabels: Record<string, { tr: string; en: string }> = {
+      "pack-5": { tr: "10 Kredi Paketi", en: "10 Credits Pack" },
+      "pack-15": { tr: "25 Kredi Paketi", en: "25 Credits Pack" },
+      "pack-30": { tr: "50 Kredi Paketi", en: "50 Credits Pack" }
+    };
+    const packLabel = isTr ? (packLabels[packId]?.tr || packId) : (packLabels[packId]?.en || packId);
+    const emailMessage = buildTransactionalEmail({
+      type: "purchaseThanks",
+      language,
+      recipientName: displayName,
+      packLabel
+    });
+
+    if (userEmail) {
+      await sendOtpEmail({ to: userEmail, subject: emailMessage.subject, text: emailMessage.text, html: emailMessage.html });
+    }
+
+    const adminMsg = buildAdminActionEmail({
+      action: "purchaseThanks",
+      userEmail,
+      userName: displayName || uid,
+      occurredAt: new Date().toISOString(),
+      details: { Paket: packLabel }
+    });
+    await sendOtpEmail({
+      to: "ttuloglu@gmail.com",
+      subject: adminMsg.subject,
+      text: adminMsg.text,
+      html: adminMsg.html
+    });
+  } catch (err: unknown) {
+    logger.warn("sendFortalePackPurchaseEmail failed", {
+      uid,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
+
+export const contactUs = onCall(
+  { region: "us-central1", secrets: EMAIL_OTP_SECRETS },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    }
+
+    const subject = typeof request.data?.subject === "string" ? request.data.subject.trim() : "";
+    const message = typeof request.data?.message === "string" ? request.data.message.trim() : "";
+    if (!subject || !message) {
+      throw new HttpsError("invalid-argument", "Konu ve mesaj alanları zorunludur.");
+    }
+
+    if (!isMailProviderConfigured()) {
+      throw new HttpsError("failed-precondition", "E-posta servisi yapılandırılmadı.");
+    }
+
+    let senderEmail = "";
+    let senderName = "Fortale Kullanıcısı";
+    try {
+      const authUser = await adminAuth.getUser(request.auth.uid);
+      senderEmail = authUser.email || "";
+      senderName = authUser.displayName || authUser.email || "Fortale Kullanıcısı";
+    } catch { /* ignore */ }
+
+    const adminBody = buildAdminActionEmail({
+      action: "supportAck",
+      userEmail: senderEmail,
+      userName: senderName,
+      occurredAt: new Date().toISOString(),
+      details: { Konu: subject, UID: request.auth.uid }
+    });
+    await sendOtpEmail({
+      to: "ttuloglu@gmail.com",
+      subject: adminBody.subject,
+      text: `${adminBody.text}\n\n${message}`,
+      html: adminBody.html
+    });
+
+    if (senderEmail) {
+      const ackBody = buildTransactionalEmail({
+        type: "supportAck",
+        language: "tr",
+        recipientName: senderName,
+        messageSubject: subject
+      });
+      await sendOtpEmail({
+        to: senderEmail,
+        subject: ackBody.subject,
+        text: ackBody.text,
+        html: ackBody.html
+      });
+    }
+
+    return { ok: true };
   }
 );

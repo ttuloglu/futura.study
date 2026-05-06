@@ -7,6 +7,7 @@ import rehypeKatex from 'rehype-katex';
 import { Download, X } from 'lucide-react';
 import { downloadFile } from '../utils/fileDownload';
 import { extractStandaloneMarkdownImages, normalizeMarkdownNarrativeLayout } from '../utils/markdownLayout';
+import { useUiI18n } from '../i18n/uiI18n';
 import 'katex/dist/katex.min.css';
 
 interface StyledMarkdownProps {
@@ -15,7 +16,7 @@ interface StyledMarkdownProps {
   variant?: 'card' | 'inline';
   quoteFirstParagraph?: boolean;
   enableImageLightbox?: boolean;
-  readerMode?: 'default' | 'fairytale-fullscreen';
+  readerMode?: 'default' | 'fairytale-fullscreen' | 'paged-fullscreen';
   fullscreenFontScale?: number;
 }
 
@@ -297,10 +298,15 @@ function normalizeGenericVisualCaptions(markdown: string): string {
 const SYSTEM_IMAGE_CAPTION_LINE_RE = /^\s*[*_~`]*\s*g[öo]rsel\s+\d+\s*\/\s*\d+\s*(?:-\s*.+?)?\s*[*_~`]*\s*$/iu;
 const SYSTEM_IMAGE_META_LINE_RE = /^\s*[*_~`]*\s*(?:global sequence index|scene excerpt for this specific image|previous scene cue|narrative timeline lock|visual structure requirement|panel-to-grid mapping)\b.*$/iu;
 
-type MarkdownImageSection = {
+export type MarkdownImageSection = {
   imageSrc: string;
   imageAlt: string;
   markdown: string;
+};
+
+type PagedMarkdownChunk = {
+  markdown: string;
+  inlineWithPrevious?: boolean;
 };
 
 function parseStandaloneMarkdownImageLine(line: string): { src: string; alt: string } | null {
@@ -327,17 +333,47 @@ function parseStandaloneMarkdownImageLine(line: string): { src: string; alt: str
   };
 }
 
-function extractMarkdownImageSections(markdown: string): MarkdownImageSection[] {
+function parseMarkdownImageInText(line: string): { src: string; alt: string; start: number; end: number } | null {
+  const source = String(line || '');
+  const match = source.match(/!\[([^\]]*)\]\((.+?)\)/);
+  if (!match || typeof match.index !== 'number') return null;
+
+  const rawAlt = String(match[1] || '').trim();
+  let rawTarget = String(match[2] || '').trim();
+  rawTarget = rawTarget
+    .replace(/\s+"[^"]*"\s*$/, '')
+    .replace(/\s+'[^']*'\s*$/, '')
+    .trim();
+
+  if (rawTarget.startsWith('<') && rawTarget.endsWith('>')) {
+    rawTarget = rawTarget.slice(1, -1).trim();
+  }
+
+  if (!rawTarget) return null;
+  return {
+    src: rawTarget,
+    alt: rawAlt || 'İçerik görseli',
+    start: match.index,
+    end: match.index + match[0].length
+  };
+}
+
+export function extractMarkdownImageSections(markdown: string): MarkdownImageSection[] {
   if (!markdown) return [];
   const lines = markdown.split(/\r?\n/);
   const sections: MarkdownImageSection[] = [];
   let buffer: string[] = [];
 
   for (const line of lines) {
-    const parsedImage = parseStandaloneMarkdownImageLine(line);
+    const parsedImage = parseStandaloneMarkdownImageLine(line) || parseMarkdownImageInText(line);
     if (!parsedImage) {
       buffer.push(line);
       continue;
+    }
+    const positionedImage = parsedImage as { start?: number; end?: number };
+    if (typeof positionedImage.start === 'number') {
+      const beforeImage = line.slice(0, positionedImage.start).trim();
+      if (beforeImage) buffer.push(beforeImage);
     }
 
     const bufferedMarkdown = buffer.join('\n').trim();
@@ -359,6 +395,11 @@ function extractMarkdownImageSections(markdown: string): MarkdownImageSection[] 
       imageAlt: parsedImage.alt,
       markdown: ''
     });
+
+    if (typeof positionedImage.end === 'number') {
+      const afterImage = line.slice(positionedImage.end).trim();
+      if (afterImage) buffer.push(afterImage);
+    }
   }
 
   if (!sections.length) return [];
@@ -385,6 +426,148 @@ function stripSystemImageCaptionLines(markdown: string): string {
     .trim();
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function splitMarkdownBlocks(markdown: string): string[] {
+  const blocks: string[] = [];
+  const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+  let current: string[] = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^(```|~~~)/.test(trimmed)) {
+      inFence = !inFence;
+      current.push(line);
+      continue;
+    }
+
+    if (!inFence && !trimmed) {
+      if (current.join('\n').trim()) {
+        blocks.push(current.join('\n').trim());
+        current = [];
+      }
+      continue;
+    }
+
+    current.push(line);
+  }
+
+  if (current.join('\n').trim()) blocks.push(current.join('\n').trim());
+  return blocks;
+}
+
+function isMarkdownStructuralBlock(block: string): boolean {
+  const trimmed = block.trim();
+  return (
+    /^#{1,6}\s/.test(trimmed) ||
+    /^(```|~~~)/.test(trimmed) ||
+    /^!\[[^\]]*]\(.+\)$/.test(trimmed) ||
+    /^(?:[-*+]\s|\d+[.)]\s|\[[ xX]\]\s)/.test(trimmed) ||
+    /^>\s/.test(trimmed) ||
+    /^\|.+\|$/.test(trimmed) ||
+    /^-{3,}$/.test(trimmed) ||
+    /^<[^>]+>/.test(trimmed)
+  );
+}
+
+function splitParagraphIntoSentences(text: string): string[] {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return [];
+  const matches = normalized.match(/[^.]+[.]+(?:["'”’)\]]+)?|[^.]+$/g);
+  return (matches && matches.length > 0 ? matches : [normalized])
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function tokenizeMarkdownForPages(markdown: string): PagedMarkdownChunk[] {
+  const chunks: PagedMarkdownChunk[] = [];
+
+  for (const block of splitMarkdownBlocks(markdown)) {
+    if (isMarkdownStructuralBlock(block)) {
+      chunks.push({ markdown: block });
+      continue;
+    }
+
+    let firstSentenceInParagraph = true;
+    for (const sentence of splitParagraphIntoSentences(block)) {
+      chunks.push({
+        markdown: sentence,
+        inlineWithPrevious: !firstSentenceInParagraph
+      });
+      firstSentenceInParagraph = false;
+    }
+  }
+
+  return chunks;
+}
+
+function appendPagedChunk(page: string, chunk: PagedMarkdownChunk): string {
+  const trimmedChunk = chunk.markdown.trim();
+  if (!trimmedChunk) return page;
+  if (!page.trim()) return trimmedChunk;
+  return chunk.inlineWithPrevious ? `${page} ${trimmedChunk}` : `${page}\n\n${trimmedChunk}`;
+}
+
+function isHeadingOnlyPage(markdown: string): boolean {
+  const trimmed = markdown.trim();
+  return /^#{1,6}\s.+$/.test(trimmed);
+}
+
+function getPagedMarkdownTargetChars(options: {
+  width: number;
+  height: number;
+  readerScale: number;
+  hasHeroImage: boolean;
+}): number {
+  const width = Math.max(300, options.width || 360);
+  const height = Math.max(320, options.height || 520);
+  const scale = clampNumber(options.readerScale || 1, 0.86, 1.45);
+  const charsPerLine = clampNumber(Math.floor(width / (7.1 * scale)), 38, 82);
+  const linesPerPage = clampNumber(Math.floor(height / (24.2 * scale)), 11, 36);
+  const target = Math.round(charsPerLine * linesPerPage * 0.92);
+  return clampNumber(target, options.hasHeroImage ? 520 : 720, options.hasHeroImage ? 1120 : 1520);
+}
+
+function paginateMarkdownBySentences(markdown: string, options: {
+  width: number;
+  height: number;
+  readerScale: number;
+  hasHeroImage: boolean;
+}): string[] {
+  const normalizedMarkdown = String(markdown || '').trim();
+  if (!normalizedMarkdown) return [''];
+
+  const targetChars = getPagedMarkdownTargetChars(options);
+  const chunks = tokenizeMarkdownForPages(normalizedMarkdown);
+  const pages: string[] = [];
+  let current = '';
+
+  for (const chunk of chunks) {
+    const candidate = appendPagedChunk(current, chunk);
+    const currentIsUseful = current.trim().length >= targetChars * 0.46;
+    const shouldBreakBeforeChunk = (
+      current.trim() &&
+      candidate.length > targetChars &&
+      currentIsUseful &&
+      !isHeadingOnlyPage(current)
+    );
+
+    if (shouldBreakBeforeChunk) {
+      pages.push(current.trim());
+      current = chunk.markdown.trim();
+      continue;
+    }
+
+    current = candidate;
+  }
+
+  if (current.trim()) pages.push(current.trim());
+  return pages.length > 0 ? pages : [''];
+}
+
 export default function StyledMarkdown({
   content,
   className = '',
@@ -394,19 +577,32 @@ export default function StyledMarkdown({
   readerMode = 'default',
   fullscreenFontScale = 1
 }: StyledMarkdownProps) {
+  const { t } = useUiI18n();
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [lightboxScale, setLightboxScale] = useState(1);
   const [lightboxOffset, setLightboxOffset] = useState({ x: 0, y: 0 });
+  const [lightboxDragY, setLightboxDragY] = useState(0);
   const lightboxImageRef = useRef<HTMLImageElement | null>(null);
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const panStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const dismissStartRef = useRef<{ x: number; y: number; dragY: number } | null>(null);
   const pinchStartRef = useRef<{
     distance: number;
     scale: number;
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  const lightboxScaleRef = useRef(1);
+  const lightboxOffsetRef = useRef({ x: 0, y: 0 });
+  const lightboxDragYRef = useRef(0);
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const pagedViewportRef = useRef<HTMLDivElement | null>(null);
+  const pagedTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const [pagedSectionIndex, setPagedSectionIndex] = useState(0);
+  const [pagedPageIndex, setPagedPageIndex] = useState(0);
+  const [pagedSectionPageCounts, setPagedSectionPageCounts] = useState<Record<number, number>>({});
+  const [pagedViewportWidth, setPagedViewportWidth] = useState(0);
+  const [pagedViewportHeight, setPagedViewportHeight] = useState(0);
   const wrapperClass =
     variant === 'inline'
       ? 'bg-transparent text-white/90'
@@ -442,6 +638,124 @@ export default function StyledMarkdown({
     () => (readerMode === 'fairytale-fullscreen' ? extractMarkdownImageSections(safeContent) : []),
     [readerMode, safeContent]
   );
+  const isPagedReader = readerMode === 'fairytale-fullscreen' || readerMode === 'paged-fullscreen';
+  const pagedSections = useMemo<MarkdownImageSection[]>(() => {
+    if (readerMode === 'fairytale-fullscreen' && fullscreenImageSections.length > 0) {
+      return fullscreenImageSections;
+    }
+    return [{
+      imageSrc: '',
+      imageAlt: '',
+      markdown: safeContent
+    }];
+  }, [fullscreenImageSections, readerMode, safeContent]);
+  const activePagedSection = pagedSections[Math.min(pagedSectionIndex, Math.max(0, pagedSections.length - 1))] || pagedSections[0];
+  const totalPagedSections = Math.max(1, pagedSections.length);
+  const estimatePagedSectionCount = (section: MarkdownImageSection): number => {
+    return paginateMarkdownBySentences(section.markdown, {
+      width: pagedViewportWidth,
+      height: pagedViewportHeight,
+      readerScale,
+      hasHeroImage: Boolean(section.imageSrc)
+    }).length;
+  };
+  const activePagedPages = useMemo(() => paginateMarkdownBySentences(activePagedSection?.markdown || '', {
+    width: pagedViewportWidth,
+    height: pagedViewportHeight,
+    readerScale,
+    hasHeroImage: Boolean(activePagedSection?.imageSrc)
+  }), [activePagedSection?.imageSrc, activePagedSection?.markdown, pagedViewportHeight, pagedViewportWidth, readerScale]);
+  const activePagedPageCount = Math.max(1, activePagedPages.length);
+
+  const measurePagedContent = () => {
+    const viewport = pagedViewportRef.current;
+    if (!viewport) return;
+
+    const width = Math.max(1, Math.floor(viewport.clientWidth));
+    const height = Math.max(1, Math.floor(viewport.clientHeight));
+    setPagedViewportWidth(width);
+    setPagedViewportHeight(height);
+  };
+
+  const goToPagedNext = () => {
+    setPagedPageIndex((current) => {
+      if (current < activePagedPageCount - 1) return current + 1;
+      if (pagedSectionIndex < pagedSections.length - 1) {
+        setPagedSectionIndex((section) => Math.min(section + 1, pagedSections.length - 1));
+        return 0;
+      }
+      return current;
+    });
+  };
+
+  const goToPagedPrevious = () => {
+    setPagedPageIndex((current) => {
+      if (current > 0) return current - 1;
+      if (pagedSectionIndex > 0) {
+        setPagedSectionIndex((section) => Math.max(0, section - 1));
+        return 9999;
+      }
+      return current;
+    });
+  };
+
+  useEffect(() => {
+    if (!isPagedReader) return;
+    setPagedSectionIndex(0);
+    setPagedPageIndex(0);
+    setPagedSectionPageCounts({});
+  }, [isPagedReader, safeContent]);
+
+  useEffect(() => {
+    if (!isPagedReader) return;
+    const id = window.setTimeout(measurePagedContent, 50);
+    return () => window.clearTimeout(id);
+  }, [isPagedReader, activePagedSection?.markdown, readerScale, pagedViewportHeight, pagedViewportWidth]);
+
+  useEffect(() => {
+    if (!isPagedReader || typeof ResizeObserver === 'undefined') return;
+    const viewport = pagedViewportRef.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(() => measurePagedContent());
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [isPagedReader, activePagedSection?.markdown, readerScale]);
+
+  useEffect(() => {
+    if (!isPagedReader) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+        event.preventDefault();
+        goToPagedNext();
+      }
+      if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+        event.preventDefault();
+        goToPagedPrevious();
+      }
+      if (event.key === 'Home') {
+        event.preventDefault();
+        setPagedSectionIndex(0);
+        setPagedPageIndex(0);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [goToPagedNext, goToPagedPrevious, isPagedReader]);
+
+  useEffect(() => {
+    if (!isPagedReader || pagedPageIndex !== 9999) return;
+    setPagedPageIndex(Math.max(0, activePagedPageCount - 1));
+  }, [activePagedPageCount, isPagedReader, pagedPageIndex]);
+
+  useEffect(() => {
+    if (!isPagedReader) return;
+    setPagedSectionPageCounts((current) => (
+      current[pagedSectionIndex] === activePagedPageCount
+        ? current
+        : { ...current, [pagedSectionIndex]: activePagedPageCount }
+    ));
+    setPagedPageIndex((current) => Math.min(current, activePagedPageCount - 1));
+  }, [activePagedPageCount, isPagedReader, pagedSectionIndex]);
 
   useEffect(() => {
     if (!lightboxImage) return;
@@ -464,26 +778,50 @@ export default function StyledMarkdown({
     if (!lightboxImage) {
       setLightboxScale(1);
       setLightboxOffset({ x: 0, y: 0 });
+      setLightboxDragY(0);
       activePointersRef.current.clear();
       panStartRef.current = null;
+      dismissStartRef.current = null;
       pinchStartRef.current = null;
+      lightboxScaleRef.current = 1;
+      lightboxOffsetRef.current = { x: 0, y: 0 };
+      lightboxDragYRef.current = 0;
       return;
     }
     setLightboxScale(1);
     setLightboxOffset({ x: 0, y: 0 });
+    setLightboxDragY(0);
     activePointersRef.current.clear();
     panStartRef.current = null;
+    dismissStartRef.current = null;
     pinchStartRef.current = null;
+    lightboxScaleRef.current = 1;
+    lightboxOffsetRef.current = { x: 0, y: 0 };
+    lightboxDragYRef.current = 0;
   }, [lightboxImage]);
 
   const clampScale = (value: number) => Math.max(1, Math.min(5, value));
 
+  const updateLightboxTransform = (nextScale: number, nextOffset: { x: number; y: number }) => {
+    lightboxScaleRef.current = nextScale;
+    lightboxOffsetRef.current = nextOffset;
+    setLightboxScale(nextScale);
+    setLightboxOffset(nextOffset);
+  };
+
+  const updateLightboxDragY = (nextDragY: number) => {
+    lightboxDragYRef.current = nextDragY;
+    setLightboxDragY(nextDragY);
+  };
+
   const clampOffset = (x: number, y: number, scale: number): { x: number; y: number } => {
-    const rect = lightboxImageRef.current?.getBoundingClientRect();
-    if (!rect) return { x, y };
+    const image = lightboxImageRef.current;
+    if (!image) return { x, y };
     if (scale <= 1) return { x: 0, y: 0 };
-    const maxX = (rect.width * (scale - 1)) / 2;
-    const maxY = (rect.height * (scale - 1)) / 2;
+    const baseWidth = image.offsetWidth || image.naturalWidth || 0;
+    const baseHeight = image.offsetHeight || image.naturalHeight || 0;
+    const maxX = (baseWidth * (scale - 1)) / 2;
+    const maxY = (baseHeight * (scale - 1)) / 2;
     return {
       x: Math.min(maxX, Math.max(-maxX, x)),
       y: Math.min(maxY, Math.max(-maxY, y))
@@ -499,13 +837,13 @@ export default function StyledMarkdown({
   ) => {
     const targetScale = clampScale(targetScaleRaw);
     if (targetScale === 1) {
-      setLightboxScale(1);
-      setLightboxOffset({ x: 0, y: 0 });
+      updateLightboxTransform(1, { x: 0, y: 0 });
+      updateLightboxDragY(0);
       return;
     }
     const rect = lightboxImageRef.current?.getBoundingClientRect();
     if (!rect || baseScale <= 0) {
-      setLightboxScale(targetScale);
+      updateLightboxTransform(targetScale, baseOffset);
       return;
     }
     const centerX = rect.left + rect.width / 2;
@@ -515,11 +853,12 @@ export default function StyledMarkdown({
     const nextX = clientX - centerX - ux * targetScale;
     const nextY = clientY - centerY - uy * targetScale;
     const clamped = clampOffset(nextX, nextY, targetScale);
-    setLightboxScale(targetScale);
-    setLightboxOffset(clamped);
+    updateLightboxTransform(targetScale, clamped);
+    updateLightboxDragY(0);
   };
 
   const handleLightboxPointerDown = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (event.pointerType === 'touch') event.preventDefault();
     event.stopPropagation();
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -537,9 +876,9 @@ export default function StyledMarkdown({
         now - previousTap.time < 300 &&
         Math.hypot(event.clientX - previousTap.x, event.clientY - previousTap.y) < 24
       ) {
-        if (lightboxScale > 1) {
-          setLightboxScale(1);
-          setLightboxOffset({ x: 0, y: 0 });
+        if (lightboxScaleRef.current > 1) {
+          updateLightboxTransform(1, { x: 0, y: 0 });
+          updateLightboxDragY(0);
         } else {
           applyScaleAroundPoint(2, event.clientX, event.clientY, 1, { x: 0, y: 0 });
         }
@@ -554,26 +893,39 @@ export default function StyledMarkdown({
       const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
       pinchStartRef.current = {
         distance: Math.max(dist, 1),
-        scale: lightboxScale,
-        offsetX: lightboxOffset.x,
-        offsetY: lightboxOffset.y
+        scale: lightboxScaleRef.current,
+        offsetX: lightboxOffsetRef.current.x,
+        offsetY: lightboxOffsetRef.current.y
       };
       panStartRef.current = null;
+      dismissStartRef.current = null;
       return;
     }
 
-    if (active.length === 1 && lightboxScale > 1) {
+    if (active.length === 1 && lightboxScaleRef.current > 1) {
       panStartRef.current = {
         x: event.clientX,
         y: event.clientY,
-        offsetX: lightboxOffset.x,
-        offsetY: lightboxOffset.y
+        offsetX: lightboxOffsetRef.current.x,
+        offsetY: lightboxOffsetRef.current.y
       };
+      dismissStartRef.current = null;
+      return;
+    }
+
+    if (active.length === 1 && event.pointerType === 'touch') {
+      dismissStartRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        dragY: lightboxDragYRef.current
+      };
+      panStartRef.current = null;
     }
   };
 
   const handleLightboxPointerMove = (event: React.PointerEvent<HTMLImageElement>) => {
     if (!activePointersRef.current.has(event.pointerId)) return;
+    if (event.pointerType === 'touch') event.preventDefault();
     event.stopPropagation();
     activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const active = Array.from(activePointersRef.current.values());
@@ -594,15 +946,24 @@ export default function StyledMarkdown({
       return;
     }
 
-    if (active.length === 1 && panStartRef.current && lightboxScale > 1) {
+    if (active.length === 1 && panStartRef.current && lightboxScaleRef.current > 1) {
       const dx = event.clientX - panStartRef.current.x;
       const dy = event.clientY - panStartRef.current.y;
       const clamped = clampOffset(
         panStartRef.current.offsetX + dx,
         panStartRef.current.offsetY + dy,
-        lightboxScale
+        lightboxScaleRef.current
       );
-      setLightboxOffset(clamped);
+      updateLightboxTransform(lightboxScaleRef.current, clamped);
+      return;
+    }
+
+    if (active.length === 1 && dismissStartRef.current && lightboxScaleRef.current <= 1) {
+      const dx = event.clientX - dismissStartRef.current.x;
+      const dy = event.clientY - dismissStartRef.current.y;
+      if (Math.abs(dy) < Math.abs(dx) * 0.9) return;
+      const nextDragY = dy > 0 ? dy : dy * 0.22;
+      updateLightboxDragY(nextDragY);
     }
   };
 
@@ -615,15 +976,24 @@ export default function StyledMarkdown({
     if (active.length < 2) {
       pinchStartRef.current = null;
     }
-    if (active.length === 1 && lightboxScale > 1) {
+    if (active.length === 1 && lightboxScaleRef.current > 1) {
       panStartRef.current = {
         x: active[0].x,
         y: active[0].y,
-        offsetX: lightboxOffset.x,
-        offsetY: lightboxOffset.y
+        offsetX: lightboxOffsetRef.current.x,
+        offsetY: lightboxOffsetRef.current.y
       };
+      dismissStartRef.current = null;
     } else if (active.length === 0) {
       panStartRef.current = null;
+      dismissStartRef.current = null;
+      if (lightboxScaleRef.current <= 1) {
+        if (lightboxDragYRef.current > 120) {
+          setLightboxImage(null);
+          return;
+        }
+        updateLightboxDragY(0);
+      }
     }
   };
 
@@ -786,8 +1156,8 @@ export default function StyledMarkdown({
                   if (!enableImageLightbox) return;
                   setLightboxImage({ src: safeSrc, alt: safeAlt });
                 }}
-                title={enableImageLightbox ? 'Tam ekran aç' : undefined}
-                className={`my-4 w-full rounded-xl border border-white/10 bg-black/20 object-cover transition-opacity ${
+                title={enableImageLightbox ? t('Tam ekran aç') : undefined}
+                className={`my-4 aspect-[16/9] min-h-[210px] w-full rounded-xl border border-white/10 bg-black/20 object-cover transition-opacity ${
                   enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
                 }`}
               />
@@ -801,7 +1171,7 @@ export default function StyledMarkdown({
   };
 
   const renderInlineImage = (src: string, alt: string, heightClass: string, options?: { bare?: boolean }) => (
-    <div className={options?.bare ? '' : 'overflow-hidden rounded-[24px] border border-white/10 bg-black/20 shadow-[0_18px_40px_rgba(0,0,0,0.24)]'}>
+    <div className={options?.bare ? 'w-full' : 'w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/20 shadow-[0_18px_40px_rgba(0,0,0,0.24)]'}>
       <img
         src={src}
         alt={alt}
@@ -812,8 +1182,8 @@ export default function StyledMarkdown({
           if (!enableImageLightbox) return;
           setLightboxImage({ src, alt });
         }}
-        title={enableImageLightbox ? 'Tam ekran aç' : undefined}
-        className={`w-full object-contain ${options?.bare ? '' : 'bg-black/20'} ${heightClass} transition-opacity ${
+        title={enableImageLightbox ? t('Tam ekran aç') : undefined}
+        className={`block w-full object-cover ${options?.bare ? '' : 'bg-black/20'} ${heightClass} transition-opacity ${
           enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
         }`}
       />
@@ -821,33 +1191,124 @@ export default function StyledMarkdown({
   );
 
   const markdownContent = useMemo(() => {
-    if (readerMode === 'fairytale-fullscreen' && fullscreenImageSections.length > 0) {
-      let didQuoteLeadParagraph = false;
+    if (isPagedReader) {
+      const hasHeroImage = Boolean(activePagedSection?.imageSrc);
+      const clampedPageIndex = Math.max(0, Math.min(pagedPageIndex, activePagedPageCount - 1));
+      const currentPagedMarkdown = activePagedPages[clampedPageIndex] || '';
+      const resolvedSectionPageCounts = pagedSections.map((section, index) => (
+        index === pagedSectionIndex
+          ? activePagedPageCount
+          : pagedSectionPageCounts[index] || estimatePagedSectionCount(section)
+      ));
+      const globalPageIndex = resolvedSectionPageCounts
+        .slice(0, Math.min(pagedSectionIndex, resolvedSectionPageCounts.length))
+        .reduce((sum, count) => sum + count, 0) + clampedPageIndex;
+      const globalPageCount = Math.max(
+        globalPageIndex + 1,
+        resolvedSectionPageCounts.reduce((sum, count) => sum + count, 0)
+      );
+      const currentSectionProgress = activePagedPageCount > 1
+        ? (clampedPageIndex + 1) / activePagedPageCount
+        : 1;
+      const totalProgress = totalPagedSections > 1
+        ? (pagedSectionIndex + currentSectionProgress) / totalPagedSections
+        : currentSectionProgress;
+
+      const handlePagedTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+        const touch = event.touches[0];
+        if (!touch) return;
+        pagedTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+      };
+
+      const handlePagedTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+        const start = pagedTouchRef.current;
+        pagedTouchRef.current = null;
+        const touch = event.changedTouches[0];
+        if (!start || !touch) return;
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        const dt = Date.now() - start.time;
+        if (Math.abs(dx) < 38 || Math.abs(dx) < Math.abs(dy) * 1.25 || dt > 850) return;
+        if (dx < 0) {
+          goToPagedNext();
+        } else {
+          goToPagedPrevious();
+        }
+      };
+
       return (
-        <div className="space-y-8">
-          {fullscreenImageSections.map((section, index) => {
-            const hasMarkdown = Boolean(section.markdown.trim());
-            const shouldQuoteLeadParagraph = quoteFirstParagraph && hasMarkdown && !didQuoteLeadParagraph;
-            if (shouldQuoteLeadParagraph) didQuoteLeadParagraph = true;
-            return (
-              <section key={`${section.imageSrc}-${index}`} className="relative">
+        <>
+          <div
+            className="smartbook-paged-shell relative overflow-hidden rounded-[28px] pt-1"
+            style={{
+              height: 'calc(100dvh - 104px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+              minHeight: 520
+            }}
+            onTouchStart={handlePagedTouchStart}
+            onTouchEnd={handlePagedTouchEnd}
+          >
+            {hasHeroImage && (
+              <div className="smartbook-paged-hero h-[30%] min-h-[172px] overflow-hidden rounded-[24px]">
+                <img
+                  key={activePagedSection.imageSrc}
+                  src={activePagedSection.imageSrc}
+                  alt={activePagedSection.imageAlt}
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                  onClick={() => {
+                    if (!enableImageLightbox || !activePagedSection.imageSrc) return;
+                    setLightboxImage({ src: activePagedSection.imageSrc, alt: activePagedSection.imageAlt });
+                  }}
+                  title={enableImageLightbox ? t('Tam ekran aç') : undefined}
+                  className={`h-full w-full object-cover transition-opacity ${enableImageLightbox ? 'cursor-zoom-in active:opacity-90' : ''}`}
+                />
+              </div>
+            )}
+
+            <div className={`${hasHeroImage ? 'h-[calc(70%-30px)]' : 'h-[calc(100%-30px)]'} relative mt-3 overflow-hidden px-0`}>
+              <button
+                type="button"
+                onClick={goToPagedPrevious}
+                className="absolute left-0 top-0 z-10 h-full w-[22%] cursor-w-default"
+                aria-label={t('Geri')}
+                title={t('Geri')}
+              />
+              <button
+                type="button"
+                onClick={goToPagedNext}
+                className="absolute right-0 top-0 z-10 h-full w-[22%] cursor-w-default"
+                aria-label={t('İleri')}
+                title={t('İleri')}
+              />
+              <div ref={pagedViewportRef} className="h-full overflow-hidden px-1">
                 <div
-                  className="sticky z-10 pb-2"
-                  style={{ top: 'max(0px, calc(env(safe-area-inset-top, 0px) - 2px))' }}
+                  key={`${pagedSectionIndex}-${clampedPageIndex}`}
+                  className="smartbook-paged-reader-content smartbook-paged-page h-full overflow-hidden pr-1 text-left"
                 >
-                  {renderInlineImage(section.imageSrc, section.imageAlt, 'h-[30vh] min-h-[220px] max-h-[360px]', { bare: true })}
+                  {currentPagedMarkdown.trim()
+                    ? renderMarkdownBlock(currentPagedMarkdown, quoteFirstParagraph && pagedSectionIndex === 0 && clampedPageIndex === 0)
+                    : <div className="h-full" />}
                 </div>
-                {hasMarkdown ? (
-                  <div className="px-0.5">
-                    {renderMarkdownBlock(section.markdown, shouldQuoteLeadParagraph)}
-                  </div>
-                ) : (
-                  <div className="h-2" />
-                )}
-              </section>
-            );
-          })}
-        </div>
+              </div>
+            </div>
+
+            <div className="absolute bottom-2 left-3 right-3">
+              <div className="smartbook-paged-progress-track mb-1 h-1 overflow-hidden rounded-full">
+                <div
+                  className="smartbook-paged-progress-fill h-full rounded-full transition-all duration-300"
+                  style={{ width: `${Math.max(2, Math.min(100, totalProgress * 100))}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          <div
+            className="smartbook-paged-page-number fixed left-1/2 z-[111] -translate-x-1/2 rounded-xl px-3 py-2 text-[11px] font-black text-white/76 pointer-events-none"
+            style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+          >
+            {globalPageIndex + 1}/{globalPageCount}
+          </div>
+        </>
       );
     }
 
@@ -857,7 +1318,7 @@ export default function StyledMarkdown({
           <section className="space-y-3">
             {extractedStandaloneImages.images.map((image, index) => (
               <div key={`${image.src}-${index}`}>
-                {renderInlineImage(image.src, image.alt, 'h-auto max-h-[460px]')}
+                {renderInlineImage(image.src, image.alt, 'aspect-[16/9] min-h-[210px] max-h-[560px]')}
               </div>
             ))}
           </section>
@@ -869,12 +1330,35 @@ export default function StyledMarkdown({
     }
 
     return renderMarkdownBlock(safeContent, quoteFirstParagraph);
-  }, [readerMode, extractedStandaloneImages, fullscreenImageSections, quoteFirstParagraph, safeContent]);
+  }, [
+    activePagedSection,
+    activePagedPageCount,
+    activePagedPages,
+    enableImageLightbox,
+    extractedStandaloneImages,
+    fullscreenImageSections,
+    isPagedReader,
+    pagedPageIndex,
+    pagedSectionPageCounts,
+    pagedSectionIndex,
+    pagedViewportHeight,
+    pagedViewportWidth,
+    quoteFirstParagraph,
+    readerMode,
+    safeContent,
+    t,
+    totalPagedSections
+  ]);
+
+  const lightboxBackdropOpacity = Math.max(0.18, 0.55 - Math.min(Math.abs(lightboxDragY) / 360, 0.34));
+  const lightboxShellScale = lightboxScale <= 1
+    ? Math.max(0.94, 1 - Math.min(Math.abs(lightboxDragY) / 1400, 0.06))
+    : 1;
 
   return (
     <article
       data-no-ui-translate="true"
-      className={`${wrapperClass} ${className} prose-invert smartbook-markdown-plain`}
+      className={`${wrapperClass} ${className} prose-invert smartbook-markdown-plain ${isPagedReader ? 'smartbook-paged-reader' : ''}`}
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         ['--reader-font-scale' as string]: String(readerScale)
@@ -883,8 +1367,11 @@ export default function StyledMarkdown({
       {markdownContent}
       {enableImageLightbox && lightboxImage && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[1200] bg-black/55 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4"
+          className="fixed inset-0 z-[1200] backdrop-blur-xl flex items-center justify-center p-2 sm:p-4"
           onClick={() => setLightboxImage(null)}
+          style={{
+            backgroundColor: `rgba(0, 0, 0, ${lightboxBackdropOpacity})`
+          }}
         >
           <div
             className="absolute right-4 flex items-center gap-2"
@@ -919,17 +1406,14 @@ export default function StyledMarkdown({
               <X size={18} />
             </button>
           </div>
-          <img
-            ref={lightboxImageRef}
-            src={lightboxImage.src}
-            alt={lightboxImage.alt}
-            className={`max-h-[98vh] max-w-[98vw] object-contain select-none ${lightboxScale > 1 ? 'cursor-move' : 'cursor-zoom-in'}`}
+          <div
+            className="flex max-h-[98vh] max-w-[98vw] items-center justify-center select-none"
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={(event) => {
               event.stopPropagation();
-              if (lightboxScale > 1) {
-                setLightboxScale(1);
-                setLightboxOffset({ x: 0, y: 0 });
+              if (lightboxScaleRef.current > 1) {
+                updateLightboxTransform(1, { x: 0, y: 0 });
+                updateLightboxDragY(0);
                 return;
               }
               applyScaleAroundPoint(2, event.clientX, event.clientY, 1, { x: 0, y: 0 });
@@ -938,15 +1422,28 @@ export default function StyledMarkdown({
             onPointerMove={handleLightboxPointerMove}
             onPointerUp={handleLightboxPointerUp}
             onPointerCancel={handleLightboxPointerUp}
-            onPointerLeave={handleLightboxPointerUp}
             style={{
               touchAction: 'none',
-              transform: `translate(${lightboxOffset.x}px, ${lightboxOffset.y}px) scale(${lightboxScale})`,
-              transformOrigin: 'center center',
-              transition: activePointersRef.current.size > 0 ? 'none' : 'transform 120ms ease-out'
+              transform: `translate3d(0, ${lightboxDragY}px, 0) scale(${lightboxShellScale})`,
+              transition: activePointersRef.current.size > 0 ? 'none' : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)'
             }}
-            draggable={false}
-          />
+          >
+            <img
+              ref={lightboxImageRef}
+              src={lightboxImage.src}
+              alt={lightboxImage.alt}
+              className={`max-h-[98vh] max-w-[98vw] object-contain select-none ${lightboxScale > 1 ? 'cursor-move' : 'cursor-zoom-in'}`}
+              style={{
+                touchAction: 'none',
+                transform: `translate3d(${lightboxOffset.x}px, ${lightboxOffset.y}px, 0) scale(${lightboxScale})`,
+                transformOrigin: 'center center',
+                transition: activePointersRef.current.size > 0 ? 'none' : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+                WebkitUserSelect: 'none',
+                WebkitTouchCallout: 'none'
+              }}
+              draggable={false}
+            />
+          </div>
         </div>,
         document.body
       )}

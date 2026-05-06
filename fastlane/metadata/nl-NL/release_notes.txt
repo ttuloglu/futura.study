@@ -1,0 +1,1 @@
+In deze versie hebben we de visuele weergave op iOS verbeterd: inzoomen werkt vloeiender en het sluiten van afbeeldingen door omlaag te vegen voelt natuurlijker aan. Daarnaast hebben we de leeservaring en algehele stabiliteit geoptimaliseerd.

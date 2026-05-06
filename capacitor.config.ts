@@ -5,6 +5,10 @@ const config: CapacitorConfig = {
   appName: 'Fortale',
   webDir: 'dist',
   plugins: {
+    PhotoViewer: {
+      iosImageLocation: 'Library/Images',
+      androidImageLocation: 'Files/Images',
+    },
     SocialLogin: {
       providers: {
         google: true,

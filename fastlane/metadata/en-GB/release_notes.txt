@@ -1,0 +1,1 @@
+In this version, we improved the image viewing experience on iOS: zoom gestures are smoother and dragging down to close images feels more natural. We also made adjustments for reading experience and general stability.

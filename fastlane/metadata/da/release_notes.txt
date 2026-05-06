@@ -1,0 +1,1 @@
+I denne version har vi forbedret billedvisningen på iOS: zoom-bevægelser er mere flydende, og det føles mere naturligt at lukke billeder ved at trække ned. Vi har også foretaget justeringer for læseoplevelsen og den generelle stabilitet.

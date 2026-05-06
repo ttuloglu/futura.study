@@ -9,6 +9,12 @@ import {
 
 export type RevenueCatCreditPackId = 'pack-5' | 'pack-15' | 'pack-30';
 
+const DEFAULT_PACK_TARGET_PRICES: Record<RevenueCatCreditPackId, number> = {
+  'pack-5': 4.99,
+  'pack-15': 12.99,
+  'pack-30': 19.99
+};
+
 const RC_OPERATION_TIMEOUT_MS = 35_000;
 
 const DEFAULT_PACK_HINTS: Record<RevenueCatCreditPackId, string[]> = {
@@ -270,4 +276,34 @@ export async function purchaseRevenueCatCreditPack(options: {
     Purchases.purchasePackage({ aPackage: selectedPackage }),
     'purchasePackage'
   );
+}
+
+export async function getRevenueCatCreditPackPriceStrings(): Promise<Partial<Record<RevenueCatCreditPackId, string>>> {
+  if (!isRevenueCatEnabled()) {
+    return {};
+  }
+
+  const offerings = await withRevenueCatTimeout(Purchases.getOfferings(), 'getOfferings');
+  const candidateOfferings = collectOfferingCandidates(offerings);
+  if (!candidateOfferings.length) {
+    return {};
+  }
+
+  const allPackages = candidateOfferings.flatMap((offering) => offering.availablePackages || []);
+  if (!allPackages.length) {
+    return {};
+  }
+
+  const result: Partial<Record<RevenueCatCreditPackId, string>> = {};
+  (Object.keys(DEFAULT_PACK_TARGET_PRICES) as RevenueCatCreditPackId[]).forEach((packId) => {
+    const hints = getPackHints(packId);
+    const matchedByHint = allPackages.find((pkg) => packageMatchesHints(pkg, hints)) || null;
+    const selectedPackage = matchedByHint || selectPackageByPrice(allPackages, DEFAULT_PACK_TARGET_PRICES[packId]);
+    const priceString = String(selectedPackage?.product?.priceString || '').trim();
+    if (priceString) {
+      result[packId] = priceString;
+    }
+  });
+
+  return result;
 }

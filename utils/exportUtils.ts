@@ -20,6 +20,7 @@ const EXPORT_IMAGE_JPEG_QUALITY = 0.9;
 const EXPORT_IMAGE_MIN_BYTES_FOR_OPTIMIZATION = 280 * 1024;
 const EXPORT_IMAGE_MIN_SAVINGS_RATIO = 0.97;
 const PDF_PAGE_WIDTH_PT = 595.28;
+const PDF_PAGE_HEIGHT_PT = 841.89;
 const PDF_PAGE_HORIZONTAL_MARGIN_PT = 40;
 const PDF_TEXT_BLOCK_WIDTH_PT = PDF_PAGE_WIDTH_PT - PDF_PAGE_HORIZONTAL_MARGIN_PT * 2;
 const MIN_PARAGRAPH_BLOCKS_BEFORE_IMAGE = 2;
@@ -67,6 +68,82 @@ const FORTALE_PDF_LOGO_SVG = `
   <line x1="16.62" y1="12" x2="10.88" y2="21.94"></line>
 </svg>
 `;
+
+const buildPdfBackgroundCanvas = (pageBackgroundColor: string) => ([
+    {
+        type: 'rect',
+        x: 0,
+        y: 0,
+        w: PDF_PAGE_WIDTH_PT,
+        h: PDF_PAGE_HEIGHT_PT,
+        color: pageBackgroundColor
+    }
+]);
+
+const buildPdfHeader = (
+    bookTitle: string,
+    pageBackgroundColor: string,
+    horizontalMargin: number = PDF_PAGE_HORIZONTAL_MARGIN_PT
+) => {
+    const isDarkTheme = isDarkPdfBackground(pageBackgroundColor);
+    const titleColor = isDarkTheme ? '#f8fafc' : '#14324b';
+    const brandColor = isDarkTheme ? '#dbeafe' : '#28506d';
+    const lineColor = isDarkTheme ? '#7dd3fc' : '#9fc5de';
+
+    return {
+        margin: [horizontalMargin, 18, horizontalMargin, 0],
+        stack: [
+            {
+                columns: [
+                    {
+                        width: '*',
+                        stack: [
+                            {
+                                text: String(bookTitle || '').trim() || 'Fortale',
+                                bold: true,
+                                fontSize: 15,
+                                color: titleColor
+                            }
+                        ]
+                    },
+                    {
+                        width: 'auto',
+                        columns: [
+                            {
+                                width: 18,
+                                svg: FORTALE_PDF_LOGO_SVG,
+                                margin: [0, -1, 6, 0]
+                            },
+                            {
+                                width: 'auto',
+                                text: 'Fortale',
+                                bold: true,
+                                fontSize: 11,
+                                color: brandColor,
+                                margin: [0, 2, 0, 0]
+                            }
+                        ]
+                    }
+                ],
+                columnGap: 12
+            },
+            {
+                canvas: [
+                    {
+                        type: 'line',
+                        x1: 0,
+                        y1: 0,
+                        x2: PDF_PAGE_WIDTH_PT - horizontalMargin * 2,
+                        y2: 0,
+                        lineWidth: 0.8,
+                        lineColor: lineColor
+                    }
+                ],
+                margin: [0, 8, 0, 0]
+            }
+        ]
+    };
+};
 
 const extractMarkdownImageUrl = (rawTarget: string): string => {
     const value = String(rawTarget || '').trim();
@@ -823,7 +900,7 @@ export const exportCourseToPdf = async (
     const pdfQuoteAccentColor = isDarkPdfTheme ? '#E5EEF9' : '#334155';
     const pdfImportantColor = isDarkPdfTheme ? '#BFDBFE' : '#0F3C72';
     const pdfWarningColor = isDarkPdfTheme ? '#BBF7D0' : '#14532D';
-    const PDF_FONT_BUMP = preparedCourse.bookType === 'fairy_tale' ? 2 : 1;
+    const PDF_FONT_BUMP = preparedCourse.bookType === 'fairy_tale' ? 1 : 1;
     const PDF_FONT_BUMP_MAX = preparedCourse.bookType === 'fairy_tale' ? 64 : 14;
     const buildPdfParagraphBlock = (text: string, margin: [number, number, number, number] = [0, 2, 0, 6]) => ({
         text: cleanMarkdownToSpans(text),
@@ -836,6 +913,14 @@ export const exportCourseToPdf = async (
     const buildAdaptiveFullWidthPdfImageBlock = async (imageData: string) => {
         const dimensions = await getImageDataUrlDimensions(imageData);
         const aspectRatio = dimensions && dimensions.height > 0 ? dimensions.width / dimensions.height : null;
+        if (isNarrativeBook) {
+            return {
+                image: imageData,
+                width: PDF_TEXT_BLOCK_WIDTH_PT,
+                margin: [0, 8, 0, 10],
+                alignment: 'center' as const
+            };
+        }
         if (aspectRatio && aspectRatio >= PDF_WIDE_IMAGE_MIN_ASPECT_RATIO) {
             return {
                 image: imageData,
@@ -1443,18 +1528,10 @@ export const exportCourseToPdf = async (
 
     const docDefinition: any = {
         content: bumpPdfFontSizes(pdfContent),
-        pageMargins: [PDF_PAGE_HORIZONTAL_MARGIN_PT, 50, PDF_PAGE_HORIZONTAL_MARGIN_PT, 72],
+        pageMargins: [PDF_PAGE_HORIZONTAL_MARGIN_PT, 64, PDF_PAGE_HORIZONTAL_MARGIN_PT, 72],
+        header: () => buildPdfHeader(preparedCourse.topic, pdfPageBackgroundColor, PDF_PAGE_HORIZONTAL_MARGIN_PT),
         background: () => ({
-            canvas: [
-                {
-                    type: 'rect',
-                    x: 0,
-                    y: 0,
-                    w: PDF_PAGE_WIDTH_PT,
-                    h: 841.89,
-                    color: pdfPageBackgroundColor
-                }
-            ]
+            canvas: buildPdfBackgroundCanvas(pdfPageBackgroundColor)
         }),
         footer: (currentPage: number, pageCount: number) => ({
             margin: [PDF_PAGE_HORIZONTAL_MARGIN_PT, 6, PDF_PAGE_HORIZONTAL_MARGIN_PT, 10],
@@ -1482,6 +1559,157 @@ export const exportCourseToPdf = async (
         console.error("PDF Export error:", e);
         alert("PDF oluşturulamadı!");
     }
+};
+
+type VisualStoryPdfImagePage = {
+    id: string;
+    title: string;
+    imageUrl: string;
+    text?: string;
+};
+
+const buildVisualStoryPdfImagePages = (course: CourseData): VisualStoryPdfImagePage[] => {
+    const coverImageUrl = String(course.coverImageUrl || '').trim();
+    const coverPage = coverImageUrl
+        ? [{
+            id: 'visual-story-cover',
+            title: course.topic || 'Kapak',
+            imageUrl: coverImageUrl,
+            text: String(course.coverNarrationText || course.description || course.topic || '').trim()
+        }]
+        : [];
+
+    const storyPages = (course.nodes || [])
+        .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()))
+        .map((node, index) => {
+            const rawSequence = Number(node.pageSequence);
+            return {
+                id: node.id || `visual-story-page-${index + 1}`,
+                title: node.title || `Sayfa ${index + 1}`,
+                imageUrl: node.pageImageUrl!.trim(),
+                text: String(node.pageText || '').trim(),
+                sequence: Number.isFinite(rawSequence) ? rawSequence : index + 1,
+                index
+            };
+        })
+        .sort((left, right) => left.sequence - right.sequence || left.index - right.index)
+        .map(({ id, title, imageUrl, text }) => ({ id, title, imageUrl, text }));
+
+    return [...coverPage, ...storyPages].filter((page) => page.imageUrl);
+};
+
+export const exportVisualStoryToPdf = async (
+    course: CourseData,
+    options?: {
+        backgroundColor?: string;
+    }
+) => {
+    const preparedCourse = await prepareCourseForRichExport(course);
+    const imagePages = buildVisualStoryPdfImagePages(preparedCourse);
+    if (imagePages.length === 0) {
+        throw new Error('Visual story PDF export requires at least one page image.');
+    }
+    const pdfPageBackgroundColor = options?.backgroundColor?.trim() || DEFAULT_PDF_PAGE_BACKGROUND_COLOR;
+    const isYoungVisualStory =
+        preparedCourse.bookType === 'fairy_tale' &&
+        ['1-6', '1-3', '4-6'].includes(String(preparedCourse.ageGroup || '').trim());
+
+    const visualImageBlocks = await Promise.all(
+        imagePages.map(async (page, index) => ({
+            ...page,
+            order: index + 1,
+            imageData: await fetchImageAsBase64(page.imageUrl)
+        }))
+    );
+
+    const pageMarginHorizontal = 28;
+    const pageMarginTop = 64;
+    const pageMarginBottom = 34;
+    const contentWidth = PDF_PAGE_WIDTH_PT - pageMarginHorizontal * 2;
+    const contentHeight = PDF_PAGE_HEIGHT_PT - pageMarginTop - pageMarginBottom;
+    const imageSlotHeight = Math.floor(contentHeight * (isYoungVisualStory ? 0.57 : 0.62));
+    const textSlotHeight = contentHeight - imageSlotHeight;
+    const visualStoryTextFontSize = isYoungVisualStory ? 16 : 13;
+    const visualStoryTextLineHeight = isYoungVisualStory ? 1.62 : 1.55;
+    const visualStoryTextMargin: [number, number, number, number] = isYoungVisualStory ? [18, 0, 18, 0] : [14, 0, 14, 0];
+
+    const pdfContent: any[] = [];
+    for (let index = 0; index < visualImageBlocks.length; index += 1) {
+        const page = visualImageBlocks[index];
+        const storyText = String(page.text || '').trim();
+        pdfContent.push({
+            stack: [
+                page.imageData
+                    ? {
+                        image: page.imageData,
+                        fit: [contentWidth, imageSlotHeight],
+                        alignment: 'center' as const,
+                        margin: [0, 0, 0, 16]
+                    }
+                    : {
+                        table: {
+                            widths: [contentWidth],
+                            heights: [imageSlotHeight],
+                            body: [[{
+                                text: `Görsel yüklenemedi: ${page.title}`,
+                                alignment: 'center' as const,
+                                color: '#6B7280',
+                                fontSize: 11,
+                                margin: [10, imageSlotHeight / 2 - 10, 10, 0]
+                            }]]
+                        },
+                        layout: {
+                            hLineColor: () => '#D1D5DB',
+                            vLineColor: () => '#D1D5DB',
+                            hLineWidth: () => 0.8,
+                            vLineWidth: () => 0.8,
+                            fillColor: () => '#F9FAFB'
+                        },
+                        margin: [0, 0, 0, 16]
+                    },
+                {
+                    stack: [
+                        {
+                            text: storyText || page.title,
+                            alignment: 'center' as const,
+                            fontSize: visualStoryTextFontSize,
+                            lineHeight: visualStoryTextLineHeight,
+                            margin: visualStoryTextMargin
+                        }
+                    ],
+                    minHeight: textSlotHeight
+                }
+            ],
+            pageBreak: index === 0 ? undefined : 'before'
+        });
+    }
+
+    const docDefinition: any = {
+        pageSize: 'A4',
+        pageOrientation: 'portrait',
+        pageMargins: [pageMarginHorizontal, pageMarginTop, pageMarginHorizontal, pageMarginBottom],
+        header: () => buildPdfHeader(preparedCourse.topic, pdfPageBackgroundColor, pageMarginHorizontal),
+        background: () => ({
+            canvas: buildPdfBackgroundCanvas(pdfPageBackgroundColor)
+        }),
+        footer: (currentPage: number, pageCount: number) => ({
+            margin: [pageMarginHorizontal, 6, pageMarginHorizontal, 10],
+            text: `${currentPage} / ${pageCount}`,
+            alignment: 'center',
+            fontSize: 9,
+            color: '#5b7288'
+        }),
+        content: pdfContent,
+        defaultStyle: { font: 'Roboto', color: '#111827' }
+    };
+
+    const pdfMake = await loadPdfMake();
+    const pdfDoc = pdfMake.createPdf(docDefinition);
+    const pdfBlob = await pdfDoc.getBlob();
+    await saveBlobAsFile({
+        blob: pdfBlob,
+        fileName: buildReadableBookDownloadFileName(preparedCourse.topic, 'pdf')
+    });
 };
 
 export const exportNodeToPdf = async (course: CourseData, node: TimelineNode) => {
@@ -2940,6 +3168,29 @@ const buildNodeSectionBodyHtml = async (
         bodyParts.push(scriptHtml);
     } else if (node.type === 'quiz' || node.type === 'exam') {
         bodyParts.push(buildQuizOrExamHtml(node));
+    } else if (course.visualStoryMode === true && node.type === 'lecture' && node.pageImageUrl) {
+        const imageRef = await collector.addRemoteAsset(
+            node.pageImageUrl,
+            'image',
+            `${sectionBaseName}_visual_story_image`
+        );
+        if (imageRef) {
+            bodyParts.push(`
+              <figure class="visual-story-page">
+                <img src="${escapeXml(toTextSectionRelativeHref(imageRef.href))}" alt="${escapeXml(node.title || tabLabel)}" />
+              </figure>
+            `);
+        }
+        if (node.pageText?.trim()) {
+            bodyParts.push(await renderMarkdownToEpubHtml(node.pageText, {
+                nodeType: node.type,
+                sectionBaseName: `${sectionBaseName}_text`,
+                collector,
+                topic: course.topic,
+                sectionTitle: node.title,
+                contentTitle
+            }));
+        }
     } else {
         const sourceText = node.content || '_Henüz içerik oluşturulmamış._';
         bodyParts.push(await renderMarkdownToEpubHtml(sourceText, {
