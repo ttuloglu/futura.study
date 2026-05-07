@@ -3,6 +3,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth, type UserRecord } from "firebase-admin/auth";
 import { FieldPath, FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { getMessaging } from "firebase-admin/messaging";
 import { defineSecret } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
@@ -27,7 +28,7 @@ const GEMINI_PLANNER_MODEL =
     "gemini-2.5-flash"
   ).trim();
 // Book long-form prose is pinned here. Keep this exact model unless cost/quality policy changes.
-const GEMINI_CONTENT_MODEL = "gemini-3-flash-preview";
+const GEMINI_CONTENT_MODEL = "gemini-flash-latest";
 const GEMINI_QUALITY_MODEL =
   (
     process.env.GEMINI_QUALITY_MODEL ||
@@ -76,7 +77,7 @@ const GEMINI_QUIZ_REVIEW_MODEL =
     GEMINI_PLANNER_MODEL ||
     "gemini-2.5-flash"
   ).trim();
-const OPENAI_IMAGE_MODEL = "gpt-image-2";
+const OPENAI_IMAGE_MODEL = "gpt-image-2-2026-04-21";
 const OPENAI_IMAGE_QUALITY: "low" = "low";
 const OPENAI_COVER_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_LECTURE_IMAGE_MODEL = OPENAI_IMAGE_MODEL;
@@ -802,7 +803,7 @@ function preferredLanguageLabel(language: PreferredLanguage): string {
 
 interface UsageReportEntry {
   label: string;
-  provider: "google" | "openai" | "xai";
+  provider: "google" | "openai";
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -2071,6 +2072,26 @@ function buildStorySubGenrePathDirective(subGenre: string | undefined, isEn: boo
     : "Alt tür yolu kilidi: üslubu sadece seçilen alt türle birebir hizalı tut.";
 }
 
+function buildNarrativeCraftMandates(isEn: boolean): string {
+  return isEn
+    ? [
+      "CHARACTER DEPTH MANDATE: Every main character must have a visible inner life — a contradiction, a fear, a desire, or a wound that shapes their decisions. Character change must be earned through plot events, not declared.",
+      "GENRE ACTION MANDATE: Never dilute or skip the core action of the selected subgenre. Thriller scenes must generate real tactical pressure. Adventure must move with momentum and escalating stakes. Horror must build dread into the scene fabric. Romance must create charged proximity and longing. Every genre promise must be kept, every chapter.",
+      "SUSTAINED TENSION MANDATE: Maintain narrative energy in every scene — no filler passages, no summary transitions, no flat stretches. Each scene must end with something changed, threatened, revealed, or decided. Reader forward-pull must never go slack.",
+      "MYSTERY PRESERVATION MANDATE: Never resolve the central mystery, core threat, or central dramatic question before the final act. Partial reveals, false leads, and deepening complications must keep the reader's curiosity alive until the last pages. Premature answers kill suspense — hold them back.",
+      "ENGAGEMENT MANDATE: Open each chapter with a hook that makes stopping impossible. Use scene-level conflict, sensory specificity, and charged dialogue to maintain grip. Avoid long expository blocks; embed context into action and conversation.",
+      "NO-REPETITION MANDATE: Never repeat the same emotional beat, descriptive phrase, or structural move in consecutive scenes or chapters. Vary sentence rhythm, scene texture, and emotional register deliberately. Repetition signals loss of narrative momentum — treat it as an error."
+    ].join(" ")
+    : [
+      "KARAKTER DERİNLİĞİ ZORUNLULUĞU: Her ana karakterin görünür bir iç dünyası olmalı — kararlarını biçimlendiren bir çelişki, bir korku, bir arzu veya bir yara. Karakter değişimi olay örgüsü aracılığıyla kazanılmalı, sadece ilan edilmemeli.",
+      "TÜRE ÖZGÜ AKSİYON ZORUNLULUĞU: Seçilen alt türün özünü asla sulandırma ya da atlama. Gerilim sahneleri gerçek taktik baskı yaratmalı. Macera momentum ve büyüyen risklerle hareket etmeli. Korku, sahnenin dokusuna işlenmiş bir tedirginlik inşa etmeli. Romantik anlatı yüklü bir yakınlık ve özlem yaratmalı. Her türün vaadi her bölümde yerine getirilmeli.",
+      "SÜREKLI GERİLİM ZORUNLULUĞU: Her sahnede anlatı enerjisini canlı tut — dolgu pasajlar yok, özet geçişler yok, yassı kesitler yok. Her sahne bir şeyin değiştiği, tehdit altına girdiği, açığa çıktığı veya kararlaştırıldığı bir noktada bitmeli. Okuyucunun ileriye çekilme isteği hiçbir zaman gevşememeli.",
+      "GİZEM KORUMA ZORUNLULUĞU: Merkezi gizemi, ana tehdidi veya sürükleyici dramatik soruyu son perdeye kadar asla çözme. Kısmi ipuçları, yanlış izler ve derinleşen komplikasyonlar okuyucunun merakını son sayfalara kadar diri tutmalı. Erken verilen cevaplar gerilimi öldürür — bu bilgileri son ana sakla.",
+      "ETKİLEYİCİLİK ZORUNLULUĞU: Her bölüme okumayı bırakmayı imkânsız kılan bir kancayla başla. Sahne düzeyinde çatışma, duyusal özgüllük ve yüklü diyalogla tutunmayı koru. Uzun bilgi aktarım bloklarından kaçın; bağlamı eylem ve konuşma içine göm.",
+      "TEKRAR YASAĞI: Aynı duygusal vuruşu, tanımlayıcı ifadeyi veya yapısal hamlemi ardışık sahnelerde ya da bölümlerde tekrarlama. Cümle ritmini, sahne dokusunu ve duygusal tonu kasıtlı olarak çeşitlendir. Tekrar anlatı momentumunun yitirildiğinin işaretidir — hata olarak değerlendir."
+    ].join(" ");
+}
+
 function buildStorySinglePathDirective(
   brief: SmartBookCreativeBrief,
   audienceLevel: SmartBookAudienceLevel,
@@ -2080,6 +2101,7 @@ function buildStorySinglePathDirective(
   const pathId = `story/${audienceLevel}/${normalizeStoryPathKey(subGenre).replace(/\s+/g, "_") || "default"}`;
   const ageLine = buildStoryAgePathDirective(audienceLevel, isEn);
   const genreLine = buildStorySubGenrePathDirective(subGenre, isEn);
+  const craftMandates = buildNarrativeCraftMandates(isEn);
 
   return isEn
     ? [
@@ -2087,6 +2109,7 @@ function buildStorySinglePathDirective(
       "Story hard constraints: 20-25 pages (minimum 20), one dominant conflict line, controlled cast size, and a focused time span.",
       ageLine,
       genreLine,
+      craftMandates,
       "Do not drift into fairy tale or novel mode. Stay in STORY mode only."
     ].join(" ")
     : [
@@ -2094,6 +2117,7 @@ function buildStorySinglePathDirective(
       "Hikaye sabit kuralları: 20-25 sayfa (alt sınır 20), tek baskın çatışma hattı, kontrollü karakter sayısı ve odaklı zaman aralığı.",
       ageLine,
       genreLine,
+      craftMandates,
       "Masal veya roman moduna kayma. Sadece HİKAYE modunda kal."
     ].join(" ");
 }
@@ -2337,6 +2361,7 @@ function buildNovelSinglePathDirective(
   const pathId = `novel/${audienceLevel}/${normalizeStoryPathKey(subGenre).replace(/\s+/g, "_") || "default"}`;
   const ageLine = buildNovelAgePathDirective(audienceLevel, isEn);
   const genreLine = buildNovelSubGenrePathDirective(subGenre, isEn);
+  const craftMandates = buildNarrativeCraftMandates(isEn);
 
   return isEn
     ? [
@@ -2346,6 +2371,7 @@ function buildNovelSinglePathDirective(
       "Craft lock: show-don't-tell, stable POV discipline, and scene-level conflict in every chapter.",
       ageLine,
       genreLine,
+      craftMandates,
       "Do not drift into fairy tale or short-story mode. Stay in NOVEL mode only."
     ].join(" ")
     : [
@@ -2355,6 +2381,7 @@ function buildNovelSinglePathDirective(
       "Yazım tekniği kilidi: Gösterme-Anlat, POV tutarlılığı ve her sahnede aktif çatışma zorunlu.",
       ageLine,
       genreLine,
+      craftMandates,
       "Masal veya kısa hikaye moduna kayma. Sadece ROMAN modunda kal."
     ].join(" ");
 }
@@ -3273,6 +3300,9 @@ function isTransientAiProviderError(error: unknown): boolean {
     );
   }
 
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
   const raw = toErrorMessage(error).toLocaleLowerCase("en-US");
   return (
     raw.includes('"status":"unavailable"') ||
@@ -3287,9 +3317,14 @@ function isTransientAiProviderError(error: unknown): boolean {
     raw.includes(" 429") ||
     raw.includes("deadline exceeded") ||
     raw.includes("timed out") ||
+    raw.includes("timeout") ||
     raw.includes("fetch failed") ||
     raw.includes("econnreset") ||
-    raw.includes("socket hang up")
+    raw.includes("etimedout") ||
+    raw.includes("socket hang up") ||
+    raw.includes("operation was aborted") ||
+    raw.includes("aborterror") ||
+    raw.includes("the operation was aborted")
   );
 }
 
@@ -8617,6 +8652,7 @@ async function generateLongFormMarkdown(
   const isNarrativeProfile = options.qualityProfile === "narrative";
   const grammarInstruction = languageInstruction(preferredLanguage);
   const isFairyTaleBook = options.bookType === "fairy_tale";
+  const isNovelBook = options.bookType === "novel";
   const qualityControlDisabled = true;
   let accumulatedInputTokens = 0;
   let accumulatedOutputTokens = 0;
@@ -8636,7 +8672,7 @@ async function generateLongFormMarkdown(
     : 0;
 
   if (options.singlePass) {
-    const singlePassAttempts = isNarrativeProfile ? 3 : 2;
+    const singlePassAttempts = 1;
     let normalized = "";
     const singlePassUsageEntries: UsageReportEntry[] = [];
     const acceptanceRatio = Math.max(0.55, Math.min(1, options.minAcceptanceRatio ?? 0.7));
@@ -8797,12 +8833,28 @@ Görev:
     }
 
     if (!normalized || !validationPassed) {
+      // For novels/stories (single-attempt mode): accept best candidate directly, clean trailing incomplete sentence
+      if (!isFairyTaleBook && bestSinglePassCandidate && bestSinglePassWordCount >= 200) {
+        const cleaned = trimTrailingIncompleteSentence(bestSinglePassCandidate);
+        const usable = paragraphizeNarrativeText(cleaned || bestSinglePassCandidate);
+        logger.warn("Single-pass generation using best candidate directly (single-attempt mode)", {
+          usageLabel: options.usageLabel,
+          words: bestSinglePassWordCount,
+          endsCleanly: bestSinglePassEndsCleanly,
+          bookType: options.bookType || "academic"
+        });
+        return { content: usable, usageEntries: singlePassUsageEntries };
+      }
+
+      const fallbackAcceptanceFloor = isNovelBook
+        ? Math.min(relaxedAcceptanceRatio, 0.54)
+        : Math.max(0.55, relaxedAcceptanceRatio);
       const fallbackMinRequiredWords = Math.max(
         isFairyTaleBook ? 45 : 220,
-        Math.floor(options.minWords * Math.max(0.55, relaxedAcceptanceRatio))
+        Math.floor(options.minWords * fallbackAcceptanceFloor)
       );
       const fallbackMinRequiredChars = Number.isFinite(options.minChars)
-        ? Math.max(220, Math.floor((options.minChars || 0) * Math.max(0.55, relaxedAcceptanceRatio)))
+        ? Math.max(220, Math.floor((options.minChars || 0) * fallbackAcceptanceFloor))
         : 0;
       const fallbackLooksUsable =
         bestSinglePassCandidate &&
@@ -8819,6 +8871,87 @@ Görev:
           bookType: options.bookType || "academic"
         });
         return { content: bestSinglePassCandidate, usageEntries: singlePassUsageEntries };
+      }
+
+      if (allowEmergencyGeneration) {
+        try {
+          const emergencyTargetWords = isNovelBook ? "650-900" : "600-850";
+          const emergencyPrompt = `
+${basePrompt}
+
+Acil tek-geçiş tamamlama modu:
+- Bu bölüm daha önce kısa/kesik döndü; şimdi aynı bölümün baştan sona tamamlanmış nihai metnini üret.
+- Sadece düzyazı paragraf yaz; başlık, madde, taslak notu, sistem açıklaması veya asistan tonu kullanma.
+- Aynı karakterleri, aynı ana çatışmayı ve aynı bölüm görevini koru; yeni bağımsız hikaye başlatma.
+- Metni ${emergencyTargetWords} kelime bandında, yoğun ama tamamlanmış biçimde kur.
+- Son cümle doğal ve bitmiş olsun.
+${maxAllowedChars > 0 ? `- En fazla ${maxAllowedChars} karakterde kal; metni keserek değil, baştan kontrollü yazarak bitir.` : ""}
+`.trim();
+          const emergencyResponse = await ai.models.generateContent({
+            model: GEMINI_CONTENT_MODEL,
+            contents: emergencyPrompt,
+            config: {
+              systemInstruction: getSystemInstructionForBookType(options.bookType),
+              temperature: options.temperature ?? 1,
+              maxOutputTokens: Math.max(1800, Math.min(options.maxOutputTokens, isNovelBook ? 4200 : 3600))
+            }
+          });
+          singlePassUsageEntries.push(buildGeminiUsageEntry(
+            `${options.usageLabel} tek-geçiş acil tamamlama`,
+            GEMINI_CONTENT_MODEL,
+            (emergencyResponse as unknown as { usageMetadata?: unknown }).usageMetadata,
+            emergencyPrompt,
+            emergencyResponse.text || ""
+          ));
+
+          const emergencyText = paragraphizeNarrativeText(stripAssistantStyleLead(
+            normalizeMarkdownListsAndHeadings(stripCompletionMarker(emergencyResponse.text?.trim() || ""))
+          )).trim();
+          const emergencyWordCount = countWords(emergencyText);
+          const emergencyCharCount = countCharacters(emergencyText);
+          const emergencyEndsCleanly = endsWithCompleteSentence(emergencyText);
+          const emergencyMinWords = Math.max(
+            isNovelBook ? 520 : 480,
+            Math.floor(options.minWords * (isNovelBook ? 0.45 : 0.5))
+          );
+          const emergencyMinChars = Number.isFinite(options.minChars)
+            ? Math.max(1800, Math.floor((options.minChars || 0) * (isNovelBook ? 0.42 : 0.48)))
+            : 0;
+
+          if (
+            emergencyText &&
+            emergencyEndsCleanly &&
+            emergencyWordCount >= emergencyMinWords &&
+            (emergencyMinChars === 0 || emergencyCharCount >= emergencyMinChars) &&
+            (maxAllowedChars === 0 || emergencyCharCount <= maxAllowedChars)
+          ) {
+            logger.warn("Single-pass generation used emergency fallback candidate", {
+              usageLabel: options.usageLabel,
+              words: emergencyWordCount,
+              chars: emergencyCharCount,
+              topicHint: options.topicHint ? String(options.topicHint).slice(0, 120) : undefined,
+              bookType: options.bookType || "academic"
+            });
+            return { content: emergencyText, usageEntries: singlePassUsageEntries };
+          }
+
+          logger.warn("Single-pass emergency fallback candidate rejected", {
+            usageLabel: options.usageLabel,
+            words: emergencyWordCount,
+            chars: emergencyCharCount,
+            endedCleanly: emergencyEndsCleanly,
+            minWords: emergencyMinWords,
+            minChars: emergencyMinChars,
+            maxChars: maxAllowedChars || undefined,
+            bookType: options.bookType || "academic"
+          });
+        } catch (emergencyError) {
+          logger.warn("Single-pass emergency fallback failed", {
+            usageLabel: options.usageLabel,
+            error: emergencyError instanceof Error ? emergencyError.message : String(emergencyError),
+            bookType: options.bookType || "academic"
+          });
+        }
       }
 
       throw new HttpsError("internal", "İçerik eksiksiz üretilemedi. Lütfen tekrar deneyin.");
@@ -9738,7 +9871,7 @@ Markdown formatında döndür.
         ? (isFairyTale && fairyWordRange ? fairyWordRange.max : chapterWordRange.max)
         : undefined,
       minChars: isFairyTale ? activeNarrativeCharacterTarget?.minAccepted : narrativeHardMinChars,
-      maxChars: isFairyTale ? undefined : activeNarrativeCharacterTarget?.maxAccepted,
+      maxChars: undefined,
       maxOutputTokens: lectureMaxOutputTokens,
       temperature: lectureTemperature,
       language: preferredLanguage,
@@ -11033,7 +11166,7 @@ async function loadBinaryAssetFromSource(source: string): Promise<BinaryAsset> {
     return { buffer, contentType, extension };
   }
 
-  const response = await fetch(normalized);
+  const response = await fetch(normalized, { signal: AbortSignal.timeout(60_000) });
   if (!response.ok) {
     throw new HttpsError("not-found", `Asset could not be fetched: ${normalized}`);
   }
@@ -11174,6 +11307,8 @@ async function buildAndPublishBookBundle(params: {
   const nowIso = new Date().toISOString();
   const zip = new JSZip();
   const safeBookId = sanitizeBundlePathPart(bookId, "book");
+
+  logger.info("[Bundle] Starting buildAndPublishBookBundle", { bookId });
 
   const sourceNodes = Array.isArray(sourcePayload.nodes)
     ? sourcePayload.nodes.filter((node): node is TimelineNode => Boolean(node) && typeof node === "object")
@@ -11336,11 +11471,13 @@ async function buildAndPublishBookBundle(params: {
 
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
 
+  logger.info("[Bundle] Generating ZIP", { bookId });
   const zipBuffer = await zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",
-    compressionOptions: { level: 9 }
+    compressionOptions: { level: 6 }
   });
+  logger.info("[Bundle] ZIP generated", { bookId, sizeBytes: zipBuffer.byteLength });
 
   const bookRef = getUserBookRef(uid, bookId);
   const existingBookSnapshot = await bookRef.get();
@@ -11366,19 +11503,25 @@ async function buildAndPublishBookBundle(params: {
     generatedAt: nowIso
   };
 
+  logger.info("[Bundle] Uploading to Storage", { bookId, bundlePath, sizeBytes: zipBuffer.byteLength });
   const bucket = getStorage().bucket();
-  await bucket.file(bundlePath).save(zipBuffer, {
-    contentType: "application/zip",
-    metadata: {
+  await withTimeout(
+    bucket.file(bundlePath).save(zipBuffer, {
+      contentType: "application/zip",
       metadata: {
-        uid,
-        bookId,
-        version: String(nextVersion),
-        checksumSha256,
-        firebaseStorageDownloadTokens: bundleDownloadToken
+        metadata: {
+          uid,
+          bookId,
+          version: String(nextVersion),
+          checksumSha256,
+          firebaseStorageDownloadTokens: bundleDownloadToken
+        }
       }
-    }
-  });
+    }),
+    300_000,
+    () => new HttpsError("deadline-exceeded", "Bundle Storage yükleme zaman aşımına uğradı.")
+  );
+  logger.info("[Bundle] Upload complete", { bookId, bundlePath });
   const contentPackageUrl = buildFirebaseStorageDownloadUrl(bucket.name, bundlePath, bundleDownloadToken);
 
   const rawBookDocPayload: Record<string, unknown> = {
@@ -11736,8 +11879,8 @@ function sanitizeUsageEntriesForClient(entries: UsageReportEntry[]): UsageReport
   return entries.map((entry) => {
     const providerRaw = String(entry.provider || "google").trim().toLowerCase();
     const provider: UsageReportEntry["provider"] =
-      providerRaw === "openai" || providerRaw === "xai"
-        ? providerRaw
+      providerRaw === "openai"
+        ? "openai"
         : "google";
     const inputTokens = toNonNegativeInt(entry.inputTokens);
     const outputTokens = toNonNegativeInt(entry.outputTokens);
@@ -11778,7 +11921,7 @@ function resolveUsageEntriesFromJobData(value: unknown): UsageReportEntry[] {
       label: String(item.label || "İşlem"),
       provider: String(item.provider || "google").toLowerCase() === "openai"
         ? "openai"
-        : (String(item.provider || "google").toLowerCase() === "xai" ? "xai" : "google"),
+        : "google",
       model: String(item.model || "unknown"),
       inputTokens: toNonNegativeInt(item.inputTokens),
       outputTokens: toNonNegativeInt(item.outputTokens),
@@ -13971,6 +14114,104 @@ function buildBookJobCoverContext(nodes: TimelineNode[]): string {
     .slice(0, 8000);
 }
 
+export const cancelBookGenerationJob = onCall(
+  {
+    region: "us-central1",
+    cors: APP_CORS_ORIGINS,
+    invoker: "public",
+    timeoutSeconds: 30,
+    memory: "256MiB"
+  },
+  async (request): Promise<{ cancelled: boolean }> => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+    const payload = isRecord(request.data) ? request.data : {};
+    const jobId = typeof payload.jobId === "string" ? payload.jobId.trim() : "";
+    if (!jobId) throw new HttpsError("invalid-argument", "jobId required.");
+
+    const jobRef = getBookJobRef(jobId);
+    const cancelled = await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(jobRef);
+      if (!snap.exists) return false;
+      const data = snap.data() as Record<string, unknown>;
+      if (String(data.uid || "") !== uid) return false;
+      const status = String(data.status || "");
+      if (status === "completed" || status === "failed") return false;
+      tx.set(
+        jobRef,
+        {
+          status: "failed",
+          errorMessage: "USER_CANCELLED",
+          creditRefunded: false,
+          updatedAt: FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+      return true;
+    });
+
+    return { cancelled };
+  }
+);
+
+export const retryStuckBookJob = onCall(
+  {
+    region: "us-central1",
+    cors: APP_CORS_ORIGINS,
+    invoker: "public",
+    timeoutSeconds: 30,
+    memory: "256MiB"
+  },
+  async (request): Promise<{ queued: boolean }> => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+    const payload = isRecord(request.data) ? request.data : {};
+    const jobId = typeof payload.jobId === "string" ? payload.jobId.trim() : "";
+    if (!jobId) throw new HttpsError("invalid-argument", "jobId required.");
+
+    const jobRef = getBookJobRef(jobId);
+    const queued = await firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(jobRef);
+      if (!snap.exists) return false;
+      const data = snap.data() as Record<string, unknown>;
+      if (String(data.uid || "") !== uid) return false;
+      const status = String(data.status || "");
+      if (status === "completed" || status === "failed") return false;
+      tx.set(jobRef, { status: "queued", updatedAt: FieldValue.serverTimestamp(), errorMessage: FieldValue.delete() }, { merge: true });
+      return true;
+    });
+
+    if (queued) {
+      const taskRef = firestore.collection(BOOK_JOB_TASK_COLLECTION).doc();
+      await taskRef.set({ jobId, createdAt: FieldValue.serverTimestamp() });
+    }
+    return { queued };
+  }
+);
+
+export const registerFcmToken = onCall(
+  {
+    region: "us-central1",
+    cors: APP_CORS_ORIGINS,
+    invoker: "public",
+    timeoutSeconds: 30,
+    memory: "256MiB"
+  },
+  async (request): Promise<{ success: boolean }> => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+    const payload = isRecord(request.data) ? request.data : {};
+    const token = typeof payload.token === "string" ? payload.token.trim() : "";
+    if (!token || token.length < 8) throw new HttpsError("invalid-argument", "Invalid FCM token.");
+    const key = createHash("sha256").update(token).digest("hex").slice(0, 16);
+    await firestore.collection("userFcmTokens").doc(uid).set(
+      { [key]: { token, platform: payload.platform || "unknown", updatedAt: FieldValue.serverTimestamp() } },
+      { merge: true }
+    );
+    return { success: true };
+  }
+);
+
 export const startBookGenerationJob = onCall(
   {
     region: "us-central1",
@@ -14018,9 +14259,8 @@ export const startBookGenerationJob = onCall(
     const totalSections = Math.max(3, getExpectedChapterCountForBookType(bookType) + 2);
     const jobRef = getBookJobRef(jobId);
 
-    let consumeResult: CreditConsumeResult | null = null;
+    await ensureCreditAvailable(uid, { action: "create", cost: resolveBookCreateCreditCost(bookType) });
     try {
-      consumeResult = await consumeCreditWithReceipt(uid, "create", resolveBookCreateCreditCost(bookType));
       const storedCreativeBrief = omitUndefinedRecord(creativeBrief);
       const nextData: Record<string, unknown> = {
         uid,
@@ -14047,7 +14287,7 @@ export const startBookGenerationJob = onCall(
         totalTokens: 0,
         estimatedCostUsd: 0,
         usageEntries: [],
-        creditReceiptId: consumeResult.receiptId,
+        creditReceiptId: null,
         creditRefunded: false,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -14062,19 +14302,9 @@ export const startBookGenerationJob = onCall(
         type: "generate",
         createdAt: FieldValue.serverTimestamp()
       });
-      return await buildBookJobResponse(jobId, nextData, consumeResult.wallet);
+      return await buildBookJobResponse(jobId, nextData, await getOrCreateCreditWallet(uid));
     } catch (error) {
       await jobRef.delete().catch(() => undefined);
-      if (consumeResult?.receiptId) {
-        try {
-          await refundCreditByReceipt(uid, consumeResult.receiptId);
-        } catch (refundError) {
-          logger.warn("Book job bootstrap refund failed", {
-            jobId,
-            error: toErrorMessage(refundError)
-          });
-        }
-      }
       throw error;
     }
   }
@@ -14544,15 +14774,75 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   });
 }
 
+async function sendBookReadyPushNotification(uid: string, bookTitle: string): Promise<void> {
+  try {
+    const tokenDoc = await firestore.collection("userFcmTokens").doc(uid).get();
+    if (!tokenDoc.exists) return;
+    const data = tokenDoc.data() as Record<string, unknown> | undefined;
+    if (!data) return;
+    const tokens = Object.values(data)
+      .filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null && typeof (v as Record<string, unknown>).token === "string")
+      .map((v) => String((v as Record<string, unknown>).token));
+    if (tokens.length === 0) return;
+
+    const messaging = getMessaging();
+    const results = await messaging.sendEachForMulticast({
+      tokens,
+      notification: {
+        title: "📚 Kitabın hazır!",
+        body: `"${bookTitle}" oluşturuldu. Okumaya başlayabilirsin.`
+      },
+      apns: {
+        payload: { aps: { sound: "default", badge: 1 } }
+      },
+      android: {
+        notification: {
+          sound: "default",
+          color: "#2a9d8f"
+        }
+      }
+    });
+
+    const staleTokens: string[] = [];
+    results.responses.forEach((resp, i) => {
+      if (!resp.success && (resp.error?.code === "messaging/registration-token-not-registered" || resp.error?.code === "messaging/invalid-registration-token")) {
+        staleTokens.push(tokens[i]);
+      }
+    });
+
+    if (staleTokens.length > 0) {
+      const updates: Record<string, unknown> = {};
+      for (const t of staleTokens) {
+        const key = createHash("sha256").update(t).digest("hex").slice(0, 16);
+        updates[key] = FieldValue.delete();
+      }
+      await firestore.collection("userFcmTokens").doc(uid).update(updates).catch(() => undefined);
+    }
+  } catch (error) {
+    logger.warn("sendBookReadyPushNotification failed", { uid, error: toErrorMessage(error) });
+  }
+}
+
 async function runBookGenerationJobTask(
   jobRef: FirebaseFirestore.DocumentReference
 ): Promise<void> {
+  const STALE_JOB_THRESHOLD_MS = 25 * 60 * 1000; // 25 minutes
   const claimedJobData = await firestore.runTransaction(async (transaction) => {
     const latestSnap = await transaction.get(jobRef);
     if (!latestSnap.exists) return null;
     const latestData = latestSnap.data() as Record<string, unknown> | undefined;
     const latestStatus = String(latestData?.status || "");
-    if (latestStatus !== "queued") return null;
+    if (latestStatus !== "queued") {
+      if (latestStatus === "processing") {
+        const updatedAt = latestData?.updatedAt as { toMillis?: () => number } | null | undefined;
+        const updatedAtMs = updatedAt && typeof updatedAt.toMillis === "function" ? updatedAt.toMillis() : 0;
+        const isStale = !updatedAtMs || (Date.now() - updatedAtMs > STALE_JOB_THRESHOLD_MS);
+        if (!isStale) return null;
+        logger.warn("Re-claiming stale processing book job", { jobId: jobRef.id, updatedAtMs });
+      } else {
+        return null;
+      }
+    }
     transaction.set(
       jobRef,
       {
@@ -14733,9 +15023,9 @@ async function runBookGenerationJobTask(
       {
         stage: "book-chapter",
         jobId: jobRef.id,
-        maxAttempts: 6,
+        maxAttempts: 2,
         minDelayMs: 2000,
-        maxDelayMs: 75_000,
+        maxDelayMs: 30_000,
         stepIndex: index + 1,
         stepTotal: lectureNodes.length
       }
@@ -14772,7 +15062,7 @@ async function runBookGenerationJobTask(
     {
       currentSectionIndex: null,
       currentSectionTitle: bookTitle,
-      currentStepLabel: "Kitabınız birleştiriliyor",
+      currentStepLabel: "Kitap kapağı hazırlanıyor",
       updatedAt: FieldValue.serverTimestamp()
     },
     { merge: true }
@@ -14794,9 +15084,9 @@ async function runBookGenerationJobTask(
     {
       stage: "book-cover",
       jobId: jobRef.id,
-      maxAttempts: 5,
-      minDelayMs: 1800,
-      maxDelayMs: 60_000
+      maxAttempts: 4,
+      minDelayMs: 2000,
+      maxDelayMs: 45_000
     }
   );
   usageEntries.push(coverResult.usageEntry);
@@ -14819,31 +15109,122 @@ async function runBookGenerationJobTask(
     contentPackagePath: resultPath
   });
   const normalizedCourse = normalizeCoursePayloadForClient(courseId, coursePayload, uid, resultPath);
+
+  // Save course payload to Storage for the bundle task
+  const intermediateBundlePath = `smartbooks/${uid}/${courseId}/pending-bundle.json`;
+  const bucket = getStorage().bucket();
+  await withTimeout(
+    bucket.file(intermediateBundlePath).save(
+      Buffer.from(JSON.stringify(normalizedCourse)),
+      {
+        contentType: "application/json",
+        metadata: { metadata: { uid, bookId: courseId } }
+      }
+    ),
+    120_000,
+    () => new HttpsError("deadline-exceeded", "Kitap verisi geçici olarak kaydedilemedi.")
+  );
+
   await jobRef.set(
     {
       currentSectionIndex: null,
       currentSectionTitle: bookTitle,
       currentStepLabel: "Kitabınız birleştiriliyor",
+      bundleSourcePath: intermediateBundlePath,
       ...buildBookJobUsageSnapshot(usageEntries),
       updatedAt: FieldValue.serverTimestamp()
     },
     { merge: true }
   );
+
+  // Create a separate bundle task so bundling gets a fresh function invocation
+  await firestore.collection(BOOK_JOB_TASK_COLLECTION).add({
+    jobId: jobRef.id,
+    type: "bundle",
+    bundleSourcePath: intermediateBundlePath,
+    createdAt: FieldValue.serverTimestamp()
+  });
+
+  logger.info("Book generation complete, bundle task created", {
+    jobId: jobRef.id,
+    courseId,
+    bookType
+  });
+  // Generation is done; the bundle task will complete the job.
+}
+
+async function runBookBundleJobTask(
+  jobRef: FirebaseFirestore.DocumentReference
+): Promise<void> {
+  const jobSnap = await jobRef.get();
+  if (!jobSnap.exists) return;
+  const jobData = jobSnap.data() as Record<string, unknown> | undefined;
+
+  const status = String(jobData?.status || "");
+  if (status === "completed" || status === "failed") return;
+
+  const uid = typeof jobData?.uid === "string" ? jobData.uid : "";
+  const courseId = typeof jobData?.courseId === "string" ? jobData.courseId : "";
+  const bookType = resolveSmartBookBookTypeFromPayload(jobData || {});
+  const bundleSourcePath = typeof jobData?.bundleSourcePath === "string"
+    ? jobData.bundleSourcePath.trim() : "";
+  const bookTitle = typeof jobData?.currentSectionTitle === "string" ? jobData.currentSectionTitle : "Fortale";
+
+  if (!uid || !courseId || !bundleSourcePath) {
+    throw new HttpsError("failed-precondition", "Bundle görev verisi eksik.");
+  }
+
+  await jobRef.set(
+    { currentStepLabel: "Kitabınız birleştiriliyor", updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+
+  const bucket = getStorage().bucket();
+
+  // Download the intermediate course payload
+  const [sourceBuffer] = await withTimeout(
+    bucket.file(bundleSourcePath).download(),
+    120_000,
+    () => new HttpsError("deadline-exceeded", "Kitap kaynak verisi indirilemedi.")
+  );
+  const sourceCoursePayload = JSON.parse(sourceBuffer.toString("utf-8")) as Record<string, unknown>;
+
   const publishedBook = await buildAndPublishBookBundle({
     uid,
     bookId: courseId,
-    sourceCoursePayload: normalizedCourse
+    sourceCoursePayload
   });
   const finalResultPath = publishedBook.bundle.path;
 
+  // Clean up the intermediate file
+  await bucket.file(bundleSourcePath).delete().catch(() => undefined);
+
+  // Read usage entries from job to restore them
+  const usageEntries = resolveUsageEntriesFromJobData(jobData?.usageEntries);
   const usageTotals = sumUsageEntries(usageEntries);
-  await consumeQuota(uid, "generateCourseOutline", planTier);
+
+  let bookCreditReceiptId: string | null = null;
+  try {
+    const creditResult = await consumeCreditWithReceipt(uid, "create", resolveBookCreateCreditCost(bookType));
+    bookCreditReceiptId = creditResult.receiptId;
+  } catch (creditError) {
+    logger.error("Book credit charge failed after successful generation", {
+      jobId: jobRef.id,
+      courseId,
+      bookType,
+      error: toErrorMessage(creditError)
+    });
+  }
+
+  const totalSections = Math.max(1, toNonNegativeInt(jobData?.totalSections));
+  const lectureNodeCount = Math.max(0, totalSections - 2);
+
   await jobRef.set(
     {
       status: "completed",
       totalSections,
       completedSections: totalSections,
-      currentSectionIndex: lectureNodes.length,
+      currentSectionIndex: lectureNodeCount,
       currentSectionTitle: bookTitle,
       currentStepLabel: "Kitap hazır",
       resultPath: finalResultPath,
@@ -14852,11 +15233,13 @@ async function runBookGenerationJobTask(
       bundleChecksumSha256: publishedBook.bundle.checksumSha256,
       bundleSizeBytes: publishedBook.bundle.sizeBytes,
       bundleGeneratedAt: publishedBook.bundle.generatedAt,
+      bundleSourcePath: FieldValue.delete(),
       inputTokens: usageTotals.inputTokens,
       outputTokens: usageTotals.outputTokens,
       totalTokens: usageTotals.totalTokens,
       estimatedCostUsd: usageTotals.estimatedCostUsd,
-      usageEntries: sanitizeUsageEntriesForClient(usageEntries),
+      creditReceiptId: bookCreditReceiptId,
+      creditRefunded: false,
       updatedAt: FieldValue.serverTimestamp(),
       completedAt: FieldValue.serverTimestamp(),
       errorMessage: FieldValue.delete()
@@ -14864,16 +15247,17 @@ async function runBookGenerationJobTask(
     { merge: true }
   );
 
-  logger.info("Book job completed", {
+  logger.info("Book bundle completed", {
     jobId: jobRef.id,
     courseId,
     bookType,
-    totalSections,
     inputTokens: usageTotals.inputTokens,
     outputTokens: usageTotals.outputTokens,
     totalTokens: usageTotals.totalTokens,
     estimatedCostUsd: usageTotals.estimatedCostUsd
   });
+
+  await sendBookReadyPushNotification(uid, bookTitle);
 }
 
 export const processBookGenerationJobTask = onDocumentCreated(
@@ -14881,7 +15265,8 @@ export const processBookGenerationJobTask = onDocumentCreated(
     document: `${BOOK_JOB_TASK_COLLECTION}/{taskId}`,
     region: "us-central1",
     timeoutSeconds: 540,
-    memory: "1GiB",
+    memory: "2GiB",
+    cpu: 2,
     maxInstances: 2,
     secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
   },
@@ -14908,11 +15293,18 @@ export const processBookGenerationJobTask = onDocumentCreated(
       return;
     }
 
+    const taskType = typeof taskData?.type === "string" ? taskData.type : "generate";
+
     try {
-      await runBookGenerationJobTask(jobRef);
+      if (taskType === "bundle") {
+        await runBookBundleJobTask(jobRef);
+      } else {
+        await runBookGenerationJobTask(jobRef);
+      }
     } catch (error) {
       logger.error("Book job task failed", {
         jobId,
+        taskType,
         error: toErrorMessage(error)
       });
       await failBookJob(jobRef, jobData, error);

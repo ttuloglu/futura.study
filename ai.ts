@@ -36,7 +36,7 @@ interface AiGatewayRequest {
 
 interface UsageReportEntry {
   label: string;
-  provider: "google" | "openai" | "xai";
+  provider: "google" | "openai";
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -251,6 +251,11 @@ const getBookGenerationJobCallable = httpsCallable<{ jobId: string }, BookGenera
   "getBookGenerationJob",
   { timeout: 30_000 }
 );
+const cancelBookGenerationJobCallable = httpsCallable<{ jobId: string }, { cancelled: boolean }>(
+  functions,
+  "cancelBookGenerationJob",
+  { timeout: 15_000 }
+);
 
 const OPERATION_LABELS: Record<AiOperation, string> = {
   extractDocumentContext: "dokuman analizi",
@@ -452,8 +457,8 @@ function normalizeJobUsageEntries(raw: unknown): UsageReportEntry[] {
     const data = item as Record<string, unknown>;
     const providerRaw = String(data.provider || "google").trim().toLowerCase();
     const provider: UsageReportEntry["provider"] =
-      providerRaw === "openai" || providerRaw === "xai"
-        ? providerRaw
+      providerRaw === "openai"
+        ? "openai"
         : "google";
     const inputTokens = toTokenCount(data.inputTokens);
     const outputTokens = toTokenCount(data.outputTokens);
@@ -1169,6 +1174,12 @@ export async function getBookGenerationJob(jobId: string): Promise<BookGeneratio
   await appCheckReady;
   const response = await getBookGenerationJobCallable({ jobId });
   return await hydrateBookGenerationJob(response.data || {});
+}
+
+export async function cancelBookGenerationJob(jobId: string): Promise<boolean> {
+  await appCheckReady;
+  const response = await cancelBookGenerationJobCallable({ jobId });
+  return response.data?.cancelled === true;
 }
 
 export async function startPodcastAudioJob(

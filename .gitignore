@@ -4,3 +4,4 @@ dist/
 .env.*
 functions/node_modules/
 functions/lib/
+.claude/

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Library, Settings, X } from 'lucide-react';
+import { ArrowUp, Library, Settings, X } from 'lucide-react';
 import { ViewState } from '../types';
 import FLogo from './FLogo';
 
@@ -8,9 +8,18 @@ interface BottomNavProps {
   onViewChange: (view: ViewState) => void;
   onToggleSettings: () => void;
   isSettingsOpen: boolean;
+  showCourseScrollTop?: boolean;
+  onCourseScrollTop?: () => void;
 }
 
-export default function BottomNav({ currentView, onViewChange, onToggleSettings, isSettingsOpen }: BottomNavProps) {
+export default function BottomNav({
+  currentView,
+  onViewChange,
+  onToggleSettings,
+  isSettingsOpen,
+  showCourseScrollTop = false,
+  onCourseScrollTop
+}: BottomNavProps) {
   const groupShellStyle: React.CSSProperties = {
     background: 'transparent',
     border: '0',
@@ -51,7 +60,17 @@ export default function BottomNav({ currentView, onViewChange, onToggleSettings,
               className="relative z-10 h-full ml-auto pointer-events-auto"
             >
               <div className="rounded-full" style={groupShellStyle}>
-                <div className="h-9 rounded-full flex items-center">
+                <div className="h-9 rounded-full flex items-center gap-2">
+                  {showCourseScrollTop && (
+                    <button
+                      onClick={onCourseScrollTop}
+                      className="fortale-chrome-icon-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 opacity-92 hover:opacity-100"
+                      aria-label="Başa dön"
+                      title="Başa dön"
+                    >
+                      <ArrowUp size={20} strokeWidth={2} />
+                    </button>
+                  )}
                   <button
                     onClick={() => onViewChange('AI_CHAT')}
                     className={`fortale-chrome-icon-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 ${currentView === 'AI_CHAT' ? 'is-active opacity-100' : 'opacity-92 hover:opacity-100'}`}

@@ -13,7 +13,7 @@ import {
   CourseOpenUiState
 } from '../types';
 import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Feather, ScrollText } from 'lucide-react';
-import { extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
+import { cancelBookGenerationJob, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
 import FLogo from '../components/FLogo';
@@ -29,6 +29,9 @@ import {
 import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
 import { useUiI18n } from '../i18n/uiI18n';
 import type { AppLanguageCode } from '../data/appLanguages';
+import { LITERARY_FACTS } from '../data/literaryFacts';
+import { App } from '@capacitor/app';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
@@ -751,7 +754,8 @@ function resolveWizardTone(index: number): WizardTone {
 function resolveBookTypeTheme(bookType?: SmartBookBookType): BookTypeTheme {
   if (bookType === 'fairy_tale') return BOOK_TYPE_THEMES.fairy_tale;
   if (bookType === 'story') return BOOK_TYPE_THEMES.story;
-  return BOOK_TYPE_THEMES.novel;
+  if (bookType === 'novel') return BOOK_TYPE_THEMES.novel;
+  return NEUTRAL_BOOK_TYPE_THEME;
 }
 
 type PendingBookGenerationJob = {
@@ -1365,6 +1369,8 @@ export default function HomeView({
   const [generationStatus, setGenerationStatus] = useState<string>('');
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [activeGeneratingBookType, setActiveGeneratingBookType] = useState<SmartBookBookType | null>(null);
+  const [literaryFactIndex, setLiteraryFactIndex] = useState(0);
+  const literaryFactOrderRef = useRef<number[]>([]);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
   const [isStickyRowExpanded, setIsStickyRowExpanded] = useState(false);
   const [isStickySaving, setIsStickySaving] = useState(false);
@@ -1429,6 +1435,19 @@ export default function HomeView({
       activeGenerationBookTypeRef.current = null;
       loggedGenerationUsageEntryKeysRef.current.clear();
       loggedGenerationUsageFinalKeysRef.current.clear();
+    }
+  }
+
+  function handleCancelGeneration() {
+    const jobId = activeGenerationJobIdRef.current;
+    writePendingBookGenerationJob(null);
+    stopBookGenerationPolling(true);
+    setIsGenerating(false);
+    setActiveGeneratingBookType(null);
+    setGenerationStatus('');
+    resetGenerationProgress(0);
+    if (jobId) {
+      cancelBookGenerationJob(jobId).catch(() => undefined);
     }
   }
 
@@ -1535,6 +1554,7 @@ export default function HomeView({
         ? 'Kitap üretim sırasına alındı...'
         : 'Kitabınız birleştiriliyor...')
     );
+
   }
 
   function completeGeneratedBook(course: CourseData) {
@@ -1546,6 +1566,18 @@ export default function HomeView({
     resetSmartBookCreationForm();
     setIsGenerating(false);
     onCourseCreate(course);
+    const bookTitle = course.topic || course.title || 'Fortale';
+    LocalNotifications.schedule({
+      notifications: [{
+        id: Date.now() & 0x7fffffff,
+        title: '📚 Kitabın hazır!',
+        body: `"${bookTitle}" oluşturuldu. Okumaya başlayabilirsin.`,
+        schedule: { at: new Date(Date.now() + 500) },
+        sound: 'default',
+        smallIcon: 'ic_stat_icon_config_sample',
+        iconColor: '#2a9d8f',
+      }]
+    }).catch(() => undefined);
     window.setTimeout(() => {
       setGenerationStatus('');
       resetGenerationProgress(0);
@@ -1692,10 +1724,34 @@ export default function HomeView({
 
     window.addEventListener('focus', resumePolling);
     document.addEventListener('visibilitychange', resumePolling);
+
+    let appStateHandle: { remove: () => void } | null = null;
+    App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive && activeGenerationJobIdRef.current) {
+        startBookGenerationPolling(
+          activeGenerationJobIdRef.current,
+          activeGenerationBookTypeRef.current,
+          true
+        );
+      }
+    }).then((handle) => { appStateHandle = handle; }).catch(() => undefined);
+
     return () => {
       window.removeEventListener('focus', resumePolling);
       document.removeEventListener('visibilitychange', resumePolling);
+      appStateHandle?.remove();
     };
+  }, [isGenerating]);
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    const shuffled = Array.from({ length: 150 }, (_, i) => i).sort(() => Math.random() - 0.5);
+    literaryFactOrderRef.current = shuffled;
+    setLiteraryFactIndex(0);
+    const interval = window.setInterval(() => {
+      setLiteraryFactIndex((prev) => prev + 1);
+    }, 20000);
+    return () => window.clearInterval(interval);
   }, [isGenerating]);
 
   useEffect(() => {
@@ -2745,7 +2801,7 @@ export default function HomeView({
 
         {/* "Fortale" yazısı — header altında, form üstünde; kitap türü seçilince kaybolur */}
         <div
-          className={`fortale-home-brand-title${isCreationWizardOpen ? ' is-gone' : ''}`}
+          className={`fortale-home-brand-title${(isCreationWizardOpen || isGenerating) ? ' is-gone' : ''}`}
           aria-hidden
         >
           Fortale
@@ -2765,7 +2821,7 @@ export default function HomeView({
             className="relative z-10 rounded-2xl"
           >
             <div
-              className={`fortale-create-panel ${isCreationIntroOnly ? 'is-type-only' : 'is-open'} rounded-2xl border p-2.5 overflow-hidden`}
+              className={`fortale-create-panel ${isCreationIntroOnly ? 'is-type-only' : 'is-open'} rounded-2xl p-2.5 overflow-hidden${(isGenerating || isCreationIntroOnly) ? '' : ' border'}`}
               style={{
                 ...wizardThemeVars,
                 borderColor: visibleWizardTheme.tone.border,
@@ -2776,15 +2832,17 @@ export default function HomeView({
                 <p className="text-[15px] font-bold text-white">
                   {isGenerating ? t('Fortale oluşturuluyor...') : currentStepTitle}
                 </p>
-                <div className="fortale-wizard-progress-track mt-2 h-1.5 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-300"
-                    style={{
-                      width: `${isGenerating ? Math.max(1, Math.min(100, generationProgress || 0)) : stepProgressPercent}%`,
-                      background: isGenerating ? activeProgressTheme.progress : visibleWizardTheme.progress
-                    }}
-                  />
-                </div>
+                {!isGenerating && (
+                  <div className="fortale-wizard-progress-track mt-2 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${stepProgressPercent}%`,
+                        background: visibleWizardTheme.progress
+                      }}
+                    />
+                  </div>
+                )}
                 {!isGenerating && (
                   <div className="fortale-step-rail" style={{ gridTemplateColumns: `repeat(${totalVisibleStepCount}, minmax(0, 1fr))` }}>
                     {visibleCreationSteps.map((_, index) => {
@@ -2814,7 +2872,6 @@ export default function HomeView({
                     <div className="fortale-type-orb" role="group" aria-label={t('Kitap Türünü Seç')}>
                       <span className="fortale-type-divider horizontal" aria-hidden="true" />
                       <span className="fortale-type-divider left" aria-hidden="true" />
-                      <span className="fortale-type-divider right" aria-hidden="true" />
                       <span className="fortale-type-core" aria-hidden="true">
                         <FLogo size={22} />
                       </span>
@@ -3060,10 +3117,11 @@ export default function HomeView({
               )}
 
               {isGenerating ? (
-                <div className="fortale-generation-panel mt-3 rounded-2xl border p-3">
-                  <div className="fortale-generation-video-shell mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border">
+                <>
+                <div className="mt-3">
+                  <div className="w-full overflow-hidden rounded-xl">
                     <video
-                      className="h-auto w-full"
+                      className="h-auto w-full block"
                       src={BOOK_CREATING_LOOP_VIDEO_SRC}
                       autoPlay
                       muted
@@ -3072,13 +3130,16 @@ export default function HomeView({
                       preload="auto"
                     />
                   </div>
-                  <p className="mt-2 text-center text-[11px] font-bold text-white">
+                  <p className="mt-3 text-center text-[15px] font-bold text-white">
                     {generationStatus ? translateGenerationStatusLabel(generationStatus, language) : t('Fortale oluşturuluyor...')}
                   </p>
-                  <p className="mt-1 text-center text-[10px] text-[#b8d8ca]">
+                  <p className="mt-1 text-center text-[13px] text-[#b8d8ca]">
                     {t('Tahmini okuma süresi')}: {displayedGenerationMinutes} {t('dk')}
                   </p>
-                  <div className="fortale-wizard-progress-track mt-2 h-2 rounded-full overflow-hidden">
+
+                </div>
+                <div className="mt-4">
+                  <div className="overflow-hidden rounded-full h-1.5 bg-white/15">
                     <div
                       className="h-full rounded-full transition-all duration-300"
                       style={{
@@ -3087,8 +3148,20 @@ export default function HomeView({
                       }}
                     />
                   </div>
-                  <p className="mt-1 text-center text-[10px] text-[#b8d8ca]">%{Math.max(1, Math.min(100, Math.round(generationProgress || 0)))}</p>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <p className="text-[14px] text-white/60 tabular-nums">
+                      %{Math.max(1, Math.min(100, Math.round(generationProgress || 0)))}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCancelGeneration}
+                      className="text-[12px] text-white/40 hover:text-red-400 transition-colors px-2 py-0.5"
+                    >
+                      {t('İptal')}
+                    </button>
+                  </div>
                 </div>
+                </>
               ) : (
                 <>
                 <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'} ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
@@ -3140,6 +3213,29 @@ export default function HomeView({
               )}
             </div>
           </form>
+
+          {isGenerating && (() => {
+            const bookType = activeGeneratingBookType ?? selectedBookType;
+            const factsForType = (bookType === 'fairy_tale' || bookType === 'story' || bookType === 'novel')
+              ? LITERARY_FACTS[bookType] : null;
+            const langFacts = factsForType
+              ? (factsForType[language] ?? factsForType['en'] ?? factsForType['tr'] ?? []) : [];
+            if (!langFacts.length) return null;
+            const order = literaryFactOrderRef.current;
+            const shuffledIndex = order.length > 0 ? order[literaryFactIndex % order.length] : literaryFactIndex;
+            const fact = langFacts[shuffledIndex % langFacts.length];
+            return (
+              <div className="flex items-center justify-center px-6" style={{ minHeight: '30vh' }}>
+                <p
+                  key={literaryFactIndex}
+                  className="text-center italic leading-relaxed text-[#a8c8bc]"
+                  style={{ fontSize: 15, animation: 'fadeIn 0.8s ease' }}
+                >
+                  &ldquo;{fact}&rdquo;
+                </p>
+              </div>
+            );
+          })()}
         </section>
 
         {isLoginRequiredModalOpen && typeof document !== 'undefined' && createPortal(

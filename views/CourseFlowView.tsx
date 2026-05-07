@@ -3452,6 +3452,24 @@ export default function CourseFlowView({
     isReadingFullscreen &&
     fullscreenReaderContent.images.length > 0 &&
     fullscreenReaderContent.textSections.length > 0;
+  const shouldUseWideFullscreenStickyImage =
+    courseData?.bookType === 'story' ||
+    courseData?.bookType === 'novel';
+
+  const scrollCourseReaderToTop = useCallback(() => {
+    const container = fullscreenReaderScrollRef.current;
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    if (!shouldUseWideFullscreenStickyImage) return;
+    const handleScrollTop = () => scrollCourseReaderToTop();
+    window.addEventListener('fortale:course-scroll-top', handleScrollTop);
+    return () => window.removeEventListener('fortale:course-scroll-top', handleScrollTop);
+  }, [scrollCourseReaderToTop, shouldUseWideFullscreenStickyImage]);
 
   useEffect(() => {
     if (!hasFullscreenStickyImages) return;
@@ -5641,8 +5659,8 @@ export default function CourseFlowView({
 	                  <div className="sticky top-0 z-20 pb-4 pt-1">
 	                    <button
 	                      type="button"
-	                      className="block w-full overflow-hidden rounded-[18px] bg-black/20"
-	                      style={{ height: 'clamp(148px, 28dvh, 220px)' }}
+	                      className={`block overflow-hidden bg-black/20 ${shouldUseWideFullscreenStickyImage ? 'w-[calc(100%+2rem)] -mx-4 rounded-[12px]' : 'w-full rounded-[18px]'}`}
+	                      style={{ height: shouldUseWideFullscreenStickyImage ? 'clamp(170px, 34dvh, 300px)' : 'clamp(148px, 28dvh, 220px)' }}
 	                      onTouchStart={handleFullscreenImageTouchStart}
 	                      onTouchEnd={handleFullscreenImageTouchEnd}
 		                      onClick={() => setCoverPreviewImageUrl(fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src || null)}

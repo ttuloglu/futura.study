@@ -1,5 +1,7 @@
 import React, { lazy, startTransition, Suspense, useEffect, useRef, useState } from 'react';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import {
   ViewState,
   CourseData,
@@ -228,6 +230,7 @@ type LocalCourseCoverCacheEntry = {
 const DATA_IMAGE_URL_PREFIX_RE = /^data:image\//i;
 const MARKDOWN_DATA_IMAGE_RE = /!\[[^\]]*]\(\s*data:image\/[^)]+\)\s*/gi;
 const MARKDOWN_DATA_IMAGE_CAPTURE_RE = /!\[([^\]]*)\]\(\s*(data:image\/[^)\s]+)\s*\)/gi;
+const MARKDOWN_IMAGE_URL_CAPTURE_RE = /!\[[^\]]*]\(\s*<?([^)\s>]+)>?\s*\)/i;
 const SMARTBOOK_IMAGE_OPTIMIZE_MAX_DIMENSION_PX = 1800;
 const SMARTBOOK_IMAGE_JPEG_QUALITY = 0.9;
 const SMARTBOOK_IMAGE_MIN_BYTES_FOR_OPTIMIZATION = 280 * 1024;
@@ -1352,6 +1355,33 @@ function hasMissingNarrativeImagesForHydration(course: CourseData | null | undef
 
   const hasAnyImageMarkup = lectureBodies.some((body) => /!\[[^\]]*]\([^)]+\)|<img\b/i.test(body));
   return !hasAnyImageMarkup;
+}
+
+function isFairyTaleCourse(course: Pick<CourseData, 'bookType'> | null | undefined): boolean {
+  return course?.bookType === 'fairy_tale';
+}
+
+function resolveFirstGeneratedImageAsFairyTaleCover(
+  course: Pick<CourseData, 'bookType' | 'nodes'> | null | undefined
+): string | undefined {
+  if (!isFairyTaleCourse(course) || !Array.isArray(course?.nodes)) return undefined;
+
+  const orderedNodes = [...course.nodes].sort((a, b) => {
+    const aSeq = Number.isFinite(Number(a.pageSequence)) ? Number(a.pageSequence) : Number.MAX_SAFE_INTEGER;
+    const bSeq = Number.isFinite(Number(b.pageSequence)) ? Number(b.pageSequence) : Number.MAX_SAFE_INTEGER;
+    return aSeq - bSeq;
+  });
+
+  for (const node of orderedNodes) {
+    const pageImageUrl = typeof node.pageImageUrl === 'string' ? node.pageImageUrl.trim() : '';
+    if (pageImageUrl) return pageImageUrl;
+
+    const content = typeof node.content === 'string' ? node.content : '';
+    const markdownImageUrl = content.match(MARKDOWN_IMAGE_URL_CAPTURE_RE)?.[1]?.trim();
+    if (markdownImageUrl) return markdownImageUrl;
+  }
+
+  return undefined;
 }
 
 function courseNeedsHydration(course: CourseData | null | undefined): boolean {
@@ -2807,7 +2837,7 @@ export default function App() {
   };
 
   const buildCourseCoverPathCandidates = (
-    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath'>
+    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes'>
   ): string[] => {
     const candidates: string[] = [];
     const pushCandidate = (value: string | null | undefined) => {
@@ -2825,6 +2855,10 @@ export default function App() {
       if (isFirebaseStorageDownloadUrl(normalizedCoverUrl)) {
         pushCandidate(tryParseFirebaseStorageObjectPath(normalizedCoverUrl));
       }
+    }
+
+    if (isFairyTaleCourse(course)) {
+      return candidates;
     }
 
     const packageBasePath = typeof course.contentPackagePath === 'string'
@@ -2851,8 +2885,13 @@ export default function App() {
   };
 
   const resolveFreshCoverUrlForCourse = async (
-    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath'>
+    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes'>
   ): Promise<string | undefined> => {
+    const fairyTaleFirstImageCover = resolveFirstGeneratedImageAsFairyTaleCover(course);
+    if (fairyTaleFirstImageCover) {
+      return fairyTaleFirstImageCover;
+    }
+
     const candidatePaths = buildCourseCoverPathCandidates(course);
     for (const path of candidatePaths) {
       try {
@@ -3906,6 +3945,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    LocalNotifications.requestPermissions().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!authUser?.uid) return;
+    const uid = authUser.uid;
+    const registerToken = async () => {
+      try {
+        await FirebaseMessaging.requestPermissions();
+        const { token } = await FirebaseMessaging.getToken();
+        if (!token) return;
+        const fn = httpsCallable<{ token: string; platform: string }, { success: boolean }>(functions, 'registerFcmToken');
+        await fn({ token, platform: 'ios' });
+      } catch {
+        // silently fail — push is optional
+      }
+    };
+    void registerToken();
+
+    const tokenListener = FirebaseMessaging.addListener('tokenReceived', async ({ token }) => {
+      if (!token) return;
+      try {
+        const fn = httpsCallable<{ token: string; platform: string }, { success: boolean }>(functions, 'registerFcmToken');
+        await fn({ token, platform: 'ios' });
+      } catch { /* ignore */ }
+    });
+
+    return () => { tokenListener.then((l) => l.remove()).catch(() => undefined); };
+  }, [authUser?.uid]);
+
+  useEffect(() => {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId) return;
 
@@ -4014,9 +4084,12 @@ export default function App() {
     const repairTargets = savedCourses.flatMap((course) => {
       const hasUnresolvedStoragePath = typeof course.coverImageUrl === 'string' &&
         course.coverImageUrl.trim().startsWith('smartbooks/');
-      const needsCoverFromPackage = !course.coverImageUrl && Boolean(course.contentPackagePath);
-      const needsLegacyCoverLookup = !course.coverImageUrl;
-      if (!hasUnresolvedStoragePath && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
+      const isFairyTale = isFairyTaleCourse(course);
+      const fairyTaleFirstImageCover = resolveFirstGeneratedImageAsFairyTaleCover(course);
+      const needsFairyTaleFirstImageCover = !course.coverImageUrl && Boolean(fairyTaleFirstImageCover);
+      const needsCoverFromPackage = !course.coverImageUrl && !isFairyTale && Boolean(course.contentPackagePath);
+      const needsLegacyCoverLookup = !course.coverImageUrl && !isFairyTale;
+      if (!hasUnresolvedStoragePath && !needsFairyTaleFirstImageCover && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
 
       const repairKey = `${course.id}:${course.coverImageUrl || ''}:${course.contentPackagePath || ''}`;
       if (coverLookupExhaustedRef.current.has(repairKey)) return [];
@@ -5118,6 +5191,7 @@ export default function App() {
 
     const course = getSavedCourseSnapshotById(courseId);
     if (!course) return;
+    if (isFairyTaleCourse(course)) return;
     if (course.visualStoryMode === true) return;
     if (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim()) return;
 
@@ -6365,6 +6439,8 @@ export default function App() {
                 onViewChange={setCurrentView}
                 onToggleSettings={handleToggleSettings}
                 isSettingsOpen={isSettingsOpen}
+                showCourseScrollTop={currentView === 'COURSE_FLOW' && (activeCourse?.bookType === 'story' || activeCourse?.bookType === 'novel')}
+                onCourseScrollTop={() => window.dispatchEvent(new CustomEvent('fortale:course-scroll-top'))}
               />
             )}
           </div>
