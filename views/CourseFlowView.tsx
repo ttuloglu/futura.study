@@ -30,9 +30,7 @@ import {
   Plus,
   ChevronDown,
   Compass,
-  Maximize2,
-  Minimize2,
-  RotateCw
+  Maximize2
 } from 'lucide-react';
 import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState, PodcastVoiceName } from '../types';
 import FLogo from '../components/FLogo';
@@ -261,6 +259,10 @@ function detectLikelyBookLanguageFromText(value: string): ReturnType<typeof norm
 function buildBookTypeSubGenreLabel(courseData: CourseData, t: (value: string) => string): string {
   const bookTypeLabel = resolveBookTypeLabel(courseData.bookType, t);
   const subGenre = String(courseData.subGenre || '').trim();
+  if (courseData.bookType === 'fairy_tale') {
+    if (!subGenre) return bookTypeLabel;
+    return `${bookTypeLabel}- ${t(subGenre)}`;
+  }
   const ageLabel = getSmartBookAgeGroupLabel(courseData.ageGroup);
   const ageGroupLabel = ageLabel === 'Genel' ? `${ageLabel} ${t('Yaş Grubu')}` : `${ageLabel} ${t('Grubu')}`;
   if (!subGenre) return `${bookTypeLabel} I ${ageGroupLabel}`;
@@ -781,7 +783,34 @@ function stripLeadingTopicMention(value: string, topic: string | undefined | nul
     'i'
   );
 
-  return normalizedValue.replace(leadingTopicRegex, '').trim() || normalizedValue;
+  return normalizedValue.replace(leadingTopicRegex, '').trim();
+}
+
+function stripVisualStoryTopicRepeats(value: string, topic: string | undefined | null): string {
+  const normalizedValue = normalizeVisualStoryNarrationSource(value);
+  const normalizedTopic = normalizeVisualStoryNarrationSource(topic);
+  if (!normalizedValue || !normalizedTopic) return normalizedValue;
+  const topicPattern = escapeRegExp(normalizedTopic);
+  const topicRepeatRegex = new RegExp(
+    `(?:["“”'‘’\\s]*${topicPattern}["“”'‘’]*[\\s:,.!?-]*)+`,
+    'gi'
+  );
+  return normalizedValue
+    .replace(topicRepeatRegex, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function deriveVisualStoryCoverBody(courseData: CourseData): string {
+  const rawCoverBody = normalizeVisualStoryNarrationSource(
+    courseData.coverNarrationText ||
+    courseData.description ||
+    courseData.topic
+  );
+  return stripVisualStoryTopicRepeats(
+    stripLeadingTopicMention(rawCoverBody, courseData.topic),
+    courseData.topic
+  );
 }
 
 function resolveVisualStoryNarrationLanguage(
@@ -916,14 +945,7 @@ function deriveVisualStoryPageScript(
 }
 
 function deriveVisualStoryCoverScript(courseData: CourseData): string {
-  const coverBody = stripLeadingTopicMention(
-    normalizeVisualStoryNarrationSource(
-    courseData.coverNarrationText ||
-    courseData.description ||
-    courseData.topic
-    ),
-    courseData.topic
-  );
+  const coverBody = deriveVisualStoryCoverBody(courseData);
   const languageCode = resolveVisualStoryNarrationLanguage(courseData, coverBody);
   return [
     buildVisualStoryIntroSpell(languageCode),
@@ -997,10 +1019,10 @@ function buildVisualStoryMotionProfile(seed: string | undefined, text: string | 
   const sparkleCount = mood === 'magic' ? 2 : 1;
   return {
     mood,
-    panX: Number((((next() * 2.8) - 1.4)).toFixed(2)),
-    panY: Number((((next() * 2.4) - 1.2)).toFixed(2)),
-    endScale: Number((1.035 + next() * 0.03).toFixed(3)),
-    duration: Number((12.5 + next() * 4.5).toFixed(2)),
+    panX: Number((5.2 + next() * 1.2).toFixed(2)),
+    panY: Number((((next() * 0.5) - 0.25)).toFixed(2)),
+    endScale: Number((1.16 + next() * 0.035).toFixed(3)),
+    duration: Number((15.5 + next() * 3.5).toFixed(2)),
     sparkleCount
   };
 }
@@ -1322,7 +1344,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
           />
         );
       })}
-    </div>
+	    </div>
   );
 }
 
@@ -1345,11 +1367,13 @@ function VisualStoryReader({
   const [isPdfDownloading, setIsPdfDownloading] = useState(false);
   const [isEpubDownloading, setIsEpubDownloading] = useState(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [isVisualPdfBackgroundPickerOpen, setIsVisualPdfBackgroundPickerOpen] = useState(false);
   const [isBackgroundMusicEnabled, setIsBackgroundMusicEnabled] = useState(false);
   const [backgroundMusicError, setBackgroundMusicError] = useState<string | null>(null);
   const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
   const [narrationError, setNarrationError] = useState<string | null>(null);
   const [motionPhase, setMotionPhase] = useState<'idle' | 'pause' | 'reading'>('idle');
+  const [isVisualImageGestureActive, setIsVisualImageGestureActive] = useState(false);
   const [isNarrationGenerating, setIsNarrationGenerating] = useState(false);
   const [narrationGenerationProgress, setNarrationGenerationProgress] = useState(0);
   const [coverAudioOverrideUrl, setCoverAudioOverrideUrl] = useState<string | null>(null);
@@ -1376,12 +1400,14 @@ function VisualStoryReader({
   const narrationStartTimerRef = useRef<number | null>(null);
   const narrationAdvanceTimerRef = useRef<number | null>(null);
   const narrationRunIdRef = useRef(0);
+  const visualImageGestureEndTimerRef = useRef<number | null>(null);
   const visualStoryBundleZipPromiseRef = useRef<Promise<unknown> | null>(null);
   const visualStoryBundleAudioObjectUrlsRef = useRef<string[]>([]);
   const backgroundTrack = useMemo(
     () => resolveVisualStoryBackgroundTrack(courseData.subGenre),
     [courseData.subGenre]
   );
+
   const getOrCreateBackgroundAudioMixer = useCallback(() => {
     const audio = backgroundAudioRef.current;
     if (!audio || typeof window === 'undefined') return null;
@@ -1671,6 +1697,25 @@ function VisualStoryReader({
     activePageIndexRef.current = pageIndex;
   }, [pageIndex]);
 
+  const clearVisualImageGestureEndTimer = useCallback(() => {
+    if (visualImageGestureEndTimerRef.current === null) return;
+    window.clearTimeout(visualImageGestureEndTimerRef.current);
+    visualImageGestureEndTimerRef.current = null;
+  }, []);
+
+  const handleVisualImageGestureStart = useCallback(() => {
+    clearVisualImageGestureEndTimer();
+    setIsVisualImageGestureActive(true);
+  }, [clearVisualImageGestureEndTimer]);
+
+  const handleVisualImageGestureEnd = useCallback(() => {
+    clearVisualImageGestureEndTimer();
+    visualImageGestureEndTimerRef.current = window.setTimeout(() => {
+      visualImageGestureEndTimerRef.current = null;
+      setIsVisualImageGestureActive(false);
+    }, 140);
+  }, [clearVisualImageGestureEndTimer]);
+
   const stopAudioElement = (audio: HTMLAudioElement | null | undefined, resetTime = true) => {
     if (!audio) return;
     audio.pause();
@@ -1851,8 +1896,9 @@ function VisualStoryReader({
       backgroundAudioGainRef.current = null;
       backgroundAudioContextRef.current = null;
       backgroundAudioMixerUnavailableRef.current = false;
+      clearVisualImageGestureEndTimer();
     };
-  }, []);
+  }, [clearVisualImageGestureEndTimer]);
 
   useEffect(() => {
     const maxIndex = Math.max(0, pages.length - 1);
@@ -1904,7 +1950,6 @@ function VisualStoryReader({
     currentPageAudioUrl,
     isBackgroundMusicEnabled,
     isNarrationPlaying,
-    isPortraitViewport,
     isVisualImageFullscreenOpen,
     motionPhase,
     pageIndex
@@ -2152,6 +2197,7 @@ function VisualStoryReader({
   const handleVisualStoryPdfDownload = async (backgroundColor?: string) => {
     if (isPdfDownloading) return;
     setIsDownloadMenuOpen(false);
+    setIsVisualPdfBackgroundPickerOpen(false);
     setIsPdfDownloading(true);
     try {
       const { exportVisualStoryToPdf } = await loadExportUtils();
@@ -2167,6 +2213,7 @@ function VisualStoryReader({
   const handleVisualStoryEpubDownload = async () => {
     if (isEpubDownloading) return;
     setIsDownloadMenuOpen(false);
+    setIsVisualPdfBackgroundPickerOpen(false);
     setIsEpubDownloading(true);
     try {
       const { exportCourseToEpub } = await loadExportUtils();
@@ -2182,88 +2229,100 @@ function VisualStoryReader({
   const visualStoryGlassControlStyle = {
     background: 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
     borderColor: 'rgba(96,165,250,0.34)',
-    color: '#eef7ff',
+    color: '#ffffff',
     boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 14px 28px rgba(59,130,246,0.16)',
     backdropFilter: 'blur(14px)'
   };
 
   const renderVisualStoryDownloadMenu = () => (
     <div
-      className="absolute right-3 bottom-[56px] z-[160] grid w-[228px] gap-2 rounded-2xl border p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
-      style={{
-        background: 'linear-gradient(180deg, rgba(12,23,39,0.94) 0%, rgba(8,21,16,0.92) 100%)',
-        borderColor: 'rgba(255,255,255,0.16)',
-        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 22px 42px rgba(0,0,0,0.32)',
-        backdropFilter: 'blur(18px)'
-      }}
+      className="absolute right-3 bottom-[56px] z-[160] flex flex-col items-end gap-2"
       onClick={(event) => event.stopPropagation()}
     >
+      {isVisualPdfBackgroundPickerOpen && (
+        <div
+          className="w-[306px] rounded-2xl border p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
+          style={{
+            background: 'linear-gradient(180deg, rgba(12,23,39,0.96) 0%, rgba(8,21,16,0.94) 100%)',
+            borderColor: 'rgba(255,255,255,0.16)',
+            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 22px 42px rgba(0,0,0,0.32)',
+            backdropFilter: 'blur(18px)'
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold leading-none text-white">
+              {t('Arka Plan Rengi')}
+            </span>
+            <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#cfe2f7]">
+              {t(selectedPdfBackgroundPreset.label)}
+            </span>
+	          </div>
+          <div className="mb-2 grid grid-cols-5 gap-2">
+            {PDF_BACKGROUND_PRESETS.map((preset) => {
+              const isSelected = preset.id === selectedPdfBackgroundPresetId;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
+                  disabled={isPdfDownloading || isEpubDownloading}
+                  className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
+                  style={{
+                    background: preset.color,
+                    borderColor: isSelected ? '#9fd8e8' : 'rgba(255,255,255,0.46)',
+                    borderWidth: isSelected ? 2.5 : 1,
+                    boxShadow: isSelected ? '0 0 0 3px rgba(159,216,232,0.22)' : 'none'
+                  }}
+                  aria-label={t(preset.label)}
+                  title={t(preset.label)}
+                />
+              );
+            })}
+	          </div>
+          <button
+            type="button"
+            onClick={() => handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
+            disabled={isPdfDownloading || isEpubDownloading}
+            className="group h-10 w-full inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+            style={visualStoryGlassControlStyle}
+            aria-label={t('PDF indir')}
+            title={t('PDF indir')}
+          >
+            {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
+            <span className="text-[10px] font-bold leading-none">
+              {isPdfDownloading ? t('Hazırlanıyor') : t('PDF indir')}
+            </span>
+	          </button>
+        </div>
+      )}
       <div
-        className="rounded-xl border p-2"
-        style={{
-          background: 'rgba(255,255,255,0.07)',
-          borderColor: 'rgba(255,255,255,0.14)'
-        }}
+        className="flex max-w-[calc(100vw-24px)] flex-nowrap items-center justify-end gap-2 overflow-x-auto"
       >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] font-bold leading-none text-white">
-            {t('Fortale PDF')}
-          </span>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#cfe2f7]">
-            {t(selectedPdfBackgroundPreset.label)}
-          </span>
-        </div>
-        <div className="mb-2 grid grid-cols-5 gap-2">
-          {PDF_BACKGROUND_PRESETS.map((preset) => {
-            const isSelected = preset.id === selectedPdfBackgroundPresetId;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
-                disabled={isPdfDownloading || isEpubDownloading}
-                className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
-                style={{
-                  background: preset.color,
-                  borderColor: isSelected ? '#9fd8e8' : 'rgba(255,255,255,0.46)',
-                  borderWidth: isSelected ? 2.5 : 1,
-                  boxShadow: isSelected ? '0 0 0 3px rgba(159,216,232,0.22)' : 'none'
-                }}
-                aria-label={t(preset.label)}
-                title={t(preset.label)}
-              />
-            );
-          })}
-        </div>
         <button
           type="button"
-          onClick={() => handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
+          onClick={() => setIsVisualPdfBackgroundPickerOpen((current) => !current)}
           disabled={isPdfDownloading || isEpubDownloading}
-          className="group h-10 w-full inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-          style={visualStoryGlassControlStyle}
-          aria-label={t('Fortale PDF')}
-          title={t('Fortale PDF')}
+          className="group h-10 w-auto shrink-0 inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border px-3 text-white transition-all active:scale-95 disabled:opacity-100 disabled:cursor-default"
+          style={{ ...visualStoryGlassControlStyle, minWidth: 'max-content' }}
+          aria-label={t('PDF indir')}
+          title={t('PDF indir')}
         >
           {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-          <span className="text-[10px] font-bold leading-none">
-            {isPdfDownloading ? t('Hazırlanıyor') : t('İndir')}
-          </span>
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={handleVisualStoryEpubDownload}
-        disabled={isPdfDownloading || isEpubDownloading}
-        className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-        style={visualStoryGlassControlStyle}
-        aria-label={t('Fortale ePub')}
-        title={t('Fortale ePub')}
-      >
-        {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-        <span className="text-[10px] font-bold leading-none">
-          {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
-        </span>
-      </button>
+          <span className="text-[11px] font-black leading-none text-white whitespace-nowrap">{t('PDF indir')}</span>
+	        </button>
+        <button
+          type="button"
+          onClick={handleVisualStoryEpubDownload}
+          disabled={isPdfDownloading || isEpubDownloading}
+          className="group h-10 w-auto shrink-0 inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border px-3 text-white transition-all active:scale-95 disabled:opacity-100 disabled:cursor-default"
+          style={{ ...visualStoryGlassControlStyle, minWidth: 'max-content' }}
+          aria-label={t('EPUB indir')}
+          title={t('EPUB indir')}
+        >
+          {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
+          <span className="text-[11px] font-black leading-none text-white whitespace-nowrap">{t('EPUB indir')}</span>
+	      </button>
+	    </div>
     </div>
   );
 
@@ -2407,6 +2466,7 @@ function VisualStoryReader({
           onClick={() => {
             if (isDownloadMenuOpen) {
               setIsDownloadMenuOpen(false);
+              setIsVisualPdfBackgroundPickerOpen(false);
               return;
             }
             setVisualImageFullscreenPageIndex(null);
@@ -2453,21 +2513,32 @@ function VisualStoryReader({
                           maxHeight: '100dvw',
                           transform: 'rotate(90deg)'
                         }}
-                      />
-                    </div>
-                  ) : (
+	                        />
+	                      </div>
+	                  ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <img
                         src={page.imageUrl || ''}
                         alt={page.text || page.title}
                         className="h-full w-full object-contain"
-                      />
-                    </div>
+		                        />
+	                      </div>
                   )}
                 </SwiperSlide>
               ))}
             </Swiper>
           </div>
+          {isRotatedVisualFullscreenLayout ? (
+            <div className="fortale-story-watermark-rotated-frame" aria-hidden="true">
+              <span className="fortale-story-watermark">
+                © Fortale
+              </span>
+            </div>
+          ) : (
+            <span className="fortale-story-watermark fortale-story-watermark-fullscreen" aria-hidden="true">
+              © Fortale
+            </span>
+          )}
           <div
             className="pointer-events-none absolute inset-x-0 z-[141]"
             style={{
@@ -2531,42 +2602,26 @@ function VisualStoryReader({
                 >
                   {pageIndex + 1}/{pages.length}
                 </div>
-	              <div className="flex items-center gap-2">
-	                <button
-	                  type="button"
-	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
-	                  style={{
-	                    ...visualStoryGlassControlStyle,
-	                    ...fullscreenOverlayControlStyle
-	                  }}
-	                  onClick={(event) => {
-	                    event.stopPropagation();
-	                    setIsDownloadMenuOpen((current) => !current);
-	                  }}
-	                  aria-label={t('İndir')}
-	                  title={t('İndir')}
-	                >
-	                  <Download size={14} />
-	                </button>
-	                <button
-	                  type="button"
-	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
-                  style={{
-                    ...visualStoryGlassControlStyle,
-                    ...fullscreenOverlayControlStyle
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setVisualImageFullscreenPageIndex(null);
-                  }}
-                  aria-label={t('Tam ekrandan çık')}
-                  title={t('Tam ekrandan çık')}
-                >
-                  <Minimize2 size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+		              <div className="flex items-center gap-2">
+		                <button
+		                  type="button"
+		                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+		                  style={{
+		                    ...visualStoryGlassControlStyle,
+		                    ...fullscreenOverlayControlStyle
+		                  }}
+		                  onClick={(event) => {
+		                    event.stopPropagation();
+		                    setIsDownloadMenuOpen((current) => !current);
+		                  }}
+		                  aria-label={t('İndir')}
+		                  title={t('İndir')}
+			                >
+			                  <Download size={14} />
+			                </button>
+		                <button
+		                  type="button"
+		                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
                   style={{
                     ...visualStoryGlassControlStyle,
                     ...fullscreenOverlayControlStyle
@@ -2581,18 +2636,20 @@ function VisualStoryReader({
                 >
                   <X size={14} />
                 </button>
-                {isDownloadMenuOpen && renderVisualStoryDownloadMenu()}
               </div>
             </div>
           </div>
         </div>
       )}
-	      {isDownloadMenuOpen && (
+      {isDownloadMenuOpen && (
         <button
           type="button"
           className="fixed inset-0 z-[109] cursor-default bg-transparent"
           aria-label={t('İndirme menüsünü kapat')}
-          onClick={() => setIsDownloadMenuOpen(false)}
+          onClick={() => {
+            setIsDownloadMenuOpen(false);
+            setIsVisualPdfBackgroundPickerOpen(false);
+          }}
         />
       )}
 	      {(backgroundMusicError || narrationError) && (
@@ -2628,6 +2685,9 @@ function VisualStoryReader({
 	          </div>
 	        </div>
 	      )}
+      <span className="fortale-story-watermark fortale-story-watermark-reading" aria-hidden="true">
+        © Fortale
+      </span>
       <div
         className="fixed inset-x-0 z-[110] pointer-events-none"
         style={{
@@ -2695,27 +2755,23 @@ function VisualStoryReader({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsDownloadMenuOpen((current) => !current)}
+              onClick={() => {
+                setIsDownloadMenuOpen((current) => {
+                  const next = !current;
+                  if (!next) setIsVisualPdfBackgroundPickerOpen(false);
+                  return next;
+                });
+              }}
               className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
               style={visualStoryGlassControlStyle}
               aria-label={t('İndir')}
               title={t('İndir')}
-            >
-              <Download size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setVisualImageFullscreenPageIndex(pageIndex)}
-              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
-              style={visualStoryGlassControlStyle}
-              aria-label={t('Görseli tam ekranda aç')}
-              title={t('Görseli tam ekranda aç')}
-            >
-              <Maximize2 size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
+	            >
+	              <Download size={14} />
+	            </button>
+		            <button
+		              type="button"
+		              onClick={() => {
                 stopAllVisualStoryAudio();
                 onBack();
               }}
@@ -2731,10 +2787,10 @@ function VisualStoryReader({
       </div>
 
       <div className="relative mx-auto flex h-dvh w-full max-w-[960px] flex-col px-0 pb-[calc(env(safe-area-inset-bottom,0px)+70px)] pt-0">
-        <main className="grid min-h-0 flex-1 place-items-stretch overflow-hidden px-0 pb-0 pt-0">
-          <Swiper
-            modules={[Zoom]}
-            direction="horizontal"
+	        <main className="grid min-h-0 flex-1 place-items-stretch overflow-hidden px-0 pb-0 pt-0">
+	          <Swiper
+	            modules={[Zoom]}
+	            direction="horizontal"
             onSwiper={(swiper) => {
               swiperRef.current = swiper;
               swiper.slideTo(pageIndex, 0);
@@ -2749,15 +2805,15 @@ function VisualStoryReader({
             resistanceRatio={0.12}
             shortSwipes
             longSwipes
-            longSwipesRatio={0.14}
-            longSwipesMs={180}
-            threshold={8}
-            zoom={{
-              maxRatio: 2.5,
-              minRatio: 1,
-              toggle: false
-            }}
-            className="fortale-story-swiper h-full w-full"
+	            longSwipesRatio={0.14}
+	            longSwipesMs={180}
+	            threshold={8}
+	            zoom={{
+	              maxRatio: 2.5,
+	              minRatio: 1,
+	              toggle: false
+	            }}
+	            className="fortale-story-swiper h-full w-full"
             style={{
               minHeight: 0,
               height: '100%',
@@ -2765,9 +2821,9 @@ function VisualStoryReader({
               overflow: 'hidden'
             }}
           >
-            {pages.map((page, visualPageIndex) => {
-              const isActiveVisualPage = visualPageIndex === pageIndex;
-              return (
+	            {pages.map((page, visualPageIndex) => {
+	              const isActiveVisualPage = visualPageIndex === pageIndex;
+	              return (
               <SwiperSlide
                 key={page.id}
                 aria-label={page.title}
@@ -2797,30 +2853,36 @@ function VisualStoryReader({
                       <div className="px-4 pb-2 text-center text-[15px] font-bold leading-tight text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.72)]">
                         {String(courseData.topic || t('Masal')).trim()}
                       </div>
-	                    <div className="relative min-h-0 overflow-hidden">
-                      <div className="swiper-zoom-container fortele-story-page-image-shell h-full w-full overflow-hidden">
-                        <img
-                          src={page.imageUrl || ''}
-                          alt={page.text || page.title}
-                          loading="eager"
-                          decoding="async"
-                          className={`fortale-story-glow-image select-none object-cover object-center transition-transform duration-700 ease-out ${isNarrationPlaying ? 'fortale-story-image-motion' : ''}`}
-                          draggable={false}
-                          data-motion-mood={currentMotionProfile.mood}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            maxWidth: '100%',
-                            maxHeight: '100%',
-                            touchAction: 'pan-x pan-y pinch-zoom',
-                            ['--story-pan-x' as string]: `${currentMotionProfile.panX}%`,
-                            ['--story-pan-y' as string]: `${currentMotionProfile.panY}%`,
-                            ['--story-scale-end' as string]: currentMotionProfile.endScale,
-                            ['--story-motion-duration' as string]: `${currentMotionProfile.duration}s`
-                          }}
-                        />
-                      </div>
-                    </div>
+		                    <div className="relative min-h-0 overflow-hidden">
+	                      <div
+	                        className="swiper-zoom-container fortele-story-page-image-shell h-full w-full overflow-hidden"
+	                        onTouchStart={handleVisualImageGestureStart}
+	                        onTouchMove={handleVisualImageGestureStart}
+	                        onTouchEnd={handleVisualImageGestureEnd}
+	                        onTouchCancel={handleVisualImageGestureEnd}
+	                      >
+		                        <img
+	                          src={page.imageUrl || ''}
+	                          alt={page.text || page.title}
+	                          loading="eager"
+	                          decoding="async"
+	                          className={`fortale-story-glow-image select-none object-cover object-center transition-transform duration-700 ease-out ${isNarrationPlaying ? 'fortale-story-image-motion' : ''} ${isVisualImageGestureActive ? 'is-user-zooming' : ''}`}
+	                          draggable={false}
+	                          data-motion-mood={currentMotionProfile.mood}
+	                          style={{
+	                            width: '100%',
+	                            height: '100%',
+	                            maxWidth: '100%',
+	                            maxHeight: '100%',
+	                            touchAction: 'pan-x pan-y pinch-zoom',
+	                            ['--story-pan-x' as string]: `${currentMotionProfile.panX}%`,
+	                            ['--story-pan-y' as string]: `${currentMotionProfile.panY}%`,
+	                            ['--story-scale-end' as string]: currentMotionProfile.endScale,
+	                            ['--story-motion-duration' as string]: `${currentMotionProfile.duration}s`
+	                          }}
+			                        />
+	                      </div>
+	                    </div>
                     <div className="relative -mt-9 flex min-h-0 items-stretch justify-center overflow-hidden px-4 pb-5 pt-0">
                       {isActiveVisualPage && (
                         <div className="fortale-story-text-ambient" aria-hidden="true">
@@ -2887,7 +2949,7 @@ function VisualStoryReader({
                         )}
                       </div>
                     </div>
-                  </div>
+	                  </div>
                 </div>
               </SwiperSlide>
             )})}
@@ -5656,10 +5718,10 @@ export default function CourseFlowView({
             <div className={`${isReadingFullscreen ? 'pt-0' : 'pt-12'} space-y-7`}>
 	              {hasFullscreenStickyImages ? (
 	                <>
-	                  <div className="sticky top-0 z-20 pb-4 pt-1">
+		                  <div className="sticky top-0 z-20 pb-0 pt-1">
 	                    <button
 	                      type="button"
-	                      className={`block overflow-hidden bg-black/20 ${shouldUseWideFullscreenStickyImage ? 'w-[calc(100%+2rem)] -mx-4 rounded-[12px]' : 'w-full rounded-[18px]'}`}
+		                      className={`block overflow-hidden bg-transparent ${shouldUseWideFullscreenStickyImage ? 'w-[calc(100%+2rem)] -mx-4 rounded-[12px]' : 'w-full rounded-[18px]'}`}
 	                      style={{ height: shouldUseWideFullscreenStickyImage ? 'clamp(170px, 34dvh, 300px)' : 'clamp(148px, 28dvh, 220px)' }}
 	                      onTouchStart={handleFullscreenImageTouchStart}
 	                      onTouchEnd={handleFullscreenImageTouchEnd}
@@ -5686,8 +5748,8 @@ export default function CourseFlowView({
                             aria-label={`${imageIndex + 1}. ${t('görsele git')}`}
                             title={`${imageIndex + 1}. ${t('görsele git')}`}
                           />
-                        ))}
-	                      </div>
+	                        ))}
+		                    </div>
 	                  </div>
 
                   <div className="space-y-7 pb-2">
@@ -5697,14 +5759,13 @@ export default function CourseFlowView({
                         ref={(element) => {
                           fullscreenReaderSectionRefs.current[section.key] = element;
                         }}
-                        className="px-0 py-1.5 border-b border-dashed"
+	                        className="px-0 py-1.5"
                         style={{
-                          borderColor: 'rgba(173,149,124,0.12)',
-                          scrollMarginTop: 'calc(env(safe-area-inset-top, 0px) + 60dvh)'
+	                          scrollMarginTop: 'calc(env(safe-area-inset-top, 0px) + 60dvh)'
                         }}
                       >
                         {section.heading && (
-                          <header className="mb-4 border-b border-dashed pb-3" style={{ borderColor: 'rgba(173,149,124,0.12)' }}>
+	                          <header className="mb-4 pb-3">
                             <div className="flex items-center justify-between gap-2">
                               <h2 className="text-base md:text-[17px] font-bold text-white/95 leading-[1.3]">{section.heading}</h2>
                               {section.durationLabel && (

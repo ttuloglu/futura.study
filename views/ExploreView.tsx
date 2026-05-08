@@ -1206,16 +1206,18 @@ export default function ExploreView({
                                   <Tag size={8} className="text-[#8fb6e6] shrink-0" />
                                   <span className="truncate">{category}</span>
                                 </span>
-                                <span
-                                  className="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5"
-                                  style={{
-                                    background: 'rgba(23, 38, 58, 0.64)',
-                                    boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)'
-                                  }}
-                                  title="Yaş grubu / seviye"
-                                >
-                                  {getSmartBookAgeGroupLabel(course.ageGroup)}
-                                </span>
+                                {course.bookType !== 'fairy_tale' && (
+                                  <span
+                                    className="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5"
+                                    style={{
+                                      background: 'rgba(23, 38, 58, 0.64)',
+                                      boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)'
+                                    }}
+                                    title="Yaş grubu / seviye"
+                                  >
+                                    {getSmartBookAgeGroupLabel(course.ageGroup)}
+                                  </span>
+                                )}
                                 <span className="shrink-0 text-[#7fa2cb]">{estimatedDuration}</span>
                                 <span className="shrink-0 text-white/20">•</span>
                                 <span className="min-w-0 truncate inline-flex items-center gap-1 text-[#a8bfdc]">
@@ -1312,7 +1314,9 @@ export default function ExploreView({
                   </p>
                   <div className="pt-1 text-[10px] text-[#bfd4ee] space-y-0.5">
                     <p>{t('Kategori:')} {t(deriveRealCategoryFromCourse(selectedCourse))}</p>
-                    <p>{t('Yaş Grubu:')} {t(getSmartBookAgeGroupLabel(selectedCourse.ageGroup))}</p>
+                    {selectedCourse.bookType !== 'fairy_tale' && (
+                      <p>{t('Yaş Grubu:')} {t(getSmartBookAgeGroupLabel(selectedCourse.ageGroup))}</p>
+                    )}
                     <p>{t('Kurgulayan:')} {selectedCourse.creatorName?.trim() || t('Anonim')}</p>
                     <p>{t('Sayfa:')} {estimatePageCount(selectedCourse)} sf</p>
                     <p>{t('Tür:')} {t(bookTypeLabel(selectedCourse.bookType))}</p>

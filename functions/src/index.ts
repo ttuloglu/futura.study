@@ -82,7 +82,8 @@ const OPENAI_IMAGE_QUALITY: "low" = "low";
 const OPENAI_COVER_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_LECTURE_IMAGE_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_REMEDIAL_IMAGE_MODEL = OPENAI_IMAGE_MODEL;
-const OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_IMAGE_GENERATIONS_API_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_IMAGE_EDITS_API_URL = "https://api.openai.com/v1/images/edits";
 const OPENAI_TTS_API_URL = "https://api.openai.com/v1/audio/speech";
 const CONTENT_COMPLETION_MARKER = "[[SMARTBOOK_END]]";
 const FAIRY_TALE_TOTAL_IMAGE_COUNT = 4;
@@ -144,6 +145,8 @@ const STARTER_CREATE_CREDITS = 3;
 const MAX_CREDIT_COST_PER_ACTION = 10;
 const PODCAST_CREATE_CREDIT_COST = 2;
 const CREDIT_REFUND_RECEIPT_TTL_MS = 30 * 60 * 1000;
+const VISUAL_FAIRY_TALE_HERO_PORTRAIT_EXTRA_CREDIT_COST = 1;
+const HERO_PORTRAIT_MAX_BYTES = 4 * 1024 * 1024;
 const BOOK_TYPE_CREATE_CREDIT_COST: Record<string, number> = {
   fairy_tale: 1,
   story: 2,
@@ -815,6 +818,9 @@ interface UsageReportEntry {
   costUsdInputImage?: number;
   costUsdOutputImage?: number;
   costMode?: "usage" | "flat";
+  usageSource?: "api" | "estimated";
+  referenceImageCount?: number;
+  usageWarning?: string;
   quality?: string;
   size?: string;
 }
@@ -840,6 +846,21 @@ interface TokenUsageMetrics {
   inputImageTokens?: number;
 }
 
+type OpenAiImageReference = {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+};
+
+type HeroPortraitGender = "male" | "female";
+
+type VisualStoryHeroPortraitReference = {
+  storagePath: string;
+  contentType: string;
+  fileName: string;
+  sizeBytes: number;
+};
+
 type LongFormQualityProfile = "lecture" | "narrative" | "remedial" | "summary";
 
 interface LongFormQualityAssessment {
@@ -858,6 +879,8 @@ interface ImageGenerationResult {
   images: string[];
   model: string;
   usage: TokenUsageMetrics;
+  usageSource: "api" | "estimated";
+  usageWarning?: string;
 }
 
 interface SmartBookCreativeBrief {
@@ -1563,8 +1586,7 @@ function isVisualFairyTaleAudienceLevel(audienceLevel: SmartBookAudienceLevel): 
 }
 
 function normalizeFairyTaleStoredAudienceLevel(audienceLevel: SmartBookAudienceLevel): SmartBookAudienceLevel {
-  if (audienceLevel === "1-3" || audienceLevel === "4-6") return "1-6";
-  if (audienceLevel === "7-9") return "7+";
+  if (audienceLevel === "1-3" || audienceLevel === "4-6" || audienceLevel === "7+" || audienceLevel === "7-9") return "1-6";
   return audienceLevel;
 }
 
@@ -1946,6 +1968,28 @@ const GENERIC_NARRATIVE_TITLE_TOKENS = new Set([
   "dram", "komedi", "korku", "bilim", "kurgu", "distopik", "utopik", "gizem", "psikolojik",
   "romantik", "aile", "gerilim", "tarihsel", "polisiye", "fantastik", "mizah"
 ]);
+const CLICHE_NARRATIVE_TITLE_TOKENS = new Set([
+  "tozlu", "fisilti", "fısıltı", "fısıltısı", "fisiltisi", "yaka", "sessiz", "sessizlik",
+  "yildiz", "yıldız", "yildizlar", "yıldızlar", "renkli", "renkler", "golge", "gölge",
+  "gölgeler", "golgeler", "sakli", "saklı", "gecit", "geçit",
+  "moonlit", "whisper", "whispers", "dusty", "silent", "silence",
+  "star", "stars", "colorful", "shadow", "shadows", "hidden", "passage", "gate"
+]);
+const CLICHE_NARRATIVE_TITLE_PHRASES = [
+  "ay ışığı",
+  "ay isigi",
+  "ay ışıklı",
+  "ay isikli"
+].map((phrase) => normalizeStoryPathKey(phrase));
+
+function hasClicheNarrativeTitleToken(title: string): boolean {
+  const normalized = normalizeStoryPathKey(title);
+  if (CLICHE_NARRATIVE_TITLE_PHRASES.some((phrase) => phrase && normalized.includes(phrase))) {
+    return true;
+  }
+  const tokens = normalized.split(" ").filter(Boolean);
+  return tokens.some((token) => CLICHE_NARRATIVE_TITLE_TOKENS.has(token));
+}
 
 function getNarrativeBookTypeTitleKeys(bookType: SmartBookBookType): Set<string> {
   if (bookType === "fairy_tale") {
@@ -1975,8 +2019,7 @@ function isNarrativeBookTitleTooGeneric(
   const normalizedTitle = normalizeStoryPathKey(title);
   if (!normalizedTitle || normalizedTitle.length < 3) return true;
   if (/\b(?:taslak|taslagi|draft)\b/u.test(normalizedTitle)) return true;
-  if (/^(?:[a-z0-9ğüşıöç]+)\s+(?:ve|ile)\s+(?:[a-z0-9ğüşıöç]+)(?:\s|$)/u.test(normalizedTitle)) return true;
-  if (/^(?:[a-z0-9ğüşıöç]+)(?:nin|nın|nun|nün|in|ın|un|ün)\s+/u.test(normalizedTitle)) return true;
+  if (hasClicheNarrativeTitleToken(title)) return true;
 
   const tokens = normalizedTitle.split(" ").filter(Boolean);
   if (tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => GENERIC_NARRATIVE_TITLE_TOKENS.has(token))) {
@@ -1992,6 +2035,13 @@ function isNarrativeBookTitleTooGeneric(
   if (getNarrativeBookTypeTitleKeys(params.bookType).has(normalizedTitle)) return true;
 
   return false;
+}
+
+function isNarrativeChapterTitleUnusable(title: string): boolean {
+  const normalized = normalizeStoryPathKey(title);
+  if (!normalized || normalized.length < 2) return true;
+  if (hasClicheNarrativeTitleToken(title)) return true;
+  return /^(?:bölüm|bolum|chapter|kısım|kisim|part|perde|act|giriş|giris|serim|gelişme|gelisme|düğüm|dugum|doruk|çözüm|cozum|final|sonuç|sonuc|döşeme|doseme|hazırlık|hazirlik|kurulum|yüzleşme|yuzlesme)(?:\s*\d+|\s*[ivxlcdm]+)?$/iu.test(normalized);
 }
 
 function endingStyleLabelForPrompt(style: SmartBookEndingStyle | undefined, isEn: boolean): string {
@@ -3091,13 +3141,23 @@ function extractUsageNumbers(rawUsage: unknown): {
     usage.textInputTokens ??
     usage.input_text_tokens ??
     usage.text_input_tokens ??
-    (isRecord(usage.input_tokens_details) ? usage.input_tokens_details.text_tokens : 0)
+    (isRecord(usage.input_tokens_details) ? (
+      usage.input_tokens_details.text_tokens ??
+      usage.input_tokens_details.text ??
+      usage.input_tokens_details.input_text_tokens
+    ) : 0)
   );
   const inputImageTokens = toNonNegativeIntToken(
     usage.inputImageTokens ??
     usage.imageInputTokens ??
     usage.input_image_tokens ??
-    (isRecord(usage.input_tokens_details) ? usage.input_tokens_details.image_tokens : 0)
+    usage.image_tokens ??
+    usage.input_images_tokens ??
+    (isRecord(usage.input_tokens_details) ? (
+      usage.input_tokens_details.image_tokens ??
+      usage.input_tokens_details.image ??
+      usage.input_tokens_details.input_image_tokens
+    ) : 0)
   );
   const inputTokens = toNonNegativeIntToken(
     usage.promptTokenCount ??
@@ -3112,9 +3172,15 @@ function extractUsageNumbers(rawUsage: unknown): {
     usage.outputTokenCount ??
     usage.outputTokens ??
     usage.output_tokens ??
+    usage.output_image_tokens ??
     usage.completion_tokens ??
     usage.text_output_tokens ??
-    usage.audio_output_tokens
+    usage.audio_output_tokens ??
+    (isRecord(usage.output_tokens_details) ? (
+      usage.output_tokens_details.image_tokens ??
+      usage.output_tokens_details.image ??
+      usage.output_tokens_details.output_image_tokens
+    ) : 0)
   );
   const totalTokensRaw = toNonNegativeIntToken(
     usage.totalTokenCount ??
@@ -3230,16 +3296,19 @@ function buildOpenAiGptImageLowCostBreakdown(options: {
   const sizeMode = options.sizeMode || "cover-3x4";
   const size = resolveOpenAiLowImageSize(sizeMode);
 
-  if (inputTokens > 0 || outputTokens > 0 || inputTextTokens > 0 || inputImageTokens > 0) {
+  if (outputTokens > 0 || inputImageTokens > 0) {
     const costUsdInputText = roundUsd(
       (inputTextTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_USD_PER_1M
     );
     const costUsdInputImage = roundUsd(
       (inputImageTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_IMAGE_USD_PER_1M
     );
-    const costUsdOutputImage = roundUsd(
-      (outputTokens / 1_000_000) * OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M
-    );
+    const fallbackOutputCost = imageCount * (sizeMode === "square-1x1"
+      ? OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE
+      : OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE);
+    const costUsdOutputImage = outputTokens > 0
+      ? roundUsd((outputTokens / 1_000_000) * OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M)
+      : roundUsd(fallbackOutputCost);
     return {
       estimatedCostUsd: roundUsd(costUsdInputText + costUsdInputImage + costUsdOutputImage),
       inputTextTokens,
@@ -3253,14 +3322,20 @@ function buildOpenAiGptImageLowCostBreakdown(options: {
     };
   }
 
-  const flatTotal = costForOpenAiGptImageLow(imageCount, inputTokens, sizeMode);
+  const flatOutputCost = imageCount * (sizeMode === "square-1x1"
+    ? OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE
+    : OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE);
+  const flatInputTextCost = roundUsd(
+    (inputTextTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_USD_PER_1M
+  );
+  const flatTotal = roundUsd(flatInputTextCost + flatOutputCost);
   return {
     estimatedCostUsd: flatTotal,
     inputTextTokens,
     inputImageTokens,
-    costUsdInputText: 0,
+    costUsdInputText: flatInputTextCost,
     costUsdInputImage: 0,
-    costUsdOutputImage: flatTotal,
+    costUsdOutputImage: roundUsd(flatOutputCost),
     costMode: "flat",
     quality: "low",
     size
@@ -3514,6 +3589,7 @@ async function requestLowQualityLessonImages(
   options?: {
     sizeMode?: OpenAiLowImageSizeMode;
     modelOverride?: string;
+    referenceImages?: OpenAiImageReference[];
   }
 ): Promise<ImageGenerationResult> {
   const normalizedPrompt = String(prompt || "")
@@ -3524,13 +3600,47 @@ async function requestLowQualityLessonImages(
   const resolvedModel = String(options?.modelOverride || OPENAI_IMAGE_MODEL || "").trim() || OPENAI_IMAGE_MODEL;
   const sizeMode = options?.sizeMode || "cover-3x4";
   const size = resolveOpenAiLowImageSize(sizeMode);
-  const payload: Record<string, unknown> = {
-    model: resolvedModel,
-    prompt: normalizedPrompt,
-    n: count,
-    size,
-    quality: OPENAI_IMAGE_QUALITY
-  };
+  const referenceImages = Array.isArray(options?.referenceImages)
+    ? options.referenceImages.filter((item) => item?.buffer?.length > 0)
+    : [];
+  const isEditRequest = referenceImages.length > 0;
+  const endpointUrl = isEditRequest ? OPENAI_IMAGE_EDITS_API_URL : OPENAI_IMAGE_GENERATIONS_API_URL;
+
+  let body: BodyInit;
+  let headers: Record<string, string>;
+  if (isEditRequest) {
+    const formData = new FormData();
+    formData.append("model", resolvedModel);
+    formData.append("prompt", normalizedPrompt);
+    formData.append("n", String(count));
+    formData.append("size", size);
+    formData.append("quality", OPENAI_IMAGE_QUALITY);
+    referenceImages.forEach((reference, index) => {
+      const contentType = normalizeImageMimeType(reference.contentType) || "image/png";
+      const fileName = sanitizeBundlePathPart(reference.fileName || `reference-${index + 1}.png`, `reference-${index + 1}`)
+        .replace(/\.+/g, ".")
+        .slice(0, 96) || `reference-${index + 1}.png`;
+      const blob = new Blob([new Uint8Array(reference.buffer)], { type: contentType });
+      formData.append("image[]", blob, fileName);
+    });
+    body = formData;
+    headers = {
+      Authorization: `Bearer ${apiKey}`
+    };
+  } else {
+    const payload: Record<string, unknown> = {
+      model: resolvedModel,
+      prompt: normalizedPrompt,
+      n: count,
+      size,
+      quality: OPENAI_IMAGE_QUALITY
+    };
+    body = JSON.stringify(payload);
+    headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    };
+  }
 
   let lastErrorMessage = "OpenAI görsel üretimi başarısız oldu.";
   let lastErrorCode: "internal" | "unavailable" | "resource-exhausted" = "internal";
@@ -3538,13 +3648,10 @@ async function requestLowQualityLessonImages(
   const timeoutId = setTimeout(() => controller.abort(), 95_000);
 
   try {
-    const response = await fetch(OPENAI_IMAGE_API_URL, {
+    const response = await fetch(endpointUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(payload),
+      headers,
+      body,
       signal: controller.signal
     });
 
@@ -3579,6 +3686,8 @@ async function requestLowQualityLessonImages(
           model: resolvedModel,
           size,
           count,
+          mode: isEditRequest ? "edit" : "generation",
+          referenceImageCount: referenceImages.length,
           promptChars: normalizedPrompt.length,
           error: lastErrorMessage.slice(0, 220)
         });
@@ -3587,6 +3696,8 @@ async function requestLowQualityLessonImages(
           model: resolvedModel,
           size,
           count,
+          mode: isEditRequest ? "edit" : "generation",
+          referenceImageCount: referenceImages.length,
           status: response.status,
           promptChars: normalizedPrompt.length,
           error: lastErrorMessage.slice(0, 220)
@@ -3623,7 +3734,31 @@ async function requestLowQualityLessonImages(
     }
 
     if (images.length > 0) {
-      const usage = extractUsageNumbers((json as Record<string, unknown>).usage);
+      const rawUsage = (json as Record<string, unknown>).usage;
+      const usage = extractUsageNumbers(rawUsage);
+      const usageSource: ImageGenerationResult["usageSource"] =
+        isRecord(rawUsage) && (usage.inputTokens > 0 || usage.outputTokens > 0 || usage.inputTextTokens > 0 || usage.inputImageTokens > 0)
+          ? "api"
+          : "estimated";
+      const usageWarning = isEditRequest && usage.inputImageTokens <= 0
+        ? (usageSource === "api"
+          ? "OpenAI edit usage did not include image input tokens."
+          : "OpenAI edit response did not include usage; cost uses fallback output plus text estimate.")
+        : undefined;
+      if (usageWarning) {
+        logger.warn("OpenAI image edit usage is incomplete", {
+          model: resolvedModel,
+          size,
+          count,
+          referenceImageCount: referenceImages.length,
+          usageSource,
+          inputTokens: usage.inputTokens,
+          inputTextTokens: usage.inputTextTokens,
+          inputImageTokens: usage.inputImageTokens,
+          outputTokens: usage.outputTokens,
+          warning: usageWarning
+        });
+      }
       const finalUsage: TokenUsageMetrics = {
         inputTokens: usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt),
         inputTextTokens: usage.inputTextTokens > 0
@@ -3633,7 +3768,13 @@ async function requestLowQualityLessonImages(
         outputTokens: usage.outputTokens,
         totalTokens: usage.totalTokens > 0 ? usage.totalTokens : (usage.inputTokens > 0 ? usage.inputTokens : estimateTokensFromText(normalizedPrompt))
       };
-      return { images: images.slice(0, count), model: resolvedModel, usage: finalUsage };
+      return {
+        images: images.slice(0, count),
+        model: resolvedModel,
+        usage: finalUsage,
+        usageSource,
+        usageWarning
+      };
     }
   } catch (error) {
     if (error instanceof HttpsError) {
@@ -5192,7 +5333,7 @@ function buildPodcastJobFinalPath(uid: string, jobId: string): string {
 }
 
 function buildBookJobResultPath(uid: string, courseId: string): string {
-  return `smartbooks/${uid}/${courseId}/v1/book.zip`;
+  return `smartbooks/${uid}/${courseId}/book.zip`;
 }
 
 function getPodcastJobChunkConcurrency(totalChunks: number): number {
@@ -5451,6 +5592,17 @@ function resolveBookCreateCreditCost(bookTypeValue: unknown): number {
   return BOOK_TYPE_CREATE_CREDIT_COST[key] ?? 1;
 }
 
+function resolveBookJobCreateCreditCost(
+  bookTypeValue: unknown,
+  options?: { hasVisualHeroPortrait?: boolean }
+): number {
+  const baseCost = resolveBookCreateCreditCost(bookTypeValue);
+  const isVisualFairyTalePortrait =
+    parseSmartBookBookType(bookTypeValue) === "fairy_tale" &&
+    options?.hasVisualHeroPortrait === true;
+  return baseCost + (isVisualFairyTalePortrait ? VISUAL_FAIRY_TALE_HERO_PORTRAIT_EXTRA_CREDIT_COST : 0);
+}
+
 function resolveAiCreditCharge(
   operation: AiOperation,
   payload: Record<string, unknown>
@@ -5458,7 +5610,9 @@ function resolveAiCreditCharge(
   if (operation === "generateCourseCover") {
     return {
       action: "create",
-      cost: resolveBookCreateCreditCost(payload.bookType)
+      cost: resolveBookJobCreateCreditCost(payload.bookType, {
+        hasVisualHeroPortrait: isRecord(payload.heroPortraitImage) || isRecord(payload.visualHeroPortrait)
+      })
     };
   }
   if (operation === "generatePodcastAudio") {
@@ -5477,7 +5631,9 @@ function resolveCreditRequirement(
   if (operation === "generateCourseOutline") {
     return {
       action: "create",
-      cost: resolveBookCreateCreditCost(payload.bookType)
+      cost: resolveBookJobCreateCreditCost(payload.bookType, {
+        hasVisualHeroPortrait: isRecord(payload.heroPortraitImage) || isRecord(payload.visualHeroPortrait)
+      })
     };
   }
   return resolveAiCreditCharge(operation, payload);
@@ -7044,76 +7200,6 @@ ${statusRules}
       .replace(/\s*(?:[-–:]\s*)?(?:hazırlık(?:\s*aşaması)?|hazirlik(?:\s*asamasi)?|dünya\s*inşası|dunya\s*insasi|kurulum|y[üu]zle[şs]me(?:\s*[12iıivx]+)?|midpoint|en\s*alt\s*nokta|doruk(?:\s*noktası| noktasi)?|kritik\s*an|ç[öo]z[üu]m|cozum|final|sonu[çc])\s*(?:bölümü|bolumu|kısmı|kismi|section)?$/iu, "")
       .replace(/\s+/g, " ")
       .trim();
-  const buildDeterministicNarrativeChapterTitle = (
-    index: number,
-    bookType: SmartBookBookType
-  ): string => {
-    const safeBookType = bookType === "academic" ? "story" : bookType;
-    const prefix = useEnglishScaffold
-      ? (safeBookType === "novel" ? "Part" : "Chapter")
-      : (safeBookType === "novel" ? "Kısım" : "Bölüm");
-    return `${prefix} ${index + 1}`;
-  };
-  const buildNarrativeTitleFragment = (
-    value: string,
-    maxWords: number
-  ): string => {
-    const cleaned = String(value || "")
-      .replace(/\b(adında|adli|isimli|named|called|bir|ve|ile|the|a|an|of|in|at)\b/giu, " ")
-      .replace(/[^a-z0-9ğüşıöç\s]/giu, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!cleaned) return "";
-    const words = cleaned.split(" ").filter(Boolean).slice(0, maxWords);
-    return words
-      .map((word) => word.charAt(0).toLocaleUpperCase("tr-TR") + word.slice(1))
-      .join(" ")
-      .trim();
-  };
-  const buildDeterministicNarrativeBookTitleFromBrief = (
-    bookType: SmartBookBookType,
-    params: {
-      topic: string;
-      subGenre?: string;
-      characters?: string;
-      settingPlace?: string;
-      settingTime?: string;
-      chapterTitle?: string;
-    }
-  ): string => {
-    const characterSeed = buildNarrativeTitleFragment(params.characters || "", 3);
-    const placeSeed = buildNarrativeTitleFragment(params.settingPlace || "", 3);
-    const timeSeed = buildNarrativeTitleFragment(params.settingTime || "", 2);
-    const chapterSeed = buildNarrativeTitleFragment(params.chapterTitle || "", 4);
-    const subGenreSeed = buildNarrativeTitleFragment(params.subGenre || "", 2);
-    const candidatePool = [
-      [characterSeed, placeSeed].filter(Boolean).join(" "),
-      [characterSeed, timeSeed].filter(Boolean).join(" "),
-      [placeSeed, timeSeed].filter(Boolean).join(" "),
-      [characterSeed, chapterSeed].filter(Boolean).join(" "),
-      [placeSeed, chapterSeed].filter(Boolean).join(" "),
-      [characterSeed, subGenreSeed].filter(Boolean).join(" "),
-      chapterSeed,
-      characterSeed,
-      placeSeed
-    ]
-      .map((item) => item.replace(/\s+/g, " ").trim())
-      .filter((item) => item.length >= 3);
-
-    for (const candidate of candidatePool) {
-      if (!isNarrativeBookTitleTooGeneric(candidate, {
-        topic: params.topic,
-        subGenre: params.subGenre,
-        bookType
-      })) {
-        return candidate;
-      }
-    }
-
-    return useEnglishScaffold
-      ? (bookType === "fairy_tale" ? "Moonlit Path" : bookType === "novel" ? "Hidden Passage" : "Quiet Crossing")
-      : (bookType === "fairy_tale" ? "Ay Işıklı Yol" : bookType === "novel" ? "Saklı Geçit" : "Sessiz Geçit");
-  };
   const buildNarrativeChapterTitle = (
     index: number,
     rawTitle: string,
@@ -7137,7 +7223,7 @@ ${statusRules}
     index: number,
     rawTitle: string,
     bookType: SmartBookBookType
-  ): string => buildNarrativeChapterTitle(index, rawTitle, bookType) || buildDeterministicNarrativeChapterTitle(index, bookType);
+  ): string => String(rawTitle || "").replace(/\s+/g, " ").trim();
   const repairNarrativeMetadataIfNeeded = async (
     currentOutline: TimelineNode[],
     rawBookTitleValue: string,
@@ -7188,14 +7274,15 @@ ${outlineAudienceInstruction}
 Kurallar:
 1) Yalnızca JSON döndür.
 2) Bu mevcut kitabı YENIDEN KURMA; sadece kitap adı, kısa kitap açıklaması ve bölüm adlarını üret/düzelt.
-3) bookTitle mutlaka özgün, edebi ve konuya/brief'e sadık olsun.
-4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket, karakter adı listesi veya hazır klişe kalıp olmasın.
-4.1) bookTitle kısa ve gerçek bir kitap adı formatında olsun; örnek/tavsiye kelime kullanma.
+3) bookTitle kitabın içeriğine karar vermiş bir yazarın koyacağı doğal kitap adı gibi olsun; başlık, olayın/karakterin/çatışmanın ayırt edici fikrinden doğmalı.
+4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket, karakter adı listesi, placeholder veya hazır klişe kalıp olmasın.
+4.1) bookTitle kısa ve gerçek bir kitap adı formatında olsun; sana örnek, şablon veya tavsiye kelime verilmiyor.
+4.2) Şu kelimeleri veya bunların çekimli/çevirili benzerlerini bookTitle içinde kullanma: tozlu, fısıltı, yaka, sessiz, yıldız, renkli, gölge, saklı, geçit, ay ışığı.
 5) bookDescription tam olarak 1-2 cümlelik, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
 6) bookDescription generic, öğretici şablon, uygulama içi placeholder veya "bu kitap ..." diye mekanik tanıtım metni gibi durmamalı.
 7) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
 8) Her chapter title doğal/edebi olmalı; "Giriş", "Bölüm 1", "Döşeme", "Serim", "Gelişme", "Sonuç", "Dilek", "Final", "Perde I" gibi teknik etiketler YASAK.
-9) Bütün chapterTitles aynı kitabın tek akışıyla tutarlı ve birbirinden farklı olmalı.
+9) Bütün chapterTitles aynı kitabın tek akışıyla tutarlı ve birbirinden farklı olmalı; sahne/karar/çatışma dönemeçlerinden doğmalı, süslü kelime koleksiyonu gibi durmamalı.
 10) Karakter adlarını anlamsız biçimde zorla başlığa doldurma.
 11) Dil, kullanıcının diliyle aynı olsun.
 
@@ -7422,102 +7509,32 @@ JSON şeması:
 
   const rawBookTitle = parsed && typeof parsed.bookTitle === "string" ? parsed.bookTitle.replace(/\s+/g, " ").trim() : "";
   const rawBookDescription = parsed && typeof parsed.bookDescription === "string" ? parsed.bookDescription.replace(/\s+/g, " ").trim() : "";
-  const repairedMetadataState = await repairNarrativeMetadataIfNeeded(outline, rawBookTitle, rawBookDescription);
-  outline = repairedMetadataState.outline;
-  const generatedBookTitle = repairedMetadataState.bookTitle
+  const generatedBookTitle = rawBookTitle
     .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  const repairedBookDescription = repairedMetadataState.bookDescription
+  const repairedBookDescription = rawBookDescription
     .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
   const isNarrativeBookType = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "story" || normalizedBrief.bookType === "novel";
   const generatedBookTitleLooksUsable =
+    !isNarrativeBookType &&
     generatedBookTitle.length >= 3 &&
     generatedBookTitle.length <= 96 &&
-    (!isNarrativeBookType
-      ? (
-        generatedBookTitle.toLocaleLowerCase("tr-TR") !== normalizedTopic.toLocaleLowerCase("tr-TR") &&
-        !/^(?:masal|hikaye|öykü|roman|kitap|book)$/iu.test(generatedBookTitle)
-      )
-      : !isNarrativeBookTitleTooGeneric(generatedBookTitle, {
-        topic: normalizedTopic,
-        subGenre: normalizedBrief.subGenre,
-        bookType: normalizedBrief.bookType
-      }));
-  const topicLooksUsableForNarrative = !isNarrativeBookType || !isNarrativeBookTitleTooGeneric(normalizedTopic, {
-    topic: normalizedTopic,
-    subGenre: normalizedBrief.subGenre,
-    bookType: normalizedBrief.bookType
-  });
-  const firstLectureTitleCandidate = String(
-    outline.find((node) => node.type === "lecture" && String(node.title || "").trim())?.title || ""
-  )
-    .replace(/\s+/g, " ")
-    .trim();
-  const isTechnicalChapterFallbackTitle = /^(?:b[öo]l[üu]m|k[ıi]s[ıi]m|chapter|part)\s*\d+$/iu.test(firstLectureTitleCandidate);
-  const fallbackNarrativeTitleFromOutline = isNarrativeBookType
-    ? (
-      isTechnicalChapterFallbackTitle
-        ? ""
-        : ensureNarrativeChapterTitle(0, firstLectureTitleCandidate, normalizedBrief.bookType)
-    )
-    : "";
-  const deterministicNarrativeBookTitle = isNarrativeBookType
-    ? (
-      (topicLooksUsableForNarrative ? normalizedTopic : "") ||
-      fallbackNarrativeTitleFromOutline ||
-      buildDeterministicNarrativeBookTitleFromBrief(normalizedBrief.bookType, {
-        topic: normalizedTopic,
-        subGenre: normalizedBrief.subGenre,
-        characters: normalizedBrief.characters,
-        settingPlace: normalizedBrief.settingPlace,
-        settingTime: normalizedBrief.settingTime,
-        chapterTitle: firstLectureTitleCandidate
-      })
-    )
-    : normalizedTopic;
-  const safeNarrativeFallbackTitle = isNarrativeBookType
-    ? (
-      fallbackNarrativeTitleFromOutline &&
-      !isNarrativeBookTitleTooGeneric(fallbackNarrativeTitleFromOutline, {
-        topic: normalizedTopic,
-        subGenre: normalizedBrief.subGenre,
-        bookType: normalizedBrief.bookType
-      })
-        ? fallbackNarrativeTitleFromOutline
-        : deterministicNarrativeBookTitle
-    )
-    : normalizedTopic;
+    generatedBookTitle.toLocaleLowerCase("tr-TR") !== normalizedTopic.toLocaleLowerCase("tr-TR") &&
+    !/^(?:masal|hikaye|öykü|roman|kitap|book)$/iu.test(generatedBookTitle);
   const finalBookTitle = lockUserProvidedBookTitle
     ? normalizedTopic
     : isNarrativeBookType
-      ? (generatedBookTitleLooksUsable ? generatedBookTitle : safeNarrativeFallbackTitle)
+      ? generatedBookTitle
       : allowAiBookTitleGeneration
         ? (
           generatedBookTitleLooksUsable
             ? generatedBookTitle
-            : (topicLooksUsableForNarrative ? normalizedTopic : safeNarrativeFallbackTitle)
+            : normalizedTopic
         )
         : normalizedTopic;
-  if (isNarrativeBookType) {
-    outline = outline.map((node, index) => {
-      if (node.type !== "lecture") return node;
-      return {
-        ...node,
-        title: ensureNarrativeChapterTitle(index, String(node.title || ""), normalizedBrief.bookType)
-      };
-    });
-    if (!generatedBookTitleLooksUsable) {
-      logger.warn("Narrative metadata fell back to deterministic titles", {
-        topic: normalizedTopic,
-        bookType: normalizedBrief.bookType,
-        generatedBookTitle,
-        finalBookTitle
-      });
-    }
-  }
   const rawSubGenre = parsed && typeof parsed.subGenre === "string" ? parsed.subGenre.replace(/\s+/g, " ").trim() : (normalizedBrief.subGenre || "");
   const rawTargetPage = parsed ? (parsed.targetPageCount as unknown) : undefined;
   const finalBookType = normalizedBrief.bookType;
@@ -7660,6 +7677,7 @@ function normalizeVisualStoryText(
 function looksGenericVisualStoryTitle(value: string, subGenre?: string): boolean {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
   if (!normalized) return true;
+  if (hasClicheNarrativeTitleToken(normalized)) return true;
   const normalizedKey = normalizeStoryPathKey(normalized);
   const normalizedSubGenre = normalizeStoryPathKey(subGenre || "");
   if (normalizedSubGenre) {
@@ -7746,7 +7764,7 @@ function getVisualFairyTaleSentenceTargets(audienceLevel: SmartBookAudienceLevel
 } {
   const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
   if (bucket === "7+") {
-    return { minTotal: 56, maxTotal: 72, minPerPage: 7, maxPerPage: 9 };
+    return { minTotal: 52, maxTotal: 60, minPerPage: 6, maxPerPage: 8 };
   }
   return { minTotal: 48, maxTotal: 56, minPerPage: 6, maxPerPage: 7 };
 }
@@ -7759,8 +7777,8 @@ function buildVisualFairyTaleAudienceNarrativeDirective(
   const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
   if (bucket === "7+") {
     return isEn
-      ? "Audience lock (7+): write for early school-age readers. Keep the story emotionally safe and very readable, but allow richer scene detail, curiosity, mild symbolism, inner questions, and slightly more layered cause-effect. Some gentle abstraction is allowed only if the scene remains easy to visualize."
-      : "Yaş kilidi (7+): ilk okul çağındaki çocuklar için yaz. Hikaye duygusal olarak güvenli ve çok okunur kalsın; ama sahne ayrıntısını, merak duygusunu, hafif sembolik dokunuşları, iç soruları ve biraz daha katmanlı neden-sonucu artır. Hafif soyutluk yalnızca sahne kolayca gözde canlanıyorsa kullanılabilir.";
+      ? "Audience lock (7+): use the same clear visual-fairy-tale flow as ages 1-6, but write for early school-age children. Keep every beat concrete, warm, emotionally safe, and easy to visualize. Use slightly richer vocabulary and a little more detail than preschool text, but do not become abstract, literary-heavy, or essay-like."
+      : "Yaş kilidi (7+): 1-6 yaş görsel masalındaki aynı net akışı kullan; sadece ilkokul çağına uygun yaz. Her an somut, sıcak, güvenli ve gözde canlanır olsun. Okul öncesine göre kelimeyi ve sahne ayrıntısını biraz artır; ama soyut, ağır edebi veya açıklama metni gibi yazma.";
   }
   return isEn
     ? "Audience lock (1-6): write for preschool/early childhood. Keep every beat concrete, warm, emotionally safe, and instantly understandable. One clear action at a time, minimal cognitive load, familiar vocabulary, and no abstract moral lecture."
@@ -7878,6 +7896,25 @@ function stripVisualStoryCoverHeading(value: string, title: string): string {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function escapeVisualStoryRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripVisualStoryTitleRepeats(value: string, title: string): string {
+  const normalizedValue = String(value || "").replace(/\s+/g, " ").trim();
+  const normalizedTitle = String(title || "").replace(/\s+/g, " ").trim();
+  if (!normalizedValue || !normalizedTitle) return normalizedValue;
+  const titlePattern = escapeVisualStoryRegExp(normalizedTitle);
+  const titleRepeatRegex = new RegExp(
+    `(?:["“”'‘’\\s]*${titlePattern}["“”'‘’]*[\\s:,.!?-]*)+`,
+    "gi"
+  );
+  return normalizedValue
+    .replace(titleRepeatRegex, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeVisualStoryCoverText(
   title: string,
   value: string,
@@ -7886,16 +7923,21 @@ function normalizeVisualStoryCoverText(
 ): string {
   const normalizedTitle = String(title || "").replace(/\s+/g, " ").trim() || "Fortale";
   const maxSentences = Math.max(0, Math.floor(options?.maxSentences ?? 1));
-  const coverSentences = splitVisualStorySentences(stripVisualStoryCoverHeading(value, normalizedTitle));
+  const coverSource = stripVisualStoryTitleRepeats(
+    stripVisualStoryCoverHeading(value, normalizedTitle),
+    normalizedTitle
+  );
+  const coverSentences = splitVisualStorySentences(coverSource);
   const fallback = fallbackSentences.map((sentence) => String(sentence || "").replace(/\s+/g, " ").trim()).filter(Boolean);
   const coverBody = [...coverSentences, ...fallback].slice(0, maxSentences).join(" ").trim();
-  return `${normalizedTitle}\n${coverBody}`.trim();
+  return coverBody;
 }
 
 function buildVisualFairyTalePlanInputBlock(
   brief: SmartBookCreativeBrief,
   preferredLanguage: PreferredLanguage,
-  audienceLevel: SmartBookAudienceLevel
+  audienceLevel: SmartBookAudienceLevel,
+  options?: { heroPortraitName?: string; heroPortraitGender?: HeroPortraitGender }
 ): string {
   const isEn = usesEnglishPromptScaffold(preferredLanguage);
   const audienceBucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
@@ -7911,6 +7953,16 @@ function buildVisualFairyTalePlanInputBlock(
       : (isEn ? "- Output language: follow detected user language" : "- Çıktı dili: tespit edilen kullanıcı dili"),
     brief.characters
       ? (isEn ? `- User characters: ${brief.characters}` : `- Kullanıcı karakterleri: ${brief.characters}`)
+      : "",
+    options?.heroPortraitName
+      ? (isEn
+        ? `- Portrait hero: ${options.heroPortraitName} is the main protagonist. The whole fairy tale must be built around this character.`
+        : `- Portre kahramanı: ${options.heroPortraitName} baş kahramandır. Masal bu karakterin etrafında kurulmalıdır.`)
+      : "",
+    options?.heroPortraitGender
+      ? (isEn
+        ? `- Portrait hero gender: ${options.heroPortraitGender === "male" ? "male" : "female"}`
+        : `- Portre kahramanı cinsiyeti: ${options.heroPortraitGender === "male" ? "erkek" : "kadın"}`)
       : "",
     brief.settingPlace
       ? (isEn ? `- User place: ${brief.settingPlace}` : `- Kullanıcı mekanı: ${brief.settingPlace}`)
@@ -7957,7 +8009,8 @@ async function generateVisualFairyTalePlan(
   sourceContent: string | undefined,
   creativeBrief: SmartBookCreativeBrief | undefined,
   allowAiBookTitleGeneration: boolean,
-  audienceLevel: SmartBookAudienceLevel
+  audienceLevel: SmartBookAudienceLevel,
+  options?: { heroPortraitName?: string; heroPortraitGender?: HeroPortraitGender }
 ): Promise<{ plan: VisualStoryPlan; courseMeta: CourseOutlineMeta; usageEntry: UsageReportEntry }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, "fairy_tale", creativeBrief?.subGenre);
   const preferredLanguage = resolvePreferredLanguageFromBrief(normalizedBrief, topic, sourceContent);
@@ -7967,7 +8020,7 @@ async function generateVisualFairyTalePlan(
   const promptBase = `
 ${topic ? `"${topic}" girdisi için ${audienceBucket} yaş görsel masal metni üret.` : `${audienceBucket} yaş görsel masal metni üret.`}
 ${sourceContent ? `Kaynak özeti:\n"""\n${sourceContent.slice(0, 7000)}\n"""\n` : ""}
-${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienceLevel)}
+${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienceLevel, options)}
 
 Kurallar:
 1) storyText alanına tek parça, özgün, ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümlelik bir masal yaz.
@@ -7980,10 +8033,12 @@ Kurallar:
 8) Dünya masalı rafı hissi ver: Grimm, Andersen, Keloğlan, Nasreddin Hoca, Binbir Gece gibi kaynakların zamansız tadını anımsa; ama hiçbirini taklit etme veya kopyalama.
 9) Olay örgüsü için sana kalıp verilmiyor. Zorunlu problem/çözüm, zorunlu kahraman tipi, zorunlu ders veya aşama şeması yok. Yaratıcı kararı kendin ver.
 10) storyText dışındaki alanlara hikaye metnini bölme. Bölmeyi backend yapacak.
-11) coverText sadece kapak içindir: ilk satır bookTitle olsun; altında en fazla 1 kısa kapak cümlesi olabilir.
+11) coverText sadece kapak içindir: bookTitle veya kitap adını tekrar etme; en fazla 1 kısa kapak cümlesi yaz.
 12) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
 13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
 14) ${languageInstruction(preferredLanguage)}
+15) ${options?.heroPortraitName ? `${options.heroPortraitName} baş kahraman olmalı; yan karakter, anlatıcı veya sahne dışı kişi olamaz.` : "Baş kahraman storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
+16) JSON alanları boş string dönemez. Özellikle storyText mutlaka dolu, tek parça, tam masal metni olmak zorunda.
 
 Sadece JSON döndür.
 `.trim();
@@ -8001,17 +8056,18 @@ Sadece JSON döndür.
       config: {
         systemInstruction: getSystemInstructionForBookType("fairy_tale"),
         temperature: 0.95,
-        maxOutputTokens: 5200,
+        maxOutputTokens: 8000,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           required: ["bookTitle", "bookDescription", "coverText", "storyText", "characterBible"],
+          propertyOrdering: ["bookTitle", "bookDescription", "coverText", "storyText", "characterBible", "styleAnchor"],
           properties: {
-            bookTitle: { type: Type.STRING },
-            bookDescription: { type: Type.STRING },
-            coverText: { type: Type.STRING },
-            storyText: { type: Type.STRING },
-            characterBible: { type: Type.STRING },
+            bookTitle: { type: Type.STRING, minLength: "1" },
+            bookDescription: { type: Type.STRING, minLength: "1" },
+            coverText: { type: Type.STRING, minLength: "1" },
+            storyText: { type: Type.STRING, minLength: "120" },
+            characterBible: { type: Type.STRING, minLength: "1" },
             styleAnchor: { type: Type.STRING }
           }
         }
@@ -8033,31 +8089,27 @@ Sadece JSON döndür.
       continue;
     }
 
-    const issues: string[] = [];
-    const rawBookTitle = String(candidate.bookTitle || "").replace(/\s+/g, " ").trim();
-    if (!rawBookTitle || looksGenericVisualStoryTitle(rawBookTitle, normalizedBrief.subGenre)) {
-      issues.push("bookTitle özgün değil veya alt tür/jenerik ad gibi.");
-    }
     const sentences = splitVisualStorySentences(String(candidate.storyText || ""));
-    if (sentences.length < sentenceTargets.minTotal || sentences.length > sentenceTargets.maxTotal) {
-      issues.push(`storyText ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümle olmalı; şu an ${sentences.length} cümle.`);
-    }
-    if (sentences.some((sentence) => sentence.split(/\s+/).filter(Boolean).length < 3)) {
-      issues.push("storyText içinde aşırı kısa/eksik cümle var.");
-    }
-    if (!String(candidate.characterBible || "").trim()) {
-      issues.push("characterBible boş.");
-    }
-    if (issues.length === 0) {
+    if (sentences.length > 0) {
       parsed = candidate;
       storySentences = sentences;
       break;
     }
-    retryHint = issues.map((issue) => `- ${issue}`).join("\n");
+    logger.warn("Visual fairy tale plan returned empty storyText", {
+      attempt,
+      audienceBucket,
+      subGenre: normalizedBrief.subGenre || "",
+      bookTitleLength: String(candidate.bookTitle || "").trim().length,
+      bookDescriptionLength: String(candidate.bookDescription || "").trim().length,
+      coverTextLength: String(candidate.coverText || "").trim().length,
+      characterBibleLength: String(candidate.characterBible || "").trim().length,
+      responseChars: String(response.text || "").length
+    });
+    retryHint = "- storyText boş geldi. Boş string dönemez; storyText alanına tek parça tam masal metnini yaz.";
   }
 
-  if (!parsed || storySentences.length < sentenceTargets.minTotal || storySentences.length > sentenceTargets.maxTotal) {
-    throw new HttpsError("internal", `${audienceBucket} yaş görsel masal metni istenen cümle aralığında üretilemedi.`);
+  if (!parsed || storySentences.length === 0) {
+    throw new HttpsError("internal", `${audienceBucket} yaş görsel masal metni boş üretildi.`);
   }
 
   const rawBookTitle = String(parsed.bookTitle || "").replace(/\s+/g, " ").trim();
@@ -8172,11 +8224,33 @@ Rules:
 
 async function generateVisualStoryImage(
   openAiApiKey: string,
-  prompt: string
+  prompt: string,
+  heroPortraitImage?: OpenAiImageReference,
+  heroPortraitGender?: HeroPortraitGender,
+  heroPortraitName?: string
 ): Promise<{ imageUrl: string; usageEntry: UsageReportEntry }> {
-  const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, 1, {
+  const genderLine = heroPortraitGenderPromptLine(heroPortraitGender);
+  const portraitDirective = heroPortraitImage
+    ? [
+      "Hero portrait reference:",
+      heroPortraitName
+        ? `- Use the attached portrait ONLY as the identity reference for ${heroPortraitName}, the main recurring fairy-tale hero and protagonist.`
+        : "- Use the attached portrait ONLY as the identity reference for the main recurring fairy-tale hero and protagonist.",
+      heroPortraitName
+        ? `- ${heroPortraitName} must be the central hero in the image, not a side character, background character, narrator, or separate reference figure.`
+        : "- The portrait-based character must be the central hero in the image, not a side character, background character, narrator, or separate reference figure.",
+      "- The portrait is NOT a face layer, sticker, cutout, or separate real-photo person. Never paste a realistic photo face into the illustration and never show the uploaded reference photo inside or beside the scene.",
+      "- Redraw the portrait subject fully in the same non-photorealistic storybook illustration style, brushwork, lighting, and color palette as every other character.",
+      "- Preserve identity through illustrated equivalents of face shape, jaw/chin, hair length/style/hairline, brows, eye spacing, nose, mouth, skin tone, and recognizable expression cues.",
+      "- Do not copy the uploaded photo background, clothing, lighting, camera look, or any private context.",
+      genderLine ? `- ${genderLine}` : "",
+      "- Keep the result non-photorealistic, warm, child-safe, and visually consistent with the character bible."
+    ].filter(Boolean).join("\n")
+    : "";
+  const imageResult = await requestLowQualityLessonImages(openAiApiKey, [prompt, portraitDirective].filter(Boolean).join("\n\n"), 1, {
     sizeMode: "poster-16x9",
-    modelOverride: OPENAI_IMAGE_MODEL
+    modelOverride: OPENAI_IMAGE_MODEL,
+    referenceImages: heroPortraitImage ? [heroPortraitImage] : undefined
   });
   const imageUrl = imageResult.images[0];
   if (!imageUrl) {
@@ -8207,6 +8281,9 @@ async function generateVisualStoryImage(
       costUsdInputImage: costBreakdown.costUsdInputImage,
       costUsdOutputImage: costBreakdown.costUsdOutputImage,
       costMode: costBreakdown.costMode,
+      usageSource: imageResult.usageSource,
+      referenceImageCount: heroPortraitImage ? 1 : 0,
+      usageWarning: imageResult.usageWarning,
       quality: costBreakdown.quality,
       size: costBreakdown.size
     }
@@ -8287,12 +8364,21 @@ async function generateValidatedVisualStoryImage(params: {
   ai: GoogleGenAI;
   openAiApiKey: string;
   prompt: string;
+  heroPortraitImage?: OpenAiImageReference;
+  heroPortraitGender?: HeroPortraitGender;
+  heroPortraitName?: string;
   label: string;
   audienceLevel: SmartBookAudienceLevel;
   isCover?: boolean;
 }): Promise<{ imageUrl: string; usageEntries: UsageReportEntry[] }> {
   const usageEntries: UsageReportEntry[] = [];
-  const imageResult = await generateVisualStoryImage(params.openAiApiKey, params.prompt);
+  const imageResult = await generateVisualStoryImage(
+    params.openAiApiKey,
+    params.prompt,
+    params.heroPortraitImage,
+    params.heroPortraitGender,
+    params.heroPortraitName
+  );
   usageEntries.push({
     ...imageResult.usageEntry,
     label: `${params.label}: görsel üretim`
@@ -11024,12 +11110,16 @@ function buildVisualStoryAudioSourceFromBookPayload(payload: Record<string, unkn
     })
     .filter((page) => page.nodeId && page.script)
     .sort((left, right) => left.pageSequence - right.pageSequence);
-  const coverScript = firstNonEmptyString(
-    normalizeVisualStoryNarrationSource(payload.coverNarrationText),
-    normalizeVisualStoryNarrationSource(payload.description),
-    normalizeVisualStoryNarrationSource(payload.topic),
-    normalizeVisualStoryNarrationSource(payload.title)
-  ) || "";
+  const coverTitle = firstNonEmptyString(payload.topic, payload.title) || "";
+  const coverScript = stripVisualStoryTitleRepeats(
+    firstNonEmptyString(
+      normalizeVisualStoryNarrationSource(payload.coverNarrationText),
+      normalizeVisualStoryNarrationSource(payload.description),
+      normalizeVisualStoryNarrationSource(payload.topic),
+      normalizeVisualStoryNarrationSource(payload.title)
+    ) || "",
+    coverTitle
+  );
   return { coverScript, pages };
 }
 
@@ -11313,6 +11403,16 @@ async function buildAndPublishBookBundle(params: {
   const sourceNodes = Array.isArray(sourcePayload.nodes)
     ? sourcePayload.nodes.filter((node): node is TimelineNode => Boolean(node) && typeof node === "object")
     : [];
+  const firstVisualStoryPageImageUrl = sourcePayload.visualStoryMode === true
+    ? [...sourceNodes]
+      .sort((a, b) => {
+        const aSeq = Number.isFinite(Number(a.pageSequence)) ? Number(a.pageSequence) : Number.MAX_SAFE_INTEGER;
+        const bSeq = Number.isFinite(Number(b.pageSequence)) ? Number(b.pageSequence) : Number.MAX_SAFE_INTEGER;
+        return aSeq - bSeq;
+      })
+      .map((node) => firstNonEmptyString(node.pageImageUrl))
+      .find((value): value is string => Boolean(value))
+    : undefined;
   const bundleNodes: TimelineNode[] = [];
   let includesPodcast = false;
 
@@ -11398,14 +11498,14 @@ async function buildAndPublishBookBundle(params: {
   }
 
   let cover: BookCoverDescriptor | undefined;
-  const coverSource = firstNonEmptyString(sourcePayload.coverImageUrl);
+  const coverSource = firstNonEmptyString(firstVisualStoryPageImageUrl, sourcePayload.coverImageUrl);
   if (coverSource) {
     try {
       const coverAsset = await loadBinaryAssetFromSource(coverSource);
       const coverExt = inferExtensionFromContentType(coverAsset.contentType, coverAsset.extension || "jpg");
       const coverPath = `assets/cover.${coverExt}`;
       zip.file(coverPath, coverAsset.buffer);
-      cover = { path: coverPath };
+      cover = { path: coverPath, url: coverSource };
     } catch (error) {
       logger.warn("Book bundle cover could not be materialized.", {
         bookId,
@@ -11559,6 +11659,7 @@ async function buildAndPublishBookBundle(params: {
     contentPackageUrl,
     contentPackageUpdatedAt: bundleDescriptor.generatedAt,
     coverImageUrl: firstNonEmptyString(
+      firstVisualStoryPageImageUrl,
       cover?.url,
       (existingBookPayload && isRecord(existingBookPayload.cover)) ? existingBookPayload.cover.url : undefined
     ),
@@ -11737,19 +11838,31 @@ async function republishBookBundleWithVisualStoryAudio(params: {
   const manifest = JSON.parse(manifestRaw) as BookBundleManifest;
   if (!Array.isArray(manifest.nodes)) return null;
 
+  const resolveDownloadUrlForAudioPath = async (audioPath: string): Promise<string | undefined> => {
+    const normalizedPath = String(audioPath || "").trim();
+    if (!normalizedPath) return undefined;
+    const audioFile = bucket.file(normalizedPath);
+    const [audioExists] = await audioFile.exists();
+    if (!audioExists) return undefined;
+    const [audioMeta] = await audioFile.getMetadata().catch(() => [{} as { metadata?: Record<string, string> }]);
+    const existingToken = firstNonEmptyString(audioMeta?.metadata?.firebaseStorageDownloadTokens);
+    const token = existingToken || randomUUID();
+    if (!existingToken) {
+      await audioFile.setMetadata({
+        metadata: {
+          ...(audioMeta?.metadata || {}),
+          firebaseStorageDownloadTokens: token,
+          uid,
+          bookId
+        }
+      });
+    }
+    return buildFirebaseStorageDownloadUrl(bucket.name, normalizedPath, token);
+  };
+
   let coverNarrationAudioUrl: string | undefined;
   if (params.coverAudioPath) {
-    const audioFile = bucket.file(params.coverAudioPath);
-    const [audioExists] = await audioFile.exists();
-    if (audioExists) {
-      const [audioBuffer] = await audioFile.download();
-      const [audioMeta] = await audioFile.getMetadata().catch(() => [{ contentType: "audio/wav" } as { contentType?: string }]);
-      const audioExtFromMime = audioFileExtensionFromMimeType(audioMeta?.contentType);
-      const audioExtFromPath = path.extname(params.coverAudioPath).replace(".", "").trim().toLowerCase();
-      const audioExtension = audioExtFromMime || audioExtFromPath || "wav";
-      coverNarrationAudioUrl = `assets/page-audio/cover.${audioExtension}`;
-      zip.file(coverNarrationAudioUrl, audioBuffer);
-    }
+    coverNarrationAudioUrl = await resolveDownloadUrlForAudioPath(params.coverAudioPath);
   }
 
   const pageAudioByNodeId = new Map<string, string>();
@@ -11759,21 +11872,12 @@ async function republishBookBundleWithVisualStoryAudio(params: {
     if (!nodeId || !audioPath) continue;
     const nodeIndex = manifest.nodes.findIndex((node) => String(node.id || "") === nodeId);
     if (nodeIndex < 0) continue;
-    const audioFile = bucket.file(audioPath);
-    const [audioExists] = await audioFile.exists();
-    if (!audioExists) continue;
-    const [audioBuffer] = await audioFile.download();
-    const [audioMeta] = await audioFile.getMetadata().catch(() => [{ contentType: "audio/wav" } as { contentType?: string }]);
-    const audioExtFromMime = audioFileExtensionFromMimeType(audioMeta?.contentType);
-    const audioExtFromPath = path.extname(audioPath).replace(".", "").trim().toLowerCase();
-    const audioExtension = audioExtFromMime || audioExtFromPath || "wav";
-    const safeNodeId = sanitizeBundlePathPart(nodeId, "page");
-    const bundledAudioPath = `assets/page-audio/${safeNodeId}.${audioExtension}`;
-    zip.file(bundledAudioPath, audioBuffer);
-    pageAudioByNodeId.set(nodeId, bundledAudioPath);
+    const audioUrl = await resolveDownloadUrlForAudioPath(audioPath);
+    if (!audioUrl) continue;
+    pageAudioByNodeId.set(nodeId, audioUrl);
     manifest.nodes[nodeIndex] = {
       ...manifest.nodes[nodeIndex],
-      pageAudioUrl: bundledAudioPath,
+      pageAudioUrl: audioUrl,
       pageAudioStatus: "ready",
       pageAudioStoragePath: audioPath
     };
@@ -11901,6 +12005,15 @@ function sanitizeUsageEntriesForClient(entries: UsageReportEntry[]): UsageReport
     };
     if (entry.costMode === "usage" || entry.costMode === "flat") {
       sanitized.costMode = entry.costMode;
+    }
+    if (entry.usageSource === "api" || entry.usageSource === "estimated") {
+      sanitized.usageSource = entry.usageSource;
+    }
+    if (toNonNegativeInt(entry.referenceImageCount) > 0) {
+      sanitized.referenceImageCount = toNonNegativeInt(entry.referenceImageCount);
+    }
+    if (typeof entry.usageWarning === "string" && entry.usageWarning.trim()) {
+      sanitized.usageWarning = entry.usageWarning.trim().replace(/\s+/g, " ").slice(0, 160);
     }
     if (typeof entry.quality === "string" && entry.quality.trim()) {
       sanitized.quality = entry.quality.trim();
@@ -14189,6 +14302,120 @@ export const retryStuckBookJob = onCall(
   }
 );
 
+function normalizeHeroPortraitUpload(raw: unknown): {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+  extension: string;
+  sizeBytes: number;
+} | null {
+  if (!isRecord(raw)) return null;
+  const base64Raw = typeof raw.base64 === "string" ? raw.base64.trim() : "";
+  if (!base64Raw) return null;
+  const normalizedBase64 = base64Raw.includes(",")
+    ? base64Raw.slice(base64Raw.indexOf(",") + 1)
+    : base64Raw;
+  const compactBase64 = normalizedBase64.replace(/\s+/g, "");
+  if (!compactBase64 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(compactBase64)) {
+    throw new HttpsError("invalid-argument", "Portre görseli okunamadı.");
+  }
+  const buffer = Buffer.from(compactBase64, "base64");
+  if (buffer.length <= 0) {
+    throw new HttpsError("invalid-argument", "Portre görseli boş.");
+  }
+  if (buffer.length > HERO_PORTRAIT_MAX_BYTES) {
+    throw new HttpsError("invalid-argument", "Portre görseli 4 MB sınırını aşıyor.");
+  }
+  const contentType =
+    normalizeImageMimeType(raw.mimeType) ||
+    detectMimeTypeFromBase64Payload(compactBase64);
+  if (!/^image\/(?:png|jpe?g|webp)$/i.test(contentType)) {
+    throw new HttpsError("invalid-argument", "Portre için PNG, JPG veya WebP görsel yükleyin.");
+  }
+  const extension = inferExtensionFromContentType(contentType, "png");
+  const rawFileName = firstNonEmptyString(raw.fileName, `hero-portrait.${extension}`) || `hero-portrait.${extension}`;
+  const fileName = sanitizeBundlePathPart(rawFileName, "hero-portrait").slice(0, 90) || `hero-portrait.${extension}`;
+  return {
+    buffer,
+    contentType,
+    fileName,
+    extension,
+    sizeBytes: buffer.length
+  };
+}
+
+async function saveVisualHeroPortraitReference(params: {
+  uid: string;
+  courseId: string;
+  upload: ReturnType<typeof normalizeHeroPortraitUpload> & {};
+}): Promise<VisualStoryHeroPortraitReference> {
+  const safeUid = sanitizeBundlePathPart(params.uid, "user");
+  const safeCourseId = sanitizeBundlePathPart(params.courseId, "book");
+  const storagePath = `smartbooks/${safeUid}/${safeCourseId}/references/hero-portrait.${params.upload.extension}`;
+  await getStorage().bucket().file(storagePath).save(params.upload.buffer, {
+    contentType: params.upload.contentType,
+    metadata: {
+      metadata: {
+        uid: params.uid,
+        courseId: params.courseId,
+        kind: "visual-story-hero-portrait-reference",
+        originalFileName: params.upload.fileName
+      }
+    }
+  });
+  return {
+    storagePath,
+    contentType: params.upload.contentType,
+    fileName: params.upload.fileName,
+    sizeBytes: params.upload.sizeBytes
+  };
+}
+
+function normalizeVisualHeroPortraitReference(raw: unknown): VisualStoryHeroPortraitReference | undefined {
+  if (!isRecord(raw)) return undefined;
+  const storagePath = firstNonEmptyString(raw.storagePath);
+  const contentType = normalizeImageMimeType(raw.contentType);
+  const fileName = firstNonEmptyString(raw.fileName) || "hero-portrait.png";
+  const sizeBytes = toNonNegativeInt(raw.sizeBytes);
+  if (!storagePath || !contentType) return undefined;
+  return { storagePath, contentType, fileName, sizeBytes };
+}
+
+function normalizeHeroPortraitGender(raw: unknown): HeroPortraitGender | undefined {
+  const normalized = String(raw || "").trim().toLowerCase();
+  if (normalized === "male" || normalized === "erkek") return "male";
+  if (normalized === "female" || normalized === "kadın" || normalized === "kadin") return "female";
+  return undefined;
+}
+
+function normalizeHeroPortraitName(raw: unknown): string | undefined {
+  const name = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!name) return undefined;
+  return name.slice(0, 60);
+}
+
+function heroPortraitGenderPromptLine(gender?: HeroPortraitGender): string {
+  if (gender === "male") {
+    return "Gender lock: depict the portrait-based hero as male. Long hair does not make him female; do not infer gender from hairstyle.";
+  }
+  if (gender === "female") {
+    return "Gender lock: depict the portrait-based hero as female. Keep the character's gender consistent on every page.";
+  }
+  return "";
+}
+
+async function loadOpenAiHeroPortraitReference(
+  reference: VisualStoryHeroPortraitReference
+): Promise<OpenAiImageReference> {
+  const asset = await loadBinaryAssetFromSource(reference.storagePath);
+  const contentType = normalizeImageMimeType(asset.contentType) || reference.contentType || "image/png";
+  return {
+    buffer: asset.buffer,
+    contentType,
+    fileName: reference.fileName || `hero-portrait.${inferExtensionFromContentType(contentType, "png")}`
+  };
+}
+
 export const registerFcmToken = onCall(
   {
     region: "us-central1",
@@ -14242,6 +14469,21 @@ export const startBookGenerationJob = onCall(
       subGenre,
       targetPageCountRaw
     );
+    const heroPortraitUpload = normalizeHeroPortraitUpload(payload.heroPortraitImage);
+    const heroPortraitName = normalizeHeroPortraitName(payload.heroPortraitName);
+    const heroPortraitGender = normalizeHeroPortraitGender(payload.heroPortraitGender);
+    if (heroPortraitUpload && bookType !== "fairy_tale") {
+      throw new HttpsError("invalid-argument", "Portre ekleme yalnızca görsel masalda kullanılabilir.");
+    }
+    if (heroPortraitUpload && !heroPortraitName) {
+      throw new HttpsError("invalid-argument", "Portredeki kişinin adını yazın.");
+    }
+    if (heroPortraitUpload && !heroPortraitGender) {
+      throw new HttpsError("invalid-argument", "Portre için cinsiyet seçin.");
+    }
+    const createCreditCost = resolveBookJobCreateCreditCost(bookType, {
+      hasVisualHeroPortrait: Boolean(heroPortraitUpload)
+    });
 
     assertSafeBookTexts([
       { label: "topic", value: topic },
@@ -14259,8 +14501,11 @@ export const startBookGenerationJob = onCall(
     const totalSections = Math.max(3, getExpectedChapterCountForBookType(bookType) + 2);
     const jobRef = getBookJobRef(jobId);
 
-    await ensureCreditAvailable(uid, { action: "create", cost: resolveBookCreateCreditCost(bookType) });
+    await ensureCreditAvailable(uid, { action: "create", cost: createCreditCost });
     try {
+      const heroPortraitReference = heroPortraitUpload
+        ? await saveVisualHeroPortraitReference({ uid, courseId, upload: heroPortraitUpload })
+        : undefined;
       const storedCreativeBrief = omitUndefinedRecord(creativeBrief);
       const nextData: Record<string, unknown> = {
         uid,
@@ -14272,6 +14517,10 @@ export const startBookGenerationJob = onCall(
         bookType,
         subGenre: subGenre || null,
         allowAiBookTitleGeneration,
+        createCreditCost,
+        visualHeroPortrait: heroPortraitReference || null,
+        visualHeroPortraitName: heroPortraitReference ? heroPortraitName : null,
+        visualHeroPortraitGender: heroPortraitReference ? heroPortraitGender : null,
         creativeBrief: storedCreativeBrief,
         targetPageCount: Number.isFinite(targetPageCountRaw) ? Math.max(1, Math.floor(targetPageCountRaw)) : null,
         resultPath,
@@ -14496,6 +14745,9 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   subGenre?: string;
   creativeBrief?: SmartBookCreativeBrief;
   allowAiBookTitleGeneration: boolean;
+  heroPortrait?: VisualStoryHeroPortraitReference;
+  heroPortraitGender?: HeroPortraitGender;
+  heroPortraitName?: string;
   imageApiKey: string;
   ai: GoogleGenAI;
 }): Promise<void> {
@@ -14513,10 +14765,16 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     subGenre,
     creativeBrief,
     allowAiBookTitleGeneration,
+    heroPortrait,
+    heroPortraitGender,
+    heroPortraitName,
     imageApiKey,
     ai
   } = params;
   const usageEntries: UsageReportEntry[] = [];
+  const heroPortraitImage = heroPortrait
+    ? await loadOpenAiHeroPortraitReference(heroPortrait)
+    : undefined;
 
   await jobRef.set(
     {
@@ -14538,7 +14796,11 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         sourceContent,
         creativeBrief,
         allowAiBookTitleGeneration,
-        ageGroup
+        ageGroup,
+        {
+          heroPortraitName,
+          heroPortraitGender
+        }
       ),
       420_000,
       () => new HttpsError("deadline-exceeded", "Görsel masal planı zaman aşımına uğradı.")
@@ -14552,9 +14814,22 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     }
   );
   usageEntries.push(planResult.usageEntry);
+  await jobRef.set(
+    {
+      completedSections: 1,
+      currentSectionIndex: null,
+      currentStepLabel: "Masal planı hazırlandı",
+      ...buildBookJobUsageSnapshot(usageEntries),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
 
-  const { plan, courseMeta } = planResult;
-  const bookTitle = String(plan.bookTitle || topic || "Fortale").replace(/\s+/g, " ").trim() || "Fortale";
+  const { plan } = planResult;
+  const courseMeta: CourseOutlineMeta = { ...planResult.courseMeta };
+  let bookTitle = String(
+    allowAiBookTitleGeneration ? plan.bookTitle : (topic || plan.bookTitle || "")
+  ).replace(/\s+/g, " ").trim();
   await jobRef.set(
     {
       completedSections: 1,
@@ -14585,6 +14860,9 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         ai,
         openAiApiKey: imageApiKey,
         prompt: coverPrompt,
+        heroPortraitImage,
+        heroPortraitGender,
+        heroPortraitName,
         label: "Görsel masal kapağı",
         audienceLevel: ageGroup,
         isCover: true
@@ -14652,6 +14930,9 @@ async function runVisualFairyTaleBookGenerationJob(params: {
             ai,
             openAiApiKey: imageApiKey,
             prompt: pagePrompt,
+            heroPortraitImage,
+            heroPortraitGender,
+            heroPortraitName,
             label: `${page.title}: Görsel masal sayfası`,
             audienceLevel: ageGroup
           }),
@@ -14736,6 +15017,23 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   });
   const usageTotals = sumUsageEntries(usageEntries);
   await consumeQuota(uid, "generateCourseOutline", planTier);
+  let bookCreditReceiptId: string | null = null;
+  try {
+    const creditResult = await consumeCreditWithReceipt(
+      uid,
+      "create",
+      resolveBookJobCreateCreditCost(bookType, { hasVisualHeroPortrait: Boolean(heroPortrait) })
+    );
+    bookCreditReceiptId = creditResult.receiptId;
+  } catch (creditError) {
+    logger.error("Visual fairy tale credit charge failed after successful generation", {
+      jobId: jobRef.id,
+      courseId,
+      bookType,
+      hasVisualHeroPortrait: Boolean(heroPortrait),
+      error: toErrorMessage(creditError)
+    });
+  }
   await jobRef.set(
     {
       status: "completed",
@@ -14755,6 +15053,8 @@ async function runVisualFairyTaleBookGenerationJob(params: {
       totalTokens: usageTotals.totalTokens,
       estimatedCostUsd: usageTotals.estimatedCostUsd,
       usageEntries: sanitizeUsageEntriesForClient(usageEntries),
+      creditReceiptId: bookCreditReceiptId,
+      creditRefunded: false,
       updatedAt: FieldValue.serverTimestamp(),
       completedAt: FieldValue.serverTimestamp(),
       errorMessage: FieldValue.delete()
@@ -14772,6 +15072,169 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     totalTokens: usageTotals.totalTokens,
     estimatedCostUsd: usageTotals.estimatedCostUsd
   });
+}
+
+async function repairNarrativeMetadataBeforeCover(
+  ai: GoogleGenAI,
+  params: {
+    currentBookTitle?: string;
+    lockBookTitle?: boolean;
+    topic?: string;
+    bookType: SmartBookBookType;
+    subGenre?: string;
+    creativeBrief?: SmartBookCreativeBrief;
+    nodes: TimelineNode[];
+  }
+): Promise<{ bookTitle: string; chapterTitles: string[]; usageEntries: UsageReportEntry[] }> {
+  const usageEntries: UsageReportEntry[] = [];
+  const preferredLanguage = resolvePreferredLanguageFromBrief(
+    params.creativeBrief,
+    params.currentBookTitle,
+    params.topic,
+    params.subGenre,
+    ...params.nodes.map((node) => `${node.title || ""} ${node.description || ""}`)
+  );
+  const chapterInputs = params.nodes.map((node, index) => {
+    const nodeRecord = node as TimelineNode & { narrationText?: string };
+    const content = String(node.content || node.pageText || nodeRecord.narrationText || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 1800);
+    return [
+      `${index + 1})`,
+      `currentTitle="${String(node.title || "").replace(/\s+/g, " ").trim() || "[BOS]"}"`,
+      `description="${String(node.description || "").replace(/\s+/g, " ").trim() || "-"}"`,
+      `content="${content || "-"}"`
+    ].join(" ");
+  }).join("\n");
+  let retryHint = "";
+  let lastAiCandidate: { bookTitle: string; chapterTitles: string[]; issues: string[] } | null = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const prompt = `
+Kapak üretilmeden önce son kitap metadata kontrolü yap.
+
+Bu aşamada kitap bölümleri/metinleri artık üretilmiş durumda. Görevin, bu gerçek içeriğe bakıp kitabın adını ve bölüm adlarını netleştirmek.
+
+Bağlam:
+- Tür: ${params.bookType}
+${params.subGenre ? `- Alt tür: ${params.subGenre}` : ""}
+${params.topic ? `- Kullanıcı girdisi/konu: ${params.topic}` : ""}
+${params.currentBookTitle ? `- Mevcut kitap adı: ${params.currentBookTitle}` : "- Mevcut kitap adı: [BOS]"}
+${params.creativeBrief?.characters ? `- Karakter notları: ${params.creativeBrief.characters}` : ""}
+${params.creativeBrief?.settingPlace ? `- Mekan: ${params.creativeBrief.settingPlace}` : ""}
+${params.creativeBrief?.settingTime ? `- Zaman: ${params.creativeBrief.settingTime}` : ""}
+
+Bölümler:
+${chapterInputs}
+
+Kurallar:
+1) Yalnızca JSON döndür.
+2) ${params.lockBookTitle && params.currentBookTitle ? `bookTitle kullanıcı tarafından verilmiştir; aynen "${params.currentBookTitle}" olarak korunmalı.` : "bookTitle, kitabı gerçekten okumuş bir yazarın koyacağı doğal kitap adı gibi olmalı; içerikten doğmalı."}
+3) bookTitle boş olamaz, kategori/alt tür adı olamaz, teknik etiket olamaz, karakter listesi olamaz, placeholder olamaz.
+4) Sana örnek başlık, şablon veya tavsiye kelime verilmiyor. Ezbere şiirsel başlık üretme; kitabın ayırt edici fikrini adlandır.
+5) Şu kelimeleri ve çok yakın varyantlarını bookTitle veya chapterTitles içinde kullanma: tozlu, fısıltı, yaka, sessiz, yıldız, renkli, gölge, saklı, geçit, ay ışığı.
+6) chapterTitles tam olarak ${params.nodes.length} öğe içermeli; her biri kendi bölümündeki sahne, karar, çatışma veya dönüşümden doğmalı.
+7) chapterTitles "Bölüm 1", "Giriş", "Gelişme", "Final", "Perde I" gibi teknik etiketler olamaz.
+8) Dil: ${preferredLanguageLabel(preferredLanguage)}.
+
+JSON şeması:
+{
+  "bookTitle": "string",
+  "chapterTitles": ["string"]
+}
+${retryHint ? `\nÖnceki deneme hataları:\n${retryHint}` : ""}
+`.trim();
+
+    const response = await ai.models.generateContent({
+      model: GEMINI_PLANNER_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: getSystemInstructionForBookType(params.bookType),
+        temperature: 0.9,
+        maxOutputTokens: 1200,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            bookTitle: { type: Type.STRING },
+            chapterTitles: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
+          },
+          required: ["bookTitle", "chapterTitles"]
+        }
+      }
+    });
+
+    usageEntries.push(buildGeminiUsageEntry(
+      `Kapak oncesi metadata kontrolu deneme ${attempt}`,
+      GEMINI_PLANNER_MODEL,
+      (response as unknown as { usageMetadata?: unknown }).usageMetadata,
+      prompt,
+      response.text || ""
+    ));
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = parseJsonObject(response.text, "Failed to parse final narrative metadata response.");
+    } catch (error) {
+      retryHint = `JSON okunamadı. Hata: ${toErrorMessage(error).slice(0, 220)}`;
+      continue;
+    }
+
+    const bookTitle = String(parsed.bookTitle || "").replace(/\s+/g, " ").trim();
+    const chapterTitles = Array.isArray(parsed.chapterTitles)
+      ? parsed.chapterTitles.map((item) => String(item || "").replace(/\s+/g, " ").trim()).slice(0, params.nodes.length)
+      : [];
+    const issues: string[] = [];
+
+    if (params.lockBookTitle && String(params.currentBookTitle || "").trim()) {
+      if (bookTitle !== String(params.currentBookTitle || "").replace(/\s+/g, " ").trim()) {
+        issues.push("bookTitle kullanıcı başlığıyla aynı korunmalı.");
+      }
+    } else if (!bookTitle || isNarrativeBookTitleTooGeneric(bookTitle, {
+      topic: params.topic || "",
+      subGenre: params.subGenre,
+      bookType: params.bookType
+    })) {
+      issues.push("bookTitle boş, jenerik, teknik veya klişe.");
+    }
+    if (chapterTitles.length !== params.nodes.length) {
+      issues.push(`chapterTitles tam olarak ${params.nodes.length} öğe içermeli.`);
+    }
+    chapterTitles.forEach((title, index) => {
+      if (isNarrativeChapterTitleUnusable(title)) {
+        issues.push(`${index + 1}. bölüm adı boş, teknik veya klişe.`);
+      }
+    });
+    lastAiCandidate = { bookTitle, chapterTitles, issues };
+
+    if (issues.length === 0) {
+      return { bookTitle, chapterTitles, usageEntries };
+    }
+    retryHint = issues.map((issue) => `- ${issue}`).join("\n");
+  }
+
+  if (
+    lastAiCandidate &&
+    lastAiCandidate.bookTitle &&
+    lastAiCandidate.chapterTitles.length === params.nodes.length &&
+    lastAiCandidate.chapterTitles.every((title) => !isNarrativeChapterTitleUnusable(title))
+  ) {
+    logger.warn("Final narrative metadata accepted after strict title retries", {
+      bookType: params.bookType,
+      issues: lastAiCandidate.issues
+    });
+    return {
+      bookTitle: lastAiCandidate.bookTitle,
+      chapterTitles: lastAiCandidate.chapterTitles,
+      usageEntries
+    };
+  }
+
+  throw new HttpsError("internal", `Kapak öncesi kitap adı ve bölüm adları üretilemedi.${retryHint ? ` Son hata: ${retryHint.slice(0, 500)}` : ""}`);
 }
 
 async function sendBookReadyPushNotification(uid: string, bookTitle: string): Promise<void> {
@@ -14880,6 +15343,9 @@ async function runBookGenerationJobTask(
   const subGenre = typeof claimedJobData.subGenre === "string" ? claimedJobData.subGenre : undefined;
   const allowAiBookTitleGeneration = claimedJobData.allowAiBookTitleGeneration === true;
   const targetPageCountRaw = Number(claimedJobData.targetPageCount);
+  const visualHeroPortrait = normalizeVisualHeroPortraitReference(claimedJobData.visualHeroPortrait);
+  const visualHeroPortraitName = normalizeHeroPortraitName(claimedJobData.visualHeroPortraitName);
+  const visualHeroPortraitGender = normalizeHeroPortraitGender(claimedJobData.visualHeroPortraitGender);
   const creativeBrief = normalizeSmartBookCreativeBrief(
     claimedJobData.creativeBrief,
     bookType,
@@ -14901,7 +15367,7 @@ async function runBookGenerationJobTask(
   }
 
   const ai = createGoogleGenAiClient();
-  if (bookType === "fairy_tale" && isVisualFairyTaleAudienceLevel(ageGroup)) {
+  if (bookType === "fairy_tale") {
     await runVisualFairyTaleBookGenerationJob({
       jobRef,
       uid,
@@ -14916,16 +15382,16 @@ async function runBookGenerationJobTask(
       subGenre,
       creativeBrief,
       allowAiBookTitleGeneration,
+      heroPortrait: visualHeroPortrait,
+      heroPortraitName: visualHeroPortraitName,
+      heroPortraitGender: visualHeroPortraitGender,
       imageApiKey,
       ai
     });
     return;
   }
 
-  const generationAgeGroup =
-    bookType === "fairy_tale"
-      ? resolveFairyTaleLegacyAudienceLevel(ageGroup)
-      : ageGroup;
+  const generationAgeGroup = ageGroup;
   const usageEntries: UsageReportEntry[] = [];
   const outlineResult = await withTransientProviderRetry(
     () => withTimeout(
@@ -14968,7 +15434,8 @@ async function runBookGenerationJobTask(
   const finalTargetPageCount = Number.isFinite(Number(outlineResult.courseMeta.targetPageCount))
     ? Math.max(1, Math.floor(Number(outlineResult.courseMeta.targetPageCount)))
     : (Number.isFinite(targetPageCountRaw) ? Math.max(1, Math.floor(targetPageCountRaw)) : undefined);
-  const bookTitle = String(outlineResult.courseMeta.bookTitle || topic || lectureNodes[0]?.title || "Fortale")
+  const courseMeta: CourseOutlineMeta = { ...outlineResult.courseMeta };
+  let bookTitle = String(courseMeta.bookTitle || "")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -15103,7 +15570,7 @@ async function runBookGenerationJobTask(
     subGenre,
     creativeBrief,
     targetPageCount: finalTargetPageCount,
-    courseMeta: outlineResult.courseMeta,
+    courseMeta,
     coverImageUrl: coverResult.coverImageUrl,
     nodes: generatedNodes,
     contentPackagePath: resultPath
@@ -15205,7 +15672,12 @@ async function runBookBundleJobTask(
 
   let bookCreditReceiptId: string | null = null;
   try {
-    const creditResult = await consumeCreditWithReceipt(uid, "create", resolveBookCreateCreditCost(bookType));
+    const storedCreateCreditCost = toNonNegativeInt(jobData?.createCreditCost);
+    const creditResult = await consumeCreditWithReceipt(
+      uid,
+      "create",
+      storedCreateCreditCost > 0 ? storedCreateCreditCost : resolveBookCreateCreditCost(bookType)
+    );
     bookCreditReceiptId = creditResult.receiptId;
   } catch (creditError) {
     logger.error("Book credit charge failed after successful generation", {
@@ -16150,6 +16622,7 @@ export const processPodcastAudioJobTask = onDocumentCreated(
     }
   }
 );
+
 
 export const creditGateway = onCall(
   {

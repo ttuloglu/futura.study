@@ -40,7 +40,7 @@ export default function BottomNav({
                 <div className="h-9 rounded-full flex items-center gap-2">
                   <button
                     onClick={() => onViewChange('HOME')}
-                    className={`fortale-chrome-icon-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 ${currentView === 'HOME' ? 'is-active opacity-100' : 'opacity-85 hover:opacity-100'}`}
+                    className="fortale-chrome-icon-button fortale-home-nav-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] opacity-85 hover:opacity-100 hover:scale-110 active:scale-90 transition-transform duration-200"
                   >
                     <FLogo size={22} className="fortale-nav-logo" />
                   </button>

@@ -48,6 +48,9 @@ interface UsageReportEntry {
   costUsdInputImage?: number;
   costUsdOutputImage?: number;
   costMode?: "usage" | "flat";
+  usageSource?: "api" | "estimated";
+  referenceImageCount?: number;
+  usageWarning?: string;
   quality?: string;
   size?: string;
 }
@@ -256,7 +259,6 @@ const cancelBookGenerationJobCallable = httpsCallable<{ jobId: string }, { cance
   "cancelBookGenerationJob",
   { timeout: 15_000 }
 );
-
 const OPERATION_LABELS: Record<AiOperation, string> = {
   extractDocumentContext: "dokuman analizi",
   generateCourseOutline: "akis plani",
@@ -302,6 +304,8 @@ export function formatAiUsageEntryForConsole(entry: UsageReportEntry): string {
 
   if (provider === "openai" && isGptImage2Model(model)) {
     if (entry.costMode) suffixParts.push(`mode ${entry.costMode}`);
+    if (entry.usageSource) suffixParts.push(`source ${entry.usageSource}`);
+    if (toTokenCount(entry.referenceImageCount) > 0) suffixParts.push(`ref_images ${toTokenCount(entry.referenceImageCount)}`);
     if (entry.quality) suffixParts.push(`quality ${entry.quality}`);
     if (entry.size) suffixParts.push(`size ${entry.size}`);
     if (toTokenCount(entry.inputTextTokens) > 0) suffixParts.push(`in_text ${toTokenCount(entry.inputTextTokens)}`);
@@ -309,6 +313,7 @@ export function formatAiUsageEntryForConsole(entry: UsageReportEntry): string {
     if (Number(entry.costUsdInputText) > 0) suffixParts.push(`cost_in_text ${toUsd(entry.costUsdInputText)} usd`);
     if (Number(entry.costUsdInputImage) > 0) suffixParts.push(`cost_in_image ${toUsd(entry.costUsdInputImage)} usd`);
     if (Number(entry.costUsdOutputImage) > 0) suffixParts.push(`cost_out_image ${toUsd(entry.costUsdOutputImage)} usd`);
+    if (entry.usageWarning) suffixParts.push(`warning ${String(entry.usageWarning).replace(/\s+/g, "_").slice(0, 80)}`);
   }
 
   return `${label}: ${provider} ${model} in ${inputTokens} out ${outputTokens} total ${totalTokens} price ${priceUsd} usd${suffixParts.length ? ` | ${suffixParts.join(" ")}` : ""}`;
@@ -477,6 +482,9 @@ function normalizeJobUsageEntries(raw: unknown): UsageReportEntry[] {
       costUsdInputImage: Number(toUsd(data.costUsdInputImage)),
       costUsdOutputImage: Number(toUsd(data.costUsdOutputImage)),
       costMode: data.costMode === "usage" ? "usage" : (data.costMode === "flat" ? "flat" : undefined),
+      usageSource: data.usageSource === "api" ? "api" : (data.usageSource === "estimated" ? "estimated" : undefined),
+      referenceImageCount: toTokenCount(data.referenceImageCount),
+      usageWarning: typeof data.usageWarning === "string" ? data.usageWarning.trim().slice(0, 160) : undefined,
       quality: typeof data.quality === "string" ? data.quality : undefined,
       size: typeof data.size === "string" ? data.size : undefined
     });
@@ -1152,6 +1160,14 @@ export async function startBookGenerationJob(params: {
   targetPageCount?: number;
   creativeBrief?: SmartBookCreativeBrief;
   allowAiBookTitleGeneration?: boolean;
+  heroPortraitName?: string;
+  heroPortraitGender?: "male" | "female";
+  heroPortraitImage?: {
+    base64: string;
+    mimeType: string;
+    fileName: string;
+    sizeBytes?: number;
+  };
 }): Promise<BookGenerationJobResult> {
   await appCheckReady;
   const payload: Record<string, unknown> = {};
@@ -1166,6 +1182,11 @@ export async function startBookGenerationJob(params: {
   }
   if (params.creativeBrief) payload.creativeBrief = params.creativeBrief;
   if (params.allowAiBookTitleGeneration === true) payload.allowAiBookTitleGeneration = true;
+  if (params.heroPortraitName?.trim()) payload.heroPortraitName = params.heroPortraitName.trim();
+  if (params.heroPortraitGender === "male" || params.heroPortraitGender === "female") {
+    payload.heroPortraitGender = params.heroPortraitGender;
+  }
+  if (params.heroPortraitImage?.base64) payload.heroPortraitImage = params.heroPortraitImage;
   const response = await startBookGenerationJobCallable(payload);
   return await hydrateBookGenerationJob(response.data || {});
 }

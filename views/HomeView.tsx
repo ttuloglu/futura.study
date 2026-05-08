@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Cropper, { type Area, type Point } from 'react-easy-crop';
 import {
   ViewState,
   CourseData,
@@ -12,7 +13,7 @@ import {
   SmartBookEndingStyle,
   CourseOpenUiState
 } from '../types';
-import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Feather, ScrollText } from 'lucide-react';
+import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Feather, ScrollText, ImagePlus, UserRound } from 'lucide-react';
 import { cancelBookGenerationJob, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
@@ -69,6 +70,23 @@ type CourseDeleteModalState = {
   courseTitle: string;
 };
 
+type HeroPortraitCropState = {
+  sourceUrl: string;
+  fileName: string;
+  crop: Point;
+  zoom: number;
+  croppedAreaPixels: Area | null;
+  isProcessing: boolean;
+};
+
+type HeroPortraitGender = 'unspecified' | 'male' | 'female';
+
+const HERO_PORTRAIT_GENDER_OPTIONS: Array<{ value: HeroPortraitGender; label: string }> = [
+  { value: 'male', label: 'Erkek' },
+  { value: 'female', label: 'Kadın' },
+  { value: 'unspecified', label: 'Belirtme' }
+];
+
 type StickyTint = {
   bg: string;
   border: string;
@@ -86,12 +104,19 @@ const STICKY_MODAL_TOP_INSET = 'calc(env(safe-area-inset-top, 0px) + 78px)';
 const STICKY_MODAL_BOTTOM_INSET = 'calc(env(safe-area-inset-bottom, 0px) + 84px)';
 const APP_SURFACE_COLOR = '#1A1F26';
 const MAX_SOURCE_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_HERO_PORTRAIT_SOURCE_FILE_SIZE_BYTES = 16 * 1024 * 1024;
+const HERO_PORTRAIT_OUTPUT_SIZE = 768;
+const HERO_PORTRAIT_OUTPUT_MIME = 'image/jpeg';
+const HERO_PORTRAIT_OUTPUT_QUALITY = 0.86;
 const DOCUMENT_ACCEPT =
   '.pdf,.txt,.md,.markdown,.csv,.json,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,application/pdf,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const HERO_PORTRAIT_ACCEPT = 'image/*';
 const BOOK_CREATING_LOOP_VIDEO_SRC = '/animations/book-creating-loop.mp4';
 const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation-job';
 const GENERIC_TRANSIENT_ERROR_MESSAGE = 'Bir sorun oluştu. Lütfen kısa bir süre sonra tekrar deneyin.';
 const GENERIC_AUTH_REQUIRED_MESSAGE = 'Oturum doğrulanamadı. Lütfen tekrar giriş yapın.';
+const FAIRY_TALE_AGE_GROUP_VALUES: SmartBookAgeGroup[] = ['1-6'];
+const LEGACY_FAIRY_TALE_AGE_GROUP_VALUES: SmartBookAgeGroup[] = ['7+', '1-3', '4-6', '7-9'];
 
 type GenerationStatusCopy = {
   bookQueued: string;
@@ -685,36 +710,24 @@ const CREATE_FORM_GREEN_TONE: WizardTone = {
   glow: 'rgba(126, 183, 155, 0.16)'
 };
 
-const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
-  fairy_tale: {
-    tone: { border: 'rgba(217, 174, 74, 0.5)', fill: 'rgba(171, 125, 42, 0.16)', glow: 'rgba(171, 125, 42, 0.18)' },
-    progress: 'linear-gradient(90deg, #ab7d2a 0%, #d9ae4a 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(171,125,42,0.88) 0%, rgba(105,76,29,0.94) 100%)',
-    actionBorder: 'rgba(222, 184, 89, 0.62)',
-    actionGlow: 'rgba(171, 125, 42, 0.18)'
-  },
-  story: {
-    tone: { border: 'rgba(16, 185, 129, 0.68)', fill: 'rgba(16, 185, 129, 0.2)', glow: 'rgba(16, 185, 129, 0.28)' },
-    progress: 'linear-gradient(90deg, #10b981 0%, #22d3ee 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(18,126,102,0.94) 0%, rgba(14,101,91,0.94) 100%)',
-    actionBorder: 'rgba(16, 185, 129, 0.7)',
-    actionGlow: 'rgba(16, 185, 129, 0.28)'
-  },
-  novel: {
-    tone: { border: 'rgba(227, 10, 23, 0.72)', fill: 'rgba(227, 10, 23, 0.18)', glow: 'rgba(227, 10, 23, 0.24)' },
-    progress: 'linear-gradient(90deg, #e30a17 0%, #ff4654 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(163,12,24,0.94) 0%, rgba(227,10,23,0.94) 100%)',
-    actionBorder: 'rgba(255, 134, 143, 0.72)',
-    actionGlow: 'rgba(227, 10, 23, 0.28)'
-  }
-};
-
 const NEUTRAL_BOOK_TYPE_THEME: BookTypeTheme = {
   tone: { border: 'rgba(230, 245, 238, 0.2)', fill: 'rgba(230, 245, 238, 0.1)', glow: 'rgba(130, 178, 169, 0.16)' },
-  progress: 'linear-gradient(90deg, #dcefd7 0%, #7fb2bd 100%)',
-  actionBackground: 'linear-gradient(135deg, rgba(44,82,72,0.94) 0%, rgba(20,52,43,0.94) 100%)',
+  progress: '#b5cfbb',
+  actionBackground: 'rgba(44, 82, 72, 0.94)',
   actionBorder: 'rgba(220, 239, 215, 0.42)',
   actionGlow: 'rgba(130, 178, 169, 0.18)'
+};
+
+const HOME_BACKGROUND_THEME_VARS: React.CSSProperties = {
+  ['--fortale-home-glow-left' as string]: 'rgba(126, 166, 176, 0.22)',
+  ['--fortale-home-glow-right' as string]: 'rgba(118, 146, 109, 0.2)',
+  ['--fortale-home-bg-top' as string]: '#314b56',
+  ['--fortale-home-bg-mid' as string]: '#1c352f',
+  ['--fortale-home-bg-bottom' as string]: '#081510',
+  ['--fortale-home-overlay-top' as string]: 'rgba(232, 245, 241, 0.16)',
+  ['--fortale-home-overlay-mid' as string]: 'rgba(12, 31, 25, 0.08)',
+  ['--fortale-home-overlay-bottom' as string]: 'rgba(1, 8, 6, 0.34)',
+  ['--fortale-home-overlay-glow' as string]: 'rgba(191, 225, 228, 0.26)'
 };
 
 const HOME_SPLIT_BOOK_TYPES: Array<{
@@ -752,9 +765,6 @@ function resolveWizardTone(index: number): WizardTone {
 }
 
 function resolveBookTypeTheme(bookType?: SmartBookBookType): BookTypeTheme {
-  if (bookType === 'fairy_tale') return BOOK_TYPE_THEMES.fairy_tale;
-  if (bookType === 'story') return BOOK_TYPE_THEMES.story;
-  if (bookType === 'novel') return BOOK_TYPE_THEMES.novel;
   return NEUTRAL_BOOK_TYPE_THEME;
 }
 
@@ -801,6 +811,22 @@ function writePendingBookGenerationJob(payload: PendingBookGenerationJob | null)
   } catch {
     // Ignore storage failures in constrained runtimes.
   }
+}
+
+function parseGenerationStartedAtMs(value: string | undefined | null): number | null {
+  const parsed = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getRemainingGenerationMinutes(
+  bookType: SmartBookBookType | undefined | null,
+  startedAtMs: number | null,
+  nowMs: number
+): number {
+  const estimatedMinutes = getEstimatedGenerationMinutes(bookType || undefined);
+  if (!startedAtMs) return estimatedMinutes;
+  const elapsedMinutes = Math.max(0, Math.floor((nowMs - startedAtMs) / 60_000));
+  return Math.max(1, estimatedMinutes - elapsedMinutes);
 }
 
 function formatStickyDate(date: Date | string, locale: string): string {
@@ -906,6 +932,67 @@ function readFileAsBase64(file: File): Promise<string> {
     };
     reader.readAsDataURL(file);
   });
+}
+
+function loadImageForCanvas(sourceUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Portre görseli hazırlanamadı.'));
+    image.src = sourceUrl;
+  });
+}
+
+function drawHeroPortraitCropToCanvas(
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement,
+  croppedAreaPixels: Area,
+  outputSize: number
+) {
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Portre düzenleme alanı açılamadı.');
+
+  const size = Math.max(64, Math.floor(outputSize));
+  canvas.width = size;
+  canvas.height = size;
+  context.clearRect(0, 0, size, size);
+  context.fillStyle = '#101820';
+  context.fillRect(0, 0, size, size);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(
+    image,
+    Math.max(0, Math.floor(croppedAreaPixels.x)),
+    Math.max(0, Math.floor(croppedAreaPixels.y)),
+    Math.max(1, Math.floor(croppedAreaPixels.width)),
+    Math.max(1, Math.floor(croppedAreaPixels.height)),
+    0,
+    0,
+    size,
+    size
+  );
+}
+
+async function createCroppedHeroPortraitFile(crop: HeroPortraitCropState): Promise<File> {
+  if (!crop.croppedAreaPixels) {
+    throw new Error('Portre kırpma alanı hazır değil.');
+  }
+  const image = await loadImageForCanvas(crop.sourceUrl);
+  const canvas = document.createElement('canvas');
+  drawHeroPortraitCropToCanvas(canvas, image, crop.croppedAreaPixels, HERO_PORTRAIT_OUTPUT_SIZE);
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (result) resolve(result);
+      else reject(new Error('Portre görseli sıkıştırılamadı.'));
+    }, HERO_PORTRAIT_OUTPUT_MIME, HERO_PORTRAIT_OUTPUT_QUALITY);
+  });
+  const safeName = (crop.fileName || 'hero-portrait')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80) || 'hero-portrait';
+  return new File([blob], `${safeName}-portre.jpg`, { type: HERO_PORTRAIT_OUTPUT_MIME });
 }
 
 function toTitleCaseTr(value: string): string {
@@ -1198,6 +1285,29 @@ function bookTypeToLabel(bookType?: SmartBookBookType): string {
   return 'Kitap';
 }
 
+const MARKDOWN_IMAGE_URL_CAPTURE_RE = /!\[[^\]]*]\(([^)]+)\)/;
+
+function resolveFirstVisualStoryImageUrl(course: CourseData): string | undefined {
+  if (course.visualStoryMode !== true || !Array.isArray(course.nodes)) return undefined;
+
+  const orderedNodes = [...course.nodes].sort((a, b) => {
+    const aSeq = Number.isFinite(Number(a.pageSequence)) ? Number(a.pageSequence) : Number.MAX_SAFE_INTEGER;
+    const bSeq = Number.isFinite(Number(b.pageSequence)) ? Number(b.pageSequence) : Number.MAX_SAFE_INTEGER;
+    return aSeq - bSeq;
+  });
+
+  for (const node of orderedNodes) {
+    const pageImageUrl = typeof node.pageImageUrl === 'string' ? node.pageImageUrl.trim() : '';
+    if (pageImageUrl) return pageImageUrl;
+
+    const content = typeof node.content === 'string' ? node.content : '';
+    const markdownImageUrl = content.match(MARKDOWN_IMAGE_URL_CAPTURE_RE)?.[1]?.trim();
+    if (markdownImageUrl) return markdownImageUrl;
+  }
+
+  return undefined;
+}
+
 function resolveAutoNarrativeBookTitle(params: {
   bookType: SmartBookBookType;
   subGenre?: string;
@@ -1350,25 +1460,30 @@ export default function HomeView({
 }: HomeViewProps) {
   const { language, locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('7+');
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('1-6');
   const [bookLanguageInput, setBookLanguageInput] = useState<string>(defaultBookLanguage);
   const [selectedBookType, setSelectedBookType] = useState<SmartBookBookType>('fairy_tale');
   const [isCreationWizardOpen, setCreationWizardOpen] = useState(false);
   const [accentedBookType, setAccentedBookType] = useState<SmartBookBookType | null>(null);
   const [selectedSubGenre, setSelectedSubGenre] = useState<string>(SMARTBOOK_SUBGENRE_OPTIONS.fairy_tale[0]);
   const [selectedEndingStyle, setSelectedEndingStyle] = useState<SmartBookEndingStyle>('happy');
-  const [creatorNameInput, setCreatorNameInput] = useState('');
   const [heroNamesInput, setHeroNamesInput] = useState('');
   const [storyInputMode, setStoryInputMode] = useState<StoryInputMode>('manual');
   const [storyBlueprintInput, setStoryBlueprintInput] = useState('');
   const [settingPlaceInput, setSettingPlaceInput] = useState('');
   const [settingTimeInput, setSettingTimeInput] = useState('');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [heroPortraitFile, setHeroPortraitFile] = useState<File | null>(null);
+  const [heroPortraitName, setHeroPortraitName] = useState('');
+  const [heroPortraitGender, setHeroPortraitGender] = useState<HeroPortraitGender>('unspecified');
+  const [heroPortraitCrop, setHeroPortraitCrop] = useState<HeroPortraitCropState | null>(null);
   const [creationStep, setCreationStep] = useState<number>(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [activeGeneratingBookType, setActiveGeneratingBookType] = useState<SmartBookBookType | null>(null);
+  const [generationStartedAtMs, setGenerationStartedAtMs] = useState<number | null>(null);
+  const [generationClockNowMs, setGenerationClockNowMs] = useState<number>(() => Date.now());
   const [literaryFactIndex, setLiteraryFactIndex] = useState(0);
   const literaryFactOrderRef = useRef<number[]>([]);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
@@ -1379,6 +1494,7 @@ export default function HomeView({
   const [isReminderPickerOpen, setIsReminderPickerOpen] = useState(false);
   const [reminderDraft, setReminderDraft] = useState('');
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const heroPortraitInputRef = useRef<HTMLInputElement | null>(null);
   const stickyRowContainerRef = useRef<HTMLElement | null>(null);
   const stickyCopyTimerRef = useRef<number | null>(null);
   const stickyNoticeTimerRef = useRef<number | null>(null);
@@ -1444,6 +1560,7 @@ export default function HomeView({
     stopBookGenerationPolling(true);
     setIsGenerating(false);
     setActiveGeneratingBookType(null);
+    setGenerationStartedAtMs(null);
     setGenerationStatus('');
     resetGenerationProgress(0);
     if (jobId) {
@@ -1502,12 +1619,12 @@ export default function HomeView({
     setStoryBlueprintInput('');
     setSettingPlaceInput('');
     setSettingTimeInput('');
-    setCreatorNameInput('');
     setBookLanguageInput(defaultBookLanguage);
     setCreationStep(1);
     setCreationWizardOpen(false);
     setAccentedBookType(null);
     clearSourceFile();
+    clearHeroPortrait();
   }
 
   function resolvePreferredBookZipPath(...values: Array<unknown>): string | undefined {
@@ -1563,6 +1680,7 @@ export default function HomeView({
     setGenerationStatus('Kitap açılıyor...');
     raiseGenerationProgress(100);
     setActiveGeneratingBookType(null);
+    setGenerationStartedAtMs(null);
     resetSmartBookCreationForm();
     setIsGenerating(false);
     onCourseCreate(course);
@@ -1589,6 +1707,7 @@ export default function HomeView({
     stopBookGenerationPolling(true);
     setIsGenerating(false);
     setActiveGeneratingBookType(null);
+    setGenerationStartedAtMs(null);
     setGenerationStatus('');
     resetGenerationProgress(0);
     setSourceNotice(getUserFacingError({ message }, GENERIC_TRANSIENT_ERROR_MESSAGE));
@@ -1698,16 +1817,34 @@ export default function HomeView({
   }, []);
 
   useEffect(() => {
+    const sourceUrl = heroPortraitCrop?.sourceUrl;
+    return () => {
+      if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    };
+  }, [heroPortraitCrop?.sourceUrl]);
+
+  useEffect(() => {
     const pendingJob = readPendingBookGenerationJob();
     if (!pendingJob) return;
 
     setIsGenerating(true);
     setSourceNotice(null);
     setActiveGeneratingBookType(pendingJob.bookType);
+    setGenerationStartedAtMs(parseGenerationStartedAtMs(pendingJob.startedAt) || Date.now());
+    setGenerationClockNowMs(Date.now());
     setGenerationStatus('Üretim durumu kontrol ediliyor...');
     resetGenerationProgress(1);
     startBookGenerationPolling(pendingJob.jobId, pendingJob.bookType, true);
   }, []);
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    setGenerationClockNowMs(Date.now());
+    const interval = window.setInterval(() => {
+      setGenerationClockNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [isGenerating]);
 
   useEffect(() => {
     if (!isGenerating || !activeGenerationJobIdRef.current) return;
@@ -2157,6 +2294,68 @@ export default function HomeView({
     }
   };
 
+  const handleHeroPortraitPick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file) return;
+
+    if (file.size > MAX_HERO_PORTRAIT_SOURCE_FILE_SIZE_BYTES) {
+      setSourceNotice(t('Portre görseli 16 MB sınırını aşıyor.'));
+      setHeroPortraitFile(null);
+      return;
+    }
+
+    setHeroPortraitCrop((previous) => {
+      if (previous?.sourceUrl) URL.revokeObjectURL(previous.sourceUrl);
+      return {
+        sourceUrl: URL.createObjectURL(file),
+        fileName: file.name || 'hero-portrait',
+        crop: { x: 0, y: 0 },
+        zoom: 1.18,
+        croppedAreaPixels: null,
+        isProcessing: false
+      };
+    });
+    setSourceNotice(null);
+  };
+
+  const dismissHeroPortraitCrop = () => {
+    setHeroPortraitCrop((previous) => {
+      if (previous?.sourceUrl) URL.revokeObjectURL(previous.sourceUrl);
+      return null;
+    });
+  };
+
+  const updateHeroPortraitCrop = (patch: Partial<Pick<HeroPortraitCropState, 'crop' | 'zoom' | 'croppedAreaPixels'>>) => {
+    setHeroPortraitCrop((previous) => previous ? { ...previous, ...patch } : previous);
+  };
+
+  const applyHeroPortraitCrop = async () => {
+    const crop = heroPortraitCrop;
+    if (!crop || crop.isProcessing) return;
+    setHeroPortraitCrop((previous) => previous ? { ...previous, isProcessing: true } : previous);
+    try {
+      const croppedFile = await createCroppedHeroPortraitFile(crop);
+      setHeroPortraitFile(croppedFile);
+      setSourceNotice(null);
+      dismissHeroPortraitCrop();
+    } catch (error) {
+      console.error('Hero portrait crop failed', error);
+      setHeroPortraitCrop((previous) => previous ? { ...previous, isProcessing: false } : previous);
+      setSourceNotice(t('Portre hazırlanamadı.'));
+    }
+  };
+
+  const clearHeroPortrait = () => {
+    setHeroPortraitFile(null);
+    setHeroPortraitName('');
+    setHeroPortraitGender('unspecified');
+    dismissHeroPortraitCrop();
+    if (heroPortraitInputRef.current) {
+      heroPortraitInputRef.current.value = '';
+    }
+  };
+
   const handleBookTypeSelect = (bookType: SmartBookBookType) => {
     if (isCreationWizardOpen && selectedBookType === bookType) {
       setCreationWizardOpen(false);
@@ -2168,22 +2367,42 @@ export default function HomeView({
     setSelectedBookType(bookType);
     setAccentedBookType(bookType);
     setCreationStep(1);
-    if (bookType === 'fairy_tale' && !['1-6', '7+'].includes(selectedAgeGroup)) {
-      setSelectedAgeGroup('7+');
-    } else if (bookType !== 'fairy_tale' && ['1-6', '7+'].includes(selectedAgeGroup)) {
+    if (bookType !== 'fairy_tale') {
+      clearHeroPortrait();
+    }
+    if (bookType === 'fairy_tale' && !FAIRY_TALE_AGE_GROUP_VALUES.includes(selectedAgeGroup)) {
+      setSelectedAgeGroup('1-6');
+    } else if (
+      bookType !== 'fairy_tale' &&
+      (FAIRY_TALE_AGE_GROUP_VALUES.includes(selectedAgeGroup) || LEGACY_FAIRY_TALE_AGE_GROUP_VALUES.includes(selectedAgeGroup))
+    ) {
       setSelectedAgeGroup('general');
     }
   };
 
+  const handleCloseCreationWizard = () => {
+    setCreationWizardOpen(false);
+    setAccentedBookType(null);
+    setCreationStep(1);
+    setSourceNotice(null);
+  };
+
   const pageRange = getPageRangeByBookType(selectedBookType, selectedAgeGroup);
-  const selectedCreateCreditCost = getBookTypeCreateCreditCost(selectedBookType);
+  const heroPortraitExtraCreditCost = selectedBookType === 'fairy_tale' && heroPortraitFile ? 1 : 0;
+  const selectedCreateCreditCost = getBookTypeCreateCreditCost(selectedBookType) + heroPortraitExtraCreditCost;
   const targetPageCountPreview = buildTargetPageFromBrief({
     bookType: selectedBookType,
     targetPageMin: pageRange.min,
     targetPageMax: pageRange.max
   }, selectedAgeGroup);
   const estimatedGenerationMinutes = getEstimatedGenerationMinutes(selectedBookType);
-  const displayedGenerationMinutes = getEstimatedGenerationMinutes(activeGeneratingBookType || selectedBookType);
+  const displayedGenerationMinutes = isGenerating
+    ? getRemainingGenerationMinutes(
+      activeGeneratingBookType || selectedBookType,
+      generationStartedAtMs,
+      generationClockNowMs
+    )
+    : getEstimatedGenerationMinutes(activeGeneratingBookType || selectedBookType);
 
   const buildCreativeBriefPayload = (): SmartBookCreativeBrief => {
     const normalizedStoryBlueprint = compactInlineText(storyBlueprintInput);
@@ -2191,7 +2410,6 @@ export default function HomeView({
     const manualStoryBlueprint = storyInputMode === 'manual' ? normalizedStoryBlueprint : '';
     const normalizedPlace = compactInlineText(settingPlaceInput);
     const normalizedTime = compactInlineText(settingTimeInput);
-    const normalizedCreatorName = compactInlineText(creatorNameInput);
     const normalizedBookTitleInput = compactInlineText(searchTerm);
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
     const characterHints = [
@@ -2204,8 +2422,7 @@ export default function HomeView({
       normalizedBookTitleInput ? `Kitap adi: ${normalizedBookTitleInput}` : undefined,
       normalizedHeroNames ? `Kahraman isimleri: ${normalizedHeroNames}` : undefined,
       normalizedPlace ? `Mekan: ${normalizedPlace}` : undefined,
-      normalizedTime ? `Zaman: ${normalizedTime}` : undefined,
-      normalizedCreatorName ? `Kurgulayan: ${normalizedCreatorName}` : undefined
+      normalizedTime ? `Zaman: ${normalizedTime}` : undefined
     ].filter(Boolean) as string[];
     const promptFactsBlock = promptFacts.length > 0
       ? `Kullanici baglami (zorunlu): ${promptFacts.join(' | ')}.`
@@ -2239,7 +2456,18 @@ export default function HomeView({
       ? compactInlineText(storyBlueprintInput)
       : (heroNamesHint ? `Kahraman isimleri: ${heroNamesHint}.` : '');
     const selectedFile = sourceFile;
+    const selectedHeroPortraitFile = selectedBookType === 'fairy_tale' && storyInputMode === 'auto' ? heroPortraitFile : null;
+    const selectedHeroPortraitName = compactInlineText(heroPortraitName);
     const creativeBrief = buildCreativeBriefPayload();
+
+    if (selectedHeroPortraitFile && !selectedHeroPortraitName) {
+      setSourceNotice(t('Portredeki kişinin adını yazın.'));
+      return;
+    }
+    if (selectedHeroPortraitFile && heroPortraitGender === 'unspecified') {
+      setSourceNotice(t('Portre için cinsiyet seçin.'));
+      return;
+    }
 
     if (
       !isAutoStoryMode &&
@@ -2279,8 +2507,11 @@ export default function HomeView({
 
     stopBookGenerationPolling(true);
     writePendingBookGenerationJob(null);
+    const generationStartedAt = new Date();
     setIsGenerating(true);
     setActiveGeneratingBookType(selectedBookType);
+    setGenerationStartedAtMs(generationStartedAt.getTime());
+    setGenerationClockNowMs(generationStartedAt.getTime());
     resetGenerationProgress(1);
     setSourceNotice(null);
     try {
@@ -2328,20 +2559,29 @@ export default function HomeView({
       const jobState = await startBookGenerationJob({
         topic: normalizedTopic || undefined,
         sourceContent,
-        creatorName: compactInlineText(creatorNameInput) || undefined,
         ageGroup: selectedAgeGroup,
         bookType: selectedBookType,
         subGenre: selectedSubGenre || undefined,
         targetPageCount: targetPageCountPreview,
         creativeBrief,
-        allowAiBookTitleGeneration
+        allowAiBookTitleGeneration,
+        heroPortraitName: selectedHeroPortraitFile ? selectedHeroPortraitName : undefined,
+        heroPortraitGender: selectedHeroPortraitFile && heroPortraitGender !== 'unspecified' ? heroPortraitGender : undefined,
+        heroPortraitImage: selectedHeroPortraitFile
+          ? {
+              base64: await readFileAsBase64(selectedHeroPortraitFile),
+              mimeType: selectedHeroPortraitFile.type || 'image/png',
+              fileName: selectedHeroPortraitFile.name || 'hero-portrait.png',
+              sizeBytes: selectedHeroPortraitFile.size
+            }
+          : undefined
       });
 
       writePendingBookGenerationJob({
         jobId: jobState.jobId,
         bookType: selectedBookType,
         topic: normalizedTopic || undefined,
-        startedAt: new Date().toISOString()
+        startedAt: generationStartedAt.toISOString()
       });
 
       syncGenerationUiFromJob(jobState, selectedBookType);
@@ -2402,6 +2642,7 @@ export default function HomeView({
     const isOpenReady = openState.status === 'ready';
     const isOpenFailed = openState.status === 'failed';
     const openProgress = Math.max(0, Math.min(100, Math.round(openState.progress || 0)));
+    const coverImageUrl = resolveFirstVisualStoryImageUrl(course) || course.coverImageUrl;
 
     const actionLabel = isOpenReady
       ? t('Oku')
@@ -2418,7 +2659,6 @@ export default function HomeView({
         : isOpenFailed
           ? null
           : <Download size={11} className="mr-1" />;
-
     const actionButtonStyle: React.CSSProperties = isOpenReady
       ? {
         borderColor: 'rgba(110, 231, 183, 0.55)',
@@ -2456,9 +2696,9 @@ export default function HomeView({
         className={`fortale-shelf-card group ${isOpenReady ? 'is-ready' : ''}`}
       >
         <div className="fortale-shelf-cover">
-          {course.coverImageUrl ? (
+          {coverImageUrl ? (
             <img
-              src={course.coverImageUrl}
+              src={coverImageUrl}
               alt={`${course.topic} ${t('Fortale kapağı')}`}
               className="h-full w-full object-cover object-center border-0"
             />
@@ -2527,6 +2767,7 @@ export default function HomeView({
   const isCreationIntroOnly = !isCreationWizardOpen && !isGenerating;
   const selectedBookTheme = resolveBookTypeTheme(selectedBookType);
   const visibleWizardTheme = accentedBookType ? resolveBookTypeTheme(accentedBookType) : NEUTRAL_BOOK_TYPE_THEME;
+  const homeBackgroundThemeVars = HOME_BACKGROUND_THEME_VARS;
   const activeProgressTheme = resolveBookTypeTheme(activeGeneratingBookType || selectedBookType);
   const finalPreferenceStep = 3;
   const storyModeStep = 4;
@@ -2535,8 +2776,8 @@ export default function HomeView({
   const visibleCreationSteps = useMemo<number[]>(
     () => {
       const steps = [1, 2, 3, 4];
-      if (storyInputMode === 'auto') return steps;
-      return [1, 2, 3, 4, 5, 6];
+      if (storyInputMode !== 'auto') steps.push(settingDetailsStep);
+      return steps;
     },
     [storyInputMode]
   );
@@ -2555,8 +2796,19 @@ export default function HomeView({
   const isCreationStepComplete = (step: number): boolean => {
     if (step === 1) return Boolean(selectedBookType);
     if (step === 2) return Boolean(selectedSubGenre);
-    if (step === finalPreferenceStep) return Boolean(selectedEndingStyle) && Boolean(selectedAgeGroup) && Boolean(bookLanguageInput.trim());
-    if (step === storyModeStep) return storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
+    if (step === finalPreferenceStep) {
+      if (selectedBookType === 'fairy_tale') return Boolean(selectedEndingStyle) && Boolean(bookLanguageInput.trim());
+      return Boolean(selectedEndingStyle) && Boolean(selectedAgeGroup) && Boolean(bookLanguageInput.trim());
+    }
+    if (step === storyModeStep) {
+      const storyModeComplete = storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
+      const portraitComplete =
+        selectedBookType !== 'fairy_tale' ||
+        storyInputMode !== 'auto' ||
+        !heroPortraitFile ||
+        (Boolean(heroPortraitName.trim()) && heroPortraitGender !== 'unspecified');
+      return storyModeComplete && portraitComplete;
+    }
     if (step === settingDetailsStep) return true;
     if (step === creatorDetailsStep) return true;
     return false;
@@ -2577,29 +2829,31 @@ export default function HomeView({
   const currentStepTitle = (() => {
     if (creationStep === 1) return t('Kitap Türü');
     if (creationStep === 2) return t('Alt Tür');
-    if (creationStep === finalPreferenceStep) return `${t('Final Tercihi')} + ${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
+    if (creationStep === finalPreferenceStep) {
+      return selectedBookType === 'fairy_tale'
+        ? `${t('Final Tercihi')} + ${t('Dil (Yazın)')}`
+        : `${t('Final Tercihi')} + ${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
+    }
     if (creationStep === storyModeStep) return t('Kurgu Modu');
     if (creationStep === settingDetailsStep) return `${t('Hikayenin Mekanı')} + ${t('Hikayenin Zamanı')} + ${t('Kitabın Adı')}`;
-    return t('Kahramanlar ve Oluşturucu');
+    return t('Kahramanlar');
   })();
   const canMoveNext = currentVisibleStepIndex < totalVisibleStepCount - 1 && isCurrentStepComplete && !isGenerating;
   const canCreateOnFinalStep = currentVisibleStepIndex === totalVisibleStepCount - 1 && isAllStepsComplete && !isGenerating;
   const wizardFieldClass = 'fortale-input-surface mt-1 h-10 w-full rounded-xl border px-2.5 text-[13px] text-zinc-100 placeholder:text-[#b8d8ca] focus:outline-none';
   const wizardFieldStyle = (): React.CSSProperties => ({
-    borderColor: CREATE_FORM_GREEN_TONE.border,
-    background: 'linear-gradient(180deg, rgba(58,104,86,0.86) 0%, rgba(24,75,56,0.84) 100%)',
-    backgroundColor: 'rgba(28, 75, 58, 0.8)',
-    boxShadow: `inset 0 0 0 1px ${CREATE_FORM_GREEN_TONE.fill}, 0 0 12px ${CREATE_FORM_GREEN_TONE.glow}`
+    borderColor: visibleWizardTheme.tone.border,
+    backgroundColor: 'rgba(28, 75, 58, 0.76)',
+    boxShadow: `inset 0 0 0 1px ${visibleWizardTheme.tone.fill}, 0 0 12px ${visibleWizardTheme.actionGlow}`
   });
   const wizardTextareaClass = 'fortale-input-surface mt-1 w-full rounded-xl border px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#b8d8ca] resize-none focus:outline-none';
   const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
-    borderColor: isSelected ? selectedBookTheme.actionBorder : CREATE_FORM_GREEN_TONE.border,
-    background: isSelected
-      ? selectedBookTheme.actionBackground
-      : 'linear-gradient(180deg, rgba(42,77,68,0.64) 0%, rgba(13,35,29,0.76) 100%)',
+    color: isSelected ? '#0f172a' : 'rgba(226, 232, 240, 0.72)',
+    borderColor: isSelected ? visibleWizardTheme.actionBorder : selectedBookTheme.tone.border,
+    backgroundColor: isSelected ? visibleWizardTheme.progress : 'rgba(8, 12, 18, 0.14)',
     boxShadow: isSelected
-      ? `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 16px ${selectedBookTheme.actionGlow}`
-      : `inset 0 0 0 1px ${CREATE_FORM_GREEN_TONE.fill}, 0 0 12px ${CREATE_FORM_GREEN_TONE.glow}`
+      ? `0 8px 22px ${visibleWizardTheme.actionGlow}, inset 0 1px 0 rgba(255,255,255,0.38)`
+      : `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 12px ${selectedBookTheme.actionGlow}`
   });
   const primaryActionButtonStyle: React.CSSProperties = {
     borderColor: visibleWizardTheme.actionBorder,
@@ -2713,7 +2967,7 @@ export default function HomeView({
   ], []);
 
   return (
-    <div className="view-container fortale-home-view">
+    <div className="view-container fortale-home-view" style={homeBackgroundThemeVars}>
       {/* Yıldız ve peri tozu — header altından tüm sayfayı kaplar */}
       <div className="fixed inset-0 z-[300] overflow-hidden pointer-events-none" aria-hidden>
         {homeStars.map((star, idx) => (
@@ -2815,19 +3069,37 @@ export default function HomeView({
             onChange={handleSourceFilePick}
             className="hidden"
           />
+          <input
+            ref={heroPortraitInputRef}
+            type="file"
+            accept={HERO_PORTRAIT_ACCEPT}
+            onChange={handleHeroPortraitPick}
+            className="hidden"
+          />
 
           <form
             onSubmit={(event) => event.preventDefault()}
             className="relative z-10 rounded-2xl"
           >
             <div
-              className={`fortale-create-panel ${isCreationIntroOnly ? 'is-type-only' : 'is-open'} rounded-2xl p-2.5 overflow-hidden${(isGenerating || isCreationIntroOnly) ? '' : ' border'}`}
+              className={`fortale-create-panel ${isCreationIntroOnly ? 'is-type-only' : 'is-open'} relative rounded-2xl p-2.5 overflow-hidden${(isGenerating || isCreationIntroOnly) ? '' : ' border'}`}
               style={{
                 ...wizardThemeVars,
                 borderColor: visibleWizardTheme.tone.border,
                 boxShadow: `inset 0 0 0 1px ${visibleWizardTheme.tone.fill}`
               }}
             >
+              {!isCreationIntroOnly && !isGenerating && (
+                <button
+                  type="button"
+                  onClick={handleCloseCreationWizard}
+                  className="fortale-action-button absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-full border text-white transition-transform active:scale-95"
+                  aria-label={t('Kapat')}
+                  title={t('Kapat')}
+                >
+                  <X size={15} strokeWidth={2.4} />
+                </button>
+              )}
               <div className={`px-1.5 pb-2 ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
                 <p className="text-[15px] font-bold text-white">
                   {isGenerating ? t('Fortale oluşturuluyor...') : currentStepTitle}
@@ -2845,17 +3117,21 @@ export default function HomeView({
                 )}
                 {!isGenerating && (
                   <div className="fortale-step-rail" style={{ gridTemplateColumns: `repeat(${totalVisibleStepCount}, minmax(0, 1fr))` }}>
-                    {visibleCreationSteps.map((_, index) => {
+                    {visibleCreationSteps.map((step, index) => {
                       const stepNo = index + 1;
                       const isDone = index < currentVisibleStepIndex;
                       const isCurrent = index === currentVisibleStepIndex;
                       return (
-                        <span
-                          key={stepNo}
+                        <button
+                          key={step}
+                          type="button"
+                          onClick={() => setCreationStep(step)}
                           className={`fortale-step-dot ${isDone ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''}`}
+                          aria-current={isCurrent ? 'step' : undefined}
+                          aria-label={`${t('Adım')} ${stepNo}`}
                         >
                           {stepNo}
-                        </span>
+                        </button>
                       );
                     })}
                   </div>
@@ -2875,6 +3151,7 @@ export default function HomeView({
                       <span className="fortale-type-core" aria-hidden="true">
                         <FLogo size={22} />
                       </span>
+                      <span className="fortale-type-shine" aria-hidden="true" />
                       {HOME_SPLIT_BOOK_TYPES.map((option) => {
                         const isSelected = isCreationWizardOpen && selectedBookType === option.value;
                         const isAccented = accentedBookType === option.value;
@@ -2948,27 +3225,34 @@ export default function HomeView({
                         })}
                       </div>
                     </div>
-                    <div>
-                      <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#d7efe6]">{t('Yaş Grubunu Seç')}</p>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-6', '7+'].includes(opt.value) : !['1-6', '7+', '1-3', '4-6', '7-9'].includes(opt.value)).map((option) => {
-                          const isSelected = selectedAgeGroup === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setSelectedAgeGroup(option.value)}
-                              className="fortale-form-button rounded-xl border px-1.5 py-1.5 text-center transition-colors"
-                              style={wizardOptionButtonStyle(isSelected)}
-                              aria-pressed={isSelected}
-                              title={t(option.hint)}
-                            >
-                              <span className="block text-[11px] font-bold text-white">{t(option.label)}</span>
-                            </button>
-                          );
-                        })}
+                    {selectedBookType !== 'fairy_tale' && (
+                      <div>
+                        <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#d7efe6]">{t('Yaş Grubunu Seç')}</p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => !FAIRY_TALE_AGE_GROUP_VALUES.includes(opt.value) && !LEGACY_FAIRY_TALE_AGE_GROUP_VALUES.includes(opt.value)).map((option) => {
+                            const isSelected = selectedAgeGroup === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setSelectedAgeGroup(option.value)}
+                                className="fortale-form-button rounded-xl border px-1.5 py-1.5 text-center transition-colors"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                                title={t(option.hint)}
+                              >
+                                <span
+                                  className="block text-[11px] font-bold"
+                                  style={{ color: isSelected ? '#0f172a' : 'rgba(226, 232, 240, 0.82)' }}
+                                >
+                                  {t(option.label)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div>
                       <label className="mb-1 block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kitap Dili')}</label>
                       <input
@@ -2990,7 +3274,10 @@ export default function HomeView({
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setStoryInputMode('manual')}
+                          onClick={() => {
+                            setStoryInputMode('manual');
+                            clearHeroPortrait();
+                          }}
                           className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
                           style={{
                             color: storyInputMode === 'manual' ? '#ffffff' : '#d7efe6',
@@ -3030,26 +3317,79 @@ export default function HomeView({
                       ) : (
                         <div className="space-y-2">
                           <p className="text-[12px] text-[#b8d8ca]">
-                            {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Seçimden sonra doğrudan Oluşturucu adımına geçilir.')}
+                            {t('Otomatik modda model kurgu detaylarını kendisi oluşturur.')}
                           </p>
-                          <label className="block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
-                          <input
-                            value={heroNamesInput}
-                            onChange={(event) => setHeroNamesInput(event.target.value)}
-                            maxLength={180}
-                            placeholder={t('Örn: Elara, Aras, Mira')}
-                            className={wizardFieldClass}
-                            style={wizardFieldStyle()}
-                          />
-                          <label className="mt-1 block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
-                          <input
-                            value={creatorNameInput}
-                            onChange={(event) => setCreatorNameInput(event.target.value)}
-                            maxLength={90}
-                            placeholder={t('Örn: Ayşe Demir')}
-                            className={wizardFieldClass}
-                            style={wizardFieldStyle()}
-                          />
+                          {selectedBookType === 'fairy_tale' && (
+                            <div className="rounded-xl border px-2.5 py-2.5" style={wizardFieldStyle()}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-[12px] font-bold text-white">{t('Portreni Ekle - Masalda Sen de Yer Al')}</p>
+                                  <p className="mt-0.5 text-[11px] leading-snug text-[#d7efe6]">
+                                    {heroPortraitFile
+                                      ? `${heroPortraitFile.name} · ${t('+1 kredi')}`
+                                      : t('Portre eklemek isteğe bağlıdır · +1 kredi')}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  {heroPortraitFile && (
+                                    <button
+                                      type="button"
+                                      onClick={clearHeroPortrait}
+                                      className="fortale-action-button h-8 w-8 rounded-xl border inline-flex items-center justify-center"
+                                      title={t('Kaldır')}
+                                      aria-label={t('Portreyi kaldır')}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => heroPortraitInputRef.current?.click()}
+                                    className="fortale-action-button h-8 px-2.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1.5 is-primary"
+                                    style={primaryActionButtonStyle}
+                                  >
+                                    {heroPortraitFile ? <UserRound size={14} /> : <ImagePlus size={14} />}
+                                    {heroPortraitFile ? t('Değiştir') : t('Ekle')}
+                                  </button>
+                                </div>
+                              </div>
+                              {heroPortraitFile && (
+                                <div className="mt-2 space-y-2">
+                                  <div>
+                                    <label className="mb-1 block text-[11px] font-semibold text-[#d7efe6]">{t('Portredeki kişinin adı')}</label>
+                                    <input
+                                      value={heroPortraitName}
+                                      onChange={(event) => setHeroPortraitName(event.target.value)}
+                                      maxLength={60}
+                                      placeholder={t('Örn: Aras')}
+                                      className={wizardFieldClass}
+                                      style={wizardFieldStyle()}
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="mb-1 text-[11px] font-semibold text-[#d7efe6]">{t('Portre cinsiyeti')}</p>
+                                    <div className="grid grid-cols-3 gap-1">
+                                      {HERO_PORTRAIT_GENDER_OPTIONS.map((option) => {
+                                        const isSelected = heroPortraitGender === option.value;
+                                        return (
+                                          <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => setHeroPortraitGender(option.value)}
+                                            className="fortale-form-button h-8 rounded-lg border px-2 text-[11px] font-bold transition"
+                                            style={wizardOptionButtonStyle(isSelected)}
+                                            aria-pressed={isSelected}
+                                          >
+                                            {t(option.label)}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3090,29 +3430,6 @@ export default function HomeView({
                     />
                   </div>
                 )}
-
-                {creationStep === creatorDetailsStep && (
-                  <div>
-                    <label className="block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
-                    <input
-                      value={heroNamesInput}
-                      onChange={(event) => setHeroNamesInput(event.target.value)}
-                      maxLength={180}
-                      placeholder={t('Örn: Elara, Aras, Mira')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                    <label className="mt-2 block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
-                    <input
-                      value={creatorNameInput}
-                      onChange={(event) => setCreatorNameInput(event.target.value)}
-                      maxLength={90}
-                      placeholder={t('Örn: Ayşe Demir')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                  </div>
-                )}
               </fieldset>
               )}
 
@@ -3134,7 +3451,7 @@ export default function HomeView({
                     {generationStatus ? translateGenerationStatusLabel(generationStatus, language) : t('Fortale oluşturuluyor...')}
                   </p>
                   <p className="mt-1 text-center text-[13px] text-[#b8d8ca]">
-                    {t('Tahmini okuma süresi')}: {displayedGenerationMinutes} {t('dk')}
+                    {t('Tahmini üretim süresi')}: {displayedGenerationMinutes} {t('dk')}
                   </p>
 
                 </div>
@@ -3164,17 +3481,19 @@ export default function HomeView({
                 </>
               ) : (
                 <>
-                <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'} ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
-                  {currentVisibleStepIndex > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
-                      className="fortale-action-button h-10 px-3.5 rounded-2xl border text-[12px] font-semibold inline-flex items-center gap-1.5"
-                    >
-                      <ArrowLeft size={14} />
-                      {t('Geri')}
-                    </button>
-                  )}
+                <div className={`fortale-wizard-actions mt-3 flex flex-wrap items-center justify-between gap-2 ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    {currentVisibleStepIndex > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
+                        className="fortale-action-button h-10 px-3.5 rounded-2xl border text-[12px] font-semibold inline-flex items-center gap-1.5"
+                      >
+                        <ArrowLeft size={14} />
+                        {t('Geri')}
+                      </button>
+                    )}
+                  </div>
 
                   {currentVisibleStepIndex < totalVisibleStepCount - 1 ? (
                     <button
@@ -3205,7 +3524,7 @@ export default function HomeView({
                       style={canCreateOnFinalStep ? primaryActionButtonStyle : undefined}
                     >
                       <BookPlus size={15} />
-                      {`${t('Fortale Oluştur')} (${selectedCreateCreditCost} ${t('kredi')})`}
+                      {`${t('Oluştur')} (${selectedCreateCreditCost} ${t('kredi')})`}
                     </button>
                   )}
                 </div>
@@ -3237,6 +3556,81 @@ export default function HomeView({
             );
           })()}
         </section>
+
+        {heroPortraitCrop && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[115]">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+              onClick={heroPortraitCrop.isProcessing ? undefined : dismissHeroPortraitCrop}
+              aria-label={t('Vazgeç')}
+            />
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div className="w-full max-w-md rounded-[24px] border border-white/10 bg-[#171f29]/95 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.48)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-bold text-white">{t('Portreyi Hazırla')}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-[#b8d0ea]">{heroPortraitCrop.fileName}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dismissHeroPortraitCrop}
+                    disabled={heroPortraitCrop.isProcessing}
+                    className="h-8 w-8 shrink-0 rounded-xl border border-white/12 text-[#d6e5f4] disabled:opacity-50 inline-flex items-center justify-center"
+                    aria-label={t('Kapat')}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                <div className="mt-4 flex justify-center">
+                  <div className="relative h-[min(78vw,360px)] w-[min(78vw,360px)] overflow-hidden rounded-2xl border border-white/14 bg-black/30 touch-none">
+                    <Cropper
+                      image={heroPortraitCrop.sourceUrl}
+                      crop={heroPortraitCrop.crop}
+                      zoom={heroPortraitCrop.zoom}
+                      aspect={1}
+                      cropShape="rect"
+                      showGrid
+                      minZoom={1}
+                      maxZoom={4}
+                      zoomSpeed={0.9}
+                      restrictPosition
+                      onCropChange={(nextCrop) => updateHeroPortraitCrop({ crop: nextCrop })}
+                      onZoomChange={(nextZoom) => updateHeroPortraitCrop({ zoom: nextZoom })}
+                      onCropComplete={(_, croppedAreaPixels) => updateHeroPortraitCrop({ croppedAreaPixels })}
+                      onMediaLoaded={() => updateHeroPortraitCrop({ zoom: Math.max(1.05, heroPortraitCrop.zoom || 1.18) })}
+                    />
+                  </div>
+                </div>
+                <p className="mt-3 text-center text-[12px] leading-snug text-[#b8d0ea]">
+                  {t('Yüzünüzü ve saçınızı net biçimde ortalamak, masal kahramanının size daha çok benzemesine yardımcı olur.')}
+                </p>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={dismissHeroPortraitCrop}
+                    disabled={heroPortraitCrop.isProcessing}
+                    className="h-11 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[13px] font-semibold text-[#d6e5f4] disabled:opacity-60"
+                  >
+                    {t('Vazgeç')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void applyHeroPortraitCrop()}
+                    disabled={heroPortraitCrop.isProcessing}
+                    className="h-11 rounded-2xl border text-[13px] font-bold text-white disabled:opacity-60"
+                    style={primaryActionButtonStyle}
+                  >
+                    {heroPortraitCrop.isProcessing ? t('İşleniyor...') : t('Portreyi Kullan')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {isLoginRequiredModalOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[120]">

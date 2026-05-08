@@ -478,6 +478,7 @@ function buildCourseMetadataPayload(course: CourseData): Record<string, unknown>
 
 function extractBundleVersionFromPath(path: string | undefined): number {
   const rawPath = String(path || '').trim();
+  if (isCanonicalBookZipStoragePath(rawPath)) return 1;
   const match = rawPath.match(/\/v(\d+)\/book\.zip$/i);
   const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
@@ -488,9 +489,32 @@ function isBookZipStoragePath(value: unknown): boolean {
   return typeof value === 'string' && /\/book\.zip$/i.test(value.trim());
 }
 
+function isCanonicalBookZipStoragePath(value: unknown): boolean {
+  const normalized = normalizeStorageObjectPath(value);
+  return Boolean(normalized && /\/book\.zip$/i.test(normalized) && !/\/v\d+\/book\.zip$/i.test(normalized));
+}
+
 function normalizeStorageObjectPath(value: unknown): string | undefined {
   const normalized = String(value || '').trim().replace(/^\/+/, '');
   return normalized || undefined;
+}
+
+function toCanonicalBookZipStoragePath(value: unknown): string | undefined {
+  const normalized = normalizeStorageObjectPath(value);
+  if (!normalized) return undefined;
+  if (/\/v\d+\/book\.zip$/i.test(normalized)) {
+    return normalized.replace(/\/v\d+\/book\.zip$/i, '/book.zip');
+  }
+  if (/\/v\d+\/(?:package|book)\.json$/i.test(normalized)) {
+    return normalized.replace(/\/v\d+\/(?:package|book)\.json$/i, '/book.zip');
+  }
+  if (/\/(?:package|book)\.json$/i.test(normalized)) {
+    return normalized.replace(/\/(?:package|book)\.json$/i, '/book.zip');
+  }
+  if (/\/book\.zip$/i.test(normalized)) {
+    return normalized;
+  }
+  return undefined;
 }
 
 function getBookPackagePathCandidates(value: unknown): string[] {
@@ -503,26 +527,31 @@ function getBookPackagePathCandidates(value: unknown): string[] {
     candidates.push(next);
   };
 
+  if (/\/v\d+\/book\.zip$/i.test(normalized)) {
+    push(normalized);
+    push(toCanonicalBookZipStoragePath(normalized));
+    return candidates;
+  }
+
+  if (/\/v\d+\/(?:package|book)\.json$/i.test(normalized)) {
+    push(normalized.replace(/\/v\d+\/(?:package|book)\.json$/i, (match) => match.replace(/(?:package|book)\.json$/i, 'book.zip')));
+    push(toCanonicalBookZipStoragePath(normalized));
+    push(normalized);
+    return candidates;
+  }
+
   if (/\/package\.json$/i.test(normalized)) {
     const withoutFile = normalized.replace(/\/package\.json$/i, '');
-    if (/\/v\d+$/i.test(withoutFile)) {
-      push(`${withoutFile}/book.zip`);
-    } else {
-      push(`${withoutFile}/v1/book.zip`);
-      push(`${withoutFile}/book.zip`);
-    }
-    // Keep legacy JSON fallback last for old snapshots.
+    push(`${withoutFile}/v1/book.zip`);
+    push(`${withoutFile}/book.zip`);
     push(normalized);
     return candidates;
   }
 
   if (/\/book\.json$/i.test(normalized)) {
     const withoutFile = normalized.replace(/\/book\.json$/i, '');
-    if (/\/v\d+$/i.test(withoutFile)) {
-      push(`${withoutFile}/book.zip`);
-    } else {
-      push(`${withoutFile}/v1/book.zip`);
-    }
+    push(`${withoutFile}/v1/book.zip`);
+    push(`${withoutFile}/book.zip`);
     push(normalized);
     return candidates;
   }
@@ -532,12 +561,16 @@ function getBookPackagePathCandidates(value: unknown): string[] {
 }
 
 function resolvePreferredBookZipStoragePath(...values: Array<unknown>): string | undefined {
+  const zipCandidates: string[] = [];
   for (const value of values) {
     const candidates = getBookPackagePathCandidates(value);
-    const zipCandidate = candidates.find((candidate) => isBookZipStoragePath(candidate));
-    if (zipCandidate) return zipCandidate;
+    candidates.forEach((candidate) => {
+      if (isBookZipStoragePath(candidate) && !zipCandidates.includes(candidate)) {
+        zipCandidates.push(candidate);
+      }
+    });
   }
-  return undefined;
+  return zipCandidates[0];
 }
 
 function normalizeCourseStatus(value: unknown): CourseData['status'] | undefined {
@@ -594,7 +627,9 @@ function buildBookDocumentPayload(
   const existingBundleVersion = Number.isFinite(course.bundle?.version)
     ? Math.max(1, Math.floor(Number(course.bundle?.version)))
     : undefined;
-  const bundleVersion = existingBundleVersion || extractBundleVersionFromPath(packagePath);
+  const bundleVersion = isCanonicalBookZipStoragePath(packagePath)
+    ? 1
+    : (existingBundleVersion || extractBundleVersionFromPath(packagePath));
   const includesPodcast = Array.isArray(course.nodes)
     ? course.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim()))
     : false;
@@ -648,6 +683,9 @@ function buildBookDocumentPayload(
     coverNarrationAudioUrl: course.coverNarrationAudioUrl,
     coverNarrationAudioStoragePath: course.coverNarrationAudioStoragePath,
     status,
+    contentPackagePath: packagePath || undefined,
+    contentPackageUrl: course.contentPackageUrl,
+    contentPackageUpdatedAt: packagePath ? generatedAt : undefined,
     cover: Object.keys(nextCover).length > 0 ? nextCover : undefined,
     bundle,
     createdAt: course.createdAt,
@@ -1072,9 +1110,8 @@ async function hydrateCourseFromBundleBlob(
   const manifestRaw = JSON.parse(await manifestFile.async('string')) as Record<string, unknown>;
   const imageAssetCache = new Map<string, string>();
   const audioAssetCache = new Map<string, string>();
-  const audioDataAssetCache = new Map<string, string>();
 
-  const resolveAssetImageDataUrl = async (rawPath: string): Promise<string | undefined> => {
+  const resolveAssetImageUrl = async (rawPath: string): Promise<string | undefined> => {
     const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
     if (!normalizedPath) return undefined;
     const cached = imageAssetCache.get(normalizedPath);
@@ -1086,11 +1123,9 @@ async function hydrateCourseFromBundleBlob(
     const typedBlob = (blob.type || '').trim()
       ? blob
       : new Blob([blob], { type: mimeType });
-    const optimizedBlob = await optimizeImageBlobForSmartbook(typedBlob);
-    const dataUrl = await blobToDataUrlInApp(optimizedBlob);
-    if (!dataUrl) return undefined;
-    imageAssetCache.set(normalizedPath, dataUrl);
-    return dataUrl;
+    const objectUrl = URL.createObjectURL(typedBlob);
+    imageAssetCache.set(normalizedPath, objectUrl);
+    return objectUrl;
   };
 
   const resolveAssetAudioUrl = async (rawPath: string): Promise<string | undefined> => {
@@ -1104,24 +1139,6 @@ async function hydrateCourseFromBundleBlob(
     const objectUrl = URL.createObjectURL(blob);
     audioAssetCache.set(normalizedPath, objectUrl);
     return objectUrl;
-  };
-
-  const resolveAssetAudioDataUrl = async (rawPath: string): Promise<string | undefined> => {
-    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
-    if (!normalizedPath) return undefined;
-    const cached = audioDataAssetCache.get(normalizedPath);
-    if (cached) return cached;
-    const assetFile = zip.file(normalizedPath);
-    if (!assetFile) return undefined;
-    const mimeType = inferMimeTypeFromAssetPath(normalizedPath);
-    const blob = await assetFile.async('blob');
-    const typedBlob = (blob.type || '').trim()
-      ? blob
-      : new Blob([blob], { type: mimeType });
-    const dataUrl = await blobToDataUrlInApp(typedBlob);
-    if (!dataUrl) return undefined;
-    audioDataAssetCache.set(normalizedPath, dataUrl);
-    return dataUrl;
   };
 
   const rewriteMarkdownImageUrls = async (markdown: string | undefined): Promise<string | undefined> => {
@@ -1141,7 +1158,7 @@ async function hydrateCourseFromBundleBlob(
         !/^https?:\/\//i.test(source) &&
         !source.startsWith('blob:')
       ) {
-        const assetUrl = await resolveAssetImageDataUrl(source);
+        const assetUrl = await resolveAssetImageUrl(source);
         if (assetUrl) {
           const escapedAlt = alt.replace(/]/g, '\\]');
           replacement = `![${escapedAlt}](${assetUrl})`;
@@ -1177,7 +1194,7 @@ async function hydrateCourseFromBundleBlob(
         !/^data:/i.test(pageImageUrlRaw) &&
         !pageImageUrlRaw.startsWith('blob:')
       )
-        ? await resolveAssetImageDataUrl(pageImageUrlRaw)
+        ? await resolveAssetImageUrl(pageImageUrlRaw)
         : pageImageUrlRaw;
       const resolvedPageAudioUrl = (
         pageAudioUrlRaw &&
@@ -1185,7 +1202,7 @@ async function hydrateCourseFromBundleBlob(
         !/^data:/i.test(pageAudioUrlRaw) &&
         !pageAudioUrlRaw.startsWith('blob:')
       )
-        ? await resolveAssetAudioDataUrl(pageAudioUrlRaw)
+        ? pageAudioUrlRaw.trim().replace(/^\.?\//, '')
         : pageAudioUrlRaw;
       return {
         id: typeof node.id === 'string' ? node.id : `node-${index + 1}`,
@@ -1214,7 +1231,7 @@ async function hydrateCourseFromBundleBlob(
     ? manifestRaw.cover as Record<string, unknown>
     : null;
   const coverPath = typeof rawCover?.path === 'string' ? rawCover.path : undefined;
-  const coverDataUrl = coverPath ? await resolveAssetImageDataUrl(coverPath) : undefined;
+  const coverImageUrl = coverPath ? await resolveAssetImageUrl(coverPath) : undefined;
   const coverNarrationAudioRaw = typeof manifestRaw.coverNarrationAudioUrl === 'string'
     ? manifestRaw.coverNarrationAudioUrl
     : undefined;
@@ -1224,14 +1241,14 @@ async function hydrateCourseFromBundleBlob(
     !/^data:/i.test(coverNarrationAudioRaw) &&
     !coverNarrationAudioRaw.startsWith('blob:')
   )
-    ? await resolveAssetAudioDataUrl(coverNarrationAudioRaw)
+    ? coverNarrationAudioRaw.trim().replace(/^\.?\//, '')
     : coverNarrationAudioRaw;
 
   const materializedRawCourse: Record<string, unknown> = {
     ...manifestRaw,
     id: typeof manifestRaw.id === 'string' ? manifestRaw.id : courseId,
     topic: resolveCourseTopic(manifestRaw.topic, manifestRaw.title, manifestRaw.bookTitle),
-    coverImageUrl: coverDataUrl,
+    coverImageUrl,
     visualStoryMode: manifestRaw.visualStoryMode === true,
     visualStoryAudioStatus: typeof manifestRaw.visualStoryAudioStatus === 'string' ? manifestRaw.visualStoryAudioStatus : undefined,
     coverNarrationText: typeof manifestRaw.coverNarrationText === 'string' ? manifestRaw.coverNarrationText : undefined,
@@ -1359,6 +1376,29 @@ function hasMissingNarrativeImagesForHydration(course: CourseData | null | undef
 
 function isFairyTaleCourse(course: Pick<CourseData, 'bookType'> | null | undefined): boolean {
   return course?.bookType === 'fairy_tale';
+}
+
+function resolveFirstGeneratedImageAsVisualStoryCover(
+  course: Pick<CourseData, 'visualStoryMode' | 'nodes'> | null | undefined
+): string | undefined {
+  if (course?.visualStoryMode !== true || !Array.isArray(course.nodes)) return undefined;
+
+  const orderedNodes = [...course.nodes].sort((a, b) => {
+    const aSeq = Number.isFinite(Number(a.pageSequence)) ? Number(a.pageSequence) : Number.MAX_SAFE_INTEGER;
+    const bSeq = Number.isFinite(Number(b.pageSequence)) ? Number(b.pageSequence) : Number.MAX_SAFE_INTEGER;
+    return aSeq - bSeq;
+  });
+
+  for (const node of orderedNodes) {
+    const pageImageUrl = typeof node.pageImageUrl === 'string' ? node.pageImageUrl.trim() : '';
+    if (pageImageUrl) return pageImageUrl;
+
+    const content = typeof node.content === 'string' ? node.content : '';
+    const markdownImageUrl = content.match(MARKDOWN_IMAGE_URL_CAPTURE_RE)?.[1]?.trim();
+    if (markdownImageUrl) return markdownImageUrl;
+  }
+
+  return undefined;
 }
 
 function resolveFirstGeneratedImageAsFairyTaleCover(
@@ -2837,7 +2877,7 @@ export default function App() {
   };
 
   const buildCourseCoverPathCandidates = (
-    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes'>
+    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'visualStoryMode' | 'nodes'>
   ): string[] => {
     const candidates: string[] = [];
     const pushCandidate = (value: string | null | undefined) => {
@@ -2857,7 +2897,7 @@ export default function App() {
       }
     }
 
-    if (isFairyTaleCourse(course)) {
+    if (course.visualStoryMode === true || isFairyTaleCourse(course)) {
       return candidates;
     }
 
@@ -2885,8 +2925,13 @@ export default function App() {
   };
 
   const resolveFreshCoverUrlForCourse = async (
-    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes'>
+    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'visualStoryMode' | 'nodes'>
   ): Promise<string | undefined> => {
+    const visualStoryFirstImageCover = resolveFirstGeneratedImageAsVisualStoryCover(course);
+    if (visualStoryFirstImageCover) {
+      return visualStoryFirstImageCover;
+    }
+
     const fairyTaleFirstImageCover = resolveFirstGeneratedImageAsFairyTaleCover(course);
     if (fairyTaleFirstImageCover) {
       return fairyTaleFirstImageCover;
@@ -3037,26 +3082,30 @@ export default function App() {
       };
 
       pushPathCandidates(packagePath);
+      const packageUrlPath = typeof packageUrl === 'string' && packageUrl.trim() && isFirebaseStorageDownloadUrl(packageUrl.trim())
+        ? tryParseFirebaseStorageObjectPath(packageUrl.trim())
+        : undefined;
       if (typeof packageUrl === 'string' && packageUrl.trim() && isFirebaseStorageDownloadUrl(packageUrl.trim())) {
-        pushPathCandidates(tryParseFirebaseStorageObjectPath(packageUrl.trim()));
+        pushPathCandidates(packageUrlPath);
       }
 
       const safeOwnerId = String(ownerUid || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
       const safeCourseId = String(courseId || '').replace(/[^a-zA-Z0-9_-]/g, '_').trim();
-      const hintedVersion = Number.isFinite(Number(options?.versionHint))
-        ? Math.max(1, Math.floor(Number(options?.versionHint)))
-        : undefined;
       if (safeOwnerId && safeCourseId) {
-        if (hintedVersion) {
-          pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/v${hintedVersion}/book.zip`);
+        const versionHint = Number(options?.versionHint);
+        if (Number.isFinite(versionHint) && versionHint > 0) {
+          pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/v${Math.floor(versionHint)}/book.zip`);
         }
         pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/v1/book.zip`);
+        pushPath(`smartbooks/${safeOwnerId}/${safeCourseId}/book.zip`);
       }
       if (safeCourseId) {
         pushPath(`smartbooks/${safeCourseId}/v1/book.zip`);
+        pushPath(`smartbooks/${safeCourseId}/book.zip`);
       }
 
-      let resolvedUrl = typeof packageUrl === 'string' && packageUrl.trim() ? packageUrl.trim() : undefined;
+      const normalizedPackageUrl = typeof packageUrl === 'string' && packageUrl.trim() ? packageUrl.trim() : undefined;
+      let resolvedUrl = normalizedPackageUrl;
       let resolvedPath = candidatePaths[0];
       let hydratedCourse: CourseData | null = null;
       let lastError: unknown = null;
@@ -3097,7 +3146,19 @@ export default function App() {
         );
         const isZipLike = /\.zip$/i.test(path) || /application\/zip|application\/x-zip-compressed/i.test(String(packageBlob.type || '').toLowerCase());
         if (isZipLike) {
-          return await hydrateCourseFromBundleBlob(courseId, packageBlob, resolvedUrl, path);
+          let pathDownloadUrl = resolvedUrl;
+          try {
+            pathDownloadUrl = await withPromiseTimeout(
+              getDownloadURL(packageRef),
+              SMARTBOOK_STORAGE_URL_TIMEOUT_MS,
+              `Book package URL resolve timeout (${path})`
+            );
+            resolvedUrl = pathDownloadUrl;
+          } catch {
+            // The hydrated book can still open; bundled audio lazy loading will
+            // be unavailable until a package URL is resolved by another path.
+          }
+          return await hydrateCourseFromBundleBlob(courseId, packageBlob, pathDownloadUrl, path);
         }
         const payload = JSON.parse(await packageBlob.text());
         const course = fromStoredCourse(payload);
@@ -3130,7 +3191,68 @@ export default function App() {
         return nextCourse;
       };
 
-      const tryLoadFromBackend = async (_preferFirestore = false): Promise<CourseData | null> => null;
+      const tryLoadFromBackend = async (_preferFirestore = false): Promise<CourseData | null> => {
+        const backendOwnerUid = String(ownerUid || authUser?.uid || '').trim();
+        if (!backendOwnerUid || !courseId) return null;
+
+        const backendSnapshot = await getDoc(doc(db, 'users', backendOwnerUid, 'books', courseId));
+        if (!backendSnapshot.exists()) return null;
+
+        const backendCourse = fromUserBookDocument(
+          courseId,
+          backendSnapshot.data() as Record<string, unknown>,
+          backendOwnerUid
+        );
+        if (!backendCourse) return null;
+
+        const backendPath = backendCourse.bundle?.path || backendCourse.contentPackagePath;
+        const backendUrl = backendCourse.contentPackageUrl;
+        for (const candidate of getBookPackagePathCandidates(backendPath)) {
+          pushPath(candidate);
+        }
+
+        const backendUrlPath = typeof backendUrl === 'string' && backendUrl.trim() && isFirebaseStorageDownloadUrl(backendUrl.trim())
+          ? tryParseFirebaseStorageObjectPath(backendUrl.trim())
+          : undefined;
+        for (const candidate of getBookPackagePathCandidates(backendUrlPath)) {
+          pushPath(candidate);
+        }
+
+        const backendCandidates = candidatePaths.filter(Boolean);
+        if (typeof backendUrl === 'string' && backendUrl.trim()) {
+          try {
+            resolvedUrl = backendUrl.trim();
+            const course = await tryLoadFromDownloadUrl(resolvedUrl);
+            if (course) return course;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        for (const candidatePath of backendCandidates) {
+          try {
+            resolvedPath = candidatePath;
+            const course = await tryLoadFromStoragePath(candidatePath);
+            if (course) return course;
+          } catch (error) {
+            lastError = error;
+            try {
+              const candidateUrl = await withPromiseTimeout(
+                getDownloadURL(storageRef(getStorage(), candidatePath)),
+                SMARTBOOK_STORAGE_URL_TIMEOUT_MS,
+                `Book package URL resolve timeout (${candidatePath})`
+              );
+              resolvedUrl = candidateUrl;
+              const course = await tryLoadFromDownloadUrl(candidateUrl);
+              if (course) return course;
+            } catch (urlFallbackError) {
+              lastError = urlFallbackError;
+            }
+          }
+        }
+
+        return materializeCourse(backendCourse, backendUrl, backendPath);
+      };
 
       if (backendOnly) {
         try {
@@ -3235,6 +3357,13 @@ export default function App() {
       }
 
       if (!hydratedCourse) {
+        console.warn('[Book Sync] Package candidates exhausted', {
+          courseId,
+          ownerUid,
+          candidates: candidatePaths,
+          hasUrl: Boolean(resolvedUrl),
+          lastError
+        });
         return null;
       }
       return hydratedCourse;
@@ -3464,15 +3593,14 @@ export default function App() {
     });
   };
 
-  const ensureCourseHydrated = async (
-    courseId: string,
-    options?: {
-      markNodesLoading?: boolean;
-      force?: boolean;
-      snapshotHint?: CourseData;
-    }
-  ): Promise<boolean> => {
-    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+	  const ensureCourseHydrated = async (
+	    courseId: string,
+	    options?: {
+	      markNodesLoading?: boolean;
+	      snapshotHint?: CourseData;
+	    }
+	  ): Promise<boolean> => {
+	    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId || !courseId) {
       return false;
     }
@@ -3544,8 +3672,8 @@ export default function App() {
       let hydrationSucceeded = false;
       try {
         if (authUser) {
-          try {
-            await authUser.getIdToken(options?.force === true);
+	          try {
+	            await authUser.getIdToken();
           } catch {
             // Continue with best-effort auth state.
           }
@@ -4081,17 +4209,26 @@ export default function App() {
     if (!savedCourses.length) return;
 
     const localUserId = authUser.uid;
+
     const repairTargets = savedCourses.flatMap((course) => {
       const hasUnresolvedStoragePath = typeof course.coverImageUrl === 'string' &&
         course.coverImageUrl.trim().startsWith('smartbooks/');
       const isFairyTale = isFairyTaleCourse(course);
+      const visualStoryFirstImageCover = resolveFirstGeneratedImageAsVisualStoryCover(course);
       const fairyTaleFirstImageCover = resolveFirstGeneratedImageAsFairyTaleCover(course);
-      const needsFairyTaleFirstImageCover = !course.coverImageUrl && Boolean(fairyTaleFirstImageCover);
-      const needsCoverFromPackage = !course.coverImageUrl && !isFairyTale && Boolean(course.contentPackagePath);
-      const needsLegacyCoverLookup = !course.coverImageUrl && !isFairyTale;
-      if (!hasUnresolvedStoragePath && !needsFairyTaleFirstImageCover && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
+      const firstGeneratedImageCover = visualStoryFirstImageCover || fairyTaleFirstImageCover;
+      const needsFirstGeneratedImageCover = Boolean(firstGeneratedImageCover) &&
+        (!course.coverImageUrl || (course.visualStoryMode === true && course.coverImageUrl !== firstGeneratedImageCover));
+      const needsCoverFromPackage = !course.coverImageUrl && !isFairyTale && course.visualStoryMode !== true && Boolean(course.contentPackagePath);
+      const needsLegacyCoverLookup = !course.coverImageUrl && !isFairyTale && course.visualStoryMode !== true;
+      if (
+        !hasUnresolvedStoragePath &&
+        !needsFirstGeneratedImageCover &&
+        !needsCoverFromPackage &&
+        !needsLegacyCoverLookup
+      ) return [];
 
-      const repairKey = `${course.id}:${course.coverImageUrl || ''}:${course.contentPackagePath || ''}`;
+      const repairKey = `${course.id}:${course.coverImageUrl || ''}:${firstGeneratedImageCover || ''}:${course.contentPackagePath || ''}`;
       if (coverLookupExhaustedRef.current.has(repairKey)) return [];
       if (!markRetriableAttemptWithCooldown(
         coverRepairAttemptedByCourseRef.current,
@@ -4151,10 +4288,7 @@ export default function App() {
             });
           }
 
-          return {
-            ...course,
-            coverImageUrl: repairedCoverImageUrl
-          };
+          return { ...course, coverImageUrl: repairedCoverImageUrl };
         });
 
         if (!changed) return prev;
@@ -5266,7 +5400,7 @@ export default function App() {
     }
   };
 
-  const ensureBackgroundNodePackage = async (courseId: string, nodeId: string): Promise<void> => {
+	  const ensureBackgroundNodePackage = async (courseId: string, nodeId: string): Promise<void> => {
     if (backgroundGenerationSuppressedRef.current) return;
     const inFlightKey = `${courseId}:${nodeId}`;
     if (backgroundNodeGenerationInFlightRef.current.has(inFlightKey)) return;
@@ -5803,9 +5937,9 @@ export default function App() {
         openCourseFlow(courseId);
       }
     })();
-  };
+	  };
 
-  useEffect(() => {
+	  useEffect(() => {
     const sharedBookId = incomingSharedSmartBookId;
     if (!sharedBookId) return;
     if (shareLinkAutoOpenHandledRef.current.has(sharedBookId)) return;
@@ -6249,10 +6383,10 @@ export default function App() {
             savedCourses={savedCourses}
             onCourseSelect={handleCourseSelect}
             onDeleteCourse={handleCourseDelete}
-            isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
-            bootstrapMessage={loadingMessage}
-            courseOpenStates={courseOpenStateById}
-          />
+	            isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
+	            bootstrapMessage={loadingMessage}
+	            courseOpenStates={courseOpenStateById}
+	          />
         );
       case 'EXPLORE':
         return (
@@ -6272,10 +6406,10 @@ export default function App() {
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
             bootstrapMessage={loadingMessage}
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
-            courseOpenStates={courseOpenStateById}
-            isLoggedIn={Boolean(authUser && !isGuestSession)}
-            onRequestLogin={handleOpenLoginScreen}
-          />
+	            courseOpenStates={courseOpenStateById}
+	            isLoggedIn={Boolean(authUser && !isGuestSession)}
+	            onRequestLogin={handleOpenLoginScreen}
+	          />
         );
       case 'PROFILE':
         return (
@@ -6284,10 +6418,10 @@ export default function App() {
             userEmail={authUser?.email || (isGuestSession ? 'Misafir oturumu' : undefined)}
             isGuestSession={isGuestSession}
             onLogout={handleLogout}
-            onUpdateProfileName={handleProfileNameUpdate}
-            onDeleteMyData={handleDeleteMyData}
-            onDeleteAccount={handleDeleteAccount}
-          />
+	            onUpdateProfileName={handleProfileNameUpdate}
+	            onDeleteMyData={handleDeleteMyData}
+	            onDeleteAccount={handleDeleteAccount}
+	          />
         );
       case 'PRIVACY':
         return <PrivacyView />;

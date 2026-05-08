@@ -57,6 +57,21 @@ option {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
 }
 
+button:not(:disabled):not([aria-disabled="true"]) {
+  transform-origin: center;
+  transition:
+    transform 200ms ease,
+    opacity 200ms ease,
+    filter 200ms ease,
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+button:not(:disabled):not([aria-disabled="true"]):active {
+  transform: scale(0.9);
+}
+
 html,
 body,
 #root {
@@ -1343,6 +1358,8 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 .fortale-story-glow-image {
   filter: none;
+  transform: scale(1) translate3d(0, 0, 0);
+  backface-visibility: hidden;
   will-change: transform;
 }
 
@@ -1382,6 +1399,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   display: block;
   grid-area: auto;
   margin: 0;
+  transform-origin: center center;
 }
 
 .fortele-story-page-image-shell {
@@ -1391,8 +1409,62 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   overflow: hidden;
 }
 
+.fortale-story-page-image-lift {
+  --story-image-lift: clamp(8px, 1.2dvh, 12px);
+  height: calc(100% + var(--story-image-lift)) !important;
+  transform: translateY(calc(-1 * var(--story-image-lift)));
+}
+
+.fortale-story-watermark {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 10px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  z-index: 3;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.fortale-story-watermark-reading {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 59px);
+  z-index: 111;
+}
+
+.fortale-story-watermark-fullscreen {
+  z-index: 142;
+}
+
+.fortale-story-watermark-rotated-frame {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 142;
+  width: 100dvh;
+  height: 100dvw;
+  max-width: 100dvh;
+  max-height: 100dvw;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center;
+}
+
+.fortale-story-watermark-rotated-frame .fortale-story-watermark {
+  left: 10px;
+  bottom: 10px;
+}
+
 .fortale-story-image-motion {
-  animation: fortale-story-kenburns var(--story-motion-duration, 14s) ease-in-out infinite alternate;
+  animation: fortale-story-kenburns var(--story-motion-duration, 16s) cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.fortale-story-image-motion.is-user-zooming {
+  animation-play-state: paused;
 }
 
 .fortale-story-motion-overlay {
@@ -1498,8 +1570,21 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 @keyframes fortale-story-kenburns {
-  0% { transform: scale(1) translate3d(0, 0, 0); }
-  100% { transform: scale(var(--story-scale-end, 1.045)) translate3d(var(--story-pan-x, 0%), var(--story-pan-y, -0.8%), 0); }
+  0% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  22% {
+    transform: scale(var(--story-scale-end, 1.18)) translate3d(0, 0, 0);
+  }
+  46% {
+    transform: scale(var(--story-scale-end, 1.18)) translate3d(var(--story-pan-x, 5.8%), var(--story-pan-y, 0%), 0);
+  }
+  72% {
+    transform: scale(var(--story-scale-end, 1.18)) translate3d(calc(var(--story-pan-x, 5.8%) * -1), var(--story-pan-y, 0%), 0);
+  }
+  100% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
 }
 
 @keyframes fortale-story-white-flash {
@@ -1560,9 +1645,15 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
   background:
-    radial-gradient(circle at 17% 0%, rgba(126, 166, 176, 0.22), transparent 34%),
-    radial-gradient(circle at 84% 9%, rgba(118, 146, 109, 0.2), transparent 34%),
-    linear-gradient(180deg, #314b56 0%, #1c352f 42%, #081510 100%) !important;
+    radial-gradient(circle at 17% 0%, var(--fortale-home-glow-left, rgba(126, 166, 176, 0.22)), transparent 34%),
+    radial-gradient(circle at 84% 9%, var(--fortale-home-glow-right, rgba(118, 146, 109, 0.2)), transparent 34%),
+    linear-gradient(
+      180deg,
+      var(--fortale-home-bg-top, #314b56) 0%,
+      var(--fortale-home-bg-mid, #1c352f) 42%,
+      var(--fortale-home-bg-bottom, #081510) 100%
+    ) !important;
+  transition: background 360ms ease;
 }
 
 .fortale-loading-screen,
@@ -1618,6 +1709,12 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   border-color: rgba(255,255,255,0.5);
 }
 
+.fortale-home-nav-button:active {
+  color: #0b1712;
+  background: linear-gradient(135deg, rgba(231,244,234,0.92), rgba(181,207,187,0.82));
+  border-color: rgba(255,255,255,0.5);
+}
+
 .fortale-brand-logo,
 .fortale-nav-logo {
   position: relative;
@@ -1646,6 +1743,13 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
     0 0 16px rgba(155, 255, 130, 0.18);
 }
 
+.fortale-home-nav-button .fortale-nav-logo {
+  stroke: #4F9B43 !important;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
 .fortale-chrome-icon-button.is-active .fortale-nav-logo {
   stroke: #256b20 !important;
   background: rgba(255, 255, 255, 0.42);
@@ -1654,15 +1758,28 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
     drop-shadow(0 1px 2px rgba(0, 0, 0, 0.14));
 }
 
+.fortale-home-nav-button:active .fortale-nav-logo {
+  stroke: #4F9B43 !important;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
 .fortale-home-view::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(232,245,241,0.16) 0%, rgba(12,31,25,0.08) 42%, rgba(1,8,6,0.34) 100%),
-    radial-gradient(ellipse at 50% 0%, rgba(191,225,228,0.26) 0%, transparent 56%);
+    linear-gradient(
+      180deg,
+      var(--fortale-home-overlay-top, rgba(232,245,241,0.16)) 0%,
+      var(--fortale-home-overlay-mid, rgba(12,31,25,0.08)) 42%,
+      var(--fortale-home-overlay-bottom, rgba(1,8,6,0.34)) 100%
+    ),
+    radial-gradient(ellipse at 50% 0%, var(--fortale-home-overlay-glow, rgba(191,225,228,0.26)) 0%, transparent 56%);
   z-index: 0;
+  transition: background 360ms ease;
 }
 
 .fortale-home-content {
@@ -1714,8 +1831,8 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-create-panel {
-  height: min(448px, calc(100dvh - var(--app-header-row-top, 0px) - 338px));
-  min-height: 294px;
+  height: min(468px, calc(100dvh - var(--app-header-row-top, 0px) - 318px));
+  min-height: 314px;
   display: flex;
   flex-direction: column;
   transition:
@@ -1725,15 +1842,14 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
     box-shadow 220ms ease,
     transform 220ms ease,
     opacity 220ms ease;
-  background:
-    linear-gradient(160deg, rgba(54, 86, 83, 0.82) 0%, rgba(21, 50, 43, 0.9) 48%, rgba(8, 22, 17, 0.96) 100%) !important;
+  background: transparent !important;
   border-style: solid !important;
   border-color: rgba(222, 244, 235, 0.2) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.24),
-    0 24px 64px -36px rgba(0, 0, 0, 0.86) !important;
-  backdrop-filter: blur(34px) saturate(170%);
-  -webkit-backdrop-filter: blur(34px) saturate(170%);
+    0 18px 54px -38px rgba(0, 0, 0, 0.82) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .fortale-create-panel.is-open {
@@ -1760,8 +1876,8 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-create-panel.is-type-only {
-  height: min(448px, calc(100dvh - var(--app-header-row-top, 0px) - 338px));
-  min-height: 294px;
+  height: min(468px, calc(100dvh - var(--app-header-row-top, 0px) - 318px));
+  min-height: 314px;
   border-color: transparent !important;
   background: transparent !important;
   box-shadow: none !important;
@@ -1780,7 +1896,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-create-fields.is-type-only .fortale-type-step {
-  min-height: min(294px, calc(100dvh - var(--app-header-row-top, 0px) - 392px));
+  min-height: min(314px, calc(100dvh - var(--app-header-row-top, 0px) - 372px));
 }
 
 .fortale-wizard-layout-ghost {
@@ -1790,7 +1906,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-type-step {
-  min-height: min(294px, calc(100dvh - var(--app-header-row-top, 0px) - 392px));
+  min-height: min(314px, calc(100dvh - var(--app-header-row-top, 0px) - 372px));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1831,17 +1947,12 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   overflow: hidden;
   isolation: isolate;
   transform-style: preserve-3d;
-  border: 1px solid rgba(244, 252, 248, 0.34);
-  background:
-    radial-gradient(circle at 50% 50%, rgba(0,0,0,0.28), rgba(0,0,0,0.62) 58%, rgba(0,0,0,0.82) 100%),
-    #07110f;
+  border: 1px solid rgba(230, 245, 238, 0.14);
+  background: rgba(38, 76, 66, 0.78);
   box-shadow:
-    inset 0 2px 4px rgba(255,255,255,0.34),
-    inset 0 -18px 34px rgba(1,8,6,0.34),
-    inset 18px 0 34px rgba(255,255,255,0.06),
-    0 4px 0 rgba(255,255,255,0.08),
-    0 18px 44px -26px rgba(0,0,0,0.92),
-    0 34px 74px -42px rgba(2, 10, 8, 0.96);
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    inset 0 0 0 1px rgba(230,245,238,0.08),
+    0 18px 44px -28px rgba(0,0,0,0.82);
   animation: fortale-orb-breathe 7.2s ease-in-out infinite;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -1858,9 +1969,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 .fortale-type-orb::before {
   z-index: 3;
-  background:
-    radial-gradient(ellipse at 34% 16%, rgba(255,255,255,0.3), rgba(255,255,255,0.07) 28%, transparent 48%),
-    radial-gradient(circle at 50% 50%, transparent 52%, rgba(255,255,255,0.08) 78%, rgba(0,0,0,0.12) 100%);
+  background: rgba(255,255,255,0.08);
   mix-blend-mode: screen;
   opacity: 0.46;
 }
@@ -1895,24 +2004,35 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 .fortale-type-shine {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 8;
   pointer-events: none;
   border-radius: 50%;
   overflow: hidden;
-  display: none;
+  display: block;
+  mix-blend-mode: screen;
 }
 
 .fortale-type-shine::before {
   content: "";
   position: absolute;
-  width: 72%;
-  height: 155%;
-  top: -28%;
-  left: -92%;
-  transform: rotate(-24deg);
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.26), rgba(255,255,255,0.08), transparent);
-  filter: blur(7px);
-  animation: fortale-shine 7.8s ease-in-out infinite;
+  width: 128%;
+  height: 128%;
+  left: 50%;
+  top: 50%;
+  transform: translate3d(-112%, 68%, 0) translate(-50%, -50%) rotate(34deg);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.02) 16%,
+    rgba(255,255,255,0.14) 36%,
+    rgba(255,255,255,0.24) 52%,
+    rgba(255,255,255,0.12) 68%,
+    rgba(255,255,255,0.03) 84%,
+    transparent 100%
+  );
+  filter: blur(12px);
+  opacity: 0;
+  animation: fortale-shine 6.4s ease-in-out infinite;
 }
 
 .fortale-type-choice {
@@ -1945,13 +2065,10 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   width: 206px;
   height: 206px;
   border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 36% 18%, rgba(255,255,255,0.2), rgba(255,255,255,0.04) 44%, transparent 62%),
-    rgba(74, 91, 86, 0.9);
-  border: 0;
+  background: rgba(47, 90, 78, 0.8);
+  border: 1px solid rgba(230, 245, 238, 0.1);
   box-shadow:
-    inset 0 2px 2px rgba(255,255,255,0.18),
-    inset 0 -22px 34px rgba(0,0,0,0.18);
+    inset 0 1px 0 rgba(255,255,255,0.12);
   backdrop-filter: blur(34px) saturate(185%);
   -webkit-backdrop-filter: blur(34px) saturate(185%);
   transition: background 360ms ease, filter 360ms ease, box-shadow 360ms ease, transform 360ms ease;
@@ -2018,11 +2135,14 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-type-choice.selected svg,
-.fortale-type-choice.selected .fortale-type-label {
-  color: rgba(255, 255, 255, 1);
+.fortale-type-choice.selected .fortale-type-label,
+.fortale-type-choice.is-accented svg,
+.fortale-type-choice.is-accented .fortale-type-label {
+  color: #0b1712;
   text-shadow:
-    0 1px 2px rgba(0,0,0,0.76),
-    0 0 10px rgba(0,0,0,0.58);
+    0 1px 0 rgba(255,255,255,0.48),
+    0 2px 2px rgba(5,18,13,0.22),
+    0 6px 12px rgba(5,18,13,0.2);
 }
 
 .fortale-type-choice:active {
@@ -2030,37 +2150,17 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-type-choice.selected {
-  filter: saturate(1.05);
+  filter: none;
 }
 
+.fortale-type-choice.selected::before,
 .fortale-type-choice.is-accented::before {
-  filter: saturate(1.1) brightness(1.02);
+  background: #b5cfbb;
+  border-color: rgba(255,255,255,0.42);
+  filter: none;
   box-shadow:
-    inset 0 2px 4px rgba(255,255,255,0.28),
-    inset 0 -24px 42px rgba(0,0,0,0.18),
-    inset 0 0 34px rgba(255,255,255,0.04),
-    0 0 22px var(--fortale-type-glow, rgba(220,239,215,0.14));
-}
-
-.fortale-type-choice.is-accented.accent-fairy_tale::before {
-  --fortale-type-glow: rgba(188, 145, 47, 0.18);
-  background:
-    radial-gradient(ellipse at 38% 18%, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 56%, transparent 72%),
-    rgba(176, 132, 39, 0.94);
-}
-
-.fortale-type-choice.is-accented.accent-novel::before {
-  --fortale-type-glow: rgba(183, 28, 40, 0.22);
-  background:
-    radial-gradient(ellipse at 38% 18%, rgba(255,255,255,0.2), rgba(255,255,255,0.04) 56%, transparent 72%),
-    rgba(172, 28, 40, 0.95);
-}
-
-.fortale-type-choice.is-accented.accent-story::before {
-  --fortale-type-glow: rgba(32, 151, 126, 0.22);
-  background:
-    radial-gradient(ellipse at 38% 18%, rgba(255,255,255,0.2), rgba(255,255,255,0.04) 56%, transparent 72%),
-    rgba(34, 145, 122, 0.95);
+    inset 0 1px 0 rgba(255,255,255,0.72),
+    0 8px 22px rgba(130,178,169,0.2);
 }
 
 .fortale-type-label {
@@ -2071,8 +2171,25 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   white-space: nowrap;
   line-height: 1;
   text-shadow:
-    0 1px 2px rgba(0,0,0,0.72),
-    0 1px 8px rgba(0,0,0,0.46);
+    0 1px 0 rgba(255,255,255,0.2),
+    0 2px 0 rgba(7,22,17,0.58),
+    0 4px 7px rgba(0,0,0,0.52),
+    0 10px 18px rgba(0,0,0,0.28);
+}
+
+.fortale-type-choice svg {
+  filter:
+    drop-shadow(0 1px 0 rgba(255,255,255,0.2))
+    drop-shadow(0 2px 0 rgba(7,22,17,0.52))
+    drop-shadow(0 7px 9px rgba(0,0,0,0.34));
+}
+
+.fortale-type-choice.selected svg,
+.fortale-type-choice.is-accented svg {
+  filter:
+    drop-shadow(0 1px 0 rgba(255,255,255,0.48))
+    drop-shadow(0 2px 2px rgba(5,18,13,0.22))
+    drop-shadow(0 7px 12px rgba(5,18,13,0.2));
 }
 
 .fortale-type-divider,
@@ -2134,13 +2251,11 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 .fortale-action-button,
 .fortale-input-surface {
   border-style: solid !important;
-  border-color: rgba(126, 183, 155, 0.42) !important;
-  background:
-    linear-gradient(160deg, rgba(68, 116, 94, 0.5), rgba(24, 77, 58, 0.74)) !important;
-  background-color: rgba(28, 75, 58, 0.82) !important;
+  border-color: var(--fortale-wizard-tone-border, rgba(126, 183, 155, 0.42)) !important;
+  background-color: rgba(28, 75, 58, 0.76) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.13),
-    inset 0 0 0 1px rgba(126, 183, 155, 0.18) !important;
+    inset 0 0 0 1px var(--fortale-wizard-tone-fill, rgba(126, 183, 155, 0.18)) !important;
 }
 
 .fortale-input-surface {
@@ -2156,22 +2271,19 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   border-radius: 14px !important;
   border-style: solid;
   border-color: rgba(126, 183, 155, 0.42);
-  background:
-    linear-gradient(180deg, rgba(58,104,86,0.68) 0%, rgba(24,75,56,0.78) 100%);
   background-color: rgba(28, 75, 58, 0.76);
   box-shadow: inset 0 0 0 1px rgba(126, 183, 155, 0.18), 0 0 12px rgba(126, 183, 155, 0.16);
 }
 
 .fortale-action-button {
   color: rgba(245,255,250,0.96);
-  background:
-    linear-gradient(135deg, rgba(68,116,94,0.52), rgba(24,77,58,0.82)) !important;
+  background-color: rgba(31, 65, 55, 0.72) !important;
 }
 
 .fortale-action-button.is-primary {
   color: #fff !important;
   border-color: var(--fortale-wizard-action-border, rgba(220,239,215,0.5)) !important;
-  background: var(--fortale-wizard-action-bg, linear-gradient(135deg, rgba(230,245,238,0.16), rgba(18,47,39,0.78))) !important;
+  background: var(--fortale-wizard-action-bg, rgba(44, 82, 72, 0.94)) !important;
   box-shadow:
     inset 0 0 0 1px var(--fortale-wizard-tone-fill, rgba(220,239,215,0.16)),
     0 0 16px var(--fortale-wizard-action-glow, rgba(220,239,215,0.18)) !important;
@@ -2187,11 +2299,11 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   display: grid;
   gap: 6px;
   margin-top: 10px;
-  padding: 4px;
+  padding: 0;
   border-radius: 999px;
-  border: 1px solid rgba(126, 183, 155, 0.2);
-  background: rgba(24, 77, 58, 0.32);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .fortale-step-dot {
@@ -2204,32 +2316,53 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   justify-self: center;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid rgba(229, 244, 236, 0.12);
+  border: 1px solid var(--fortale-wizard-tone-border, rgba(229, 244, 236, 0.12));
   color: rgba(222, 242, 234, 0.66);
-  background: rgba(28, 75, 58, 0.54);
+  background: rgba(18, 48, 39, 0.5);
   font-size: 11px;
   font-weight: 850;
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 0 0 1px rgba(255,255,255,0.03);
   transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+  opacity: 0.72;
+}
+
+.fortale-step-dot:hover {
+  opacity: 1;
+  filter: brightness(1.08);
+}
+
+.fortale-step-dot:focus-visible {
+  outline: 2px solid var(--fortale-wizard-action-border, rgba(255,255,255,0.5));
+  outline-offset: 2px;
 }
 
 .fortale-step-dot.is-done {
   color: rgba(255,255,255,0.92);
-  background: rgba(42, 102, 76, 0.58);
+  background: rgba(42, 102, 76, 0.26);
   border-color: var(--fortale-wizard-tone-border, rgba(220, 239, 215, 0.22));
+  opacity: 0.88;
 }
 
 .fortale-step-dot.is-current {
-  color: #fff;
-  background: var(--fortale-wizard-progress, linear-gradient(135deg, #e7f4ea 0%, #b5cfbb 54%, #7fb2bd 100%));
+  color: #0b1712;
+  background: var(--fortale-wizard-progress, #b5cfbb);
   border-color: var(--fortale-wizard-action-border, rgba(255,255,255,0.5));
   box-shadow:
     0 8px 22px var(--fortale-wizard-action-glow, rgba(130, 178, 169, 0.24)),
     inset 0 1px 0 rgba(255,255,255,0.38);
   transform: none;
+  opacity: 1;
+}
+
+.fortale-wizard-actions .fortale-action-button {
+  flex-shrink: 0;
 }
 
 .fortale-type-hint {
@@ -2243,17 +2376,15 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-wizard-progress-track {
-  background:
-    linear-gradient(180deg, rgba(44, 82, 72, 0.56), rgba(17, 57, 43, 0.68));
+  background: rgba(8, 22, 17, 0.36);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.1),
-    inset 0 0 0 1px rgba(126, 183, 155, 0.16);
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    inset 0 0 0 1px var(--fortale-wizard-tone-fill, rgba(126, 183, 155, 0.08));
 }
 
 .fortale-generation-panel {
   border-color: rgba(126, 183, 155, 0.28) !important;
-  background:
-    linear-gradient(160deg, rgba(44, 82, 72, 0.72), rgba(13, 54, 42, 0.86)) !important;
+  background: rgba(44, 82, 72, 0.78) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.13),
     0 14px 32px rgba(0,0,0,0.2);
@@ -2632,9 +2763,17 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 @keyframes fortale-shine {
-  0%, 58% { left: -92%; opacity: 0; }
-  68% { opacity: 0.74; }
-  92%, 100% { left: 122%; opacity: 0; }
+  0%, 48% {
+    opacity: 0;
+    transform: translate3d(-112%, 68%, 0) translate(-50%, -50%) rotate(34deg);
+  }
+  58% {
+    opacity: 0.78;
+  }
+  82%, 100% {
+    opacity: 0;
+    transform: translate3d(112%, -68%, 0) translate(-50%, -50%) rotate(34deg);
+  }
 }
 
 @media (min-width: 768px) {
@@ -2668,13 +2807,13 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
   .fortale-create-panel,
   .fortale-create-panel.is-type-only {
-    height: 330px;
-    min-height: 284px;
+    height: 350px;
+    min-height: 304px;
   }
 
   .fortale-type-step,
   .fortale-create-fields.is-type-only .fortale-type-step {
-    min-height: 246px;
+    min-height: 266px;
   }
 
   .fortale-type-orb,
@@ -2697,13 +2836,13 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
   .fortale-create-panel,
   .fortale-create-panel.is-type-only {
-    height: 286px;
-    min-height: 268px;
+    height: 306px;
+    min-height: 288px;
   }
 
   .fortale-type-step,
   .fortale-create-fields.is-type-only .fortale-type-step {
-    min-height: 220px;
+    min-height: 240px;
   }
 
   .fortale-type-orb,

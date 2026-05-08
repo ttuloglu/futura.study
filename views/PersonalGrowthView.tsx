@@ -492,12 +492,14 @@ export default function PersonalGrowthView({
                               {t(course.subGenre.trim())}
                             </span>
                           )}
-                          <span
-                            className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
-                            style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
-                          >
-                            {t(getSmartBookAgeGroupLabel(course.ageGroup))}
-                          </span>
+                          {course.bookType !== 'fairy_tale' && (
+                            <span
+                              className="inline-flex items-center rounded-lg px-2 py-1 text-[10px] font-semibold text-[#b9cde8]"
+                              style={{ background: 'rgba(23, 38, 58, 0.72)', boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)' }}
+                            >
+                              {t(getSmartBookAgeGroupLabel(course.ageGroup))}
+                            </span>
+                          )}
                           <div className="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(23,38,58,0.68)] px-2 py-1" title={t('Tahmini okuma süresi')}>
                             <Clock3 size={10} className="text-[#7fb1ec]" />
                             <span className="text-[10px] text-[#b9cde8]">

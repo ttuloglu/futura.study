@@ -107,7 +107,7 @@ export function buildTargetPageFromBrief(brief?: SmartBookCreativeBrief, ageGrou
 }
 
 export function getEstimatedGenerationMinutes(bookType?: SmartBookBookType): number {
-  if (bookType === 'fairy_tale') return 2;
-  if (bookType === 'story') return 4;
-  return 6;
+  if (bookType === 'fairy_tale') return 6;
+  if (bookType === 'story') return 12;
+  return 16;
 }
