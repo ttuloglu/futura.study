@@ -61,7 +61,7 @@ interface CourseFlowViewProps {
   onBack: () => void;
   onNavigate: (view: ViewState) => void;
   courseData: CourseData | null;
-  onUpdateCourse: (nodes: TimelineNode[]) => void;
+  onUpdateCourse: (nodes: TimelineNode[], coursePatch?: Partial<CourseData>) => void;
   onResolveCourseForExport?: (courseId: string) => Promise<CourseData | null> | CourseData | null;
   allowOpenAutoGeneration?: boolean;
   onReadingFullscreenChange?: (isFullscreen: boolean) => void;
@@ -733,8 +733,8 @@ const VISUAL_STORY_TRANSITION_SFX_SRC = '/audio/glass-canopy-transition.mp3';
 const VISUAL_STORY_TRANSITION_SFX_GAIN = 0.05;
 const VISUAL_STORY_BACKGROUND_IDLE_GAIN = 0.18;
 const VISUAL_STORY_BACKGROUND_NARRATION_GAIN = 0.08;
-const VISUAL_STORY_IOS_BACKGROUND_IDLE_GAIN = 0.055;
-const VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN = 0.018;
+const VISUAL_STORY_IOS_BACKGROUND_IDLE_GAIN = 0.14;
+const VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN = 0.055;
 const VISUAL_STORY_BACKGROUND_GAIN_RAMP_SECONDS = 0.28;
 
 type VisualStoryMotionPoint = {
@@ -1380,12 +1380,12 @@ function VisualStoryReader({
   courseData,
   onBack,
   onUpdateNodes,
-  onRequireCredit
+  onResolveCourseForExport
 }: {
   courseData: CourseData;
   onBack: () => void;
-  onUpdateNodes?: (nodes: TimelineNode[]) => void;
-  onRequireCredit?: (action: 'create', costOverride?: number) => boolean;
+  onUpdateNodes?: (nodes: TimelineNode[], coursePatch?: Partial<CourseData>) => void;
+  onResolveCourseForExport?: (courseId: string) => Promise<CourseData | null> | CourseData | null;
 }) {
   const { t } = useUiI18n();
   const [pageIndex, setPageIndex] = useState(0);
@@ -1428,6 +1428,7 @@ function VisualStoryReader({
   const narrationRunIdRef = useRef(0);
   const visualStoryBundleZipPromiseRef = useRef<Promise<unknown> | null>(null);
   const visualStoryBundleAudioObjectUrlsRef = useRef<string[]>([]);
+  const visualStoryAudioHydrationPromiseRef = useRef<Promise<boolean> | null>(null);
   const backgroundTrack = useMemo(
     () => resolveVisualStoryBackgroundTrack(courseData.subGenre),
     [courseData.subGenre]
@@ -1469,7 +1470,6 @@ function VisualStoryReader({
         backgroundAudioMixerUnavailableRef.current = true;
         if (audio) {
           audio.volume = getVisualStoryBackgroundGain(isNarrationPlaying);
-          if (isNativeIosRuntime() && isNarrationPlaying) audio.muted = true;
         }
         return null;
       }
@@ -1484,9 +1484,6 @@ function VisualStoryReader({
     if (!mixer) {
       if (audio) {
         audio.volume = clampedGain;
-        if (isNativeIosRuntime()) {
-          audio.muted = clampedGain <= VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN;
-        }
       }
       return;
     }
@@ -1670,8 +1667,13 @@ function VisualStoryReader({
   const currentPageAudioUrl = isBundledVisualStoryAssetPath(currentPageAudioRawUrl)
     ? (resolvedBundledVisualStoryAudioUrls[currentPageAudioRawUrl.replace(/^\.?\//, '')] || '')
     : currentPageAudioRawUrl;
-  const hasAnyNarrationAudio = pages.some((page) => Boolean(String(page.audioUrl || '').trim()));
-  const hasMissingNarrationAudio = pages.some((page) => !page.audioUrl?.trim());
+  const pageHasNarrationAudio = useCallback((page: VisualStoryPage | null | undefined) => (
+    Boolean(String(page?.audioUrl || '').trim())
+  ), []);
+  const firstNarrationAudioPageIndex = pages.findIndex((page) => pageHasNarrationAudio(page));
+  const hasAnyNarrationAudio = firstNarrationAudioPageIndex >= 0;
+  const hasCompleteNarrationAudio = pages.length > 0 && pages.every((page) => pageHasNarrationAudio(page));
+  const hasMissingNarrationAudio = !hasCompleteNarrationAudio;
   const isCurrentPageNarratable = Boolean(currentPageAudioUrl) || isBundledVisualStoryAssetPath(currentPageAudioRawUrl);
   const canGenerateNarrationAudio = Boolean(
     courseData.id &&
@@ -1681,6 +1683,8 @@ function VisualStoryReader({
       derivedVisualStoryNarrationPages.length > 0
     )
   );
+  const hasAvailableNarrationAudio = hasAnyNarrationAudio || isCurrentPageNarratable;
+  const canStartNarrationAction = hasAvailableNarrationAudio || canGenerateNarrationAudio;
 
   const selectedPdfBackgroundPreset =
     PDF_BACKGROUND_PRESETS.find((preset) => preset.id === selectedPdfBackgroundPresetId) || PDF_BACKGROUND_PRESETS[0];
@@ -1818,6 +1822,74 @@ function VisualStoryReader({
       console.error('Visual story bundled audio resolution failed:', error);
     });
   }, [currentPageAudioRawUrl, currentPageAudioUrl, ensureBundledVisualStoryAudioUrl, isBundledVisualStoryAssetPath]);
+
+  const hydrateVisualStoryNarrationAudio = useCallback(async (): Promise<boolean> => {
+    if (!courseData.id || !onResolveCourseForExport) return false;
+    if (visualStoryAudioHydrationPromiseRef.current) {
+      return visualStoryAudioHydrationPromiseRef.current;
+    }
+
+    visualStoryAudioHydrationPromiseRef.current = (async () => {
+      try {
+        const resolvedCourse = await onResolveCourseForExport(courseData.id);
+        if (!resolvedCourse) return false;
+
+        const nextOverrides: Record<string, string> = {};
+        (resolvedCourse.nodes || []).forEach((node) => {
+          const nodeId = String(node.id || '').trim();
+          const audioUrl = String(node.pageAudioUrl || '').trim();
+          if (nodeId && audioUrl) nextOverrides[nodeId] = audioUrl;
+        });
+
+        const resolvedCoverAudioUrl = String(resolvedCourse.coverNarrationAudioUrl || '').trim();
+        if (resolvedCoverAudioUrl) {
+          setCoverAudioOverrideUrl(resolvedCoverAudioUrl);
+        }
+        if (Object.keys(nextOverrides).length > 0) {
+          setPageAudioOverrideUrls((current) => ({ ...current, ...nextOverrides }));
+        }
+        if (onUpdateNodes && Object.keys(nextOverrides).length > 0) {
+          onUpdateNodes(resolvedCourse.nodes || courseData.nodes || [], {
+            coverNarrationAudioUrl: resolvedCoverAudioUrl || courseData.coverNarrationAudioUrl,
+            visualStoryAudioStatus: resolvedCourse.visualStoryAudioStatus || courseData.visualStoryAudioStatus,
+            contentPackageUrl: resolvedCourse.contentPackageUrl || courseData.contentPackageUrl,
+            contentPackagePath: resolvedCourse.contentPackagePath || courseData.contentPackagePath,
+            contentPackageUpdatedAt: resolvedCourse.contentPackageUpdatedAt || courseData.contentPackageUpdatedAt,
+            bundle: resolvedCourse.bundle || courseData.bundle
+          });
+        }
+
+        return Boolean(resolvedCoverAudioUrl || Object.keys(nextOverrides).length > 0);
+      } catch (error) {
+        console.warn('Visual story narration hydration failed:', error);
+        return false;
+      } finally {
+        visualStoryAudioHydrationPromiseRef.current = null;
+      }
+    })();
+
+    return visualStoryAudioHydrationPromiseRef.current;
+  }, [courseData, onResolveCourseForExport, onUpdateNodes]);
+
+  useEffect(() => {
+    if (!hasMissingNarrationAudio) return;
+    if (!courseData.id || !onResolveCourseForExport) return;
+    if (
+      courseData.visualStoryAudioStatus !== 'ready' &&
+      courseData.visualStoryAudioStatus !== 'partial' &&
+      courseData.bundle?.includesPodcast !== true
+    ) {
+      return;
+    }
+    void hydrateVisualStoryNarrationAudio();
+  }, [
+    courseData.bundle?.includesPodcast,
+    courseData.id,
+    courseData.visualStoryAudioStatus,
+    hasMissingNarrationAudio,
+    hydrateVisualStoryNarrationAudio,
+    onResolveCourseForExport
+  ]);
 
   useEffect(() => {
     clearNarrationTimers({ pauseAudio: true });
@@ -2021,25 +2093,36 @@ function VisualStoryReader({
       return;
     }
 
+    if (hasMissingNarrationAudio) {
+      const didHydrateNarrationAudio = await hydrateVisualStoryNarrationAudio();
+      if (didHydrateNarrationAudio && !hasAvailableNarrationAudio) {
+        window.setTimeout(() => {
+          setBackgroundMusicError(null);
+          setBackgroundAudioLevel(getVisualStoryBackgroundGain(true), 0.04);
+          void prepareBackgroundAudioMixer();
+          setIsBackgroundMusicEnabled(true);
+          setIsNarrationPlaying(true);
+        }, 120);
+        return;
+      }
+    }
+
     let didGenerateNarration = false;
-    const shouldGenerateNarrationAudio = !hasAnyNarrationAudio && canGenerateNarrationAudio;
+    const shouldGenerateNarrationAudio = hasMissingNarrationAudio && canGenerateNarrationAudio;
     if ((hasMissingNarrationAudio || !isCurrentPageNarratable) && shouldGenerateNarrationAudio) {
       const generated = await handleGenerateVisualStoryNarration();
-      if (!generated) return;
-      didGenerateNarration = true;
+      if (generated) {
+        didGenerateNarration = true;
+      } else if (!hasAnyNarrationAudio) {
+        return;
+      }
     }
 
     const nextPage = pages[activePageIndexRef.current] || null;
     const hasCurrentNarrationAudio = Boolean(String(nextPage?.audioUrl || '').trim()) || Boolean(currentPageAudioUrl);
     if (!didGenerateNarration && !hasCurrentNarrationAudio) {
       if (hasAnyNarrationAudio) {
-        const firstAudioPageIndex = pages.findIndex((page) => Boolean(String(page.audioUrl || '').trim()));
-        if (firstAudioPageIndex >= 0) {
-          scrollToPage(firstAudioPageIndex, 220);
-        } else {
-          setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
-          return;
-        }
+        scrollToPage(firstNarrationAudioPageIndex, 220);
       } else {
         setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
         return;
@@ -2086,10 +2169,6 @@ function VisualStoryReader({
 
   const handleGenerateVisualStoryNarration = async (): Promise<boolean> => {
     if (isNarrationGenerating || !canGenerateNarrationAudio) return false;
-    if (onRequireCredit && !onRequireCredit('create', PODCAST_CREATE_CREDIT_COST)) {
-      setNarrationError(`${t('Podcast oluşturmak için')} ${PODCAST_CREATE_CREDIT_COST} ${t('kredi gerekir.')}`);
-      return false;
-    }
 
     const coverScript = derivedCoverNarrationScript;
     const visualStoryPages = derivedVisualStoryNarrationPages;
@@ -2138,8 +2217,9 @@ function VisualStoryReader({
       }
       const coverOffset = coverScript ? 1 : 0;
       const nextOverrides: Record<string, string> = {};
-      if (coverScript && jobState.segments[0]?.audioUrl) {
-        setCoverAudioOverrideUrl(jobState.segments[0].audioUrl);
+      const generatedCoverAudioUrl = coverScript && jobState.segments[0]?.audioUrl ? jobState.segments[0].audioUrl : '';
+      if (generatedCoverAudioUrl) {
+        setCoverAudioOverrideUrl(generatedCoverAudioUrl);
       }
       visualStoryPages.forEach((page, index) => {
         const audioUrl = jobState.segments[index + coverOffset]?.audioUrl || '';
@@ -2153,6 +2233,11 @@ function VisualStoryReader({
         `[ai-cost] seslendirme toplam - input ${jobState.usage.inputTokens} out ${jobState.usage.outputTokens} total ${jobState.usage.totalTokens} price ${jobState.usage.estimatedCostUsd.toFixed(6)} usd`
       );
       setPageAudioOverrideUrls((current) => ({ ...current, ...nextOverrides }));
+      const readyVisualStoryPageAudioCount = Object.keys(nextOverrides).length;
+      const visualStoryAudioStatus: CourseData['visualStoryAudioStatus'] =
+        readyVisualStoryPageAudioCount >= visualStoryPages.length
+          ? 'ready'
+          : (readyVisualStoryPageAudioCount > 0 ? 'partial' : undefined);
       if (onUpdateNodes) {
         onUpdateNodes((courseData.nodes || []).map((node) => {
           const audioUrl = nextOverrides[node.id];
@@ -2162,7 +2247,10 @@ function VisualStoryReader({
             pageAudioUrl: audioUrl,
             pageAudioStatus: 'ready'
           };
-        }));
+        }), {
+          coverNarrationAudioUrl: generatedCoverAudioUrl || courseData.coverNarrationAudioUrl,
+          visualStoryAudioStatus
+        });
       }
       setNarrationGenerationProgress(100);
       return true;
@@ -2576,16 +2664,16 @@ function VisualStoryReader({
                     event.stopPropagation();
                     void handleNarrationPlayPause();
                   }}
-                  disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
+                  disabled={isNarrationGenerating || !canStartNarrationAction}
                   className="relative h-10 rounded-2xl border inline-flex items-center justify-center overflow-hidden transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed px-4 gap-2 text-white"
                   style={{
                     minWidth: '90px',
-                    background: !hasMissingNarrationAudio
+                    background: hasAvailableNarrationAudio
                       ? isNarrationPlaying
                         ? 'linear-gradient(135deg, rgba(30,10,10,0.94) 0%, rgba(87,29,29,0.88) 100%)'
                         : 'linear-gradient(135deg, rgba(10,30,12,0.94) 0%, rgba(29,87,35,0.88) 100%)'
                       : 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
-                    borderColor: !hasMissingNarrationAudio
+                    borderColor: hasAvailableNarrationAudio
                       ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(34,197,94,0.38)'
                       : 'rgba(96,165,250,0.34)',
                     boxShadow: '0 12px 22px rgba(15,23,42,0.18)',
@@ -2594,7 +2682,7 @@ function VisualStoryReader({
                   }}
                   aria-label={
                     isNarrationGenerating ? `%${Math.round(narrationGenerationProgress)}`
-                      : !hasMissingNarrationAudio
+                      : hasAvailableNarrationAudio
                         ? isNarrationPlaying ? t('Masalı duraklat') : t('Oynat')
                         : t('Seslendir')
                   }
@@ -2608,7 +2696,7 @@ function VisualStoryReader({
                   <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
                     {isNarrationGenerating ? (
                       <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
-                    ) : !hasMissingNarrationAudio ? (
+                    ) : hasAvailableNarrationAudio ? (
                       isNarrationPlaying
                         ? <PauseCircle size={18} />
                         : <><PlayCircle size={16} /><span>{t('Oynat')}</span></>
@@ -2741,16 +2829,16 @@ function VisualStoryReader({
               onClick={() => {
                 void handleNarrationPlayPause();
               }}
-              disabled={isNarrationGenerating || (!isCurrentPageNarratable && !canGenerateNarrationAudio)}
+              disabled={isNarrationGenerating || !canStartNarrationAction}
               className="relative h-10 rounded-2xl border inline-flex items-center justify-center overflow-hidden transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed px-4 gap-2 text-white"
               style={{
                 minWidth: '90px',
-                background: !hasMissingNarrationAudio
+                background: hasAvailableNarrationAudio
                   ? isNarrationPlaying
                     ? 'linear-gradient(135deg, rgba(30,10,10,0.94) 0%, rgba(87,29,29,0.88) 100%)'
                     : 'linear-gradient(135deg, rgba(10,30,12,0.94) 0%, rgba(29,87,35,0.88) 100%)'
                   : 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
-                borderColor: !hasMissingNarrationAudio
+                borderColor: hasAvailableNarrationAudio
                   ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(34,197,94,0.38)'
                   : 'rgba(96,165,250,0.34)',
                 boxShadow: '0 12px 22px rgba(15,23,42,0.18)',
@@ -2759,7 +2847,7 @@ function VisualStoryReader({
               }}
               aria-label={
                 isNarrationGenerating ? `%${Math.round(narrationGenerationProgress)}`
-                  : !hasMissingNarrationAudio
+                  : hasAvailableNarrationAudio
                     ? isNarrationPlaying ? t('Masalı duraklat') : t('Oynat')
                     : t('Seslendir')
               }
@@ -2773,7 +2861,7 @@ function VisualStoryReader({
               <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
                 {isNarrationGenerating ? (
                   <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
-                ) : !hasMissingNarrationAudio ? (
+                ) : hasAvailableNarrationAudio ? (
                   isNarrationPlaying
                     ? <PauseCircle size={18} />
                     : <><PlayCircle size={16} /><span>{t('Oynat')}</span></>
@@ -4821,7 +4909,7 @@ export default function CourseFlowView({
 	        courseData={courseData}
 	        onBack={onBack}
 	        onUpdateNodes={onUpdateCourse}
-	        onRequireCredit={onRequireCredit}
+	        onResolveCourseForExport={onResolveCourseForExport}
 	      />
 	    );
 	  }

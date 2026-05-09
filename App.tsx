@@ -1405,6 +1405,18 @@ function courseNeedsContentHydration(course: CourseData | null | undefined): boo
   );
 }
 
+function visualStoryNeedsAudioHydration(course: CourseData | null | undefined): boolean {
+  if (!course || course.visualStoryMode !== true) return false;
+  const hasAudioSignal =
+    course.visualStoryAudioStatus === 'ready' ||
+    course.visualStoryAudioStatus === 'partial' ||
+    course.bundle?.includesPodcast === true;
+  if (!hasAudioSignal) return false;
+  const lectureNodes = (course.nodes || []).filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()));
+  if (lectureNodes.length === 0) return false;
+  return lectureNodes.some((node) => !node.pageAudioUrl?.trim());
+}
+
 function toCompactStoredNode(node: TimelineNode): TimelineNode {
   return {
     ...sanitizeNodeForLocalStorage(node),
@@ -3407,10 +3419,11 @@ export default function App() {
   const resolveCourseForExport = async (courseId: string): Promise<CourseData | null> => {
     const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || null;
     if (!snapshot) return null;
-    if (!courseNeedsContentHydration(snapshot)) return snapshot;
+    const needsAudioHydration = visualStoryNeedsAudioHydration(snapshot);
+    if (!courseNeedsContentHydration(snapshot) && !needsAudioHydration) return snapshot;
 
     try {
-      await ensureCourseHydrated(courseId, { markNodesLoading: false });
+      await ensureCourseHydrated(courseId, { markNodesLoading: false, force: needsAudioHydration });
     } catch {
       // Best-effort hydration only; export still falls back to the latest known snapshot.
     }
@@ -3511,13 +3524,13 @@ export default function App() {
       return false;
     }
 
-    if (!courseNeedsContentHydration(snapshot)) {
+    if (!options?.force && !courseNeedsContentHydration(snapshot)) {
       return true;
     }
 
     // Prefer any on-disk cached version (do not re-download on bundle version bumps until explicit open).
     const nativeCachedCourse = await readFullCourseFromNativeCache(localUserId, courseId);
-    if (nativeCachedCourse && !courseNeedsContentHydration(nativeCachedCourse)) {
+    if (!options?.force && nativeCachedCourse && !courseNeedsContentHydration(nativeCachedCourse)) {
       applyHydratedCourseLocally(nativeCachedCourse, snapshot);
       return true;
     }
@@ -6022,7 +6035,7 @@ export default function App() {
     }
   };
 
-  const handleCourseUpdate = async (updatedNodes: TimelineNode[]) => {
+  const handleCourseUpdate = async (updatedNodes: TimelineNode[], coursePatch?: Partial<CourseData>) => {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!activeCourseId || !localUserId) return;
 
@@ -6033,7 +6046,7 @@ export default function App() {
       const nextCourses = sortCoursesByLastActivity(
         prev.map((course) => {
           if (course.id !== activeCourseId) return course;
-          updatedCourse = { ...course, nodes: updatedNodes, lastActivity: now };
+          updatedCourse = { ...course, ...coursePatch, nodes: updatedNodes, lastActivity: now };
           return updatedCourse;
         })
       );
@@ -6054,6 +6067,7 @@ export default function App() {
 
     const payload = {
       nodes: updatedNodes,
+      ...(coursePatch || {}),
       lastActivity: now
     };
 
