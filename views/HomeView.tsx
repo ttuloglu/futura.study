@@ -1441,8 +1441,6 @@ export default function HomeView({
   const [accentedBookType, setAccentedBookType] = useState<SmartBookBookType | null>(null);
   const [selectedSubGenre, setSelectedSubGenre] = useState<string>(SMARTBOOK_SUBGENRE_OPTIONS.fairy_tale[0]);
   const [selectedEndingStyle, setSelectedEndingStyle] = useState<SmartBookEndingStyle>('happy');
-  const [creatorNameInput, setCreatorNameInput] = useState('');
-  const [heroNamesInput, setHeroNamesInput] = useState('');
   const [storyInputMode, setStoryInputMode] = useState<StoryInputMode>('manual');
   const [storyBlueprintInput, setStoryBlueprintInput] = useState('');
   const [settingPlaceInput, setSettingPlaceInput] = useState('');
@@ -1586,12 +1584,10 @@ export default function HomeView({
 
   function resetSmartBookCreationForm() {
     setSearchTerm('');
-    setHeroNamesInput('');
     setStoryInputMode('manual');
     setStoryBlueprintInput('');
     setSettingPlaceInput('');
     setSettingTimeInput('');
-    setCreatorNameInput('');
     setBookLanguageInput(defaultBookLanguage);
     setCreationStep(1);
     setCreationWizardOpen(false);
@@ -2349,25 +2345,20 @@ export default function HomeView({
 
   const buildCreativeBriefPayload = (): SmartBookCreativeBrief => {
     const normalizedStoryBlueprint = compactInlineText(storyBlueprintInput);
-    const normalizedHeroNames = compactInlineText(heroNamesInput);
     const manualStoryBlueprint = storyInputMode === 'manual' ? normalizedStoryBlueprint : '';
     const normalizedPlace = compactInlineText(settingPlaceInput);
     const normalizedTime = compactInlineText(settingTimeInput);
-    const normalizedCreatorName = compactInlineText(creatorNameInput);
     const normalizedBookTitleInput = compactInlineText(searchTerm);
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
     const characterHints = [
-      normalizedHeroNames ? `Kahraman isimleri: ${normalizedHeroNames}.` : undefined,
       manualStoryBlueprint || undefined
     ].filter(Boolean) as string[];
     const promptFacts = [
       `Tur: ${selectedBookType}`,
       selectedSubGenre ? `Alt tur: ${selectedSubGenre}` : undefined,
       normalizedBookTitleInput ? `Kitap adi: ${normalizedBookTitleInput}` : undefined,
-      normalizedHeroNames ? `Kahraman isimleri: ${normalizedHeroNames}` : undefined,
       normalizedPlace ? `Mekan: ${normalizedPlace}` : undefined,
-      normalizedTime ? `Zaman: ${normalizedTime}` : undefined,
-      normalizedCreatorName ? `Kurgulayan: ${normalizedCreatorName}` : undefined
+      normalizedTime ? `Zaman: ${normalizedTime}` : undefined
     ].filter(Boolean) as string[];
     const promptFactsBlock = promptFacts.length > 0
       ? `Kullanici baglami (zorunlu): ${promptFacts.join(' | ')}.`
@@ -2395,11 +2386,10 @@ export default function HomeView({
     if (requireLoginForGeneration()) return;
 
     const isAutoStoryMode = storyInputMode === 'auto';
-    const heroNamesHint = compactInlineText(heroNamesInput);
     const topicHint = searchTerm.trim();
     const detailHint = storyInputMode === 'manual'
       ? compactInlineText(storyBlueprintInput)
-      : (heroNamesHint ? `Kahraman isimleri: ${heroNamesHint}.` : '');
+      : '';
     const selectedFile = sourceFile;
     const selectedHeroPortraitFile = selectedBookType === 'fairy_tale' ? heroPortraitFile : null;
     const selectedHeroPortraitName = compactInlineText(heroPortraitName);
@@ -2432,7 +2422,6 @@ export default function HomeView({
       selectedSubGenre,
       bookLanguageInput,
       storyBlueprintInput,
-      heroNamesInput,
       settingPlaceInput,
       settingTimeInput,
       creativeBrief?.characters,
@@ -2501,7 +2490,6 @@ export default function HomeView({
       const jobState = await startBookGenerationJob({
         topic: normalizedTopic || undefined,
         sourceContent,
-        creatorName: compactInlineText(creatorNameInput) || undefined,
         ageGroup: selectedAgeGroup,
         bookType: selectedBookType,
         subGenre: selectedSubGenre || undefined,
@@ -2714,12 +2702,11 @@ export default function HomeView({
   const finalPreferenceStep = 3;
   const storyModeStep = 4;
   const settingDetailsStep = 5;
-  const creatorDetailsStep = 6;
   const visibleCreationSteps = useMemo<number[]>(
     () => {
       const steps = [1, 2, 3, 4];
       if (storyInputMode === 'auto') return steps;
-      return [1, 2, 3, 4, 5, 6];
+      return [1, 2, 3, 4, 5];
     },
     [storyInputMode]
   );
@@ -2747,8 +2734,7 @@ export default function HomeView({
         (Boolean(heroPortraitName.trim()) && heroPortraitGender !== 'unspecified');
       return storyModeComplete && portraitComplete;
     }
-    if (step === settingDetailsStep) return true;
-    if (step === creatorDetailsStep) {
+    if (step === settingDetailsStep) {
       return (
         selectedBookType !== 'fairy_tale' ||
         !heroPortraitFile ||
@@ -2776,7 +2762,7 @@ export default function HomeView({
     if (creationStep === finalPreferenceStep) return `${t('Final Tercihi')} + ${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
     if (creationStep === storyModeStep) return t('Kurgu Modu');
     if (creationStep === settingDetailsStep) return `${t('Hikayenin Mekanı')} + ${t('Hikayenin Zamanı')} + ${t('Kitabın Adı')}`;
-    return t('Kahramanlar ve Oluşturucu');
+    return t('Kitap Bilgileri');
   })();
   const canMoveNext = currentVisibleStepIndex < totalVisibleStepCount - 1 && isCurrentStepComplete && !isGenerating;
   const canCreateOnFinalStep = currentVisibleStepIndex === totalVisibleStepCount - 1 && isAllStepsComplete && !isGenerating;
@@ -2839,41 +2825,39 @@ export default function HomeView({
       <p className="mt-2 text-[11px] leading-snug text-[#b8d8ca]">
         {t('Portre eklerseniz bu kişi masalın baş kahramanı olur. Görsel masal üretimi +1 kredi kullanır.')}
       </p>
-      {heroPortraitFile && (
-        <div className="mt-2 space-y-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-[#d7efe6]">{t('Portredeki kişinin adı')}</label>
-            <input
-              value={heroPortraitName}
-              onChange={(event) => setHeroPortraitName(event.target.value)}
-              maxLength={60}
-              placeholder={t('Örn: Aras')}
-              className={wizardFieldClass}
-              style={wizardFieldStyle()}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-[11px] font-semibold text-[#d7efe6]">{t('Portre cinsiyeti')}</p>
-            <div className="grid grid-cols-3 gap-1">
-              {HERO_PORTRAIT_GENDER_OPTIONS.map((option) => {
-                const isSelected = heroPortraitGender === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setHeroPortraitGender(option.value)}
-                    className="fortale-form-button h-8 rounded-lg border px-2 text-[11px] font-bold transition"
-                    style={wizardOptionButtonStyle(isSelected)}
-                    aria-pressed={isSelected}
-                  >
-                    {t(option.label)}
-                  </button>
-                );
-              })}
-            </div>
+      <div className="mt-2 space-y-2">
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-[#d7efe6]">{t('Baş kahraman adı')}</label>
+          <input
+            value={heroPortraitName}
+            onChange={(event) => setHeroPortraitName(event.target.value)}
+            maxLength={60}
+            placeholder={t('Örn: Aras')}
+            className={wizardFieldClass}
+            style={wizardFieldStyle()}
+          />
+        </div>
+        <div>
+          <p className="mb-1 text-[11px] font-semibold text-[#d7efe6]">{t('Baş kahraman cinsiyeti')}</p>
+          <div className="grid grid-cols-3 gap-1">
+            {HERO_PORTRAIT_GENDER_OPTIONS.map((option) => {
+              const isSelected = heroPortraitGender === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setHeroPortraitGender(option.value)}
+                  className="fortale-form-button h-8 rounded-lg border px-2 text-[11px] font-bold transition"
+                  style={wizardOptionButtonStyle(isSelected)}
+                  aria-pressed={isSelected}
+                >
+                  {t(option.label)}
+                </button>
+              );
+            })}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
   const wizardThemeVars = {
@@ -3320,27 +3304,9 @@ export default function HomeView({
                       ) : (
                         <div className="space-y-2">
                           <p className="text-[12px] text-[#b8d8ca]">
-                            {t('Otomatik modda model kurgu detaylarını kendisi oluşturur. Seçimden sonra doğrudan Oluşturucu adımına geçilir.')}
+                            {t('Otomatik modda model kurgu detaylarını kendisi oluşturur.')}
                           </p>
                           {selectedBookType === 'fairy_tale' && renderHeroPortraitPanel()}
-                          <label className="block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
-                          <input
-                            value={heroNamesInput}
-                            onChange={(event) => setHeroNamesInput(event.target.value)}
-                            maxLength={180}
-                            placeholder={t('Örn: Elara, Aras, Mira')}
-                            className={wizardFieldClass}
-                            style={wizardFieldStyle()}
-                          />
-                          <label className="mt-1 block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
-                          <input
-                            value={creatorNameInput}
-                            onChange={(event) => setCreatorNameInput(event.target.value)}
-                            maxLength={90}
-                            placeholder={t('Örn: Ayşe Demir')}
-                            className={wizardFieldClass}
-                            style={wizardFieldStyle()}
-                          />
                         </div>
                       )}
                     </div>
@@ -3349,6 +3315,7 @@ export default function HomeView({
 
                 {creationStep === settingDetailsStep && (
                   <div className="space-y-2">
+                    {selectedBookType === 'fairy_tale' && renderHeroPortraitPanel()}
                     <label className="text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Hikayenin Zamanı')}</label>
                     <input
                       value={settingTimeInput}
@@ -3382,29 +3349,6 @@ export default function HomeView({
                   </div>
                 )}
 
-                {creationStep === creatorDetailsStep && (
-                  <div className="space-y-2">
-                    {selectedBookType === 'fairy_tale' && renderHeroPortraitPanel()}
-                    <label className="block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kahraman İsimleri (Opsiyonel)')}</label>
-                    <input
-                      value={heroNamesInput}
-                      onChange={(event) => setHeroNamesInput(event.target.value)}
-                      maxLength={180}
-                      placeholder={t('Örn: Elara, Aras, Mira')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                    <label className="mt-2 block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Oluşturucu (Ad Soyad)')}</label>
-                    <input
-                      value={creatorNameInput}
-                      onChange={(event) => setCreatorNameInput(event.target.value)}
-                      maxLength={90}
-                      placeholder={t('Örn: Ayşe Demir')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                  </div>
-                )}
               </fieldset>
               )}
 
