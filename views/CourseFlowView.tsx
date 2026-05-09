@@ -783,6 +783,27 @@ function stripLeadingTopicMention(value: string, topic: string | undefined | nul
   return normalizedValue.replace(leadingTopicRegex, '').trim() || normalizedValue;
 }
 
+function stripVisualStoryCoverTitleEchoes(value: string, topic: string | undefined | null): string {
+  const normalizedValue = stripLeadingTopicMention(value, topic);
+  const normalizedTopic = normalizeVisualStoryNarrationSource(topic);
+  if (!normalizedValue || !normalizedTopic) return normalizedValue;
+
+  const topicPattern = escapeRegExp(normalizedTopic);
+  const titleOnlyRegex = new RegExp(`^["“”'‘’\\s]*${topicPattern}["“”'‘’\\s.!,?;:-]*$`, 'i');
+  const titleIntroRegex = new RegExp(
+    `^(?:bu\\s+masal(?:ı|in|ın)?\\s+adı|bu\\s+hikayenin\\s+adı|bu\\s+öykünün\\s+adı|this\\s+story\\s+is\\s+called)\\s+["“”'‘’\\s]*${topicPattern}["“”'‘’\\s.!,?;:-]*$`,
+    'i'
+  );
+
+  return normalizedValue
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((sentence) => !titleOnlyRegex.test(sentence) && !titleIntroRegex.test(sentence))
+    .join(' ')
+    .trim();
+}
+
 function resolveVisualStoryNarrationLanguage(
   courseData: CourseData,
   fallbackText: string
@@ -915,7 +936,7 @@ function deriveVisualStoryPageScript(
 }
 
 function deriveVisualStoryCoverScript(courseData: CourseData): string {
-  const coverBody = stripLeadingTopicMention(
+  const coverBody = stripVisualStoryCoverTitleEchoes(
     normalizeVisualStoryNarrationSource(
     courseData.coverNarrationText ||
     courseData.description ||
