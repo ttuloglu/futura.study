@@ -13,7 +13,6 @@ interface PersonalGrowthViewProps {
   courseOpenStates?: Record<string, CourseOpenUiState>;
 }
 
-type CourseFilter = 'ongoing' | 'completed';
 type CourseViewMode = 'card' | 'cover';
 type SuccessScore = number | null;
 
@@ -149,7 +148,6 @@ export default function PersonalGrowthView({
   courseOpenStates = {}
 }: PersonalGrowthViewProps) {
   const { locale, t } = useUiI18n();
-  const [filter, setFilter] = useState<CourseFilter>('ongoing');
   const [viewMode, setViewMode] = useState<CourseViewMode>('cover');
   const [courseDeleteModal, setCourseDeleteModal] = useState<{ isOpen: boolean; courseId: string | null; courseTitle: string }>({
     isOpen: false,
@@ -175,21 +173,6 @@ export default function PersonalGrowthView({
       })),
     [sortedCourses]
   );
-
-  const filteredCourses = useMemo(() => {
-    if (filter === 'completed') {
-      return coursesWithMeta.filter((item) => item.meta.isCompleted);
-    }
-    return coursesWithMeta.filter((item) => !item.meta.isCompleted);
-  }, [coursesWithMeta, filter]);
-
-  const filterButtonClass = (kind: CourseFilter) =>
-    `fortale-library-filter-button flex-1 min-w-0 py-2 rounded-lg text-[10px] font-bold transition-all border whitespace-nowrap ${filter === kind
-      ? 'is-active text-white'
-      : 'text-[#d7efe6] border-transparent hover:text-white'
-    }`;
-
-  const filterButtonStyle = (_kind: CourseFilter): React.CSSProperties => ({});
 
   const viewModeButtonClass = (kind: CourseViewMode) =>
     `fortale-library-mode-button h-8 rounded-xl px-3 text-[10px] font-bold transition-all ${viewMode === kind
@@ -260,30 +243,6 @@ export default function PersonalGrowthView({
           <span>{t('Build Your Epic')}</span>
         </section>
         <section className="space-y-3">
-          <div
-            className="fortale-library-panel flex items-center gap-1 rounded-xl border p-1"
-            style={{
-              background: 'rgba(17, 22, 29, 0.45)',
-              borderColor: 'rgba(173, 149, 124, 0.12)',
-              boxShadow: 'none'
-            }}
-          >
-            <button
-              onClick={() => setFilter('ongoing')}
-              className={filterButtonClass('ongoing')}
-              style={filterButtonStyle('ongoing')}
-            >
-              {t('Kitaplarım')}
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={filterButtonClass('completed')}
-              style={filterButtonStyle('completed')}
-            >
-              {t('Okuduklarım')}
-            </button>
-          </div>
-
           {savedCourses.length > 0 && (
             <div
               className="fortale-library-panel flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5"
@@ -321,7 +280,7 @@ export default function PersonalGrowthView({
             </div>
           )}
 
-          {filteredCourses.length === 0 ? (
+          {coursesWithMeta.length === 0 ? (
             <div
               className="fortale-library-panel rounded-2xl border p-5 text-center"
               style={{
@@ -333,12 +292,12 @@ export default function PersonalGrowthView({
               <p className="text-[12px] text-text-secondary">
                 {isBootstrapping
                   ? effectiveBootstrapMessage
-                  : (savedCourses.length === 0 ? t('Henüz hiç kitap yok.') : t('Bu filtrede kitap bulunamadı.'))}
+                  : t('Henüz hiç kitap yok.')}
               </p>
             </div>
           ) : (
             <div className={viewMode === 'cover' ? 'grid grid-cols-2 gap-3 md:grid-cols-3' : 'grid grid-cols-1 gap-3 md:grid-cols-2'}>
-              {filteredCourses.map(({ course, meta }) => {
+              {coursesWithMeta.map(({ course, meta }) => {
                 const openUi = getCourseOpenUi(course.id);
                 const openButtonClass = 'fortale-library-open-button inline-flex items-center rounded-xl border px-2.5 py-1 text-[10px] font-bold text-white transition-transform group-active:scale-95 disabled:cursor-not-allowed disabled:opacity-80';
                 return viewMode === 'cover' ? (
