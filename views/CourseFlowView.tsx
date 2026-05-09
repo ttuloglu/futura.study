@@ -789,13 +789,24 @@ function stripVisualStoryCoverTitleEchoes(value: string, topic: string | undefin
   if (!normalizedValue || !normalizedTopic) return normalizedValue;
 
   const topicPattern = escapeRegExp(normalizedTopic);
+  const titleBoundary = `["“”'‘’\\s.!,?;:()\\[\\]{}-]`;
+  const repeatedTitleRegex = new RegExp(`(^|${titleBoundary})${topicPattern}(?=$|${titleBoundary})`, 'gi');
+  const titleIntroAnyRegex = new RegExp(
+    `(?:bu\\s+masal(?:ı|in|ın)?\\s+adı|bu\\s+hikayenin\\s+adı|bu\\s+öykünün\\s+adı|this\\s+story\\s+is\\s+called)\\s+["“”'‘’\\s]*${topicPattern}["“”'‘’\\s.!,?;:-]*`,
+    'gi'
+  );
   const titleOnlyRegex = new RegExp(`^["“”'‘’\\s]*${topicPattern}["“”'‘’\\s.!,?;:-]*$`, 'i');
   const titleIntroRegex = new RegExp(
     `^(?:bu\\s+masal(?:ı|in|ın)?\\s+adı|bu\\s+hikayenin\\s+adı|bu\\s+öykünün\\s+adı|this\\s+story\\s+is\\s+called)\\s+["“”'‘’\\s]*${topicPattern}["“”'‘’\\s.!,?;:-]*$`,
     'i'
   );
+  const withoutInlineTitleEchoes = normalizedValue
+    .replace(titleIntroAnyRegex, ' ')
+    .replace(repeatedTitleRegex, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  return normalizedValue
+  return withoutInlineTitleEchoes
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
@@ -947,7 +958,6 @@ function deriveVisualStoryCoverScript(courseData: CourseData): string {
   const languageCode = resolveVisualStoryNarrationLanguage(courseData, coverBody);
   return [
     buildVisualStoryIntroSpell(languageCode),
-    buildVisualStoryTitleLine(courseData.topic, languageCode),
     coverBody
   ]
     .filter(Boolean)
