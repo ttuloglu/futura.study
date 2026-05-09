@@ -747,7 +747,8 @@ type VisualStoryMood = 'calm' | 'magic' | 'joy' | 'tension';
 
 type VisualStoryMotionProfile = {
   mood: VisualStoryMood;
-  panX: number;
+  panStartX: number;
+  panEndX: number;
   panY: number;
   endScale: number;
   duration: number;
@@ -1025,12 +1026,15 @@ function buildVisualStoryMotionProfile(seed: string | undefined, text: string | 
   };
   const mood = inferVisualStoryMood(text);
   const sparkleCount = mood === 'magic' ? 2 : 1;
+  const panDistance = Number((2.55 + next() * 0.95).toFixed(2));
+  const panDirection = next() > 0.5 ? 1 : -1;
   return {
     mood,
-    panX: Number((((next() * 2.8) - 1.4)).toFixed(2)),
-    panY: Number((((next() * 2.4) - 1.2)).toFixed(2)),
-    endScale: Number((1.035 + next() * 0.03).toFixed(3)),
-    duration: Number((12.5 + next() * 4.5).toFixed(2)),
+    panStartX: Number((-panDistance * panDirection).toFixed(2)),
+    panEndX: Number((panDistance * panDirection).toFixed(2)),
+    panY: Number((((next() * 0.9) - 0.45)).toFixed(2)),
+    endScale: Number((1.095 + next() * 0.035).toFixed(3)),
+    duration: Number((12.2 + next() * 1.8).toFixed(2)),
     sparkleCount
   };
 }
@@ -2834,6 +2838,7 @@ function VisualStoryReader({
           >
             {pages.map((page, visualPageIndex) => {
               const isActiveVisualPage = visualPageIndex === pageIndex;
+              const pageMotionProfile = buildVisualStoryMotionProfile(page.id, page.text || page.title);
               return (
               <SwiperSlide
                 key={page.id}
@@ -2872,19 +2877,20 @@ function VisualStoryReader({
                           alt={page.text || page.title}
                           loading="eager"
                           decoding="async"
-                          className={`fortale-story-glow-image select-none object-cover object-center transition-transform duration-700 ease-out ${isNarrationPlaying ? 'fortale-story-image-motion' : ''}`}
+                          className={`fortale-story-glow-image select-none object-cover object-center transition-transform duration-700 ease-out ${isActiveVisualPage ? 'fortale-story-image-motion' : ''}`}
                           draggable={false}
-                          data-motion-mood={currentMotionProfile.mood}
+                          data-motion-mood={pageMotionProfile.mood}
                           style={{
                             width: '100%',
                             height: '100%',
                             maxWidth: '100%',
                             maxHeight: '100%',
                             touchAction: 'pan-x pan-y pinch-zoom',
-                            ['--story-pan-x' as string]: `${currentMotionProfile.panX}%`,
-                            ['--story-pan-y' as string]: `${currentMotionProfile.panY}%`,
-                            ['--story-scale-end' as string]: currentMotionProfile.endScale,
-                            ['--story-motion-duration' as string]: `${currentMotionProfile.duration}s`
+                            ['--story-pan-start-x' as string]: `${pageMotionProfile.panStartX}%`,
+                            ['--story-pan-end-x' as string]: `${pageMotionProfile.panEndX}%`,
+                            ['--story-pan-y' as string]: `${pageMotionProfile.panY}%`,
+                            ['--story-scale-end' as string]: pageMotionProfile.endScale,
+                            ['--story-motion-duration' as string]: `${pageMotionProfile.duration}s`
                           }}
                         />
                       </div>

@@ -1392,7 +1392,8 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-story-image-motion {
-  animation: fortale-story-kenburns var(--story-motion-duration, 14s) ease-in-out infinite alternate;
+  animation: fortale-story-kenburns var(--story-motion-duration, 12s) cubic-bezier(0.37, 0, 0.18, 1) infinite;
+  transform-origin: center center;
 }
 
 .fortale-story-motion-overlay {
@@ -1498,8 +1499,21 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 @keyframes fortale-story-kenburns {
-  0% { transform: scale(1) translate3d(0, 0, 0); }
-  100% { transform: scale(var(--story-scale-end, 1.045)) translate3d(var(--story-pan-x, 0%), var(--story-pan-y, -0.8%), 0); }
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  24% {
+    transform: translate3d(var(--story-pan-start-x, -2.8%), var(--story-pan-y, -0.45%), 0) scale(var(--story-scale-end, 1.115));
+  }
+  62% {
+    transform: translate3d(var(--story-pan-end-x, 2.8%), var(--story-pan-y, -0.45%), 0) scale(var(--story-scale-end, 1.115));
+  }
+  88% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
 @keyframes fortale-story-white-flash {
