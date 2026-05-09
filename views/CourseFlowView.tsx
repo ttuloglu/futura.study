@@ -733,6 +733,8 @@ const VISUAL_STORY_TRANSITION_SFX_SRC = '/audio/glass-canopy-transition.mp3';
 const VISUAL_STORY_TRANSITION_SFX_GAIN = 0.05;
 const VISUAL_STORY_BACKGROUND_IDLE_GAIN = 0.18;
 const VISUAL_STORY_BACKGROUND_NARRATION_GAIN = 0.08;
+const VISUAL_STORY_IOS_BACKGROUND_IDLE_GAIN = 0.055;
+const VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN = 0.018;
 const VISUAL_STORY_BACKGROUND_GAIN_RAMP_SECONDS = 0.28;
 
 type VisualStoryMotionPoint = {
@@ -754,6 +756,21 @@ type VisualStoryMotionProfile = {
   duration: number;
   sparkleCount: number;
 };
+
+function isNativeIosRuntime(): boolean {
+  try {
+    return Capacitor.getPlatform() === 'ios' && Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+function getVisualStoryBackgroundGain(isNarrating: boolean): number {
+  if (isNativeIosRuntime()) {
+    return isNarrating ? VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_IOS_BACKGROUND_IDLE_GAIN;
+  }
+  return isNarrating ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
+}
 
 function normalizeVisualStoryNarrationSource(value: string | undefined | null): string {
   return String(value || '')
@@ -1427,7 +1444,7 @@ function VisualStoryReader({
 
     const gainNode = backgroundAudioGainRef.current || context.createGain();
     if (!backgroundAudioGainRef.current) {
-      gainNode.gain.value = VISUAL_STORY_BACKGROUND_NARRATION_GAIN;
+      gainNode.gain.value = getVisualStoryBackgroundGain(isNarrationPlaying);
       gainNode.connect(context.destination);
       backgroundAudioGainRef.current = gainNode;
     }
@@ -1450,13 +1467,16 @@ function VisualStoryReader({
         backgroundAudioSourceElementRef.current = audio;
       } catch (error) {
         backgroundAudioMixerUnavailableRef.current = true;
-        if (audio) audio.volume = isNarrationPlaying ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
+        if (audio) {
+          audio.volume = getVisualStoryBackgroundGain(isNarrationPlaying);
+          if (isNativeIosRuntime() && isNarrationPlaying) audio.muted = true;
+        }
         return null;
       }
     }
 
     return { context, gainNode };
-  }, []);
+  }, [isNarrationPlaying]);
   const setBackgroundAudioLevel = useCallback((targetGain: number, rampSeconds = VISUAL_STORY_BACKGROUND_GAIN_RAMP_SECONDS) => {
     const clampedGain = Math.max(0, Math.min(1, targetGain));
     const audio = backgroundAudioRef.current;
@@ -1464,10 +1484,14 @@ function VisualStoryReader({
     if (!mixer) {
       if (audio) {
         audio.volume = clampedGain;
+        if (isNativeIosRuntime()) {
+          audio.muted = clampedGain <= VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN;
+        }
       }
       return;
     }
     if (audio) {
+      audio.muted = false;
       audio.volume = 1;
     }
 
@@ -1556,13 +1580,7 @@ function VisualStoryReader({
   const fullscreenOverlayControlStyle = isRotatedVisualFullscreenLayout
     ? { transform: 'rotate(90deg)' as const }
     : undefined;
-  const isNativeIosVisualStory = useMemo(() => {
-    try {
-      return Capacitor.getPlatform() === 'ios' && Capacitor.isNativePlatform();
-    } catch {
-      return false;
-    }
-  }, []);
+  const isNativeIosVisualStory = useMemo(() => isNativeIosRuntime(), []);
   const isBundledVisualStoryAssetPath = useCallback((rawUrl: string | null | undefined) => {
     const normalizedUrl = String(rawUrl || '').trim();
     return Boolean(
@@ -1652,6 +1670,7 @@ function VisualStoryReader({
   const currentPageAudioUrl = isBundledVisualStoryAssetPath(currentPageAudioRawUrl)
     ? (resolvedBundledVisualStoryAudioUrls[currentPageAudioRawUrl.replace(/^\.?\//, '')] || '')
     : currentPageAudioRawUrl;
+  const hasAnyNarrationAudio = pages.some((page) => Boolean(String(page.audioUrl || '').trim()));
   const hasMissingNarrationAudio = pages.some((page) => !page.audioUrl?.trim());
   const isCurrentPageNarratable = Boolean(currentPageAudioUrl) || isBundledVisualStoryAssetPath(currentPageAudioRawUrl);
   const canGenerateNarrationAudio = Boolean(
@@ -1698,10 +1717,8 @@ function VisualStoryReader({
   }, [backgroundTrack.src]);
 
   useEffect(() => {
-    const audio = backgroundAudioRef.current;
-    if (!audio) return;
-    audio.volume = isNarrationPlaying ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
-  }, [isNarrationPlaying]);
+    setBackgroundAudioLevel(getVisualStoryBackgroundGain(isNarrationPlaying));
+  }, [isNarrationPlaying, setBackgroundAudioLevel]);
 
   useEffect(() => {
     activePageIndexRef.current = pageIndex;
@@ -1921,6 +1938,7 @@ function VisualStoryReader({
         backgroundAudio &&
         backgroundAudio.paused
       ) {
+        setBackgroundAudioLevel(getVisualStoryBackgroundGain(isNarrationPlaying), 0.04);
         const playback = backgroundAudio.play();
         if (playback && typeof playback.catch === 'function') {
           playback.catch(() => undefined);
@@ -1943,7 +1961,8 @@ function VisualStoryReader({
     isPortraitViewport,
     isVisualImageFullscreenOpen,
     motionPhase,
-    pageIndex
+    pageIndex,
+    setBackgroundAudioLevel
   ]);
 
   const scrollToPage = (nextIndex: number, speed = VISUAL_STORY_SLIDE_TRANSITION_MS) => {
@@ -2003,23 +2022,37 @@ function VisualStoryReader({
     }
 
     let didGenerateNarration = false;
-    if ((hasMissingNarrationAudio || !isCurrentPageNarratable) && canGenerateNarrationAudio) {
+    const shouldGenerateNarrationAudio = !hasAnyNarrationAudio && canGenerateNarrationAudio;
+    if ((hasMissingNarrationAudio || !isCurrentPageNarratable) && shouldGenerateNarrationAudio) {
       const generated = await handleGenerateVisualStoryNarration();
       if (!generated) return;
       didGenerateNarration = true;
     }
 
     const nextPage = pages[activePageIndexRef.current] || null;
-    if (!didGenerateNarration && !String(nextPage?.audioUrl || '').trim() && !currentPageAudioUrl) {
-      setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
-      return;
+    const hasCurrentNarrationAudio = Boolean(String(nextPage?.audioUrl || '').trim()) || Boolean(currentPageAudioUrl);
+    if (!didGenerateNarration && !hasCurrentNarrationAudio) {
+      if (hasAnyNarrationAudio) {
+        const firstAudioPageIndex = pages.findIndex((page) => Boolean(String(page.audioUrl || '').trim()));
+        if (firstAudioPageIndex >= 0) {
+          scrollToPage(firstAudioPageIndex, 220);
+        } else {
+          setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
+          return;
+        }
+      } else {
+        setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
+        return;
+      }
     }
     // Start background music synchronously inside the user-gesture call stack
     // so Chrome/iOS autoplay policy allows it.
     const bgAudio = backgroundAudioRef.current;
     if (bgAudio) {
       bgAudio.loop = true;
-      bgAudio.volume = VISUAL_STORY_BACKGROUND_NARRATION_GAIN;
+      bgAudio.muted = false;
+      setBackgroundAudioLevel(getVisualStoryBackgroundGain(true), 0.04);
+      void prepareBackgroundAudioMixer();
       if (bgAudio.paused) bgAudio.currentTime = 0;
       void bgAudio.play().catch(() => undefined);
     }
@@ -2044,6 +2077,8 @@ function VisualStoryReader({
     if (!shouldResume) return;
     window.setTimeout(() => {
       setBackgroundMusicError(null);
+      setBackgroundAudioLevel(getVisualStoryBackgroundGain(true), 0.04);
+      void prepareBackgroundAudioMixer();
       setIsBackgroundMusicEnabled(true);
       setIsNarrationPlaying(true);
     }, 180);
