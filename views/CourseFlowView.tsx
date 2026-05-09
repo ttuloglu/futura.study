@@ -32,7 +32,6 @@ import {
   Compass,
   Maximize2,
   Minimize2,
-  RotateCw
 } from 'lucide-react';
 import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState, PodcastVoiceName } from '../types';
 import FLogo from '../components/FLogo';
@@ -1345,6 +1344,7 @@ function VisualStoryReader({
   const [isPdfDownloading, setIsPdfDownloading] = useState(false);
   const [isEpubDownloading, setIsEpubDownloading] = useState(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [isVisualStoryPdfPaletteOpen, setIsVisualStoryPdfPaletteOpen] = useState(false);
   const [isBackgroundMusicEnabled, setIsBackgroundMusicEnabled] = useState(false);
   const [backgroundMusicError, setBackgroundMusicError] = useState<string | null>(null);
   const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
@@ -1356,7 +1356,6 @@ function VisualStoryReader({
   const [pageAudioOverrideUrls, setPageAudioOverrideUrls] = useState<Record<string, string>>({});
   const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
   const [visualImageFullscreenPageIndex, setVisualImageFullscreenPageIndex] = useState<number | null>(null);
-  const [visualRotationOverride, setVisualRotationOverride] = useState<boolean | null>(null);
   const [selectedPdfBackgroundPresetId, setSelectedPdfBackgroundPresetId] = useState<PdfBackgroundPresetId>(PDF_BACKGROUND_PRESETS[0].id);
   const [nativeViewerLaunchToken, setNativeViewerLaunchToken] = useState(0);
   const [nativeViewerError, setNativeViewerError] = useState<string | null>(null);
@@ -1518,14 +1517,18 @@ function VisualStoryReader({
   );
   const isVisualImageFullscreenOpen = visualImageFullscreenPageIndex !== null;
   const visualFullscreenPage = isVisualImageFullscreenOpen ? currentPage : null;
-  const shouldRotateVisualLayout = visualRotationOverride ?? isPortraitViewport;
+  const shouldRotateVisualLayout = isPortraitViewport;
   const isRotatedVisualFullscreenLayout = isVisualImageFullscreenOpen && shouldRotateVisualLayout;
   const fullscreenOverlayControlStyle = isRotatedVisualFullscreenLayout
     ? { transform: 'rotate(90deg)' as const }
     : undefined;
-  const toggleVisualStoryRotation = useCallback(() => {
-    setVisualRotationOverride((currentOverride) => !(currentOverride ?? isPortraitViewport));
-  }, [isPortraitViewport]);
+  const isNativeIosVisualStory = useMemo(() => {
+    try {
+      return Capacitor.getPlatform() === 'ios' && Capacitor.isNativePlatform();
+    } catch {
+      return false;
+    }
+  }, []);
   const isBundledVisualStoryAssetPath = useCallback((rawUrl: string | null | undefined) => {
     const normalizedUrl = String(rawUrl || '').trim();
     return Boolean(
@@ -1645,7 +1648,6 @@ function VisualStoryReader({
       setIsPortraitViewport(nextIsPortrait);
       if (lastViewportPortraitRef.current !== nextIsPortrait) {
         lastViewportPortraitRef.current = nextIsPortrait;
-        setVisualRotationOverride(null);
       }
     };
     handleViewportResize();
@@ -2152,6 +2154,7 @@ function VisualStoryReader({
   const handleVisualStoryPdfDownload = async (backgroundColor?: string) => {
     if (isPdfDownloading) return;
     setIsDownloadMenuOpen(false);
+    setIsVisualStoryPdfPaletteOpen(false);
     setIsPdfDownloading(true);
     try {
       const { exportVisualStoryToPdf } = await loadExportUtils();
@@ -2167,6 +2170,7 @@ function VisualStoryReader({
   const handleVisualStoryEpubDownload = async () => {
     if (isEpubDownloading) return;
     setIsDownloadMenuOpen(false);
+    setIsVisualStoryPdfPaletteOpen(false);
     setIsEpubDownloading(true);
     try {
       const { exportCourseToEpub } = await loadExportUtils();
@@ -2189,7 +2193,7 @@ function VisualStoryReader({
 
   const renderVisualStoryDownloadMenu = () => (
     <div
-      className="absolute right-3 bottom-[56px] z-[160] grid w-[228px] gap-2 rounded-2xl border p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
+      className="absolute right-3 bottom-[56px] z-[160] grid w-[268px] gap-2 rounded-2xl border p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
       style={{
         background: 'linear-gradient(180deg, rgba(12,23,39,0.94) 0%, rgba(8,21,16,0.92) 100%)',
         borderColor: 'rgba(255,255,255,0.16)',
@@ -2198,72 +2202,82 @@ function VisualStoryReader({
       }}
       onClick={(event) => event.stopPropagation()}
     >
-      <div
-        className="rounded-xl border p-2"
-        style={{
-          background: 'rgba(255,255,255,0.07)',
-          borderColor: 'rgba(255,255,255,0.14)'
-        }}
-      >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] font-bold leading-none text-white">
-            {t('Fortale PDF')}
-          </span>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#cfe2f7]">
-            {t(selectedPdfBackgroundPreset.label)}
-          </span>
+      {isVisualStoryPdfPaletteOpen && (
+        <div
+          className="rounded-xl border p-2"
+          style={{
+            background: 'rgba(255,255,255,0.07)',
+            borderColor: 'rgba(255,255,255,0.14)'
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold leading-none text-white">
+              {t('PDF arka planı')}
+            </span>
+            <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#cfe2f7]">
+              {t(selectedPdfBackgroundPreset.label)}
+            </span>
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {PDF_BACKGROUND_PRESETS.map((preset) => {
+              const isSelected = preset.id === selectedPdfBackgroundPresetId;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
+                  disabled={isPdfDownloading || isEpubDownloading}
+                  className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
+                  style={{
+                    background: preset.color,
+                    borderColor: isSelected ? '#9fd8e8' : 'rgba(255,255,255,0.46)',
+                    borderWidth: isSelected ? 2.5 : 1,
+                    boxShadow: isSelected ? '0 0 0 3px rgba(159,216,232,0.22)' : 'none'
+                  }}
+                  aria-label={t(preset.label)}
+                  title={t(preset.label)}
+                />
+              );
+            })}
+          </div>
         </div>
-        <div className="mb-2 grid grid-cols-5 gap-2">
-          {PDF_BACKGROUND_PRESETS.map((preset) => {
-            const isSelected = preset.id === selectedPdfBackgroundPresetId;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
-                disabled={isPdfDownloading || isEpubDownloading}
-                className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
-                style={{
-                  background: preset.color,
-                  borderColor: isSelected ? '#9fd8e8' : 'rgba(255,255,255,0.46)',
-                  borderWidth: isSelected ? 2.5 : 1,
-                  boxShadow: isSelected ? '0 0 0 3px rgba(159,216,232,0.22)' : 'none'
-                }}
-                aria-label={t(preset.label)}
-                title={t(preset.label)}
-              />
-            );
-          })}
-        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
+          onClick={() => {
+            if (!isVisualStoryPdfPaletteOpen) {
+              setIsVisualStoryPdfPaletteOpen(true);
+              return;
+            }
+            void handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color);
+          }}
           disabled={isPdfDownloading || isEpubDownloading}
-          className="group h-10 w-full inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+          className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
           style={visualStoryGlassControlStyle}
-          aria-label={t('Fortale PDF')}
-          title={t('Fortale PDF')}
+          aria-label={t('PDF İndir')}
+          title={t('PDF İndir')}
         >
           {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
           <span className="text-[10px] font-bold leading-none">
-            {isPdfDownloading ? t('Hazırlanıyor') : t('İndir')}
+            {isPdfDownloading ? t('Hazırlanıyor') : t('PDF İndir')}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={handleVisualStoryEpubDownload}
+          disabled={isPdfDownloading || isEpubDownloading}
+          className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
+          style={visualStoryGlassControlStyle}
+          aria-label={t('EPUB İndir')}
+          title={t('EPUB İndir')}
+        >
+          {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
+          <span className="text-[10px] font-bold leading-none">
+            {isEpubDownloading ? t('Hazırlanıyor') : t('EPUB İndir')}
           </span>
         </button>
       </div>
-      <button
-        type="button"
-        onClick={handleVisualStoryEpubDownload}
-        disabled={isPdfDownloading || isEpubDownloading}
-        className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-        style={visualStoryGlassControlStyle}
-        aria-label={t('Fortale ePub')}
-        title={t('Fortale ePub')}
-      >
-        {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-        <span className="text-[10px] font-bold leading-none">
-          {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
-        </span>
-      </button>
     </div>
   );
 
@@ -2407,6 +2421,7 @@ function VisualStoryReader({
           onClick={() => {
             if (isDownloadMenuOpen) {
               setIsDownloadMenuOpen(false);
+              setIsVisualStoryPdfPaletteOpen(false);
               return;
             }
             setVisualImageFullscreenPageIndex(null);
@@ -2441,7 +2456,12 @@ function VisualStoryReader({
               {pages.map((page, idx) => (
                 <SwiperSlide key={idx}>
                   {isRotatedVisualFullscreenLayout ? (
-                    <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{
+                        transform: isNativeIosVisualStory ? 'translateY(-10px)' : undefined
+                      }}
+                    >
                       <img
                         src={page.imageUrl || ''}
                         alt={page.text || page.title}
@@ -2456,7 +2476,12 @@ function VisualStoryReader({
                       />
                     </div>
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{
+                        transform: isNativeIosVisualStory ? 'translateY(-10px)' : undefined
+                      }}
+                    >
                       <img
                         src={page.imageUrl || ''}
                         alt={page.text || page.title}
@@ -2541,7 +2566,10 @@ function VisualStoryReader({
 	                  }}
 	                  onClick={(event) => {
 	                    event.stopPropagation();
-	                    setIsDownloadMenuOpen((current) => !current);
+	                    setIsDownloadMenuOpen((current) => {
+                        if (current) setIsVisualStoryPdfPaletteOpen(false);
+                        return !current;
+                      });
 	                  }}
 	                  aria-label={t('İndir')}
 	                  title={t('İndir')}
@@ -2592,7 +2620,10 @@ function VisualStoryReader({
           type="button"
           className="fixed inset-0 z-[109] cursor-default bg-transparent"
           aria-label={t('İndirme menüsünü kapat')}
-          onClick={() => setIsDownloadMenuOpen(false)}
+          onClick={() => {
+            setIsDownloadMenuOpen(false);
+            setIsVisualStoryPdfPaletteOpen(false);
+          }}
         />
       )}
 	      {(backgroundMusicError || narrationError) && (
@@ -2695,7 +2726,12 @@ function VisualStoryReader({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsDownloadMenuOpen((current) => !current)}
+              onClick={() => {
+                setIsDownloadMenuOpen((current) => {
+                  if (current) setIsVisualStoryPdfPaletteOpen(false);
+                  return !current;
+                });
+              }}
               className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
               style={visualStoryGlassControlStyle}
               aria-label={t('İndir')}
@@ -2791,10 +2827,11 @@ function VisualStoryReader({
 	                  <div
 	                    className="relative z-10 grid min-h-0 flex-1 grid-rows-[auto_minmax(0,52%)_minmax(0,1fr)] pt-[calc(env(safe-area-inset-top,0px)+10px)]"
 	                    style={{
-	                      background: 'linear-gradient(180deg, rgba(49,75,86,0.94) 0%, rgba(28,53,47,0.94) 52%, rgba(8,21,16,0.96) 100%)'
+	                      background: 'linear-gradient(180deg, rgba(49,75,86,0.94) 0%, rgba(28,53,47,0.94) 52%, rgba(8,21,16,0.96) 100%)',
+                        paddingTop: isNativeIosVisualStory ? 'calc(env(safe-area-inset-top,0px) + 2px)' : undefined
 	                    }}
 	                  >
-                      <div className="px-4 pb-2 text-center text-[15px] font-bold leading-tight text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.72)]">
+                      <div className={`px-4 text-center text-[15px] font-bold leading-tight text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.72)] ${isNativeIosVisualStory ? 'pb-1' : 'pb-2'}`}>
                         {String(courseData.topic || t('Masal')).trim()}
                       </div>
 	                    <div className="relative min-h-0 overflow-hidden">
