@@ -83,6 +83,7 @@ const OPENAI_COVER_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_LECTURE_IMAGE_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_REMEDIAL_IMAGE_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_IMAGE_API_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_IMAGE_EDITS_API_URL = "https://api.openai.com/v1/images/edits";
 const OPENAI_TTS_API_URL = "https://api.openai.com/v1/audio/speech";
 const CONTENT_COMPLETION_MARKER = "[[SMARTBOOK_END]]";
 const FAIRY_TALE_TOTAL_IMAGE_COUNT = 4;
@@ -143,6 +144,7 @@ const FREE_CHAT_DAILY_MESSAGES = 5;
 const STARTER_CREATE_CREDITS = 3;
 const MAX_CREDIT_COST_PER_ACTION = 10;
 const PODCAST_CREATE_CREDIT_COST = 2;
+const HERO_PORTRAIT_MAX_BYTES = 4 * 1024 * 1024;
 const CREDIT_REFUND_RECEIPT_TTL_MS = 30 * 60 * 1000;
 const BOOK_TYPE_CREATE_CREDIT_COST: Record<string, number> = {
   fairy_tale: 1,
@@ -815,6 +817,7 @@ interface UsageReportEntry {
   costUsdInputImage?: number;
   costUsdOutputImage?: number;
   costMode?: "usage" | "flat";
+  referenceImageCount?: number;
   quality?: string;
   size?: string;
 }
@@ -859,6 +862,21 @@ interface ImageGenerationResult {
   model: string;
   usage: TokenUsageMetrics;
 }
+
+type OpenAiImageReference = {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+};
+
+type HeroPortraitGender = "male" | "female";
+
+type VisualStoryHeroPortraitReference = {
+  storagePath: string;
+  contentType: string;
+  fileName: string;
+  sizeBytes: number;
+};
 
 interface SmartBookCreativeBrief {
   bookType: SmartBookBookType;
@@ -911,6 +929,31 @@ function detectMimeTypeFromBase64Payload(payload: string): string {
   if (normalized.startsWith("UklGR")) return "image/webp";
   if (normalized.startsWith("Qk0")) return "image/bmp";
   return "image/png";
+}
+
+function detectImageMimeTypeFromBuffer(buffer: Buffer): string | undefined {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.slice(0, 4).toString("ascii") === "RIFF" &&
+    buffer.slice(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return undefined;
 }
 
 function toDataImageUrlFromPayload(
@@ -3514,6 +3557,7 @@ async function requestLowQualityLessonImages(
   options?: {
     sizeMode?: OpenAiLowImageSizeMode;
     modelOverride?: string;
+    referenceImages?: OpenAiImageReference[];
   }
 ): Promise<ImageGenerationResult> {
   const normalizedPrompt = String(prompt || "")
@@ -3524,13 +3568,46 @@ async function requestLowQualityLessonImages(
   const resolvedModel = String(options?.modelOverride || OPENAI_IMAGE_MODEL || "").trim() || OPENAI_IMAGE_MODEL;
   const sizeMode = options?.sizeMode || "cover-3x4";
   const size = resolveOpenAiLowImageSize(sizeMode);
-  const payload: Record<string, unknown> = {
-    model: resolvedModel,
-    prompt: normalizedPrompt,
-    n: count,
-    size,
-    quality: OPENAI_IMAGE_QUALITY
-  };
+  const referenceImages = Array.isArray(options?.referenceImages)
+    ? options.referenceImages.filter((item) => item?.buffer?.length > 0)
+    : [];
+  const isEditRequest = referenceImages.length > 0;
+  const endpointUrl = isEditRequest ? OPENAI_IMAGE_EDITS_API_URL : OPENAI_IMAGE_API_URL;
+
+  let body: BodyInit;
+  let headers: Record<string, string>;
+  if (isEditRequest) {
+    const formData = new FormData();
+    formData.append("model", resolvedModel);
+    formData.append("prompt", normalizedPrompt);
+    formData.append("n", String(count));
+    formData.append("size", size);
+    formData.append("quality", OPENAI_IMAGE_QUALITY);
+    referenceImages.forEach((reference, index) => {
+      const contentType = normalizeImageMimeType(reference.contentType) || "image/png";
+      const fileName = sanitizeBundlePathPart(reference.fileName || `reference-${index + 1}.png`, `reference-${index + 1}`)
+        .replace(/\.+/g, ".")
+        .slice(0, 96) || `reference-${index + 1}.png`;
+      const blob = new Blob([new Uint8Array(reference.buffer)], { type: contentType });
+      formData.append("image[]", blob, fileName);
+    });
+    body = formData;
+    headers = {
+      Authorization: `Bearer ${apiKey}`
+    };
+  } else {
+    body = JSON.stringify({
+      model: resolvedModel,
+      prompt: normalizedPrompt,
+      n: count,
+      size,
+      quality: OPENAI_IMAGE_QUALITY
+    });
+    headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    };
+  }
 
   let lastErrorMessage = "OpenAI görsel üretimi başarısız oldu.";
   let lastErrorCode: "internal" | "unavailable" | "resource-exhausted" = "internal";
@@ -3538,13 +3615,10 @@ async function requestLowQualityLessonImages(
   const timeoutId = setTimeout(() => controller.abort(), 95_000);
 
   try {
-    const response = await fetch(OPENAI_IMAGE_API_URL, {
+    const response = await fetch(endpointUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(payload),
+      headers,
+      body,
       signal: controller.signal
     });
 
@@ -5446,9 +5520,17 @@ async function applyRevenueCatCreditPackEvent(
   });
 }
 
-function resolveBookCreateCreditCost(bookTypeValue: unknown): number {
+function resolveBookCreateCreditCost(
+  bookTypeValue: unknown,
+  options?: { hasVisualHeroPortrait?: boolean }
+): number {
   const key = typeof bookTypeValue === "string" ? bookTypeValue.trim() : "";
-  return BOOK_TYPE_CREATE_CREDIT_COST[key] ?? 1;
+  const baseCost = BOOK_TYPE_CREATE_CREDIT_COST[key] ?? 1;
+  return baseCost + (key === "fairy_tale" && options?.hasVisualHeroPortrait ? 1 : 0);
+}
+
+function hasVisualHeroPortraitForCredit(payload: Record<string, unknown>): boolean {
+  return isRecord(payload.heroPortraitImage) || isRecord(payload.visualHeroPortrait);
 }
 
 function resolveAiCreditCharge(
@@ -5458,7 +5540,9 @@ function resolveAiCreditCharge(
   if (operation === "generateCourseCover") {
     return {
       action: "create",
-      cost: resolveBookCreateCreditCost(payload.bookType)
+      cost: resolveBookCreateCreditCost(payload.bookType, {
+        hasVisualHeroPortrait: hasVisualHeroPortraitForCredit(payload)
+      })
     };
   }
   if (operation === "generatePodcastAudio") {
@@ -5477,7 +5561,9 @@ function resolveCreditRequirement(
   if (operation === "generateCourseOutline") {
     return {
       action: "create",
-      cost: resolveBookCreateCreditCost(payload.bookType)
+      cost: resolveBookCreateCreditCost(payload.bookType, {
+        hasVisualHeroPortrait: hasVisualHeroPortraitForCredit(payload)
+      })
     };
   }
   return resolveAiCreditCharge(operation, payload);
@@ -7895,7 +7981,8 @@ function normalizeVisualStoryCoverText(
 function buildVisualFairyTalePlanInputBlock(
   brief: SmartBookCreativeBrief,
   preferredLanguage: PreferredLanguage,
-  audienceLevel: SmartBookAudienceLevel
+  audienceLevel: SmartBookAudienceLevel,
+  options?: { heroPortraitName?: string; heroPortraitGender?: HeroPortraitGender }
 ): string {
   const isEn = usesEnglishPromptScaffold(preferredLanguage);
   const audienceBucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
@@ -7911,6 +7998,16 @@ function buildVisualFairyTalePlanInputBlock(
       : (isEn ? "- Output language: follow detected user language" : "- Çıktı dili: tespit edilen kullanıcı dili"),
     brief.characters
       ? (isEn ? `- User characters: ${brief.characters}` : `- Kullanıcı karakterleri: ${brief.characters}`)
+      : "",
+    options?.heroPortraitName
+      ? (isEn
+        ? `- Portrait hero: ${options.heroPortraitName} is the main protagonist and must stay central in the story.`
+        : `- Portre kahramanı: ${options.heroPortraitName} baş kahramandır ve hikayenin merkezinde kalmalı.`)
+      : "",
+    options?.heroPortraitGender
+      ? (isEn
+        ? `- Portrait hero gender: ${options.heroPortraitGender === "male" ? "male" : "female"}`
+        : `- Portre kahramanı cinsiyeti: ${options.heroPortraitGender === "male" ? "erkek" : "kadın"}`)
       : "",
     brief.settingPlace
       ? (isEn ? `- User place: ${brief.settingPlace}` : `- Kullanıcı mekanı: ${brief.settingPlace}`)
@@ -7957,7 +8054,8 @@ async function generateVisualFairyTalePlan(
   sourceContent: string | undefined,
   creativeBrief: SmartBookCreativeBrief | undefined,
   allowAiBookTitleGeneration: boolean,
-  audienceLevel: SmartBookAudienceLevel
+  audienceLevel: SmartBookAudienceLevel,
+  options?: { heroPortraitName?: string; heroPortraitGender?: HeroPortraitGender }
 ): Promise<{ plan: VisualStoryPlan; courseMeta: CourseOutlineMeta; usageEntry: UsageReportEntry }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, "fairy_tale", creativeBrief?.subGenre);
   const preferredLanguage = resolvePreferredLanguageFromBrief(normalizedBrief, topic, sourceContent);
@@ -7967,7 +8065,7 @@ async function generateVisualFairyTalePlan(
   const promptBase = `
 ${topic ? `"${topic}" girdisi için ${audienceBucket} yaş görsel masal metni üret.` : `${audienceBucket} yaş görsel masal metni üret.`}
 ${sourceContent ? `Kaynak özeti:\n"""\n${sourceContent.slice(0, 7000)}\n"""\n` : ""}
-${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienceLevel)}
+${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienceLevel, options)}
 
 Kurallar:
 1) storyText alanına tek parça, özgün, ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümlelik bir masal yaz.
@@ -7984,6 +8082,7 @@ Kurallar:
 12) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
 13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
 14) ${languageInstruction(preferredLanguage)}
+15) ${options?.heroPortraitName ? `${options.heroPortraitName} baş kahraman olmalı; yan karakter, anlatıcı veya sahne dışı kişi olamaz. characterBible alanında bu kahramanı görsel tutarlılık için net tanımla.` : "Baş kahraman storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
 
 Sadece JSON döndür.
 `.trim();
@@ -8172,11 +8271,33 @@ Rules:
 
 async function generateVisualStoryImage(
   openAiApiKey: string,
-  prompt: string
+  prompt: string,
+  heroPortraitImage?: OpenAiImageReference,
+  heroPortraitGender?: HeroPortraitGender,
+  heroPortraitName?: string
 ): Promise<{ imageUrl: string; usageEntry: UsageReportEntry }> {
-  const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, 1, {
+  const genderLine = heroPortraitGenderPromptLine(heroPortraitGender);
+  const portraitDirective = heroPortraitImage
+    ? [
+      "Hero portrait reference:",
+      heroPortraitName
+        ? `- Use the attached portrait only as the identity reference for ${heroPortraitName}, the main recurring fairy-tale hero and protagonist.`
+        : "- Use the attached portrait only as the identity reference for the main recurring fairy-tale hero and protagonist.",
+      heroPortraitName
+        ? `- ${heroPortraitName} must be the central hero in the image, not a side character, background character, narrator, or separate reference figure.`
+        : "- The portrait-based character must be the central hero in the image, not a side character, background character, narrator, or separate reference figure.",
+      "- The portrait is not a face layer, sticker, cutout, or separate real-photo person. Never paste a realistic photo face into the illustration and never show the uploaded reference photo inside or beside the scene.",
+      "- Redraw the portrait subject fully in the same non-photorealistic storybook illustration style, brushwork, lighting, and color palette as every other character.",
+      "- Preserve identity through illustrated equivalents of face shape, jaw/chin, hair length/style/hairline, brows, eye spacing, nose, mouth, skin tone, and recognizable expression cues.",
+      "- Do not copy the uploaded photo background, clothing, lighting, camera look, or any private context.",
+      genderLine ? `- ${genderLine}` : "",
+      "- Keep the result non-photorealistic, warm, child-safe, and visually consistent with the character bible."
+    ].filter(Boolean).join("\n")
+    : "";
+  const imageResult = await requestLowQualityLessonImages(openAiApiKey, [prompt, portraitDirective].filter(Boolean).join("\n\n"), 1, {
     sizeMode: "poster-16x9",
-    modelOverride: OPENAI_IMAGE_MODEL
+    modelOverride: OPENAI_IMAGE_MODEL,
+    referenceImages: heroPortraitImage ? [heroPortraitImage] : undefined
   });
   const imageUrl = imageResult.images[0];
   if (!imageUrl) {
@@ -8208,7 +8329,8 @@ async function generateVisualStoryImage(
       costUsdOutputImage: costBreakdown.costUsdOutputImage,
       costMode: costBreakdown.costMode,
       quality: costBreakdown.quality,
-      size: costBreakdown.size
+      size: costBreakdown.size,
+      referenceImageCount: heroPortraitImage ? 1 : 0
     }
   };
 }
@@ -8290,9 +8412,18 @@ async function generateValidatedVisualStoryImage(params: {
   label: string;
   audienceLevel: SmartBookAudienceLevel;
   isCover?: boolean;
+  heroPortraitImage?: OpenAiImageReference;
+  heroPortraitGender?: HeroPortraitGender;
+  heroPortraitName?: string;
 }): Promise<{ imageUrl: string; usageEntries: UsageReportEntry[] }> {
   const usageEntries: UsageReportEntry[] = [];
-  const imageResult = await generateVisualStoryImage(params.openAiApiKey, params.prompt);
+  const imageResult = await generateVisualStoryImage(
+    params.openAiApiKey,
+    params.prompt,
+    params.heroPortraitImage,
+    params.heroPortraitGender,
+    params.heroPortraitName
+  );
   usageEntries.push({
     ...imageResult.usageEntry,
     label: `${params.label}: görsel üretim`
@@ -14189,6 +14320,118 @@ export const retryStuckBookJob = onCall(
   }
 );
 
+function normalizeHeroPortraitUpload(raw: unknown): {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+  extension: string;
+  sizeBytes: number;
+} | null {
+  if (!isRecord(raw)) return null;
+  const base64Raw = typeof raw.base64 === "string" ? raw.base64.trim() : "";
+  if (!base64Raw) return null;
+  const normalizedBase64 = base64Raw.includes(",")
+    ? base64Raw.slice(base64Raw.indexOf(",") + 1)
+    : base64Raw;
+  const compactBase64 = normalizedBase64.replace(/\s+/g, "");
+  if (!compactBase64 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(compactBase64)) {
+    throw new HttpsError("invalid-argument", "Portre görseli okunamadı.");
+  }
+  const buffer = Buffer.from(compactBase64, "base64");
+  if (buffer.length <= 0) {
+    throw new HttpsError("invalid-argument", "Portre görseli boş.");
+  }
+  if (buffer.length > HERO_PORTRAIT_MAX_BYTES) {
+    throw new HttpsError("invalid-argument", "Portre görseli 4 MB sınırını aşıyor.");
+  }
+  const contentType = detectImageMimeTypeFromBuffer(buffer) || normalizeImageMimeType(raw.mimeType);
+  if (!contentType || !/^image\/(?:png|jpe?g|webp)$/i.test(contentType)) {
+    throw new HttpsError("invalid-argument", "Portre için PNG, JPG veya WebP görsel yükleyin.");
+  }
+  const extension = inferExtensionFromContentType(contentType, "png");
+  const rawFileName = firstNonEmptyString(raw.fileName, `hero-portrait.${extension}`) || `hero-portrait.${extension}`;
+  const fileName = sanitizeBundlePathPart(rawFileName, "hero-portrait").slice(0, 90) || `hero-portrait.${extension}`;
+  return {
+    buffer,
+    contentType,
+    fileName,
+    extension,
+    sizeBytes: buffer.length
+  };
+}
+
+async function saveVisualHeroPortraitReference(params: {
+  uid: string;
+  courseId: string;
+  upload: ReturnType<typeof normalizeHeroPortraitUpload> & {};
+}): Promise<VisualStoryHeroPortraitReference> {
+  const safeUid = sanitizeBundlePathPart(params.uid, "user");
+  const safeCourseId = sanitizeBundlePathPart(params.courseId, "book");
+  const storagePath = `smartbooks/${safeUid}/${safeCourseId}/references/hero-portrait.${params.upload.extension}`;
+  await getStorage().bucket().file(storagePath).save(params.upload.buffer, {
+    contentType: params.upload.contentType,
+    metadata: {
+      metadata: {
+        uid: params.uid,
+        courseId: params.courseId,
+        kind: "visual-story-hero-portrait-reference",
+        originalFileName: params.upload.fileName
+      }
+    }
+  });
+  return {
+    storagePath,
+    contentType: params.upload.contentType,
+    fileName: params.upload.fileName,
+    sizeBytes: params.upload.sizeBytes
+  };
+}
+
+function normalizeVisualHeroPortraitReference(raw: unknown): VisualStoryHeroPortraitReference | undefined {
+  if (!isRecord(raw)) return undefined;
+  const storagePath = firstNonEmptyString(raw.storagePath);
+  const contentType = normalizeImageMimeType(raw.contentType);
+  const fileName = firstNonEmptyString(raw.fileName) || "hero-portrait.png";
+  const sizeBytes = toNonNegativeInt(raw.sizeBytes);
+  if (!storagePath || !contentType) return undefined;
+  return { storagePath, contentType, fileName, sizeBytes };
+}
+
+function normalizeHeroPortraitGender(raw: unknown): HeroPortraitGender | undefined {
+  const normalized = String(raw || "").trim().toLowerCase();
+  if (normalized === "male" || normalized === "erkek") return "male";
+  if (normalized === "female" || normalized === "kadın" || normalized === "kadin") return "female";
+  return undefined;
+}
+
+function normalizeHeroPortraitName(raw: unknown): string | undefined {
+  const name = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!name) return undefined;
+  return name.slice(0, 60);
+}
+
+function heroPortraitGenderPromptLine(gender?: HeroPortraitGender): string {
+  if (gender === "male") {
+    return "Gender lock: depict the portrait-based hero as male. Long hair does not make him female; do not infer gender from hairstyle.";
+  }
+  if (gender === "female") {
+    return "Gender lock: depict the portrait-based hero as female. Keep the character's gender consistent on every page.";
+  }
+  return "";
+}
+
+async function loadOpenAiHeroPortraitReference(
+  reference: VisualStoryHeroPortraitReference
+): Promise<OpenAiImageReference> {
+  const asset = await loadBinaryAssetFromSource(reference.storagePath);
+  const contentType = normalizeImageMimeType(asset.contentType) || reference.contentType || "image/png";
+  return {
+    buffer: asset.buffer,
+    contentType,
+    fileName: reference.fileName || `hero-portrait.${inferExtensionFromContentType(contentType, "png")}`
+  };
+}
+
 export const registerFcmToken = onCall(
   {
     region: "us-central1",
@@ -14242,12 +14485,28 @@ export const startBookGenerationJob = onCall(
       subGenre,
       targetPageCountRaw
     );
+    const heroPortraitUpload =
+      bookType === "fairy_tale" && isVisualFairyTaleAudienceLevel(ageGroup)
+        ? normalizeHeroPortraitUpload(payload.heroPortraitImage)
+        : null;
+    const heroPortraitName = heroPortraitUpload ? normalizeHeroPortraitName(payload.heroPortraitName) : undefined;
+    const heroPortraitGender = heroPortraitUpload ? normalizeHeroPortraitGender(payload.heroPortraitGender) : undefined;
+    if (heroPortraitUpload && !heroPortraitName) {
+      throw new HttpsError("invalid-argument", "Portredeki kişinin adını yazın.");
+    }
+    if (heroPortraitUpload && !heroPortraitGender) {
+      throw new HttpsError("invalid-argument", "Portre için cinsiyet seçin.");
+    }
+    const bookCreateCreditCost = resolveBookCreateCreditCost(bookType, {
+      hasVisualHeroPortrait: Boolean(heroPortraitUpload)
+    });
 
     assertSafeBookTexts([
       { label: "topic", value: topic },
       { label: "sourceContent", value: sourceContent },
       { label: "subGenre", value: subGenre },
-      { label: "creatorName", value: creatorName }
+      { label: "creatorName", value: creatorName },
+      { label: "heroPortraitName", value: heroPortraitName }
     ]);
     assertSafeBookBrief(creativeBrief);
     await ensureQuotaAvailable(uid, "generateCourseOutline", planTier);
@@ -14259,8 +14518,11 @@ export const startBookGenerationJob = onCall(
     const totalSections = Math.max(3, getExpectedChapterCountForBookType(bookType) + 2);
     const jobRef = getBookJobRef(jobId);
 
-    await ensureCreditAvailable(uid, { action: "create", cost: resolveBookCreateCreditCost(bookType) });
+    await ensureCreditAvailable(uid, { action: "create", cost: bookCreateCreditCost });
     try {
+      const visualHeroPortrait = heroPortraitUpload
+        ? await saveVisualHeroPortraitReference({ uid, courseId, upload: heroPortraitUpload })
+        : undefined;
       const storedCreativeBrief = omitUndefinedRecord(creativeBrief);
       const nextData: Record<string, unknown> = {
         uid,
@@ -14271,6 +14533,10 @@ export const startBookGenerationJob = onCall(
         ageGroup,
         bookType,
         subGenre: subGenre || null,
+        heroPortraitName: heroPortraitName || null,
+        heroPortraitGender: heroPortraitGender || null,
+        visualHeroPortrait: visualHeroPortrait || null,
+        createCreditCost: bookCreateCreditCost,
         allowAiBookTitleGeneration,
         creativeBrief: storedCreativeBrief,
         targetPageCount: Number.isFinite(targetPageCountRaw) ? Math.max(1, Math.floor(targetPageCountRaw)) : null,
@@ -14496,6 +14762,9 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   subGenre?: string;
   creativeBrief?: SmartBookCreativeBrief;
   allowAiBookTitleGeneration: boolean;
+  heroPortraitReference?: VisualStoryHeroPortraitReference;
+  heroPortraitName?: string;
+  heroPortraitGender?: HeroPortraitGender;
   imageApiKey: string;
   ai: GoogleGenAI;
 }): Promise<void> {
@@ -14513,6 +14782,9 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     subGenre,
     creativeBrief,
     allowAiBookTitleGeneration,
+    heroPortraitReference,
+    heroPortraitName,
+    heroPortraitGender,
     imageApiKey,
     ai
   } = params;
@@ -14530,6 +14802,10 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     { merge: true }
   );
 
+  const heroPortraitImage = heroPortraitReference
+    ? await loadOpenAiHeroPortraitReference(heroPortraitReference)
+    : undefined;
+
   const planResult = await withTransientProviderRetry(
     () => withTimeout(
       generateVisualFairyTalePlan(
@@ -14538,7 +14814,11 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         sourceContent,
         creativeBrief,
         allowAiBookTitleGeneration,
-        ageGroup
+        ageGroup,
+        {
+          heroPortraitName,
+          heroPortraitGender
+        }
       ),
       420_000,
       () => new HttpsError("deadline-exceeded", "Görsel masal planı zaman aşımına uğradı.")
@@ -14587,7 +14867,10 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         prompt: coverPrompt,
         label: "Görsel masal kapağı",
         audienceLevel: ageGroup,
-        isCover: true
+        isCover: true,
+        heroPortraitImage,
+        heroPortraitGender,
+        heroPortraitName
       }),
       240_000,
       () => new HttpsError("deadline-exceeded", "Görsel masal kapağı zaman aşımına uğradı.")
@@ -14653,7 +14936,10 @@ async function runVisualFairyTaleBookGenerationJob(params: {
             openAiApiKey: imageApiKey,
             prompt: pagePrompt,
             label: `${page.title}: Görsel masal sayfası`,
-            audienceLevel: ageGroup
+            audienceLevel: ageGroup,
+            heroPortraitImage,
+            heroPortraitGender,
+            heroPortraitName
           }),
           240_000,
           () => new HttpsError("deadline-exceeded", `Görsel masal sayfası zaman aşımına uğradı: ${page.title}`)
@@ -14736,6 +15022,20 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   });
   const usageTotals = sumUsageEntries(usageEntries);
   await consumeQuota(uid, "generateCourseOutline", planTier);
+  let bookCreditReceiptId: string | null = null;
+  try {
+    const creditResult = await consumeCreditWithReceipt(uid, "create", resolveBookCreateCreditCost(bookType, {
+      hasVisualHeroPortrait: Boolean(heroPortraitReference)
+    }));
+    bookCreditReceiptId = creditResult.receiptId;
+  } catch (creditError) {
+    logger.error("Visual fairy tale credit charge failed after successful generation", {
+      jobId: jobRef.id,
+      courseId,
+      bookType,
+      error: toErrorMessage(creditError)
+    });
+  }
   await jobRef.set(
     {
       status: "completed",
@@ -14755,6 +15055,8 @@ async function runVisualFairyTaleBookGenerationJob(params: {
       totalTokens: usageTotals.totalTokens,
       estimatedCostUsd: usageTotals.estimatedCostUsd,
       usageEntries: sanitizeUsageEntriesForClient(usageEntries),
+      creditReceiptId: bookCreditReceiptId,
+      creditRefunded: false,
       updatedAt: FieldValue.serverTimestamp(),
       completedAt: FieldValue.serverTimestamp(),
       errorMessage: FieldValue.delete()
@@ -14878,6 +15180,9 @@ async function runBookGenerationJobTask(
       ? normalizeFairyTaleStoredAudienceLevel(requestedAgeGroup)
       : requestedAgeGroup;
   const subGenre = typeof claimedJobData.subGenre === "string" ? claimedJobData.subGenre : undefined;
+  const heroPortraitReference = normalizeVisualHeroPortraitReference(claimedJobData.visualHeroPortrait);
+  const heroPortraitName = normalizeHeroPortraitName(claimedJobData.heroPortraitName);
+  const heroPortraitGender = normalizeHeroPortraitGender(claimedJobData.heroPortraitGender);
   const allowAiBookTitleGeneration = claimedJobData.allowAiBookTitleGeneration === true;
   const targetPageCountRaw = Number(claimedJobData.targetPageCount);
   const creativeBrief = normalizeSmartBookCreativeBrief(
@@ -14891,7 +15196,8 @@ async function runBookGenerationJobTask(
     { label: "topic", value: topic },
     { label: "sourceContent", value: sourceContent },
     { label: "subGenre", value: subGenre },
-    { label: "creatorName", value: creatorName }
+    { label: "creatorName", value: creatorName },
+    { label: "heroPortraitName", value: heroPortraitName }
   ]);
   assertSafeBookBrief(creativeBrief);
 
@@ -14916,6 +15222,9 @@ async function runBookGenerationJobTask(
       subGenre,
       creativeBrief,
       allowAiBookTitleGeneration,
+      heroPortraitReference,
+      heroPortraitName,
+      heroPortraitGender,
       imageApiKey,
       ai
     });
@@ -15205,7 +15514,13 @@ async function runBookBundleJobTask(
 
   let bookCreditReceiptId: string | null = null;
   try {
-    const creditResult = await consumeCreditWithReceipt(uid, "create", resolveBookCreateCreditCost(bookType));
+    const storedCreateCreditCost = toNonNegativeInt(jobData?.createCreditCost);
+    const creditCost = storedCreateCreditCost > 0
+      ? storedCreateCreditCost
+      : resolveBookCreateCreditCost(bookType, {
+        hasVisualHeroPortrait: Boolean(normalizeVisualHeroPortraitReference(jobData?.visualHeroPortrait))
+      });
+    const creditResult = await consumeCreditWithReceipt(uid, "create", creditCost);
     bookCreditReceiptId = creditResult.receiptId;
   } catch (creditError) {
     logger.error("Book credit charge failed after successful generation", {

@@ -1138,12 +1138,12 @@ type FairyAmbientDust = {
 function buildStoryTextAmbient(seed: string | undefined) {
   const next = createSeededRandom(`${String(seed || 'visual-story')}|text-ambient`);
   const starPoints = buildUniqueOverlayBands(5, next, [[8, 42], [56, 94]], [6, 94]);
-  const dust: FairyAmbientDust[] = Array.from({ length: 72 }, (_, index) => ({
+  const dust: FairyAmbientDust[] = Array.from({ length: 144 }, (_, index) => ({
     left: Number((8 + (next() * 86)).toFixed(2)),
     bottom: Number((4 + (next() * 70)).toFixed(2)),
-    size: Number((1.4 + (next() * 1.1)).toFixed(2)),
+    size: Number((1.1 + (next() * 0.9)).toFixed(2)),
     delay: Number((next() * 4.4).toFixed(2)),
-    duration: Number((4 + (next() * 2.4)).toFixed(2)),
+    duration: Number((4.4 + (next() * 2.8)).toFixed(2)),
     color: _FAIRY_COLORS[index % _FAIRY_COLORS.length]
   }));
   return {
@@ -2350,10 +2350,9 @@ function VisualStoryReader({
 
   const renderVisualStoryDownloadMenu = () => (
     <div
-      className="absolute right-3 bottom-[56px] z-[160] grid w-[268px] gap-2 rounded-2xl border p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
+      className="absolute right-3 bottom-[56px] z-[160] grid w-[268px] gap-2 rounded-2xl p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
       style={{
         background: 'linear-gradient(180deg, rgba(12,23,39,0.94) 0%, rgba(8,21,16,0.92) 100%)',
-        borderColor: 'rgba(255,255,255,0.16)',
         boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 22px 42px rgba(0,0,0,0.32)',
         backdropFilter: 'blur(18px)'
       }}
@@ -2411,12 +2410,12 @@ function VisualStoryReader({
           }}
           disabled={isPdfDownloading || isEpubDownloading}
           className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-          style={visualStoryGlassControlStyle}
+          style={{ ...visualStoryGlassControlStyle, color: '#ffffff', borderColor: 'rgba(255,255,255,0.28)' }}
           aria-label={t('PDF İndir')}
           title={t('PDF İndir')}
         >
           {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-          <span className="text-[10px] font-bold leading-none">
+          <span className="text-[10px] font-bold leading-none text-white">
             {isPdfDownloading ? t('Hazırlanıyor') : t('PDF İndir')}
           </span>
         </button>
@@ -2425,12 +2424,12 @@ function VisualStoryReader({
           onClick={handleVisualStoryEpubDownload}
           disabled={isPdfDownloading || isEpubDownloading}
           className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-          style={visualStoryGlassControlStyle}
+          style={{ ...visualStoryGlassControlStyle, color: '#ffffff', borderColor: 'rgba(255,255,255,0.28)' }}
           aria-label={t('EPUB İndir')}
           title={t('EPUB İndir')}
         >
           {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-          <span className="text-[10px] font-bold leading-none">
+          <span className="text-[10px] font-bold leading-none text-white">
             {isEpubDownloading ? t('Hazırlanıyor') : t('EPUB İndir')}
           </span>
         </button>
@@ -2657,7 +2656,7 @@ function VisualStoryReader({
             }}
 	          >
 	            <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
-	              <div className="flex items-center gap-2">
+	              <div className="flex flex-col items-start gap-0.5">
                 <button
                   type="button"
                   onClick={(event) => {
@@ -2705,6 +2704,9 @@ function VisualStoryReader({
                     )}
                   </span>
                 </button>
+                <span className="pl-2 text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
+                  Fortale
+                </span>
 		              </div>
                 <div
                   className="text-center text-[12px] font-black tabular-nums text-white drop-shadow-[0_1px_5px_rgba(0,0,0,0.55)]"
@@ -2823,7 +2825,7 @@ function VisualStoryReader({
         }}
       >
         <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-start gap-0.5">
             <button
               type="button"
               onClick={() => {
@@ -2870,6 +2872,9 @@ function VisualStoryReader({
                 )}
               </span>
             </button>
+            <span className="pl-2 text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
+              Fortale
+            </span>
           </div>
           {isDownloadMenuOpen && renderVisualStoryDownloadMenu()}
 
@@ -2993,7 +2998,7 @@ function VisualStoryReader({
                         {String(courseData.topic || t('Masal')).trim()}
                       </div>
 	                    <div className="relative min-h-0 overflow-hidden">
-                      <div className="swiper-zoom-container fortele-story-page-image-shell h-full w-full overflow-hidden">
+                      <div className="swiper-zoom-container fortele-story-page-image-shell relative h-full w-full overflow-hidden">
                         <img
                           src={page.imageUrl || ''}
                           alt={page.text || page.title}
@@ -3014,6 +3019,26 @@ function VisualStoryReader({
                             ['--story-motion-duration' as string]: `${pageMotionProfile.duration}s`
                           }}
                         />
+                        {isActiveVisualPage && (
+                          <div className="fortale-story-image-ambient" aria-hidden="true">
+                            {currentTextAmbient.dust.map((particle, particleIndex) => (
+                              <div
+                                key={`ia-d${particleIndex}`}
+                                className="fortale-story-ambient-dust"
+                                style={{
+                                  left: `${particle.left}%`,
+                                  bottom: `${Math.min(96, particle.bottom + 12)}%`,
+                                  width: `${Math.max(0.8, particle.size * 0.75)}px`,
+                                  height: `${Math.max(0.8, particle.size * 0.75)}px`,
+                                  backgroundColor: particle.color,
+                                  boxShadow: `0 0 ${particle.size * 1.1}px ${particle.size * 0.28}px ${particle.color}55`,
+                                  animationDelay: `${particle.delay + 0.6}s`,
+                                  animationDuration: `${particle.duration + 0.8}s`
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="relative -mt-9 flex min-h-0 items-stretch justify-center overflow-hidden px-4 pb-5 pt-0">

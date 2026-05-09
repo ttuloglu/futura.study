@@ -1152,6 +1152,14 @@ export async function startBookGenerationJob(params: {
   targetPageCount?: number;
   creativeBrief?: SmartBookCreativeBrief;
   allowAiBookTitleGeneration?: boolean;
+  heroPortraitName?: string;
+  heroPortraitGender?: 'male' | 'female';
+  heroPortraitImage?: {
+    base64: string;
+    mimeType: string;
+    fileName: string;
+    sizeBytes?: number;
+  };
 }): Promise<BookGenerationJobResult> {
   await appCheckReady;
   const payload: Record<string, unknown> = {};
@@ -1166,6 +1174,11 @@ export async function startBookGenerationJob(params: {
   }
   if (params.creativeBrief) payload.creativeBrief = params.creativeBrief;
   if (params.allowAiBookTitleGeneration === true) payload.allowAiBookTitleGeneration = true;
+  if (params.heroPortraitName?.trim()) payload.heroPortraitName = params.heroPortraitName.trim();
+  if (params.heroPortraitGender === 'male' || params.heroPortraitGender === 'female') {
+    payload.heroPortraitGender = params.heroPortraitGender;
+  }
+  if (params.heroPortraitImage?.base64) payload.heroPortraitImage = params.heroPortraitImage;
   const response = await startBookGenerationJobCallable(payload);
   return await hydrateBookGenerationJob(response.data || {});
 }

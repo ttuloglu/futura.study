@@ -1410,6 +1410,15 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   pointer-events: none;
 }
 
+.fortale-story-image-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.58;
+  mix-blend-mode: screen;
+}
+
 .fortale-story-flash-overlay {
   position: absolute;
   inset: 0;
