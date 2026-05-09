@@ -295,6 +295,16 @@ const OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M =
     readValueFromDotEnv("OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M") ||
     "30"
   );
+const OPENAI_GPT_IMAGE_15_LOW_SQUARE_USD_PER_IMAGE = 0.009;
+const OPENAI_GPT_IMAGE_15_LOW_RECT_USD_PER_IMAGE = 0.013;
+const OPENAI_GPT_IMAGE_15_INPUT_TEXT_USD_PER_1M = 5;
+const OPENAI_GPT_IMAGE_15_INPUT_IMAGE_USD_PER_1M = 8;
+const OPENAI_GPT_IMAGE_15_OUTPUT_IMAGE_USD_PER_1M = 32;
+const OPENAI_GPT_IMAGE_1_LOW_SQUARE_USD_PER_IMAGE = 0.011;
+const OPENAI_GPT_IMAGE_1_LOW_RECT_USD_PER_IMAGE = 0.016;
+const OPENAI_GPT_IMAGE_1_INPUT_TEXT_USD_PER_1M = 5;
+const OPENAI_GPT_IMAGE_1_INPUT_IMAGE_USD_PER_1M = 10;
+const OPENAI_GPT_IMAGE_1_OUTPUT_IMAGE_USD_PER_1M = 40;
 const OPENAI_MINI_TTS_INPUT_USD_PER_1M =
   Number(process.env.OPENAI_MINI_TTS_INPUT_USD_PER_1M || readValueFromDotEnv("OPENAI_MINI_TTS_INPUT_USD_PER_1M") || "0.6");
 const OPENAI_MINI_TTS_OUTPUT_USD_PER_1M =
@@ -816,7 +826,7 @@ interface UsageReportEntry {
   costUsdInputText?: number;
   costUsdInputImage?: number;
   costUsdOutputImage?: number;
-  costMode?: "usage" | "flat";
+  costMode?: "usage" | "flat" | "mixed";
   referenceImageCount?: number;
   quality?: string;
   size?: string;
@@ -3155,6 +3165,10 @@ function extractUsageNumbers(rawUsage: unknown): {
     usage.outputTokenCount ??
     usage.outputTokens ??
     usage.output_tokens ??
+    usage.imageOutputTokens ??
+    usage.output_image_tokens ??
+    usage.image_output_tokens ??
+    (isRecord(usage.output_tokens_details) ? usage.output_tokens_details.image_tokens : undefined) ??
     usage.completion_tokens ??
     usage.text_output_tokens ??
     usage.audio_output_tokens
@@ -3228,21 +3242,57 @@ function costForGeminiModel(model: string, inputTokens: number, outputTokens: nu
 
 function costForOpenAiGptImageLow(
   imageCount: number,
-  inputTokens: number,
   sizeMode?: OpenAiLowImageSizeMode,
   model?: string
 ): number {
-  const perImage = sizeMode === "square-1x1"
-    ? OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE
-    : OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE;
-  return roundUsd(
-    imageCount * perImage +
-    (inputTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_USD_PER_1M
-  );
+  const pricing = resolveOpenAiGptImagePricing(model, sizeMode);
+  return roundUsd(imageCount * pricing.lowOutputUsdPerImage);
+}
+
+function resolveOpenAiGptImagePricing(
+  model: unknown,
+  sizeMode?: OpenAiLowImageSizeMode
+): {
+  inputTextUsdPer1M: number;
+  inputImageUsdPer1M: number;
+  outputImageUsdPer1M: number;
+  lowOutputUsdPerImage: number;
+} {
+  const normalizedModel = String(model || OPENAI_IMAGE_MODEL).trim().toLowerCase();
+  const isSquare = (sizeMode || "cover-3x4") === "square-1x1";
+  if (normalizedModel.includes("gpt-image-1.5")) {
+    return {
+      inputTextUsdPer1M: OPENAI_GPT_IMAGE_15_INPUT_TEXT_USD_PER_1M,
+      inputImageUsdPer1M: OPENAI_GPT_IMAGE_15_INPUT_IMAGE_USD_PER_1M,
+      outputImageUsdPer1M: OPENAI_GPT_IMAGE_15_OUTPUT_IMAGE_USD_PER_1M,
+      lowOutputUsdPerImage: isSquare
+        ? OPENAI_GPT_IMAGE_15_LOW_SQUARE_USD_PER_IMAGE
+        : OPENAI_GPT_IMAGE_15_LOW_RECT_USD_PER_IMAGE
+    };
+  }
+  if (normalizedModel.includes("gpt-image-1") && !normalizedModel.includes("gpt-image-1.5")) {
+    return {
+      inputTextUsdPer1M: OPENAI_GPT_IMAGE_1_INPUT_TEXT_USD_PER_1M,
+      inputImageUsdPer1M: OPENAI_GPT_IMAGE_1_INPUT_IMAGE_USD_PER_1M,
+      outputImageUsdPer1M: OPENAI_GPT_IMAGE_1_OUTPUT_IMAGE_USD_PER_1M,
+      lowOutputUsdPerImage: isSquare
+        ? OPENAI_GPT_IMAGE_1_LOW_SQUARE_USD_PER_IMAGE
+        : OPENAI_GPT_IMAGE_1_LOW_RECT_USD_PER_IMAGE
+    };
+  }
+  return {
+    inputTextUsdPer1M: OPENAI_GPT_IMAGE_INPUT_USD_PER_1M,
+    inputImageUsdPer1M: OPENAI_GPT_IMAGE_INPUT_IMAGE_USD_PER_1M,
+    outputImageUsdPer1M: OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M,
+    lowOutputUsdPerImage: isSquare
+      ? OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE
+      : OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE
+  };
 }
 
 function buildOpenAiGptImageLowCostBreakdown(options: {
   imageCount: number;
+  model?: string;
   inputTokens: number;
   outputTokens: number;
   totalTokens?: number;
@@ -3256,7 +3306,7 @@ function buildOpenAiGptImageLowCostBreakdown(options: {
   costUsdInputText: number;
   costUsdInputImage: number;
   costUsdOutputImage: number;
-  costMode: "usage" | "flat";
+  costMode: "usage" | "flat" | "mixed";
   quality: "low";
   size: string;
 } {
@@ -3272,39 +3322,32 @@ function buildOpenAiGptImageLowCostBreakdown(options: {
   );
   const sizeMode = options.sizeMode || "cover-3x4";
   const size = resolveOpenAiLowImageSize(sizeMode);
+  const pricing = resolveOpenAiGptImagePricing(options.model, sizeMode);
+  const costUsdInputText = roundUsd(
+    (inputTextTokens / 1_000_000) * pricing.inputTextUsdPer1M
+  );
+  const costUsdInputImage = roundUsd(
+    (inputImageTokens / 1_000_000) * pricing.inputImageUsdPer1M
+  );
+  const hasOutputUsage = outputTokens > 0;
+  const costUsdOutputImage = hasOutputUsage
+    ? roundUsd((outputTokens / 1_000_000) * pricing.outputImageUsdPer1M)
+    : costForOpenAiGptImageLow(imageCount, sizeMode, options.model);
+  const costMode: "usage" | "flat" | "mixed" =
+    hasOutputUsage
+      ? "usage"
+      : (inputTokens > 0 || inputTextTokens > 0 || inputImageTokens > 0)
+        ? "mixed"
+        : "flat";
 
-  if (inputTokens > 0 || outputTokens > 0 || inputTextTokens > 0 || inputImageTokens > 0) {
-    const costUsdInputText = roundUsd(
-      (inputTextTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_USD_PER_1M
-    );
-    const costUsdInputImage = roundUsd(
-      (inputImageTokens / 1_000_000) * OPENAI_GPT_IMAGE_INPUT_IMAGE_USD_PER_1M
-    );
-    const costUsdOutputImage = roundUsd(
-      (outputTokens / 1_000_000) * OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M
-    );
-    return {
-      estimatedCostUsd: roundUsd(costUsdInputText + costUsdInputImage + costUsdOutputImage),
-      inputTextTokens,
-      inputImageTokens,
-      costUsdInputText,
-      costUsdInputImage,
-      costUsdOutputImage,
-      costMode: "usage",
-      quality: "low",
-      size
-    };
-  }
-
-  const flatTotal = costForOpenAiGptImageLow(imageCount, inputTokens, sizeMode);
   return {
-    estimatedCostUsd: flatTotal,
+    estimatedCostUsd: roundUsd(costUsdInputText + costUsdInputImage + costUsdOutputImage),
     inputTextTokens,
     inputImageTokens,
-    costUsdInputText: 0,
-    costUsdInputImage: 0,
-    costUsdOutputImage: flatTotal,
-    costMode: "flat",
+    costUsdInputText,
+    costUsdInputImage,
+    costUsdOutputImage,
+    costMode,
     quality: "low",
     size
   };
@@ -4217,6 +4260,7 @@ ${brainAllowed
 
     const costBreakdown = buildOpenAiGptImageLowCostBreakdown({
       imageCount: assets.length,
+      model: imageResult.model || OPENAI_IMAGE_MODEL,
       inputTokens: imageResult.usage.inputTokens,
       outputTokens: imageResult.usage.outputTokens,
       totalTokens: imageResult.usage.totalTokens,
@@ -4611,6 +4655,7 @@ Rules:
 
   const costBreakdown = buildOpenAiGptImageLowCostBreakdown({
     imageCount: assets.length,
+    model: OPENAI_IMAGE_MODEL,
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
     totalTokens: totalInputTokens + totalOutputTokens,
@@ -4711,6 +4756,7 @@ ${brainAllowed
 
     const costBreakdown = buildOpenAiGptImageLowCostBreakdown({
       imageCount: assets.length,
+      model: imageResult.model || OPENAI_IMAGE_MODEL,
       inputTokens: imageResult.usage.inputTokens,
       outputTokens: imageResult.usage.outputTokens,
       totalTokens: imageResult.usage.totalTokens,
@@ -4795,6 +4841,7 @@ Rules:
 
   const costBreakdown = buildOpenAiGptImageLowCostBreakdown({
     imageCount: assets.length,
+    model: OPENAI_IMAGE_MODEL,
     inputTokens: imageResult.usage.inputTokens,
     outputTokens: imageResult.usage.outputTokens,
     totalTokens: imageResult.usage.totalTokens,
@@ -4920,6 +4967,7 @@ ${brainAllowed && !isFairyTale
   const imageCount = imageResult.images.length;
   const costBreakdown = buildOpenAiGptImageLowCostBreakdown({
     imageCount,
+    model: imageResult.model || OPENAI_COVER_MODEL,
     inputTokens: imageResult.usage.inputTokens,
     outputTokens: imageResult.usage.outputTokens,
     totalTokens: imageResult.usage.totalTokens,
@@ -8305,6 +8353,7 @@ async function generateVisualStoryImage(
   }
   const costBreakdown = buildOpenAiGptImageLowCostBreakdown({
     imageCount: 1,
+    model: imageResult.model || OPENAI_IMAGE_MODEL,
     inputTokens: imageResult.usage.inputTokens,
     outputTokens: imageResult.usage.outputTokens,
     totalTokens: imageResult.usage.totalTokens,
@@ -12028,9 +12077,10 @@ function sanitizeUsageEntriesForClient(entries: UsageReportEntry[]): UsageReport
       inputImageTokens: toNonNegativeInt(entry.inputImageTokens),
       costUsdInputText: roundUsd(safeNumber(entry.costUsdInputText)),
       costUsdInputImage: roundUsd(safeNumber(entry.costUsdInputImage)),
-      costUsdOutputImage: roundUsd(safeNumber(entry.costUsdOutputImage))
+      costUsdOutputImage: roundUsd(safeNumber(entry.costUsdOutputImage)),
+      referenceImageCount: toNonNegativeInt(entry.referenceImageCount)
     };
-    if (entry.costMode === "usage" || entry.costMode === "flat") {
+    if (entry.costMode === "usage" || entry.costMode === "flat" || entry.costMode === "mixed") {
       sanitized.costMode = entry.costMode;
     }
     if (typeof entry.quality === "string" && entry.quality.trim()) {
@@ -12063,9 +12113,10 @@ function resolveUsageEntriesFromJobData(value: unknown): UsageReportEntry[] {
       costUsdInputText: roundUsd(safeNumber(item.costUsdInputText)),
       costUsdInputImage: roundUsd(safeNumber(item.costUsdInputImage)),
       costUsdOutputImage: roundUsd(safeNumber(item.costUsdOutputImage)),
-      costMode: item.costMode === "usage" ? "usage" : (item.costMode === "flat" ? "flat" : undefined),
+      costMode: item.costMode === "usage" || item.costMode === "flat" || item.costMode === "mixed" ? item.costMode : undefined,
       quality: typeof item.quality === "string" ? item.quality : undefined,
-      size: typeof item.size === "string" ? item.size : undefined
+      size: typeof item.size === "string" ? item.size : undefined,
+      referenceImageCount: toNonNegativeInt(item.referenceImageCount)
     }]));
   }
   return normalized;

@@ -47,9 +47,10 @@ interface UsageReportEntry {
   costUsdInputText?: number;
   costUsdInputImage?: number;
   costUsdOutputImage?: number;
-  costMode?: "usage" | "flat";
+  costMode?: "usage" | "flat" | "mixed";
   quality?: string;
   size?: string;
+  referenceImageCount?: number;
 }
 
 interface UsageReport {
@@ -285,9 +286,16 @@ function toUsd(value: unknown): string {
   return rounded.toFixed(6);
 }
 
-function isGptImage2Model(value: unknown): boolean {
+function isGptImageModel(value: unknown): boolean {
   const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "gpt-image-2-2026-04-21" || normalized === "gpt-image-2" || normalized.includes("gpt-image-2");
+  return normalized.includes("gpt-image");
+}
+
+function resolveGptImageConsoleRates(model: unknown): { textIn: number; imageIn: number; imageOut: number } {
+  const normalized = String(model || "").trim().toLowerCase();
+  if (normalized.includes("gpt-image-1.5")) return { textIn: 5, imageIn: 8, imageOut: 32 };
+  if (normalized.includes("gpt-image-1") && !normalized.includes("gpt-image-1.5")) return { textIn: 5, imageIn: 10, imageOut: 40 };
+  return { textIn: 5, imageIn: 8, imageOut: 30 };
 }
 
 export function formatAiUsageEntryForConsole(entry: UsageReportEntry): string {
@@ -300,15 +308,18 @@ export function formatAiUsageEntryForConsole(entry: UsageReportEntry): string {
   const priceUsd = toUsd(entry.estimatedCostUsd);
   const suffixParts: string[] = [];
 
-  if (provider === "openai" && isGptImage2Model(model)) {
+  if (provider === "openai" && isGptImageModel(model)) {
+    const rates = resolveGptImageConsoleRates(model);
     if (entry.costMode) suffixParts.push(`mode ${entry.costMode}`);
     if (entry.quality) suffixParts.push(`quality ${entry.quality}`);
     if (entry.size) suffixParts.push(`size ${entry.size}`);
+    if (toTokenCount(entry.referenceImageCount) > 0) suffixParts.push(`ref_images ${toTokenCount(entry.referenceImageCount)}`);
     if (toTokenCount(entry.inputTextTokens) > 0) suffixParts.push(`in_text ${toTokenCount(entry.inputTextTokens)}`);
     if (toTokenCount(entry.inputImageTokens) > 0) suffixParts.push(`in_image ${toTokenCount(entry.inputImageTokens)}`);
     if (Number(entry.costUsdInputText) > 0) suffixParts.push(`cost_in_text ${toUsd(entry.costUsdInputText)} usd`);
     if (Number(entry.costUsdInputImage) > 0) suffixParts.push(`cost_in_image ${toUsd(entry.costUsdInputImage)} usd`);
     if (Number(entry.costUsdOutputImage) > 0) suffixParts.push(`cost_out_image ${toUsd(entry.costUsdOutputImage)} usd`);
+    suffixParts.push(`rates text_in_${rates.textIn}/M image_in_${rates.imageIn}/M image_out_${rates.imageOut}/M`);
   }
 
   return `${label}: ${provider} ${model} in ${inputTokens} out ${outputTokens} total ${totalTokens} price ${priceUsd} usd${suffixParts.length ? ` | ${suffixParts.join(" ")}` : ""}`;
@@ -318,7 +329,7 @@ function isImageUsageEntry(entry: UsageReportEntry): boolean {
   const provider = String(entry.provider || "").trim().toLowerCase();
   const model = String(entry.model || "").trim().toLowerCase();
   const label = String(entry.label || "").trim().toLocaleLowerCase("tr-TR");
-  if (provider === "openai" && isGptImage2Model(model)) return true;
+  if (provider === "openai" && isGptImageModel(model)) return true;
   return (
     label.includes("görsel") ||
     label.includes("kapak") ||
@@ -476,9 +487,10 @@ function normalizeJobUsageEntries(raw: unknown): UsageReportEntry[] {
       costUsdInputText: Number(toUsd(data.costUsdInputText)),
       costUsdInputImage: Number(toUsd(data.costUsdInputImage)),
       costUsdOutputImage: Number(toUsd(data.costUsdOutputImage)),
-      costMode: data.costMode === "usage" ? "usage" : (data.costMode === "flat" ? "flat" : undefined),
+      costMode: data.costMode === "usage" || data.costMode === "flat" || data.costMode === "mixed" ? data.costMode : undefined,
       quality: typeof data.quality === "string" ? data.quality : undefined,
-      size: typeof data.size === "string" ? data.size : undefined
+      size: typeof data.size === "string" ? data.size : undefined,
+      referenceImageCount: toTokenCount(data.referenceImageCount)
     });
   }
   return entries;
