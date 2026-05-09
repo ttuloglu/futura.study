@@ -879,8 +879,6 @@ type OpenAiImageReference = {
   fileName: string;
 };
 
-type HeroPortraitGender = "male" | "female";
-
 type VisualStoryHeroPortraitReference = {
   storagePath: string;
   contentType: string;
@@ -8030,7 +8028,7 @@ function buildVisualFairyTalePlanInputBlock(
   brief: SmartBookCreativeBrief,
   preferredLanguage: PreferredLanguage,
   audienceLevel: SmartBookAudienceLevel,
-  options?: { heroPortraitName?: string; heroPortraitGender?: HeroPortraitGender }
+  options?: { heroPortraitName?: string }
 ): string {
   const isEn = usesEnglishPromptScaffold(preferredLanguage);
   const audienceBucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
@@ -8049,13 +8047,8 @@ function buildVisualFairyTalePlanInputBlock(
       : "",
     options?.heroPortraitName
       ? (isEn
-        ? `- Portrait hero: ${options.heroPortraitName} is the main protagonist and must stay central in the story.`
-        : `- Portre kahramanı: ${options.heroPortraitName} baş kahramandır ve hikayenin merkezinde kalmalı.`)
-      : "",
-    options?.heroPortraitGender
-      ? (isEn
-        ? `- Portrait hero gender: ${options.heroPortraitGender === "male" ? "male" : "female"}`
-        : `- Portre kahramanı cinsiyeti: ${options.heroPortraitGender === "male" ? "erkek" : "kadın"}`)
+        ? `- Portrait character: ${options.heroPortraitName} is the main character and must stay central in the story.`
+        : `- Portre karakteri: ${options.heroPortraitName} ana karakterdir ve hikayenin merkezinde kalmalı.`)
       : "",
     brief.settingPlace
       ? (isEn ? `- User place: ${brief.settingPlace}` : `- Kullanıcı mekanı: ${brief.settingPlace}`)
@@ -8103,7 +8096,7 @@ async function generateVisualFairyTalePlan(
   creativeBrief: SmartBookCreativeBrief | undefined,
   allowAiBookTitleGeneration: boolean,
   audienceLevel: SmartBookAudienceLevel,
-  options?: { heroPortraitName?: string; heroPortraitGender?: HeroPortraitGender }
+  options?: { heroPortraitName?: string }
 ): Promise<{ plan: VisualStoryPlan; courseMeta: CourseOutlineMeta; usageEntry: UsageReportEntry }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, "fairy_tale", creativeBrief?.subGenre);
   const preferredLanguage = resolvePreferredLanguageFromBrief(normalizedBrief, topic, sourceContent);
@@ -8130,7 +8123,7 @@ Kurallar:
 12) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
 13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
 14) ${languageInstruction(preferredLanguage)}
-15) ${options?.heroPortraitName ? `${options.heroPortraitName} baş kahraman olmalı; yan karakter, anlatıcı veya sahne dışı kişi olamaz. characterBible alanında bu kahramanı görsel tutarlılık için net tanımla.` : "Baş kahraman storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
+15) ${options?.heroPortraitName ? `${options.heroPortraitName} ana karakter olmalı; yan karakter, anlatıcı veya sahne dışı kişi olamaz. characterBible alanında bu karakteri görsel tutarlılık için net tanımla.` : "Ana karakter storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
 
 Sadece JSON döndür.
 `.trim();
@@ -8321,24 +8314,21 @@ async function generateVisualStoryImage(
   openAiApiKey: string,
   prompt: string,
   heroPortraitImage?: OpenAiImageReference,
-  heroPortraitGender?: HeroPortraitGender,
   heroPortraitName?: string
 ): Promise<{ imageUrl: string; usageEntry: UsageReportEntry }> {
-  const genderLine = heroPortraitGenderPromptLine(heroPortraitGender);
   const portraitDirective = heroPortraitImage
     ? [
       "Hero portrait reference:",
       heroPortraitName
-        ? `- Use the attached portrait only as the identity reference for ${heroPortraitName}, the main recurring fairy-tale hero and protagonist.`
-        : "- Use the attached portrait only as the identity reference for the main recurring fairy-tale hero and protagonist.",
+        ? `- Use the attached portrait only as the identity reference for ${heroPortraitName}, the main recurring fairy-tale character.`
+        : "- Use the attached portrait only as the identity reference for the main recurring fairy-tale character.",
       heroPortraitName
-        ? `- ${heroPortraitName} must be the central hero in the image, not a side character, background character, narrator, or separate reference figure.`
-        : "- The portrait-based character must be the central hero in the image, not a side character, background character, narrator, or separate reference figure.",
+        ? `- ${heroPortraitName} must be the central main character in the image, not a side character, background character, narrator, or separate reference figure.`
+        : "- The portrait-based character must be the central main character in the image, not a side character, background character, narrator, or separate reference figure.",
       "- The portrait is not a face layer, sticker, cutout, or separate real-photo person. Never paste a realistic photo face into the illustration and never show the uploaded reference photo inside or beside the scene.",
       "- Redraw the portrait subject fully in the same non-photorealistic storybook illustration style, brushwork, lighting, and color palette as every other character.",
       "- Preserve identity through illustrated equivalents of face shape, jaw/chin, hair length/style/hairline, brows, eye spacing, nose, mouth, skin tone, and recognizable expression cues.",
       "- Do not copy the uploaded photo background, clothing, lighting, camera look, or any private context.",
-      genderLine ? `- ${genderLine}` : "",
       "- Keep the result non-photorealistic, warm, child-safe, and visually consistent with the character bible."
     ].filter(Boolean).join("\n")
     : "";
@@ -8462,7 +8452,6 @@ async function generateValidatedVisualStoryImage(params: {
   audienceLevel: SmartBookAudienceLevel;
   isCover?: boolean;
   heroPortraitImage?: OpenAiImageReference;
-  heroPortraitGender?: HeroPortraitGender;
   heroPortraitName?: string;
 }): Promise<{ imageUrl: string; usageEntries: UsageReportEntry[] }> {
   const usageEntries: UsageReportEntry[] = [];
@@ -8470,7 +8459,6 @@ async function generateValidatedVisualStoryImage(params: {
     params.openAiApiKey,
     params.prompt,
     params.heroPortraitImage,
-    params.heroPortraitGender,
     params.heroPortraitName
   );
   usageEntries.push({
@@ -14448,27 +14436,10 @@ function normalizeVisualHeroPortraitReference(raw: unknown): VisualStoryHeroPort
   return { storagePath, contentType, fileName, sizeBytes };
 }
 
-function normalizeHeroPortraitGender(raw: unknown): HeroPortraitGender | undefined {
-  const normalized = String(raw || "").trim().toLowerCase();
-  if (normalized === "male" || normalized === "erkek") return "male";
-  if (normalized === "female" || normalized === "kadın" || normalized === "kadin") return "female";
-  return undefined;
-}
-
 function normalizeHeroPortraitName(raw: unknown): string | undefined {
   const name = String(raw || "").replace(/\s+/g, " ").trim();
   if (!name) return undefined;
   return name.slice(0, 60);
-}
-
-function heroPortraitGenderPromptLine(gender?: HeroPortraitGender): string {
-  if (gender === "male") {
-    return "Gender lock: depict the portrait-based hero as male. Long hair does not make him female; do not infer gender from hairstyle.";
-  }
-  if (gender === "female") {
-    return "Gender lock: depict the portrait-based hero as female. Keep the character's gender consistent on every page.";
-  }
-  return "";
 }
 
 async function loadOpenAiHeroPortraitReference(
@@ -14541,12 +14512,8 @@ export const startBookGenerationJob = onCall(
         ? normalizeHeroPortraitUpload(payload.heroPortraitImage)
         : null;
     const heroPortraitName = heroPortraitUpload ? normalizeHeroPortraitName(payload.heroPortraitName) : undefined;
-    const heroPortraitGender = heroPortraitUpload ? normalizeHeroPortraitGender(payload.heroPortraitGender) : undefined;
     if (heroPortraitUpload && !heroPortraitName) {
-      throw new HttpsError("invalid-argument", "Portredeki kişinin adını yazın.");
-    }
-    if (heroPortraitUpload && !heroPortraitGender) {
-      throw new HttpsError("invalid-argument", "Portre için cinsiyet seçin.");
+      throw new HttpsError("invalid-argument", "Ana karakter adını yazın.");
     }
     const bookCreateCreditCost = resolveBookCreateCreditCost(bookType, {
       hasVisualHeroPortrait: Boolean(heroPortraitUpload)
@@ -14585,7 +14552,6 @@ export const startBookGenerationJob = onCall(
         bookType,
         subGenre: subGenre || null,
         heroPortraitName: heroPortraitName || null,
-        heroPortraitGender: heroPortraitGender || null,
         visualHeroPortrait: visualHeroPortrait || null,
         createCreditCost: bookCreateCreditCost,
         allowAiBookTitleGeneration,
@@ -14815,7 +14781,6 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   allowAiBookTitleGeneration: boolean;
   heroPortraitReference?: VisualStoryHeroPortraitReference;
   heroPortraitName?: string;
-  heroPortraitGender?: HeroPortraitGender;
   imageApiKey: string;
   ai: GoogleGenAI;
 }): Promise<void> {
@@ -14835,7 +14800,6 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     allowAiBookTitleGeneration,
     heroPortraitReference,
     heroPortraitName,
-    heroPortraitGender,
     imageApiKey,
     ai
   } = params;
@@ -14867,8 +14831,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         allowAiBookTitleGeneration,
         ageGroup,
         {
-          heroPortraitName,
-          heroPortraitGender
+          heroPortraitName
         }
       ),
       420_000,
@@ -14920,7 +14883,6 @@ async function runVisualFairyTaleBookGenerationJob(params: {
         audienceLevel: ageGroup,
         isCover: true,
         heroPortraitImage,
-        heroPortraitGender,
         heroPortraitName
       }),
       240_000,
@@ -14989,7 +14951,6 @@ async function runVisualFairyTaleBookGenerationJob(params: {
             label: `${page.title}: Görsel masal sayfası`,
             audienceLevel: ageGroup,
             heroPortraitImage,
-            heroPortraitGender,
             heroPortraitName
           }),
           240_000,
@@ -15233,7 +15194,6 @@ async function runBookGenerationJobTask(
   const subGenre = typeof claimedJobData.subGenre === "string" ? claimedJobData.subGenre : undefined;
   const heroPortraitReference = normalizeVisualHeroPortraitReference(claimedJobData.visualHeroPortrait);
   const heroPortraitName = normalizeHeroPortraitName(claimedJobData.heroPortraitName);
-  const heroPortraitGender = normalizeHeroPortraitGender(claimedJobData.heroPortraitGender);
   const allowAiBookTitleGeneration = claimedJobData.allowAiBookTitleGeneration === true;
   const targetPageCountRaw = Number(claimedJobData.targetPageCount);
   const creativeBrief = normalizeSmartBookCreativeBrief(
@@ -15275,7 +15235,6 @@ async function runBookGenerationJobTask(
       allowAiBookTitleGeneration,
       heroPortraitReference,
       heroPortraitName,
-      heroPortraitGender,
       imageApiKey,
       ai
     });

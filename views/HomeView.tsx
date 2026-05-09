@@ -79,14 +79,6 @@ type HeroPortraitCropState = {
   isProcessing: boolean;
 };
 
-type HeroPortraitGender = 'unspecified' | 'male' | 'female';
-
-const HERO_PORTRAIT_GENDER_OPTIONS: Array<{ value: HeroPortraitGender; label: string }> = [
-  { value: 'male', label: 'Erkek' },
-  { value: 'female', label: 'Kadın' },
-  { value: 'unspecified', label: 'Belirtme' }
-];
-
 type StickyTint = {
   bg: string;
   border: string;
@@ -1448,7 +1440,6 @@ export default function HomeView({
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [heroPortraitFile, setHeroPortraitFile] = useState<File | null>(null);
   const [heroPortraitName, setHeroPortraitName] = useState('');
-  const [heroPortraitGender, setHeroPortraitGender] = useState<HeroPortraitGender>('unspecified');
   const [heroPortraitCrop, setHeroPortraitCrop] = useState<HeroPortraitCropState | null>(null);
   const [creationStep, setCreationStep] = useState<number>(1);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -2304,7 +2295,6 @@ export default function HomeView({
   const clearHeroPortrait = () => {
     setHeroPortraitFile(null);
     setHeroPortraitName('');
-    setHeroPortraitGender('unspecified');
     dismissHeroPortraitCrop();
     if (heroPortraitInputRef.current) {
       heroPortraitInputRef.current.value = '';
@@ -2396,11 +2386,7 @@ export default function HomeView({
     const creativeBrief = buildCreativeBriefPayload();
 
     if (selectedHeroPortraitFile && !selectedHeroPortraitName) {
-      setSourceNotice(t('Portredeki kişinin adını yazın.'));
-      return;
-    }
-    if (selectedHeroPortraitFile && heroPortraitGender === 'unspecified') {
-      setSourceNotice(t('Portre için cinsiyet seçin.'));
+      setSourceNotice(t('Ana karakter adını yazın.'));
       return;
     }
 
@@ -2497,7 +2483,6 @@ export default function HomeView({
         creativeBrief,
         allowAiBookTitleGeneration,
         heroPortraitName: selectedHeroPortraitFile ? selectedHeroPortraitName : undefined,
-        heroPortraitGender: selectedHeroPortraitFile && heroPortraitGender !== 'unspecified' ? heroPortraitGender : undefined,
         heroPortraitImage: selectedHeroPortraitFile
           ? {
               base64: await readFileAsBase64(selectedHeroPortraitFile),
@@ -2731,14 +2716,14 @@ export default function HomeView({
       const portraitComplete =
         selectedBookType !== 'fairy_tale' ||
         !heroPortraitFile ||
-        (Boolean(heroPortraitName.trim()) && heroPortraitGender !== 'unspecified');
+        Boolean(heroPortraitName.trim());
       return storyModeComplete && portraitComplete;
     }
     if (step === settingDetailsStep) {
       return (
         selectedBookType !== 'fairy_tale' ||
         !heroPortraitFile ||
-        (Boolean(heroPortraitName.trim()) && heroPortraitGender !== 'unspecified')
+        Boolean(heroPortraitName.trim())
       );
     }
     return false;
@@ -2823,11 +2808,11 @@ export default function HomeView({
         </div>
       </div>
       <p className="mt-2 text-[11px] leading-snug text-[#b8d8ca]">
-        {t('Portre eklerseniz bu kişi masalın baş kahramanı olur. Görsel masal üretimi +1 kredi kullanır.')}
+        {t('Portre eklerseniz bu kişi masalın ana karakteri olur. Görsel masal üretimi +1 kredi kullanır.')}
       </p>
       <div className="mt-2 space-y-2">
         <div>
-          <label className="mb-1 block text-[11px] font-semibold text-[#d7efe6]">{t('Baş kahraman adı')}</label>
+          <label className="mb-1 block text-[11px] font-semibold text-[#d7efe6]">{t('Ana karakter adı')}</label>
           <input
             value={heroPortraitName}
             onChange={(event) => setHeroPortraitName(event.target.value)}
@@ -2836,26 +2821,6 @@ export default function HomeView({
             className={wizardFieldClass}
             style={wizardFieldStyle()}
           />
-        </div>
-        <div>
-          <p className="mb-1 text-[11px] font-semibold text-[#d7efe6]">{t('Baş kahraman cinsiyeti')}</p>
-          <div className="grid grid-cols-3 gap-1">
-            {HERO_PORTRAIT_GENDER_OPTIONS.map((option) => {
-              const isSelected = heroPortraitGender === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setHeroPortraitGender(option.value)}
-                  className="fortale-form-button h-8 rounded-lg border px-2 text-[11px] font-bold transition"
-                  style={wizardOptionButtonStyle(isSelected)}
-                  aria-pressed={isSelected}
-                >
-                  {t(option.label)}
-                </button>
-              );
-            })}
-          </div>
         </div>
       </div>
     </div>
