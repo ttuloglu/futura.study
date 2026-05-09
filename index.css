@@ -1392,7 +1392,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-story-image-motion {
-  animation: fortale-story-kenburns var(--story-motion-duration, 12s) cubic-bezier(0.37, 0, 0.18, 1) infinite;
+  animation: fortale-story-kenburns var(--story-motion-duration, 18s) ease-in-out infinite;
   transform-origin: center center;
 }
 
@@ -1502,14 +1502,8 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   0% {
     transform: translate3d(0, 0, 0) scale(1);
   }
-  24% {
-    transform: translate3d(var(--story-pan-start-x, -2.8%), var(--story-pan-y, -0.45%), 0) scale(var(--story-scale-end, 1.115));
-  }
-  62% {
-    transform: translate3d(var(--story-pan-end-x, 2.8%), var(--story-pan-y, -0.45%), 0) scale(var(--story-scale-end, 1.115));
-  }
-  88% {
-    transform: translate3d(0, 0, 0) scale(1);
+  58% {
+    transform: translate3d(var(--story-camera-right-x, -5.2%), var(--story-pan-y, -0.18%), 0) scale(var(--story-scale-end, 1.18));
   }
   100% {
     transform: translate3d(0, 0, 0) scale(1);

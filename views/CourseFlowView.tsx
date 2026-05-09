@@ -1026,15 +1026,14 @@ function buildVisualStoryMotionProfile(seed: string | undefined, text: string | 
   };
   const mood = inferVisualStoryMood(text);
   const sparkleCount = mood === 'magic' ? 2 : 1;
-  const panDistance = Number((2.55 + next() * 0.95).toFixed(2));
-  const panDirection = next() > 0.5 ? 1 : -1;
+  const panDistance = Number((5.2 + next() * 1.1).toFixed(2));
   return {
     mood,
-    panStartX: Number((-panDistance * panDirection).toFixed(2)),
-    panEndX: Number((panDistance * panDirection).toFixed(2)),
-    panY: Number((((next() * 0.9) - 0.45)).toFixed(2)),
-    endScale: Number((1.095 + next() * 0.035).toFixed(3)),
-    duration: Number((12.2 + next() * 1.8).toFixed(2)),
+    panStartX: 0,
+    panEndX: Number((-panDistance).toFixed(2)),
+    panY: Number((((next() * 0.36) - 0.18)).toFixed(2)),
+    endScale: Number((1.17 + next() * 0.04).toFixed(3)),
+    duration: Number((17.5 + next() * 2.2).toFixed(2)),
     sparkleCount
   };
 }
@@ -2886,8 +2885,7 @@ function VisualStoryReader({
                             maxWidth: '100%',
                             maxHeight: '100%',
                             touchAction: 'pan-x pan-y pinch-zoom',
-                            ['--story-pan-start-x' as string]: `${pageMotionProfile.panStartX}%`,
-                            ['--story-pan-end-x' as string]: `${pageMotionProfile.panEndX}%`,
+                            ['--story-camera-right-x' as string]: `${pageMotionProfile.panEndX}%`,
                             ['--story-pan-y' as string]: `${pageMotionProfile.panY}%`,
                             ['--story-scale-end' as string]: pageMotionProfile.endScale,
                             ['--story-motion-duration' as string]: `${pageMotionProfile.duration}s`
