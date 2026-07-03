@@ -591,6 +591,10 @@ export default function StyledMarkdown({
     scale: number;
     offsetX: number;
     offsetY: number;
+    naturalCenterX: number;
+    naturalCenterY: number;
+    anchorX: number;
+    anchorY: number;
   } | null>(null);
   const lightboxScaleRef = useRef(1);
   const lightboxOffsetRef = useRef({ x: 0, y: 0 });
@@ -891,11 +895,23 @@ export default function StyledMarkdown({
     if (active.length === 2) {
       const [p1, p2] = active;
       const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const initMidX = (p1.x + p2.x) / 2;
+      const initMidY = (p1.y + p2.y) / 2;
+      const startScale = lightboxScaleRef.current;
+      const startOffsetX = lightboxOffsetRef.current.x;
+      const startOffsetY = lightboxOffsetRef.current.y;
+      const imgRect = lightboxImageRef.current?.getBoundingClientRect();
+      const rectCenterX = imgRect ? imgRect.left + imgRect.width / 2 : initMidX;
+      const rectCenterY = imgRect ? imgRect.top + imgRect.height / 2 : initMidY;
       pinchStartRef.current = {
         distance: Math.max(dist, 1),
-        scale: lightboxScaleRef.current,
-        offsetX: lightboxOffsetRef.current.x,
-        offsetY: lightboxOffsetRef.current.y
+        scale: startScale,
+        offsetX: startOffsetX,
+        offsetY: startOffsetY,
+        naturalCenterX: rectCenterX - startOffsetX,
+        naturalCenterY: rectCenterY - startOffsetY,
+        anchorX: startScale > 0 ? (initMidX - rectCenterX) / startScale : 0,
+        anchorY: startScale > 0 ? (initMidY - rectCenterY) / startScale : 0
       };
       panStartRef.current = null;
       dismissStartRef.current = null;
@@ -936,13 +952,11 @@ export default function StyledMarkdown({
       const midpointX = (p1.x + p2.x) / 2;
       const midpointY = (p1.y + p2.y) / 2;
       const nextScale = clampScale((currentDistance / pinchStartRef.current.distance) * pinchStartRef.current.scale);
-      applyScaleAroundPoint(
-        nextScale,
-        midpointX,
-        midpointY,
-        pinchStartRef.current.scale,
-        { x: pinchStartRef.current.offsetX, y: pinchStartRef.current.offsetY }
-      );
+      const { naturalCenterX: ncx, naturalCenterY: ncy, anchorX: ax, anchorY: ay } = pinchStartRef.current;
+      const newOffsetX = midpointX - ncx - ax * nextScale;
+      const newOffsetY = midpointY - ncy - ay * nextScale;
+      const clamped = clampOffset(newOffsetX, newOffsetY, nextScale);
+      updateLightboxTransform(nextScale, clamped);
       return;
     }
 
@@ -1028,7 +1042,7 @@ export default function StyledMarkdown({
           h1: ({ children }) => (
             <h1
               className="mb-5 border-b border-dashed border-white/20 pb-3 text-[22px] font-extrabold tracking-tight text-white"
-              style={{ fontSize: 'calc(22px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((22px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
             </h1>
@@ -1036,7 +1050,7 @@ export default function StyledMarkdown({
           h2: ({ children }) => (
             <h2
               className="mb-4 mt-8 border-b border-dashed border-white/10 pb-2 text-[18px] font-bold tracking-tight text-white/95"
-              style={{ fontSize: 'calc(18px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((18px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
             </h2>
@@ -1044,7 +1058,7 @@ export default function StyledMarkdown({
           h3: ({ children }) => (
             <h3
               className="mb-3 mt-6 border-b border-dashed border-white/5 pb-1.5 text-[15px] font-bold text-white/90"
-              style={{ fontSize: 'calc(15px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((15px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
             </h3>
@@ -1056,7 +1070,7 @@ export default function StyledMarkdown({
               return (
                 <p
                   className="my-4 text-[14px] leading-[1.8] text-white/85 italic text-center first:mt-0"
-                  style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+                  style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
                 >
                   <span aria-hidden className="opacity-85">“</span>
                   {children}
@@ -1067,7 +1081,7 @@ export default function StyledMarkdown({
             return (
               <p
                 className="my-3 text-[14px] leading-[1.7] text-white/75 first:mt-0"
-                style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+                style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
               >
                 {children}
               </p>
@@ -1080,7 +1094,7 @@ export default function StyledMarkdown({
           ul: ({ children }) => (
             <ul
               className="my-4 list-none space-y-2 pl-2 text-[14px] leading-[1.6] text-white/75"
-              style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {React.Children.map(children, child => {
                 if (!React.isValidElement(child)) return child;
@@ -1094,7 +1108,7 @@ export default function StyledMarkdown({
             <ol
               {...props}
               className="my-4 list-decimal space-y-2 pl-6 text-[14px] leading-[1.6] text-white/75"
-              style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
             </ol>
@@ -1103,7 +1117,7 @@ export default function StyledMarkdown({
           blockquote: ({ children }) => (
             <blockquote
               className="my-4 border-l-2 border-accent-green/40 bg-transparent px-4 py-2 text-white/70 italic rounded-r-lg"
-              style={{ fontSize: 'calc(14px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
             </blockquote>
@@ -1116,7 +1130,7 @@ export default function StyledMarkdown({
             ) : (
               <code
                 className="block overflow-x-auto rounded-none border-0 bg-transparent p-0 font-mono text-[11px] leading-relaxed text-white/80"
-                style={{ fontSize: 'calc(11px * var(--reader-font-scale, 1))' }}
+                style={{ fontSize: 'calc((11px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
               >
                 {children}
               </code>
@@ -1135,7 +1149,7 @@ export default function StyledMarkdown({
           th: ({ children }) => (
             <th
               className="border-b border-white/10 bg-transparent px-3 py-2 font-bold text-white"
-              style={{ fontSize: 'calc(11px * var(--reader-font-scale, 1))' }}
+              style={{ fontSize: 'calc((11px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
             </th>
@@ -1157,7 +1171,7 @@ export default function StyledMarkdown({
                   setLightboxImage({ src: safeSrc, alt: safeAlt });
                 }}
                 title={enableImageLightbox ? t('Tam ekran aç') : undefined}
-                className={`my-4 aspect-[16/9] min-h-[210px] w-full rounded-xl border border-white/10 bg-black/20 object-cover transition-opacity ${
+                className={`my-4 aspect-[16/9] min-h-[210px] w-full border border-white/10 bg-black/20 object-cover transition-opacity ${
                   enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
                 }`}
               />
@@ -1171,7 +1185,7 @@ export default function StyledMarkdown({
   };
 
   const renderInlineImage = (src: string, alt: string, heightClass: string, options?: { bare?: boolean }) => (
-    <div className={options?.bare ? 'w-full' : 'w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/20 shadow-[0_18px_40px_rgba(0,0,0,0.24)]'}>
+    <div className={options?.bare ? 'w-full' : 'w-full overflow-hidden border border-white/10 bg-black/20 shadow-[0_18px_40px_rgba(0,0,0,0.24)]'}>
       <img
         src={src}
         alt={alt}
@@ -1390,7 +1404,7 @@ export default function StyledMarkdown({
                   }
                 })();
               }}
-              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
               aria-label="Görseli indir"
               title="Görseli indir"
             >
@@ -1399,7 +1413,7 @@ export default function StyledMarkdown({
             <button
               type="button"
               onClick={() => setLightboxImage(null)}
-              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
               aria-label="Kapat"
               title="Kapat"
             >

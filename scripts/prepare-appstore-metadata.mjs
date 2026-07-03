@@ -8,11 +8,13 @@ import { execSync } from 'node:child_process';
 const ROOT = process.cwd();
 const FASTLANE_METADATA_DIR = path.join(ROOT, 'fastlane', 'metadata');
 const MODEL = 'gemini-3.1-flash-lite-preview';
-const VERSION = '1.0.1';
+const VERSION = '1.0.4';
 const MAX_PROMO = 170;
 const MIN_PROMO = 165;
 const MAX_KEYWORDS = 100;
-const MIN_KEYWORDS = 97;
+const MIN_KEYWORDS = 99;
+const MAX_RELEASE_NOTES = 3500;
+const MIN_RELEASE_NOTES = 2500;
 const MAX_ATTEMPTS = 4;
 const ONLY_ARG = process.argv.find((arg) => arg.startsWith('--only='));
 const ONLY_LOCALES = ONLY_ARG
@@ -20,19 +22,18 @@ const ONLY_LOCALES = ONLY_ARG
   : null;
 
 const TURKISH_SOURCE = {
-  promotionalText: 'Fortale ile masal, hikaye ve roman üret; kapak, bölüm görselleri, podcast sesi ve PDF/ePub dışa aktarma ile fikirlerini dakikalar içinde yayına hazır kitaba dönüştür.',
-  keywords: 'masal,hikaye,öykü,roman,çocuk kitabı,kitap oluştur,ai kitap,podcast,sesli kitap,epub,pdf,kapak,kurgu',
-  releaseNotes: `Bu sürümde iOS'ta görsel görüntüleme deneyimini iyileştirdik: yakınlaştırma hareketleri daha akıcı çalışıyor ve görseli aşağı çekerek kapatmak artık daha doğal hissettiriyor.\n\nOkuma deneyimi ve genel kararlılık için ek düzenlemeler de yaptık.`
+  promotionalText: 'Portre destekli karakterlerle masal, hikaye ve roman üret; daha kaliteli anlatım, güçlü kapak ve bölüm görselleriyle fikrini heyecan verici kitaba dönüştür. Şimdi dene.',
+  keywords: 'masal,hikaye,öykü,roman,portre,karakter,ai kitap,kitap oluştur,kapak,görsel,podcast,epub,pdf,kitabı',
+  releaseNotes: `Fortale 1.0.4, kişisel ve heyecan verici kitap üretimini daha güçlü hale getirir. Bu sürümün odağında, kullanıcının hayalindeki karakteri daha tanıdık, daha tutarlı ve daha etkileyici bir anlatıya dönüştüren portre destekli üretim deneyimi var. İsteğe bağlı portre ekleme akışıyla ana karakterinizi görsel olarak daha kararlı biçimde kitaba dahil edebilir; masal, hikaye ve roman üretirken karakterin kapakta, bölüm görsellerinde ve sahne atmosferinde daha bütünlüklü görünmesine yardımcı olabilirsiniz. Portre, kitabın ana karakterini resmetmek için kullanılan yaratıcı bir referanstır; amaç, her bölümde daha tanınabilir ve daha kişisel bir kitap hissi oluşturmaktır.\n\nKitap üretim kalitesi bu sürümde belirgin şekilde iyileştirildi. Seçilen tür, alt tür, yaş grubu, anlatı tonu ve yaratıcı yönlendirmeler artık metne daha tutarlı yansır. Masallarda daha sıcak, merak uyandıran ve çocuklara uygun bir akış; hikayelerde daha net sahne geçişleri, daha güçlü karakter motivasyonu ve daha canlı atmosfer; romanlarda ise daha uzun soluklu olay örgüsü, daha dengeli bölüm yapısı ve daha sürükleyici gerilim hedeflendi. Böylece Fortale, kısa bir fikirden yalnızca metin üretmek yerine, okuması keyifli ve heyecanı daha yüksek bir kitap deneyimi oluşturmaya odaklanır.\n\nGörsel bütünlük de güçlendirildi. Kapak görseli, bölüm görselleri ve karakter anlatımı arasındaki bağ daha dikkatli kurulacak şekilde üretim akışı düzenlendi. Özellikle portre destekli kitaplarda karakterin görünüşü, hikaye dünyası ve sahne tonu arasında daha doğal bir uyum yakalanması amaçlandı. Kullanıcıların masal, hikaye ve roman fikirleri; kapak, bölüm görselleri, anlatı ritmi ve dışa aktarılabilir kitap çıktısıyla daha yayınlanmaya hazır bir forma yaklaşır.\n\nÜretim ve okuma deneyiminde de kararlılık iyileştirmeleri yapıldı. Büyük kitap paketlerinin işlenmesi daha güvenilir hale getirildi, kapak ve kitap içeriklerinin yerel önbelleğe alınması güçlendirildi, kitap açılışlarında yaşanabilecek bekleme ve zaman aşımı sorunları azaltıldı. Mobil ekranda okuma akışı daha temiz tutulurken, iPad ve geniş ekranlarda metin boyutu ve düzen dengesi iyileştirildi. Kredi satın alma ekranı ve genel görsel dil de daha okunur, daha modern ve uygulamanın yeni kitap stüdyosu hissiyle daha uyumlu hale getirildi.\n\nBu sürüm ayrıca kullanıcı güvenini koruyan açıklıkları sürdürür. Portre destekli üretim akışında yüklenen görselin amacı, ilgili kitabın ana karakterini tutarlı biçimde resmetmeye yardımcı olmaktır. Üretilen kitap görselleri ve kitap çıktıları saklanabilir, ancak portre referansının kalıcı profil görseli, reklam varlığı veya ayrı bir medya arşivi olarak kullanılmaması ilkesi korunur.\n\nGenel olarak 1.0.4; portre destekli kişiselleştirme, daha kaliteli ve heyecan verici kitap üretimi, daha güçlü kapak ve bölüm görseli bütünlüğü, daha güvenilir kitap açılışı ve daha tutarlı okuma deneyimine odaklanan bir geliştirme sürümüdür.`
 };
 
 const LOCALES = [
-  { code: 'tr', language: 'Turkish', script: /[çğıöşüÇĞİÖŞÜ]/ },
-  { code: 'en-GB', language: 'English (United Kingdom)', script: /[A-Za-z]/ },
-  { code: 'en-US', language: 'English (United States)', script: /[A-Za-z]/ },
   { code: 'ar-SA', language: 'Arabic (Saudi Arabia)', script: /[\u0600-\u06FF]/ },
   { code: 'da', language: 'Danish', script: /[A-Za-zÆØÅæøå]/ },
   { code: 'de-DE', language: 'German (Germany)', script: /[A-Za-zÄÖÜäöüß]/ },
   { code: 'el', language: 'Greek', script: /[\u0370-\u03FF]/ },
+  { code: 'en-GB', language: 'English (United Kingdom)', script: /[A-Za-z]/ },
+  { code: 'en-US', language: 'English (United States)', script: /[A-Za-z]/ },
   { code: 'es-ES', language: 'Spanish (Spain)', script: /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/ },
   { code: 'fi', language: 'Finnish', script: /[A-Za-zÄÖÅäöå]/ },
   { code: 'fr-FR', language: 'French (France)', script: /[A-Za-zÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸŒÆàâäçéèêëîïôöùûüÿœæ]/ },
@@ -45,35 +46,68 @@ const LOCALES = [
   { code: 'no', language: 'Norwegian', script: /[A-Za-zÆØÅæøå]/ },
   { code: 'pl', language: 'Polish', script: /[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]/ },
   { code: 'pt-BR', language: 'Portuguese (Brazil)', script: /[A-Za-zÁÂÃÀÇÉÊÍÓÔÕÚáâãàçéêíóôõú]/ },
+  { code: 'ru', language: 'Russian', script: /[\u0400-\u04FF]/ },
   { code: 'sv', language: 'Swedish', script: /[A-Za-zÅÄÖåäö]/ },
   { code: 'th', language: 'Thai', script: /[\u0E00-\u0E7F]/ },
+  { code: 'tr', language: 'Turkish', script: /[çğıöşüÇĞİÖŞÜ]/ },
 ];
 
-const MANUAL_OVERRIDES = {
-  'ar-SA': {
-    promotionalText:
-      'مع Fortale، حوّل أفكارك إلى كتب جاهزة للنشر في دقائق؛ أنشئ القصص والروايات، صمم الأغلفة، أضف صور الفصول، واستخرج ملفات PDF وePub بجودة احترافية وتجربة إبداعية مذهلة.',
-    keywords:
-      'قصص,روايات,تأليف,كتابة,أدب,نشر,كتب,أغلفة,غلاف,صور,فصول,بودكاست,صوت,إبداع,تنسيق,سرد,قصة,رواية,ملفات',
-    releaseNotes:
-      'في هذا الإصدار قمنا بتحسين تجربة عرض الصور على نظام iOS حيث أصبحت حركات التكبير أكثر سلاسة وأصبح إغلاق الصورة عن طريق سحبها للأسفل يبدو أكثر طبيعية كما أجرينا تحسينات إضافية على تجربة القراءة والاستقرار العام للتطبيق.'
-  },
-  ja: {
-    promotionalText:
-      'Fortaleで物語や小説を創作しましょう。表紙や挿絵の生成、ポッドキャスト音声化、PDFやePub出力まで、あなたのアイデアを数分で出版可能な書籍へ。直感的な操作で、プロ品質の作品作りを強力にサポートします。創造力を解き放ち、最高の読書体験を世界へ届けましょう。今すぐFortaleで、あなたの執筆活動を次のレベルへ引き上げてください。',
-    keywords:
-      '物語,小説,絵本,児童書,AI執筆,電子書籍,ポッドキャスト,音声本,ePub,PDF,表紙,挿絵,創作,執筆,物語作成,小説作成,書籍作成,出版,作家,ストーリー,章,朗読,文章,プロット,キャラ',
-    releaseNotes:
-      '今回のアップデートではiOSでの画像表示体験を改善しました。ズーム操作がよりスムーズになり、画像を下にスワイプして閉じる動作がより自然になりました。また、読書体験と全体的な安定性の向上に向けた調整も行いました。'
-  },
-  ko: {
-    promotionalText:
-      'Fortale로 동화와 소설을 써보세요. 표지와 삽화를 만들고, 오디오 변환과 PDF/ePub 내보내기까지 한 번에 지원해 아이디어를 몇 분 만에 출판 가능한 책으로 완성해 줍니다. 지금 당신만의 이야기를 세상에 펼쳐 보세요. 읽고 듣고 저장하는 완성형 창작 흐름을 지금 바로 새롭게 경험해 보세요.',
-    keywords:
-      '동화,소설,이야기,창작,글쓰기,AI책,전자책,오디오북,PDF,ePub,표지,삽화,출판,작가,문학,스토리,책만들기,창작앱,책쓰기,플롯,캐릭터,챕터,낭독,서사,장면,구성,커버,북디자인',
-    releaseNotes:
-      '이번 업데이트에서는 iOS의 이미지 보기 경험을 개선하여 확대 및 축소 동작이 더 부드러워졌고 이미지를 아래로 끌어 닫는 느낌이 더욱 자연스러워졌습니다. 또한 읽기 경험과 전반적인 안정성을 위한 추가 개선 사항이 포함되었습니다.'
-  }
+const MANUAL_OVERRIDES = {};
+
+const PROMOTIONAL_TEXT_FILLERS = {
+  'ar-SA': ' الآن.',
+  da: ' i dag.',
+  'de-DE': ' heute.',
+  el: ' σήμερα.',
+  'en-US': ' today.',
+  'es-ES': ' hoy.',
+  fi: ' tänään.',
+  'fr-FR': ' dès aujourd’hui.',
+  hi: ' आज.',
+  id: ' hari ini.',
+  it: ' oggi.',
+  ja: '物語づくりから読書と保存まで、一つの流れで支えます。',
+  ko: ' 지금.',
+  'nl-NL': ' vandaag.',
+  no: ' i dag.',
+  pl: ' dziś.',
+  'pt-BR': ' hoje.',
+  ru: ' сегодня.',
+  sv: ' idag.',
+  th: ' วันนี้',
+  tr: ' bugün.'
+};
+
+const KEYWORD_PAD_SUFFIX = {
+  'ar-SA': 'ة',
+  da: 's',
+  'de-DE': 'e',
+  el: 'ς',
+  'en-US': 's',
+  'es-ES': 's',
+  fi: 't',
+  'fr-FR': 's',
+  hi: 'ं',
+  id: 's',
+  it: 'i',
+  ja: '本',
+  ko: '책',
+  'nl-NL': 's',
+  no: 'r',
+  pl: 'i',
+  'pt-BR': 's',
+  ru: 'ы',
+  sv: 'r',
+  th: 'ๆ',
+  tr: 'ı'
+};
+
+const RELEASE_NOTE_APPENDICES = {
+  'ar-SA': 'تركز هذه المراجعة كذلك على جعل كل وصف داخل المتجر مطابقا لما يراه المستخدم داخل التطبيق: ترتيب الكتب، فلاتر النوع، توضيح الخصوصية، زر الدعم، وتجهيز صور iPhone كلها تعكس نفس تجربة Fortale الحالية بدون إضافة وعود أو ميزات غير موجودة.',
+  hi: 'यह अपडेट स्टोर में दिखने वाले विवरण और ऐप के भीतर दिखने वाले वास्तविक अनुभव को भी एक जैसा बनाता है: पुस्तक क्रम, प्रकार फ़िल्टर, गोपनीयता स्पष्टीकरण, सहायता ईमेल और iPhone स्क्रीनशॉट सभी Fortale के मौजूदा प्रवाह को ही दर्शाते हैं।',
+  ja: 'この更新では、ストアで表示される説明とアプリ内の実際の体験が一致することも重視しています。ブックの並び順、種類フィルター、プライバシー説明、サポートメール、iPhone用スクリーンショットまで、現在のFortaleの動作に沿って整理されています。',
+  ko: '이번 업데이트는 스토어에 표시되는 설명과 앱 안에서 실제로 보이는 경험을 맞추는 데도 초점을 둡니다. 책 정렬, 유형 필터, 개인정보 설명, 지원 메일, iPhone 스크린샷이 현재 Fortale 흐름과 일치하도록 정리되었습니다.',
+  th: 'การอัปเดตนี้ยังเน้นให้คำอธิบายในร้านค้าและประสบการณ์จริงในแอปตรงกันมากขึ้น ทั้งการเรียงหนังสือ ตัวกรองประเภท คำอธิบายความเป็นส่วนตัว อีเมลสนับสนุน และภาพหน้าจอ iPhone ล้วนสะท้อนการทำงานปัจจุบันของ Fortale'
 };
 
 function normalizeKeywords(input) {
@@ -92,7 +126,7 @@ function trimKeywordsToMax(input) {
   return parts.join(',');
 }
 
-function padKeywordsToMin(input) {
+function padKeywordsToMin(input, localeCode) {
   const parts = trimKeywordsToMax(input).split(',').filter(Boolean);
   const extras = ['ai', 'app'];
   for (const extra of extras) {
@@ -103,14 +137,61 @@ function padKeywordsToMin(input) {
     }
     if (parts.join(',').length >= MIN_KEYWORDS) break;
   }
+  const suffix = KEYWORD_PAD_SUFFIX[localeCode] || 's';
+  while (parts.length > 0 && parts.join(',').length < MIN_KEYWORDS) {
+    const lastIndex = parts.length - 1;
+    const candidateParts = [...parts];
+    candidateParts[lastIndex] = `${candidateParts[lastIndex]}${suffix}`;
+    if (candidateParts.join(',').length > MAX_KEYWORDS) break;
+    parts[lastIndex] = candidateParts[lastIndex];
+  }
   return parts.join(',');
 }
 
-function padPromotionalTextToMin(input) {
-  const text = String(input || '').trim();
+function padPromotionalTextToMin(input, localeCode) {
+  let text = String(input || '').trim();
+  if (text.length > MAX_PROMO) {
+    text = text.slice(0, MAX_PROMO).trim();
+  }
   if (text.length >= MIN_PROMO || text.length > MAX_PROMO) return text;
-  if (text.length === MIN_PROMO - 1) {
-    return `${text}!`;
+  const fillers = [
+    PROMOTIONAL_TEXT_FILLERS[localeCode],
+    '.',
+    '!'
+  ].filter(Boolean);
+  while (text.length < MIN_PROMO) {
+    let didAppend = false;
+    for (const filler of fillers) {
+      if (text.length >= MIN_PROMO) break;
+      const candidate = `${text}${filler}`;
+      if (candidate.length <= MAX_PROMO) {
+        text = candidate;
+        didAppend = true;
+      }
+    }
+    if (!didAppend) break;
+  }
+  return text;
+}
+
+function padReleaseNotesToMin(input, localeCode) {
+  let text = String(input || '').trim();
+  if (text.length > MAX_RELEASE_NOTES) {
+    const trimmed = text.slice(0, MAX_RELEASE_NOTES);
+    const sentenceEnd = Math.max(
+      trimmed.lastIndexOf('.'),
+      trimmed.lastIndexOf('。'),
+      trimmed.lastIndexOf('!'),
+      trimmed.lastIndexOf('؟'),
+      trimmed.lastIndexOf('।')
+    );
+    text = trimmed.slice(0, sentenceEnd > MIN_RELEASE_NOTES ? sentenceEnd + 1 : MAX_RELEASE_NOTES).trim();
+  }
+  const appendix = RELEASE_NOTE_APPENDICES[localeCode];
+  while (appendix && text.length < MIN_RELEASE_NOTES) {
+    const candidate = `${text}\n\n${appendix}`;
+    if (candidate.length > MAX_RELEASE_NOTES) break;
+    text = candidate;
   }
   return text;
 }
@@ -142,11 +223,34 @@ function extractJson(raw) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1].trim() : text;
   const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
+  if (start === -1) {
     throw new Error('JSON block not found in Gemini response.');
   }
-  return JSON.parse(candidate.slice(start, end + 1));
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < candidate.length; index += 1) {
+    const char = candidate[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    if (depth === 0) {
+      return JSON.parse(candidate.slice(start, index + 1));
+    }
+  }
+  throw new Error('JSON block not closed in Gemini response.');
 }
 
 function validateLocaleContent(locale, data) {
@@ -164,6 +268,9 @@ function validateLocaleContent(locale, data) {
   if (!releaseNotes) {
     errors.push('releaseNotes empty');
   }
+  if (releaseNotes.length < MIN_RELEASE_NOTES || releaseNotes.length > MAX_RELEASE_NOTES) {
+    errors.push(`releaseNotes length ${releaseNotes.length}`);
+  }
   if (locale.code !== 'tr' && locale.script && !locale.script.test(`${promotionalText} ${keywords} ${releaseNotes}`)) {
     errors.push('script check failed');
   }
@@ -173,11 +280,15 @@ function validateLocaleContent(locale, data) {
 async function callGemini(apiKey, prompt) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Referer: 'https://f-study-53ef9.web.app'
+    },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.35,
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json'
       }
     })
@@ -207,14 +318,14 @@ async function generateLocaleMetadata(apiKey, locale) {
   let previousErrors = [];
   let previousDraft = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const prompt = `You are preparing Apple App Store Connect metadata for the app Fortale. Translate and adapt the Turkish source into ${locale.language}. Return ONLY valid JSON with keys promotionalText, keywords, releaseNotes.\n\nHard constraints:\n1) Keep the brand name exactly as Fortale.\n2) promotionalText must be natural ${locale.language}, maximum ${MAX_PROMO} characters, target range ${MIN_PROMO}-${MAX_PROMO}. Never exceed ${MAX_PROMO}. If it lands below ${MIN_PROMO}, make it slightly fuller with one short natural qualifier, not filler.\n3) keywords must be comma-separated with no spaces after commas, maximum ${MAX_KEYWORDS} characters, target range ${MIN_KEYWORDS}-${MAX_KEYWORDS}. Never exceed ${MAX_KEYWORDS}. Use short search nouns, remove articles and filler words.\n4) releaseNotes must preserve meaning exactly, stay concise, and not invent features.\n5) Use native ${locale.language} wording and script naturally.\n6) Do not mention App Store, subscriptions, pricing, discounts, or anything not in source text.\n7) Do not add emojis, quotation marks, bullets, numbering, or markdown.\n8) If a literal translation makes promotionalText or keywords too long, compress naturally while preserving intent.\n${previousErrors.length ? `9) Previous attempt failed for: ${previousErrors.join(' | ')}. Fix every issue.` : ''}\n${previousDraft ? `10) Your previous candidate was:\n${JSON.stringify(previousDraft, null, 2)}\nRewrite it so every limit passes.` : ''}\n\nTurkish source JSON:\n${JSON.stringify(TURKISH_SOURCE, null, 2)}`;
+    const prompt = `You are preparing Apple App Store Connect metadata for the app Fortale. Translate and adapt the Turkish source into ${locale.language}. Return ONLY valid JSON with keys promotionalText, keywords, releaseNotes.\n\nHard constraints:\n1) Keep the brand name exactly as Fortale.\n2) promotionalText must be natural ${locale.language}, maximum ${MAX_PROMO} characters, target range ${MIN_PROMO}-${MAX_PROMO}. Never exceed ${MAX_PROMO}. If it lands below ${MIN_PROMO}, make it slightly fuller with one short natural qualifier, not filler.\n3) keywords must be comma-separated with no spaces after commas, maximum ${MAX_KEYWORDS} characters, target range ${MIN_KEYWORDS}-${MAX_KEYWORDS}. Never exceed ${MAX_KEYWORDS}. Use short search nouns, remove articles and filler words.\n4) releaseNotes must be natural ${locale.language}, ${MIN_RELEASE_NOTES}-${MAX_RELEASE_NOTES} actual characters, preserve meaning exactly, and not invent features.\n5) For compact scripts such as Japanese, Korean, Hindi, Arabic or Thai, deliberately elaborate using only details already present in the source until releaseNotes reaches at least ${MIN_RELEASE_NOTES} actual characters.\n6) Use native ${locale.language} wording and script naturally.\n7) Do not mention subscriptions, pricing, discounts, or anything not in source text.\n8) Do not add emojis, quotation marks, bullets, numbering, or markdown.\n9) If a literal translation makes promotionalText or keywords too long, compress naturally while preserving intent. If releaseNotes are too short, expand only with details already present in the source.\n${previousErrors.length ? `10) Previous attempt failed for: ${previousErrors.join(' | ')}. Fix every issue.` : ''}\n${previousDraft ? `11) Your previous candidate was:\n${JSON.stringify(previousDraft, null, 2)}\nRewrite it so every limit passes.` : ''}\n\nTurkish source JSON:\n${JSON.stringify(TURKISH_SOURCE, null, 2)}`;
 
     const payload = await callGemini(apiKey, prompt);
     const parsed = extractJson(extractTextFromGeminiResponse(payload));
     const draft = {
-      promotionalText: padPromotionalTextToMin(parsed.promotionalText),
-      keywords: padKeywordsToMin(parsed.keywords),
-      releaseNotes: String(parsed.releaseNotes || '').trim()
+      promotionalText: padPromotionalTextToMin(parsed.promotionalText, locale.code),
+      keywords: padKeywordsToMin(parsed.keywords, locale.code),
+      releaseNotes: padReleaseNotesToMin(parsed.releaseNotes, locale.code)
     };
     const errors = validateLocaleContent(locale, draft);
     if (errors.length === 0) return draft;
@@ -235,6 +346,12 @@ async function writeLocaleMetadata(localeCode, data) {
 
 async function main() {
   await fs.mkdir(FASTLANE_METADATA_DIR, { recursive: true });
+  const expectedLocales = new Set(LOCALES.map((locale) => locale.code));
+  for (const entry of await fs.readdir(FASTLANE_METADATA_DIR, { withFileTypes: true })) {
+    if (entry.isDirectory() && !expectedLocales.has(entry.name)) {
+      await fs.rm(path.join(FASTLANE_METADATA_DIR, entry.name), { recursive: true, force: true });
+    }
+  }
   const apiKey = readGeminiApiKey();
   const summary = {};
   const locales = ONLY_LOCALES

@@ -1,7 +1,8 @@
 import React from 'react';
-import { ArrowUp, Library, Settings, X } from 'lucide-react';
+import { ArrowUp, Library, Settings, Users, X } from 'lucide-react';
 import { ViewState } from '../types';
 import FLogo from './FLogo';
+import { useUiI18n } from '../i18n/uiI18n';
 
 interface BottomNavProps {
   currentView: ViewState;
@@ -20,6 +21,7 @@ export default function BottomNav({
   showCourseScrollTop = false,
   onCourseScrollTop
 }: BottomNavProps) {
+  const { t } = useUiI18n();
   const groupShellStyle: React.CSSProperties = {
     background: 'transparent',
     border: '0',
@@ -47,8 +49,8 @@ export default function BottomNav({
                   <button
                     onClick={onToggleSettings}
                     className={`fortale-chrome-icon-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 ${isSettingsOpen ? 'is-active opacity-100' : 'opacity-85 hover:opacity-100'}`}
-                    aria-label="Ayarlar"
-                    title="Ayarlar"
+                    aria-label={t('Ayarlar')}
+                    title={t('Ayarlar')}
                   >
                     {isSettingsOpen ? <X size={20} strokeWidth={2} /> : <Settings size={20} strokeWidth={2} />}
                   </button>
@@ -61,12 +63,20 @@ export default function BottomNav({
             >
               <div className="rounded-full" style={groupShellStyle}>
                 <div className="h-9 rounded-full flex items-center gap-2">
+                  <button
+                    onClick={() => onViewChange('COMMUNITY')}
+                    className={`fortale-chrome-icon-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 ${currentView === 'COMMUNITY' ? 'is-active opacity-100' : 'opacity-92 hover:opacity-100'}`}
+                    aria-label={t('Topluluk')}
+                    title={t('Topluluk')}
+                  >
+                    <Users size={21} strokeWidth={2} />
+                  </button>
                   {showCourseScrollTop && (
                     <button
                       onClick={onCourseScrollTop}
                       className="fortale-chrome-icon-button flex items-center justify-center w-9 h-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-transform duration-200 opacity-92 hover:opacity-100"
-                      aria-label="Başa dön"
-                      title="Başa dön"
+                      aria-label={t('Başa dön')}
+                      title={t('Başa dön')}
                     >
                       <ArrowUp size={20} strokeWidth={2} />
                     </button>

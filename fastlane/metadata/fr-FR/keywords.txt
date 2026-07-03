@@ -1,1 +1,1 @@
-conte,histoire,roman,livre,ecriture,ia,podcast,audio,epub,pdf,couverture,fiction,creation,auteur,art
+conte,histoire,roman,portrait,personnage,ia,livre,creation,couverture,visuel,podcast,epub,pdf,ecrire

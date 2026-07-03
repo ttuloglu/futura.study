@@ -4,6 +4,7 @@ import FLogo from './FLogo';
 import FaviconSpinner from './FaviconSpinner';
 import { CreditActionType, CreditWallet } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
+import { useModalDismiss } from '../utils/useModalDismiss';
 
 export interface CreditPackOption {
   id: string;
@@ -32,28 +33,28 @@ type PackAccent = {
 
 const PACK_ACCENTS: PackAccent[] = [
   {
-    panelClass: 'border-[#d7efe6]/30 bg-[#173b31]/70 shadow-[inset_0_0_0_1px_rgba(215,239,230,0.12)]',
-    buyButtonClass: 'from-[#dcefd7] via-[#b7d1bc] to-[#7fb5bd]',
-    chipClass: 'border border-[#e8f7f0]/70 bg-[#e8f7f0]/90 text-[#11271f]',
-    priceClass: 'text-[#e8f7f0]'
+    panelClass: 'border-[#cfe4ff]/30 bg-[#12315a]/70 shadow-[inset_0_0_0_1px_rgba(207,228,255,0.12)]',
+    buyButtonClass: 'from-[#dcecff] via-[#9fc8f8] to-[#5f9bd8]',
+    chipClass: 'border border-[#e7f2ff]/70 bg-[#e7f2ff]/90 text-[#071a33]',
+    priceClass: 'text-[#e7f2ff]'
   },
   {
-    panelClass: 'border-[#a8cfc3]/32 bg-[#102d27]/76 shadow-[inset_0_0_0_1px_rgba(168,207,195,0.14)]',
-    buyButtonClass: 'from-[#cfe7dd] via-[#9dc4b4] to-[#6fa9b9]',
-    chipClass: 'border border-[#dcefd7]/70 bg-[#dcefd7]/90 text-[#11271f]',
-    priceClass: 'text-[#dcefd7]'
+    panelClass: 'border-[#a9c7ec]/32 bg-[#0b294f]/76 shadow-[inset_0_0_0_1px_rgba(169,199,236,0.14)]',
+    buyButtonClass: 'from-[#d4e8ff] via-[#8eb9ee] to-[#4f90d0]',
+    chipClass: 'border border-[#dcecff]/70 bg-[#dcecff]/90 text-[#071a33]',
+    priceClass: 'text-[#dcecff]'
   },
   {
-    panelClass: 'border-[#86b8c2]/32 bg-[#14343b]/72 shadow-[inset_0_0_0_1px_rgba(134,184,194,0.14)]',
-    buyButtonClass: 'from-[#d8eee9] via-[#9fc7c7] to-[#6aa5b9]',
-    chipClass: 'border border-[#e6f4ef]/70 bg-[#e6f4ef]/90 text-[#11271f]',
-    priceClass: 'text-[#d8eee9]'
+    panelClass: 'border-[#84b7ee]/32 bg-[#12315f]/72 shadow-[inset_0_0_0_1px_rgba(132,183,238,0.14)]',
+    buyButtonClass: 'from-[#d8ebff] via-[#96c4f6] to-[#4b9bd4]',
+    chipClass: 'border border-[#e6f3ff]/70 bg-[#e6f3ff]/90 text-[#071a33]',
+    priceClass: 'text-[#d8ebff]'
   },
   {
-    panelClass: 'border-[#dcefd7]/28 bg-[#18372c]/72 shadow-[inset_0_0_0_1px_rgba(220,239,215,0.12)]',
-    buyButtonClass: 'from-[#e5f4ec] via-[#b7d1bc] to-[#83b6bd]',
-    chipClass: 'border border-[#effaf4]/70 bg-[#effaf4]/90 text-[#11271f]',
-    priceClass: 'text-[#effaf4]'
+    panelClass: 'border-[#dcecff]/28 bg-[#163864]/72 shadow-[inset_0_0_0_1px_rgba(220,236,255,0.12)]',
+    buyButtonClass: 'from-[#e5f2ff] via-[#9fc8f8] to-[#6aa7dc]',
+    chipClass: 'border border-[#eff7ff]/70 bg-[#eff7ff]/90 text-[#071a33]',
+    priceClass: 'text-[#eff7ff]'
   }
 ];
 
@@ -77,26 +78,7 @@ export default function CreditPaywallModal({
   const [activePackId, setActivePackId] = useState<string | null>(null);
   const wasPurchasingRef = useRef(false);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (!panelRef.current) return;
-      if (panelRef.current.contains(event.target as Node)) return;
-      onClose();
-    };
-
-    document.addEventListener('keydown', handleEsc);
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => {
-      document.removeEventListener('keydown', handleEsc);
-      document.removeEventListener('mousedown', handleOutsideClick);
-    };
-  }, [isOpen, onClose]);
+  useModalDismiss(panelRef, isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen) {
@@ -137,10 +119,10 @@ export default function CreditPaywallModal({
           className="fortale-paywall-panel pointer-events-auto mx-auto w-full max-w-[520px] overflow-hidden rounded-[28px] border border-white/28 bg-[linear-gradient(136deg,rgba(15,23,42,0.97),rgba(17,35,57,0.96)_38%,rgba(20,46,74,0.95)_68%,rgba(19,36,59,0.97))] shadow-[0_-14px_56px_rgba(8,15,25,0.56)] animate-enter"
           style={{ boxShadow: '0 -18px 56px rgba(8, 15, 25, 0.56), inset 0 0 0 1px rgba(148, 191, 255, 0.18)' }}
         >
-          <div className="fortale-paywall-inner bg-[radial-gradient(circle_at_10%_4%,rgba(245,158,11,0.3),transparent_36%),radial-gradient(circle_at_98%_2%,rgba(16,185,129,0.26),transparent_34%),radial-gradient(circle_at_32%_96%,rgba(59,130,246,0.3),transparent_38%)] p-4">
+          <div className="fortale-paywall-inner bg-[radial-gradient(circle_at_10%_4%,rgba(96,165,250,0.28),transparent_36%),radial-gradient(circle_at_98%_2%,rgba(80,118,172,0.26),transparent_34%),radial-gradient(circle_at_32%_96%,rgba(59,130,246,0.3),transparent_38%)] p-4">
             <div
               className="mb-3 h-1.5 w-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, #f59e0b 0%, #10b981 50%, #3b82f6 100%)' }}
+              style={{ background: 'linear-gradient(90deg, #dcecff 0%, #8eb9ee 50%, #3b82f6 100%)' }}
             />
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -149,7 +131,7 @@ export default function CreditPaywallModal({
                 </div>
                 <div>
                   <p className="text-[17px] font-extrabold tracking-tight text-white">{t('Fortale')}</p>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-100">{t('Build Your Epic')}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-100">{t('Create, Discover and Share')}</p>
                 </div>
               </div>
 
@@ -169,8 +151,8 @@ export default function CreditPaywallModal({
                   <p className="text-sm font-bold text-white">{t('Satın Al')}</p>
                   <p className="mt-1 text-[11px] text-white/80">{t(getHintByAction(insufficientAction))}</p>
                 </div>
-                <div className="rounded-xl border border-amber-300/70 bg-amber-400/18 px-2.5 py-1.5 text-right shadow-[inset_0_0_0_1px_rgba(245,158,11,0.2)]">
-                  <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-50">
+                <div className="rounded-xl border border-sky-200/70 bg-sky-400/18 px-2.5 py-1.5 text-right shadow-[inset_0_0_0_1px_rgba(96,165,250,0.2)]">
+                  <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-sky-50">
                     <Coins size={11} />
                     {t('Mevcut Kredi')}
                   </div>

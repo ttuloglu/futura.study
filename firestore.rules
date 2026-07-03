@@ -60,5 +60,44 @@ service cloud.firestore {
     match /creditRefundReceipts/{receiptId} {
       allow read, write: if false;
     }
+
+    // Public community reads and every social mutation go through paginated
+    // callable APIs. This prevents clients from forging counters, rewards,
+    // moderation state, reports, aliases, follows or download licenses.
+    match /communityBooks/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityProfiles/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityAliases/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityFollows/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityBlocks/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityReports/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityMetrics/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityPushRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /communityAnalyticsDaily/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

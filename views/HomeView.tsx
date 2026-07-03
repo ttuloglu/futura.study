@@ -10,33 +10,38 @@ import {
   CreditActionType,
   SmartBookBookType,
   SmartBookCreativeBrief,
-  SmartBookEndingStyle,
   CourseOpenUiState
 } from '../types';
-import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Feather, ScrollText, ImagePlus, UserRound } from 'lucide-react';
+import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather } from 'lucide-react';
 import { cancelBookGenerationJob, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
 import FLogo from '../components/FLogo';
-import { SMARTBOOK_AGE_GROUP_OPTIONS, getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
+import FortaleDropdown from '../components/FortaleDropdown';
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from '../utils/contentSafety';
 import {
   SMARTBOOK_SUBGENRE_OPTIONS,
-  SMARTBOOK_ENDING_OPTIONS,
+  SMARTBOOK_THEME_OPTIONS,
   buildTargetPageFromBrief,
   getEstimatedGenerationMinutes,
   getPageRangeByBookType
 } from '../utils/bookGeneration';
+import {
+  getDefaultSmartBookAgeGroupForBookType,
+  getSmartBookAgeGroupLabel,
+  getSmartBookAgeGroupOptionsForBookType,
+  isSmartBookAgeGroupAllowedForBookType
+} from '../utils/smartbookAgeGroup';
 import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
 import { useUiI18n } from '../i18n/uiI18n';
-import type { AppLanguageCode } from '../data/appLanguages';
+import { normalizeAppLanguageCode, type AppLanguageCode } from '../data/appLanguages';
 import { LITERARY_FACTS } from '../data/literaryFacts';
 import { App } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
-  onCourseCreate: (data: CourseData) => void;
+  onCourseCreate: (data: CourseData) => Promise<void>;
   onDeleteCourse: (courseId: string) => Promise<void>;
   savedCourses: CourseData[];
   onCourseSelect: (id: string) => void;
@@ -53,6 +58,7 @@ interface HomeViewProps {
   courseOpenStates?: Record<string, CourseOpenUiState>;
   isLoggedIn?: boolean;
   onRequestLogin?: () => void;
+  authUserId?: string;
 }
 
 type StickyModalState = {
@@ -63,6 +69,22 @@ type StickyModalState = {
   reminderAt: string | null;
   createdAt: string;
 };
+
+function courseHasReadableContent(course: CourseData): boolean {
+  const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
+  if (lectureNodes.length === 0) {
+    return course.nodes.some((node) => (
+      Boolean(node.content?.trim()) ||
+      Boolean(node.pageText?.trim()) ||
+      Boolean(node.pageImageUrl?.trim()) ||
+      Boolean(node.podcastScript?.trim())
+    ));
+  }
+  if (course.visualStoryMode === true) {
+    return lectureNodes.every((node) => Boolean(node.pageText?.trim()) && Boolean(node.pageImageUrl?.trim()));
+  }
+  return lectureNodes.every((node) => Boolean(node.content?.trim()));
+}
 
 type CourseDeleteModalState = {
   isOpen: boolean;
@@ -105,6 +127,7 @@ const DOCUMENT_ACCEPT =
 const HERO_PORTRAIT_ACCEPT = 'image/*';
 const BOOK_CREATING_LOOP_VIDEO_SRC = '/animations/book-creating-loop.mp4';
 const PENDING_BOOK_GENERATION_JOB_STORAGE_KEY = 'f-study-pending-book-generation-job';
+const LITERARY_FACT_ROTATION_MS = 14_000;
 const GENERIC_TRANSIENT_ERROR_MESSAGE = 'Bir sorun oluştu. Lütfen kısa bir süre sonra tekrar deneyin.';
 const GENERIC_AUTH_REQUIRED_MESSAGE = 'Oturum doğrulanamadı. Lütfen tekrar giriş yapın.';
 
@@ -654,7 +677,9 @@ function translateGenerationStatusLabel(rawStatus: string, language: AppLanguage
     'Kitap akışı planlanıyor': 'planning',
     'Bölümler yazılıyor': 'writingSections',
     'Kapak hazırlanıyor': 'coverPreparing',
+    'Kitap kapağı hazırlanıyor': 'coverPreparing',
     'Kitap hazır': 'ready',
+    'Görsel masal hazır': 'ready',
     'Kitap açılıyor': 'opening',
     'Kitap sunucuda hazırlanıyor': 'serverPreparing',
     'Üretim durumu kontrol ediliyor': 'checking',
@@ -670,7 +695,132 @@ function translateGenerationStatusLabel(rawStatus: string, language: AppLanguage
   return key ? copy[key] : rawStatus;
 }
 
-type StoryInputMode = 'auto' | 'manual' | null;
+const GENERATION_REMAINING_TIME_COPY: Record<AppLanguageCode, (minutes: number) => string> = {
+  ar: (minutes) => `الوقت المتبقي المقدر: ${minutes} دقيقة`,
+  da: (minutes) => `Anslået resterende tid: ${minutes} min`,
+  de: (minutes) => `Geschätzte Restzeit: ${minutes} Min.`,
+  el: (minutes) => `Εκτιμώμενος χρόνος που απομένει: ${minutes} λεπτά`,
+  en: (minutes) => `Estimated time remaining: ${minutes} min`,
+  es: (minutes) => `Tiempo restante estimado: ${minutes} min`,
+  fi: (minutes) => `Arvioitu jäljellä oleva aika: ${minutes} min`,
+  fr: (minutes) => `Temps restant estimé : ${minutes} min`,
+  hi: (minutes) => `अनुमानित शेष समय: ${minutes} मिनट`,
+  id: (minutes) => `Perkiraan waktu tersisa: ${minutes} menit`,
+  it: (minutes) => `Tempo rimanente stimato: ${minutes} min`,
+  ja: (minutes) => `推定残り時間: ${minutes}分`,
+  ko: (minutes) => `예상 남은 시간: ${minutes}분`,
+  nl: (minutes) => `Geschatte resterende tijd: ${minutes} min`,
+  no: (minutes) => `Anslått gjenstående tid: ${minutes} min`,
+  pl: (minutes) => `Szacowany pozostały czas: ${minutes} min`,
+  'pt-BR': (minutes) => `Tempo restante estimado: ${minutes} min`,
+  sv: (minutes) => `Beräknad återstående tid: ${minutes} min`,
+  th: (minutes) => `เวลาที่เหลือโดยประมาณ: ${minutes} นาที`,
+  tr: (minutes) => `Tahmini kalan süre: ${minutes} dk`
+};
+
+function formatGenerationRemainingTime(minutes: number, language: AppLanguageCode): string {
+  const safeMinutes = Math.max(1, Math.round(Number(minutes) || 1));
+  return (GENERATION_REMAINING_TIME_COPY[language] || GENERATION_REMAINING_TIME_COPY.en)(safeMinutes);
+}
+
+const BOOK_READY_NOTIFICATION_COPY: Record<AppLanguageCode, (title: string) => { title: string; body: string }> = {
+  ar: (bookTitle) => ({ title: '📚 كتابك جاهز!', body: `تم إنشاء "${bookTitle}". يمكنك البدء بالقراءة الآن.` }),
+  da: (bookTitle) => ({ title: '📚 Din bog er klar!', body: `"${bookTitle}" er oprettet. Du kan begynde at læse nu.` }),
+  de: (bookTitle) => ({ title: '📚 Dein Buch ist fertig!', body: `"${bookTitle}" wurde erstellt. Du kannst jetzt mit dem Lesen beginnen.` }),
+  el: (bookTitle) => ({ title: '📚 Το βιβλίο σου είναι έτοιμο!', body: `Το "${bookTitle}" δημιουργήθηκε. Μπορείς να ξεκινήσεις την ανάγνωση.` }),
+  en: (bookTitle) => ({ title: '📚 Your book is ready!', body: `"${bookTitle}" has been created. You can start reading now.` }),
+  es: (bookTitle) => ({ title: '📚 Tu libro está listo!', body: `"${bookTitle}" se ha creado. Ya puedes empezar a leer.` }),
+  fi: (bookTitle) => ({ title: '📚 Kirjasi on valmis!', body: `"${bookTitle}" on luotu. Voit aloittaa lukemisen nyt.` }),
+  fr: (bookTitle) => ({ title: '📚 Ton livre est prêt !', body: `"${bookTitle}" a été créé. Tu peux commencer la lecture.` }),
+  hi: (bookTitle) => ({ title: '📚 आपकी किताब तैयार है!', body: `"${bookTitle}" बन गई है। अब आप पढ़ना शुरू कर सकते हैं।` }),
+  id: (bookTitle) => ({ title: '📚 Bukumu siap!', body: `"${bookTitle}" telah dibuat. Kamu bisa mulai membaca sekarang.` }),
+  it: (bookTitle) => ({ title: '📚 Il tuo libro è pronto!', body: `"${bookTitle}" è stato creato. Puoi iniziare a leggere ora.` }),
+  ja: (bookTitle) => ({ title: '📚 本が完成しました！', body: `「${bookTitle}」が作成されました。今すぐ読み始められます。` }),
+  ko: (bookTitle) => ({ title: '📚 책이 준비되었습니다!', body: `"${bookTitle}"이(가) 만들어졌습니다. 지금 읽기 시작할 수 있어요.` }),
+  nl: (bookTitle) => ({ title: '📚 Je boek is klaar!', body: `"${bookTitle}" is gemaakt. Je kunt nu beginnen met lezen.` }),
+  no: (bookTitle) => ({ title: '📚 Boken din er klar!', body: `"${bookTitle}" er laget. Du kan begynne å lese nå.` }),
+  pl: (bookTitle) => ({ title: '📚 Twoja książka jest gotowa!', body: `Utworzono "${bookTitle}". Możesz zacząć czytać.` }),
+  'pt-BR': (bookTitle) => ({ title: '📚 Seu livro está pronto!', body: `"${bookTitle}" foi criado. Você já pode começar a ler.` }),
+  sv: (bookTitle) => ({ title: '📚 Din bok är klar!', body: `"${bookTitle}" har skapats. Du kan börja läsa nu.` }),
+  th: (bookTitle) => ({ title: '📚 หนังสือของคุณพร้อมแล้ว!', body: `สร้าง "${bookTitle}" แล้ว คุณเริ่มอ่านได้เลย` }),
+  tr: (bookTitle) => ({ title: '📚 Kitabın hazır!', body: `"${bookTitle}" oluşturuldu. Okumaya başlayabilirsin.` })
+};
+
+function buildBookReadyNotificationCopy(course: CourseData, fallbackLanguage: AppLanguageCode): { title: string; body: string } {
+  const bookTitle = course.topic || course.title || 'Fortale';
+  const notificationLanguage = normalizeAppLanguageCode(course.language) || fallbackLanguage;
+  return (BOOK_READY_NOTIFICATION_COPY[notificationLanguage] || BOOK_READY_NOTIFICATION_COPY.en)(bookTitle);
+}
+
+function getLiteraryFactsForBookType(bookType: SmartBookBookType | null | undefined, language: AppLanguageCode): string[] {
+  if (bookType !== 'fairy_tale' && bookType !== 'story' && bookType !== 'novel') return [];
+  const factsForType = LITERARY_FACTS[bookType];
+  return factsForType[language] ?? factsForType.en ?? factsForType.tr ?? [];
+}
+
+function shuffledLiteraryFactIndices(count: number): number[] {
+  const indices = Array.from({ length: Math.max(0, count) }, (_, index) => index);
+  for (let index = indices.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [indices[index], indices[swapIndex]] = [indices[swapIndex], indices[index]];
+  }
+  return indices;
+}
+
+function uniqueValidLiteraryFactIndices(indices: number[], count: number): number[] {
+  const seen = new Set<number>();
+  return indices.filter((index) => {
+    if (!Number.isInteger(index) || index < 0 || index >= count || seen.has(index)) return false;
+    seen.add(index);
+    return true;
+  });
+}
+
+function pickNextLiteraryFactIndex(
+  factCount: number,
+  previousIndex: number | null,
+  availableRef: React.MutableRefObject<number[]>,
+  shownRef: React.MutableRefObject<number[]>
+): number | null {
+  if (factCount <= 0) return null;
+  const previousIsValid = previousIndex !== null && previousIndex >= 0 && previousIndex < factCount;
+  let available = uniqueValidLiteraryFactIndices(availableRef.current, factCount);
+  let shown = uniqueValidLiteraryFactIndices(shownRef.current, factCount);
+
+  if (previousIsValid && !shown.includes(previousIndex)) {
+    shown.push(previousIndex);
+  }
+
+  if (available.length === 0) {
+    available = shown.length > 0 ? shuffledLiteraryFactIndices(shown.length).map((index) => shown[index]) : shuffledLiteraryFactIndices(factCount);
+    shown = [];
+    if (previousIsValid && available.length > 1) {
+      available = available.filter((index) => index !== previousIndex);
+      available.push(previousIndex);
+    }
+  }
+
+  const selectableCount = previousIsValid && available.length > 1 && available[available.length - 1] === previousIndex
+    ? available.length - 1
+    : available.length;
+  const selectedPosition = Math.floor(Math.random() * selectableCount);
+  const [nextIndex] = available.splice(selectedPosition, 1);
+
+  availableRef.current = available;
+  shownRef.current = shown;
+  return typeof nextIndex === 'number' ? nextIndex : null;
+}
+
+type WizardHeroGender = '' | 'female' | 'male' | 'other';
+type WizardCompanionHero = {
+  name: string;
+  gender: WizardHeroGender;
+};
+type WizardSettingTime = '' | 'past' | 'present' | 'future' | 'uncertain' | 'custom';
+type WizardSettingPlace = '' | 'city' | 'forest' | 'space' | 'school' | 'custom';
+type WizardWorldType = '' | 'real' | 'magical' | 'dystopia' | 'alternate' | 'utopia' | 'custom';
+type WizardPremiseMode = 'examples' | 'custom';
+type WorkbookLevel = '' | 'İlkokul' | 'Ortaokul' | 'Üniversite';
 type WizardTone = {
   border: string;
   fill: string;
@@ -686,8 +836,8 @@ type BookTypeTheme = {
 };
 
 const WIZARD_TONES: WizardTone[] = [
-  { border: 'rgba(245, 158, 11, 0.62)', fill: 'rgba(245, 158, 11, 0.16)', glow: 'rgba(245, 158, 11, 0.22)' },
-  { border: 'rgba(16, 185, 129, 0.62)', fill: 'rgba(16, 185, 129, 0.16)', glow: 'rgba(16, 185, 129, 0.22)' },
+  { border: 'rgba(139, 187, 244, 0.62)', fill: 'rgba(96, 151, 214, 0.16)', glow: 'rgba(96, 151, 214, 0.22)' },
+  { border: 'rgba(104, 179, 230, 0.62)', fill: 'rgba(104, 179, 230, 0.16)', glow: 'rgba(104, 179, 230, 0.22)' },
   { border: 'rgba(56, 189, 248, 0.62)', fill: 'rgba(56, 189, 248, 0.16)', glow: 'rgba(56, 189, 248, 0.22)' },
   { border: 'rgba(244, 63, 94, 0.62)', fill: 'rgba(244, 63, 94, 0.16)', glow: 'rgba(244, 63, 94, 0.22)' },
   { border: 'rgba(168, 85, 247, 0.62)', fill: 'rgba(168, 85, 247, 0.16)', glow: 'rgba(168, 85, 247, 0.22)' },
@@ -695,41 +845,41 @@ const WIZARD_TONES: WizardTone[] = [
 ];
 
 const CREATE_FORM_GREEN_TONE: WizardTone = {
-  border: 'rgba(126, 183, 155, 0.42)',
-  fill: 'rgba(42, 77, 68, 0.24)',
-  glow: 'rgba(126, 183, 155, 0.16)'
+  border: 'rgba(139, 187, 244, 0.42)',
+  fill: 'rgba(31, 76, 125, 0.24)',
+  glow: 'rgba(96, 151, 214, 0.16)'
 };
 
 const BOOK_TYPE_THEMES: Record<SmartBookBookType, BookTypeTheme> = {
   fairy_tale: {
-    tone: { border: 'rgba(217, 174, 74, 0.5)', fill: 'rgba(171, 125, 42, 0.16)', glow: 'rgba(171, 125, 42, 0.18)' },
-    progress: 'linear-gradient(90deg, #ab7d2a 0%, #d9ae4a 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(171,125,42,0.88) 0%, rgba(105,76,29,0.94) 100%)',
-    actionBorder: 'rgba(222, 184, 89, 0.62)',
-    actionGlow: 'rgba(171, 125, 42, 0.18)'
+    tone: { border: 'rgba(139, 187, 244, 0.5)', fill: 'rgba(45, 93, 151, 0.16)', glow: 'rgba(120, 166, 232, 0.18)' },
+    progress: '#2d5d97',
+    actionBackground: '#123767',
+    actionBorder: 'rgba(139, 187, 244, 0.62)',
+    actionGlow: 'rgba(120, 166, 232, 0.18)'
   },
   story: {
-    tone: { border: 'rgba(16, 185, 129, 0.68)', fill: 'rgba(16, 185, 129, 0.2)', glow: 'rgba(16, 185, 129, 0.28)' },
-    progress: 'linear-gradient(90deg, #10b981 0%, #22d3ee 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(18,126,102,0.94) 0%, rgba(14,101,91,0.94) 100%)',
-    actionBorder: 'rgba(16, 185, 129, 0.7)',
-    actionGlow: 'rgba(16, 185, 129, 0.28)'
+    tone: { border: 'rgba(104, 179, 230, 0.68)', fill: 'rgba(42, 116, 171, 0.2)', glow: 'rgba(104, 179, 230, 0.28)' },
+    progress: '#2a74ab',
+    actionBackground: '#11497f',
+    actionBorder: 'rgba(104, 179, 230, 0.7)',
+    actionGlow: 'rgba(104, 179, 230, 0.28)'
   },
   novel: {
-    tone: { border: 'rgba(227, 10, 23, 0.72)', fill: 'rgba(227, 10, 23, 0.18)', glow: 'rgba(227, 10, 23, 0.24)' },
-    progress: 'linear-gradient(90deg, #e30a17 0%, #ff4654 100%)',
-    actionBackground: 'linear-gradient(135deg, rgba(163,12,24,0.94) 0%, rgba(227,10,23,0.94) 100%)',
-    actionBorder: 'rgba(255, 134, 143, 0.72)',
-    actionGlow: 'rgba(227, 10, 23, 0.28)'
+    tone: { border: 'rgba(87, 140, 210, 0.72)', fill: 'rgba(34, 76, 134, 0.18)', glow: 'rgba(87, 140, 210, 0.24)' },
+    progress: '#224c86',
+    actionBackground: '#2b5f9a',
+    actionBorder: 'rgba(139, 187, 244, 0.72)',
+    actionGlow: 'rgba(87, 140, 210, 0.28)'
   }
 };
 
 const NEUTRAL_BOOK_TYPE_THEME: BookTypeTheme = {
-  tone: { border: 'rgba(230, 245, 238, 0.2)', fill: 'rgba(230, 245, 238, 0.1)', glow: 'rgba(130, 178, 169, 0.16)' },
-  progress: 'linear-gradient(90deg, #dcefd7 0%, #7fb2bd 100%)',
-  actionBackground: 'linear-gradient(135deg, rgba(44,82,72,0.94) 0%, rgba(20,52,43,0.94) 100%)',
-  actionBorder: 'rgba(220, 239, 215, 0.42)',
-  actionGlow: 'rgba(130, 178, 169, 0.18)'
+  tone: { border: 'rgba(190, 220, 255, 0.2)', fill: 'rgba(190, 220, 255, 0.1)', glow: 'rgba(96, 151, 214, 0.16)' },
+  progress: '#1f4c7d',
+  actionBackground: '#0a2446',
+  actionBorder: 'rgba(190, 220, 255, 0.42)',
+  actionGlow: 'rgba(96, 151, 214, 0.18)'
 };
 
 const HOME_SPLIT_BOOK_TYPES: Array<{
@@ -744,22 +894,84 @@ const HOME_SPLIT_BOOK_TYPES: Array<{
     label: 'Masal',
     hint: 'Anlatı + değer aktarımı + hayal gücü',
     placement: 'top',
-    icon: BookOpen
+    icon: Feather
   },
   {
     value: 'novel',
-    label: 'Roman',
+    label: 'Hikaye',
     hint: 'Uzun anlatı, karakter ve dünya derinliği',
     placement: 'bottom-left',
     icon: ScrollText
   },
   {
     value: 'story',
-    label: 'Hikaye',
-    hint: 'Kısa-orta anlatı, güçlü olay örgüsü',
+    label: 'Çalışma Kitabı',
+    hint: 'Akademik',
     placement: 'bottom-right',
-    icon: Feather
+    icon: Telescope
   }
+];
+
+const HERO_COUNT_OPTIONS = [1, 2, 3, 4] as const;
+const CUSTOM_WIZARD_OPTION = '__custom__';
+const HERO_GENDER_OPTIONS: Array<{ value: Exclude<WizardHeroGender, ''>; label: string }> = [
+  { value: 'female', label: 'Kız / Kadın' },
+  { value: 'male', label: 'Erkek' },
+  { value: 'other', label: 'Diğer / Belirtmek istemiyorum' }
+];
+const SETTING_TIME_OPTIONS: Array<{ value: Exclude<WizardSettingTime, ''>; label: string }> = [
+  { value: 'past', label: 'Geçmiş' },
+  { value: 'present', label: 'Günümüz' },
+  { value: 'future', label: 'Gelecek' },
+  { value: 'uncertain', label: 'Belirsiz' },
+  { value: 'custom', label: 'Diğer' }
+];
+const SETTING_PLACE_OPTIONS: Array<{ value: Exclude<WizardSettingPlace, ''>; label: string }> = [
+  { value: 'city', label: 'Şehir' },
+  { value: 'forest', label: 'Orman' },
+  { value: 'space', label: 'Uzay' },
+  { value: 'school', label: 'Okul' },
+  { value: 'custom', label: 'Diğer' }
+];
+const WORLD_TYPE_OPTIONS: Array<{ value: Exclude<WizardWorldType, ''>; label: string }> = [
+  { value: 'real', label: 'Gerçek' },
+  { value: 'magical', label: 'Büyülü' },
+  { value: 'dystopia', label: 'Distopya' },
+  { value: 'alternate', label: 'Alternatif evren' },
+  { value: 'utopia', label: 'Ütopya' },
+  { value: 'custom', label: 'Diğer' }
+];
+const STORY_PREMISE_OPTIONS = [
+  'Kayıp nesne',
+  'Kaçış',
+  'Büyük görev',
+  'Gizli sır',
+  'Rekabet',
+  'Kendini keşif',
+  'Yasak kapı',
+  'Beklenmedik dostluk',
+  'Yanlış anlaşılma',
+  'Zamana karşı yarış',
+  'Eski kehanet',
+  'Yeni başlangıç'
+];
+
+const WORKBOOK_LEVEL_OPTIONS: Array<{ value: Exclude<WorkbookLevel, ''>; hint: string }> = [
+  { value: 'İlkokul', hint: 'Somut, sade ve bol açıklamalı anlatım' },
+  { value: 'Ortaokul', hint: 'Kavram, örnek ve temel akademik yapı dengesi' },
+  { value: 'Üniversite', hint: 'Daha teknik, kavramsal ve analitik anlatım' }
+];
+
+const WORKBOOK_CATEGORY_OPTIONS = ['Bilimsel', 'Genel Kültür', 'Ders Kitabı', 'Araştırma'] as const;
+
+const WORKBOOK_EXTRA_OPTIONS: Array<{
+  key: 'examples' | 'quiz' | 'relatedBooks';
+  label: string;
+  hint: string;
+}> = [
+  { key: 'examples', label: 'Örnekler', hint: 'Gerçek yaşam bağlantıları anlatıma yedirilir' },
+  { key: 'quiz', label: 'Quiz', hint: '8 çoktan seçmeli + 4 doğru/yanlış soru eklenir' },
+  { key: 'relatedBooks', label: 'İlgili Kitaplar', hint: 'En az 4 okuma önerisi eklenir' }
 ];
 
 function resolveWizardTone(index: number): WizardTone {
@@ -776,6 +988,7 @@ function resolveBookTypeTheme(bookType?: SmartBookBookType): BookTypeTheme {
 type PendingBookGenerationJob = {
   jobId: string;
   bookType: SmartBookBookType;
+  language?: AppLanguageCode;
   topic?: string;
   startedAt: string;
 };
@@ -797,6 +1010,7 @@ function readPendingBookGenerationJob(): PendingBookGenerationJob | null {
     return {
       jobId: parsed.jobId.trim(),
       bookType: parsed.bookType,
+      language: normalizeAppLanguageCode(parsed.language) || undefined,
       topic: typeof parsed.topic === 'string' ? parsed.topic : undefined,
       startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : new Date().toISOString()
     };
@@ -1269,8 +1483,8 @@ function isNarrativeBookTitleTooGeneric(
 
 function bookTypeToLabel(bookType?: SmartBookBookType): string {
   if (bookType === 'fairy_tale') return 'Masal';
-  if (bookType === 'story') return 'Hikaye';
-  if (bookType === 'novel') return 'Roman';
+  if (bookType === 'story') return 'Çalışma Kitabı';
+  if (bookType === 'novel') return 'Hikaye';
   return 'Kitap';
 }
 
@@ -1422,32 +1636,52 @@ export default function HomeView({
   defaultBookLanguage = 'Turkish',
   courseOpenStates = {},
   isLoggedIn = true,
-  onRequestLogin
+  onRequestLogin,
+  authUserId
 }: HomeViewProps) {
   const { language, locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('7+');
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<SmartBookAgeGroup>('1-6');
   const [bookLanguageInput, setBookLanguageInput] = useState<string>(defaultBookLanguage);
   const [selectedBookType, setSelectedBookType] = useState<SmartBookBookType>('fairy_tale');
   const [isCreationWizardOpen, setCreationWizardOpen] = useState(false);
   const [accentedBookType, setAccentedBookType] = useState<SmartBookBookType | null>(null);
-  const [selectedSubGenre, setSelectedSubGenre] = useState<string>(SMARTBOOK_SUBGENRE_OPTIONS.fairy_tale[0]);
-  const [selectedEndingStyle, setSelectedEndingStyle] = useState<SmartBookEndingStyle>('happy');
-  const [storyInputMode, setStoryInputMode] = useState<StoryInputMode>('manual');
-  const [storyBlueprintInput, setStoryBlueprintInput] = useState('');
-  const [settingPlaceInput, setSettingPlaceInput] = useState('');
+  const [selectedSubGenre, setSelectedSubGenre] = useState<string>('');
+  const [selectedTheme, setSelectedTheme] = useState<string>('');
+  const [customSubGenreInput, setCustomSubGenreInput] = useState('');
+  const [customThemeInput, setCustomThemeInput] = useState('');
+  const [selectedWorkbookLevel, setSelectedWorkbookLevel] = useState<WorkbookLevel>('Ortaokul');
+  const [includeWorkbookExamples, setIncludeWorkbookExamples] = useState(true);
+  const [includeWorkbookQuiz, setIncludeWorkbookQuiz] = useState(false);
+  const [includeWorkbookRelatedBooks, setIncludeWorkbookRelatedBooks] = useState(false);
   const [settingTimeInput, setSettingTimeInput] = useState('');
+  const [settingPlaceInput, setSettingPlaceInput] = useState('');
+  const [settingTimeChoice, setSettingTimeChoice] = useState<WizardSettingTime>('');
+  const [settingPlaceChoice, setSettingPlaceChoice] = useState<WizardSettingPlace>('');
+  const [worldTypeChoice, setWorldTypeChoice] = useState<WizardWorldType>('');
+  const [worldTypeInput, setWorldTypeInput] = useState('');
+  const [heroAgeInput, setHeroAgeInput] = useState('');
+  const [heroGender, setHeroGender] = useState<WizardHeroGender>('');
+  const [heroCount, setHeroCount] = useState<number>(1);
+  const [companionHeroes, setCompanionHeroes] = useState<WizardCompanionHero[]>([]);
+  const [premiseMode, setPremiseMode] = useState<WizardPremiseMode>('examples');
+  const [selectedPremise, setSelectedPremise] = useState('');
+  const [customPremiseInput, setCustomPremiseInput] = useState('');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [heroPortraitFile, setHeroPortraitFile] = useState<File | null>(null);
+  const [heroPortraitPreviewUrl, setHeroPortraitPreviewUrl] = useState<string | null>(null);
   const [heroPortraitName, setHeroPortraitName] = useState('');
+  const [selectedPortraitHeroName, setSelectedPortraitHeroName] = useState('');
   const [heroPortraitCrop, setHeroPortraitCrop] = useState<HeroPortraitCropState | null>(null);
   const [creationStep, setCreationStep] = useState<number>(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [activeGeneratingBookType, setActiveGeneratingBookType] = useState<SmartBookBookType | null>(null);
-  const [literaryFactIndex, setLiteraryFactIndex] = useState(0);
-  const literaryFactOrderRef = useRef<number[]>([]);
+  const [activeGeneratingLanguage, setActiveGeneratingLanguage] = useState<AppLanguageCode | null>(null);
+  const [currentLiteraryFactIndex, setCurrentLiteraryFactIndex] = useState<number | null>(null);
+  const literaryFactAvailableRef = useRef<number[]>([]);
+  const literaryFactShownRef = useRef<number[]>([]);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
   const [isStickyRowExpanded, setIsStickyRowExpanded] = useState(false);
   const [isStickySaving, setIsStickySaving] = useState(false);
@@ -1458,14 +1692,19 @@ export default function HomeView({
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const heroPortraitInputRef = useRef<HTMLInputElement | null>(null);
   const stickyRowContainerRef = useRef<HTMLElement | null>(null);
+  const homeShelfScrollRef = useRef<HTMLDivElement | null>(null);
   const stickyCopyTimerRef = useRef<number | null>(null);
   const stickyNoticeTimerRef = useRef<number | null>(null);
+  const wizardInlineRef = useRef<HTMLDivElement | null>(null);
   const sourceNoticeTimerRef = useRef<number | null>(null);
   const lastDefaultBookLanguageRef = useRef(defaultBookLanguage);
   const generationJobPollTimerRef = useRef<number | null>(null);
   const activeGenerationJobIdRef = useRef<string | null>(null);
   const activeGenerationBookTypeRef = useRef<SmartBookBookType | null>(null);
   const generationProgressRef = useRef<number>(0);
+  const generationStartedAtMsRef = useRef<number | null>(null);
+  const [generationStartedAtMs, setGenerationStartedAtMs] = useState<number | null>(null);
+  const [generationCountdownNowMs, setGenerationCountdownNowMs] = useState(() => Date.now());
   const loggedGenerationUsageEntryKeysRef = useRef<Set<string>>(new Set());
   const loggedGenerationUsageFinalKeysRef = useRef<Set<string>>(new Set());
   const [stickyModal, setStickyModal] = useState<StickyModalState>({
@@ -1483,6 +1722,9 @@ export default function HomeView({
   });
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
+  const generationDisplayLanguage = isGenerating
+    ? (activeGeneratingLanguage || normalizeAppLanguageCode(bookLanguageInput) || language)
+    : language;
 
   const requireLoginForGeneration = (): boolean => {
     if (isLoggedIn) return false;
@@ -1511,6 +1753,7 @@ export default function HomeView({
     if (clearActiveJob) {
       activeGenerationJobIdRef.current = null;
       activeGenerationBookTypeRef.current = null;
+      setActiveGeneratingLanguage(null);
       loggedGenerationUsageEntryKeysRef.current.clear();
       loggedGenerationUsageFinalKeysRef.current.clear();
     }
@@ -1522,6 +1765,9 @@ export default function HomeView({
     stopBookGenerationPolling(true);
     setIsGenerating(false);
     setActiveGeneratingBookType(null);
+    setActiveGeneratingLanguage(null);
+    generationStartedAtMsRef.current = null;
+    setGenerationStartedAtMs(null);
     setGenerationStatus('');
     resetGenerationProgress(0);
     if (jobId) {
@@ -1575,11 +1821,28 @@ export default function HomeView({
 
   function resetSmartBookCreationForm() {
     setSearchTerm('');
-    setStoryInputMode('manual');
-    setStoryBlueprintInput('');
-    setSettingPlaceInput('');
+    setCustomSubGenreInput('');
+    setCustomThemeInput('');
+    setSelectedWorkbookLevel('Ortaokul');
+    setIncludeWorkbookExamples(true);
+    setIncludeWorkbookQuiz(false);
+    setIncludeWorkbookRelatedBooks(false);
     setSettingTimeInput('');
+    setSettingPlaceInput('');
+    setWorldTypeInput('');
     setBookLanguageInput(defaultBookLanguage);
+    setSettingTimeChoice('');
+    setSettingPlaceChoice('');
+    setWorldTypeChoice('');
+    setHeroAgeInput('');
+    setHeroGender('');
+    setHeroCount(1);
+    setCompanionHeroes([]);
+    setPremiseMode('examples');
+    setSelectedPremise('');
+    setCustomPremiseInput('');
+    setSelectedPortraitHeroName('');
+    setHeroPortraitName('');
     setCreationStep(1);
     setCreationWizardOpen(false);
     setAccentedBookType(null);
@@ -1633,25 +1896,34 @@ export default function HomeView({
 
   }
 
-  function completeGeneratedBook(course: CourseData) {
+  async function completeGeneratedBook(course: CourseData) {
     writePendingBookGenerationJob(null);
     stopBookGenerationPolling(true);
     setGenerationStatus('Kitap açılıyor...');
     raiseGenerationProgress(100);
     setActiveGeneratingBookType(null);
+    setActiveGeneratingLanguage(null);
+    generationStartedAtMsRef.current = null;
+    setGenerationStartedAtMs(null);
     resetSmartBookCreationForm();
-    setIsGenerating(false);
-    onCourseCreate(course);
-    const bookTitle = course.topic || course.title || 'Fortale';
+    try {
+      await onCourseCreate(course);
+      setIsGenerating(false);
+    } catch (error) {
+      console.error('Generated book local install failed', error);
+      failGenerationJob(getUserFacingError(error, 'Kitap cihaza kaydedilemedi. Lütfen tekrar deneyin.'));
+      return;
+    }
+    const notificationCopy = buildBookReadyNotificationCopy(course, language);
     LocalNotifications.schedule({
       notifications: [{
         id: Date.now() & 0x7fffffff,
-        title: '📚 Kitabın hazır!',
-        body: `"${bookTitle}" oluşturuldu. Okumaya başlayabilirsin.`,
+        title: notificationCopy.title,
+        body: notificationCopy.body,
         schedule: { at: new Date(Date.now() + 500) },
         sound: 'default',
         smallIcon: 'ic_stat_icon_config_sample',
-        iconColor: '#2a9d8f',
+        iconColor: '#9BC7FF',
       }]
     }).catch(() => undefined);
     window.setTimeout(() => {
@@ -1665,6 +1937,9 @@ export default function HomeView({
     stopBookGenerationPolling(true);
     setIsGenerating(false);
     setActiveGeneratingBookType(null);
+    setActiveGeneratingLanguage(null);
+    generationStartedAtMsRef.current = null;
+    setGenerationStartedAtMs(null);
     setGenerationStatus('');
     resetGenerationProgress(0);
     setSourceNotice(getUserFacingError({ message }, GENERIC_TRANSIENT_ERROR_MESSAGE));
@@ -1714,7 +1989,7 @@ export default function HomeView({
             bundle: job.bundle || job.course.bundle || undefined,
             status: job.course.status || (job.bundle ? 'ready' : 'processing')
           };
-          completeGeneratedBook(normalizedCompletedCourse);
+          await completeGeneratedBook(normalizedCompletedCourse);
           return;
         }
       } catch (error) {
@@ -1780,10 +2055,15 @@ export default function HomeView({
     setIsGenerating(true);
     setSourceNotice(null);
     setActiveGeneratingBookType(pendingJob.bookType);
+    setActiveGeneratingLanguage(pendingJob.language || normalizeAppLanguageCode(bookLanguageInput) || language);
+    const pendingStartedAtMs = new Date(pendingJob.startedAt).getTime();
+    const safePendingStartedAtMs = Number.isFinite(pendingStartedAtMs) ? pendingStartedAtMs : Date.now();
+    generationStartedAtMsRef.current = safePendingStartedAtMs;
+    setGenerationStartedAtMs(safePendingStartedAtMs);
     setGenerationStatus('Üretim durumu kontrol ediliyor...');
     resetGenerationProgress(1);
     startBookGenerationPolling(pendingJob.jobId, pendingJob.bookType, true);
-  }, []);
+  }, [bookLanguageInput, language]);
 
   useEffect(() => {
     if (!isGenerating || !activeGenerationJobIdRef.current) return;
@@ -1820,15 +2100,25 @@ export default function HomeView({
   }, [isGenerating]);
 
   useEffect(() => {
-    if (!isGenerating) return;
-    const shuffled = Array.from({ length: 150 }, (_, i) => i).sort(() => Math.random() - 0.5);
-    literaryFactOrderRef.current = shuffled;
-    setLiteraryFactIndex(0);
+    const factCount = getLiteraryFactsForBookType(activeGeneratingBookType ?? selectedBookType, generationDisplayLanguage).length;
+    if (!isGenerating || factCount <= 0) {
+      literaryFactAvailableRef.current = [];
+      literaryFactShownRef.current = [];
+      setCurrentLiteraryFactIndex(null);
+      return;
+    }
+
+    const initialIndex = Math.floor(Math.random() * factCount);
+    literaryFactAvailableRef.current = shuffledLiteraryFactIndices(factCount).filter((i) => i !== initialIndex);
+    literaryFactShownRef.current = [initialIndex];
+    setCurrentLiteraryFactIndex(initialIndex);
     const interval = window.setInterval(() => {
-      setLiteraryFactIndex((prev) => prev + 1);
-    }, 20000);
+      setCurrentLiteraryFactIndex((previousIndex) => (
+        pickNextLiteraryFactIndex(factCount, previousIndex, literaryFactAvailableRef, literaryFactShownRef)
+      ));
+    }, LITERARY_FACT_ROTATION_MS);
     return () => window.clearInterval(interval);
-  }, [isGenerating]);
+  }, [activeGeneratingBookType, generationDisplayLanguage, isGenerating, selectedBookType]);
 
   useEffect(() => {
     return () => {
@@ -1841,6 +2131,14 @@ export default function HomeView({
       new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
     );
   }, [savedCourses]);
+
+  // When the top course changes (reorder after open), scroll shelf back to start so user sees it.
+  const firstCourseId = sortedCourses[0]?.id;
+  useEffect(() => {
+    const el = homeShelfScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ left: 0, behavior: 'smooth' });
+  }, [firstCourseId]);
 
   const sortedStickyNotes = useMemo(() => {
     return [...stickyNotes].sort((a, b) =>
@@ -1867,22 +2165,22 @@ export default function HomeView({
     <div
       className="relative overflow-hidden rounded-[28px] border p-5 text-center"
       style={{
-        background: 'linear-gradient(160deg, rgba(42,77,68,0.92) 0%, rgba(16,45,36,0.95) 58%, rgba(8,21,16,0.98) 100%)',
-        borderColor: 'rgba(126,183,155,0.24)',
-        boxShadow: '0 24px 60px rgba(4, 10, 18, 0.34), inset 0 1px 0 rgba(220, 239, 215, 0.08)'
+        background: 'rgba(8, 36, 70, 0.92)',
+        borderColor: 'rgba(139,187,244,0.24)',
+        boxShadow: '0 24px 60px rgba(4, 10, 18, 0.34), inset 0 1px 0 rgba(190, 220, 255, 0.08)'
       }}
     >
       <div
         className="pointer-events-none absolute inset-x-[-12%] top-0 h-24 blur-3xl"
-        style={{ background: 'linear-gradient(90deg, rgba(126,183,155,0) 0%, rgba(126,183,155,0.18) 48%, rgba(126,183,155,0) 100%)' }}
+        style={{ background: 'rgba(96,151,214,0.14)' }}
       />
       <div className="relative flex flex-col items-center gap-4">
         <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
           <FaviconSpinner size={26} />
-          <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-[#d7efe6]">{t('Kitaplar yükleniyor...')}</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-[#cfe4ff]">{t('Kitaplar yükleniyor...')}</span>
         </div>
 
-        <p className="mx-auto max-w-[260px] text-[11px] leading-5 text-[#b8d8ca]">{bootstrapMessage}</p>
+        <p className="mx-auto max-w-[260px] text-[11px] leading-5 text-[#a9c7ec]">{bootstrapMessage}</p>
 
         <div className="grid w-full grid-cols-3 gap-3">
           {[0, 1, 2].map((index) => (
@@ -1890,16 +2188,16 @@ export default function HomeView({
               key={`bootstrap-book-${index}`}
               className="relative overflow-hidden rounded-[22px] border px-3 pb-4 pt-5"
               style={{
-                background: 'linear-gradient(180deg, rgba(42,77,68,0.72) 0%, rgba(13,35,29,0.9) 100%)',
-                borderColor: 'rgba(126,183,155,0.18)',
+                background: 'rgba(8, 28, 55, 0.9)',
+                borderColor: 'rgba(139,187,244,0.18)',
                 animation: `smartbook-loading-dot 1.6s ease-in-out ${index * 0.18}s infinite`
               }}
             >
               <div
                 className="absolute inset-x-0 top-0 h-14"
-                style={{ background: 'linear-gradient(180deg, rgba(220,239,215,0.16) 0%, rgba(220,239,215,0) 100%)' }}
+                style={{ background: 'rgba(190,220,255,0.08)' }}
               />
-              <div className="relative mx-auto h-20 w-14 rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(126,183,155,0.34),rgba(44,82,72,0.22))]" />
+              <div className="relative mx-auto h-20 w-14 rounded-[16px] border border-white/10 bg-[rgba(96,151,214,0.24)]" />
               <div className="relative mt-4 space-y-2">
                 <div className="mx-auto h-2.5 w-16 rounded-full bg-white/12" />
                 <div className="mx-auto h-2 w-10 rounded-full bg-white/8" />
@@ -1923,6 +2221,7 @@ export default function HomeView({
       setSelectedSubGenre('');
       return;
     }
+    if (selectedSubGenre === CUSTOM_WIZARD_OPTION) return;
     if (!options.includes(selectedSubGenre)) {
       setSelectedSubGenre(options[0]);
     }
@@ -2018,6 +2317,16 @@ export default function HomeView({
       if (sourceUrl) URL.revokeObjectURL(sourceUrl);
     };
   }, [heroPortraitCrop?.sourceUrl]);
+
+  useEffect(() => {
+    if (!heroPortraitFile) {
+      setHeroPortraitPreviewUrl(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(heroPortraitFile);
+    setHeroPortraitPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [heroPortraitFile]);
 
   useEffect(() => {
     if (!courseDeleteModal.isOpen) return;
@@ -2294,11 +2603,28 @@ export default function HomeView({
 
   const clearHeroPortrait = () => {
     setHeroPortraitFile(null);
-    setHeroPortraitName('');
     dismissHeroPortraitCrop();
     if (heroPortraitInputRef.current) {
       heroPortraitInputRef.current.value = '';
     }
+  };
+
+  const handleHeroCountChange = (nextCount: number) => {
+    const safeCount = Math.max(1, Math.min(4, Math.round(nextCount || 1)));
+    setHeroCount(safeCount);
+    setCompanionHeroes((previous) => {
+      const nextLength = Math.max(0, safeCount - 1);
+      return Array.from({ length: nextLength }, (_, index) => previous[index] || { name: '', gender: '' });
+    });
+  };
+
+  const updateCompanionHero = (index: number, patch: Partial<WizardCompanionHero>) => {
+    setCompanionHeroes((previous) => {
+      const nextLength = Math.max(0, heroCount - 1);
+      const next = Array.from({ length: nextLength }, (_, itemIndex) => previous[itemIndex] || { name: '', gender: '' });
+      next[index] = { ...(next[index] || { name: '', gender: '' }), ...patch };
+      return next;
+    });
   };
 
   const handleBookTypeSelect = (bookType: SmartBookBookType) => {
@@ -2311,61 +2637,206 @@ export default function HomeView({
     setCreationWizardOpen(true);
     setSelectedBookType(bookType);
     setAccentedBookType(bookType);
-    setCreationStep(1);
-    if (bookType !== 'fairy_tale') {
-      clearHeroPortrait();
+    if (bookType === 'fairy_tale') {
+      setSelectedAgeGroup('1-6');
     }
-    if (bookType === 'fairy_tale' && !['1-6', '7+'].includes(selectedAgeGroup)) {
-      setSelectedAgeGroup('7+');
-    } else if (bookType !== 'fairy_tale' && ['1-6', '7+'].includes(selectedAgeGroup)) {
-      setSelectedAgeGroup('general');
+    if (bookType === 'story') {
+      setPremiseMode('custom');
+      setSelectedAgeGroup('12-18');
+      setSelectedWorkbookLevel((current) => current || 'Ortaokul');
+    }
+    if (selectedBookType !== bookType) {
+      setSelectedSubGenre('');
+      setSelectedTheme('');
+      setCustomSubGenreInput('');
+      setCustomThemeInput('');
+      if (bookType === 'story') {
+        setSelectedSubGenre('Bilimsel');
+        setSelectedTheme('');
+      }
+    }
+    setCreationStep(1);
+    if (bookType !== 'fairy_tale' && !isSmartBookAgeGroupAllowedForBookType(bookType, selectedAgeGroup)) {
+      setSelectedAgeGroup(getDefaultSmartBookAgeGroupForBookType(bookType));
     }
   };
 
   const pageRange = getPageRangeByBookType(selectedBookType, selectedAgeGroup);
-  const heroPortraitExtraCreditCost = selectedBookType === 'fairy_tale' && heroPortraitFile ? 1 : 0;
+  const heroPortraitExtraCreditCost = selectedBookType === 'story' ? 0 : (heroPortraitFile ? 1 : 0);
   const selectedCreateCreditCost = getBookTypeCreateCreditCost(selectedBookType) + heroPortraitExtraCreditCost;
+  const effectiveSubGenre = selectedSubGenre === CUSTOM_WIZARD_OPTION
+    ? compactInlineText(customSubGenreInput)
+    : selectedSubGenre;
+  const effectiveTheme = selectedTheme === CUSTOM_WIZARD_OPTION
+    ? compactInlineText(customThemeInput)
+    : selectedTheme;
   const targetPageCountPreview = buildTargetPageFromBrief({
     bookType: selectedBookType,
     targetPageMin: pageRange.min,
     targetPageMax: pageRange.max
   }, selectedAgeGroup);
+  const selectedSubGenreThemes = selectedSubGenre && selectedSubGenre !== CUSTOM_WIZARD_OPTION
+    ? SMARTBOOK_THEME_OPTIONS[selectedBookType]?.[selectedSubGenre] || []
+    : [];
+  const ageGroupOptionsForSelectedBookType = getSmartBookAgeGroupOptionsForBookType(selectedBookType);
+  const settingTimeLabel = settingTimeChoice
+    ? settingTimeChoice === 'custom'
+      ? compactInlineText(settingTimeInput)
+      : SETTING_TIME_OPTIONS.find((option) => option.value === settingTimeChoice)?.label
+    : undefined;
+  const settingPlaceBaseLabel = settingPlaceChoice
+    ? SETTING_PLACE_OPTIONS.find((option) => option.value === settingPlaceChoice)?.label
+    : undefined;
+  const settingPlaceLabel = settingPlaceChoice === 'custom'
+    ? compactInlineText(settingPlaceInput)
+    : settingPlaceBaseLabel;
+  const worldTypeLabel = worldTypeChoice
+    ? worldTypeChoice === 'custom'
+      ? compactInlineText(worldTypeInput)
+      : WORLD_TYPE_OPTIONS.find((option) => option.value === worldTypeChoice)?.label
+    : undefined;
+  const selectedStoryPremise = premiseMode === 'custom'
+    ? compactInlineText(customPremiseInput)
+    : selectedPremise;
+  const workbookAgeGroupForSelectedLevel: SmartBookAgeGroup = selectedWorkbookLevel === 'İlkokul'
+    ? '7-11'
+    : selectedWorkbookLevel === 'Üniversite'
+      ? 'general'
+      : '12-18';
+  const portraitHeroOptions = [
+    compactInlineText(heroPortraitName),
+    ...companionHeroes
+      .slice(0, Math.max(0, heroCount - 1))
+      .map((hero) => compactInlineText(hero.name))
+  ].filter(Boolean);
+  const selectedPortraitHeroTarget = heroPortraitFile
+    ? (portraitHeroOptions.includes(selectedPortraitHeroName) ? selectedPortraitHeroName : portraitHeroOptions[0] || '')
+    : '';
   const estimatedGenerationMinutes = getEstimatedGenerationMinutes(selectedBookType);
   const displayedGenerationMinutes = getEstimatedGenerationMinutes(activeGeneratingBookType || selectedBookType);
+  const elapsedGenerationMinutes = generationStartedAtMs
+    ? Math.floor(Math.max(0, generationCountdownNowMs - generationStartedAtMs) / 60000)
+    : 0;
+  const displayedGenerationMinutesRemaining = isGenerating
+    ? Math.max(1, displayedGenerationMinutes - elapsedGenerationMinutes)
+    : displayedGenerationMinutes;
+
+  useEffect(() => {
+    if (!isGenerating || !generationStartedAtMs) return;
+    setGenerationCountdownNowMs(Date.now());
+    const interval = window.setInterval(() => {
+      setGenerationCountdownNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [generationStartedAtMs, isGenerating]);
 
   const buildCreativeBriefPayload = (): SmartBookCreativeBrief => {
-    const normalizedStoryBlueprint = compactInlineText(storyBlueprintInput);
-    const manualStoryBlueprint = storyInputMode === 'manual' ? normalizedStoryBlueprint : '';
-    const normalizedPlace = compactInlineText(settingPlaceInput);
-    const normalizedTime = compactInlineText(settingTimeInput);
-    const normalizedBookTitleInput = compactInlineText(searchTerm);
+    const normalizedPlace = settingPlaceLabel ? compactInlineText(settingPlaceLabel) : '';
+    const normalizedTime = settingTimeLabel ? compactInlineText(settingTimeLabel) : '';
+    const normalizedPremise = compactInlineText(selectedStoryPremise);
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
+    if (selectedBookType === 'story') {
+      const workbookCategory = effectiveSubGenre || 'Bilimsel';
+      const workbookLevel = selectedWorkbookLevel || 'Ortaokul';
+      const workbookExtras = [
+        includeWorkbookExamples ? 'gerçek yaşam örnekleri' : undefined,
+        includeWorkbookQuiz ? 'quiz' : undefined,
+        includeWorkbookRelatedBooks ? 'ilgili kitaplar' : undefined
+      ].filter(Boolean).join(', ');
+      const workbookFacts = [
+        `Tur: Calisma Kitabi`,
+        normalizedPremise ? `Konu: ${normalizedPremise}` : undefined,
+        `Seviye: ${workbookLevel}`,
+        `Calisma kitabi turu: ${workbookCategory}`,
+        workbookExtras ? `Ek icerikler: ${workbookExtras}` : 'Ek icerikler: secilmedi'
+      ].filter(Boolean) as string[];
+      const workbookInstructionParts = [
+        `Kullanici baglami (zorunlu): ${workbookFacts.join(' | ')}.`,
+        'Bu üretim kurmaca hikaye değildir; bilimsel/akademik çalışma kitabıdır.',
+        includeWorkbookExamples
+          ? 'Gerçek yaşam ve güncel örnekleri anlatıma doğal biçimde yedir; "Örnek 1" veya "Örnek 2" gibi mekanik başlıklar kullanma.'
+          : 'Gerçek yaşam örneklerini zorunlu bölüm haline getirme; yalnızca konu açıklığı için gerekiyorsa kısa kullan.',
+        includeWorkbookQuiz
+          ? 'Kitabın en sonunda 8 çoktan seçmeli ve 4 doğru/yanlış sorudan oluşan quiz bölümü ekle.'
+          : undefined,
+        includeWorkbookRelatedBooks
+          ? 'Kitabın en sonunda konu ile ilgili en az 4 okuma/kitap önerisi ekle.'
+          : undefined,
+        'Kısa bir Terimler Sözlüğü ekle.'
+      ].filter(Boolean) as string[];
+      if (normalizedLanguageText) {
+        workbookInstructionParts.push(`Üretim dili zorunluluğu: ${normalizedLanguageText}.`);
+      }
+      return {
+        bookType: selectedBookType,
+        subGenre: workbookCategory,
+        languageText: normalizedLanguageText || undefined,
+        workbookLevel,
+        workbookCategory,
+        includeExamples: includeWorkbookExamples,
+        includeQuiz: includeWorkbookQuiz,
+        includeRelatedBooks: includeWorkbookRelatedBooks,
+        endingStyle: 'happy',
+        customInstructions: workbookInstructionParts.join(' '),
+        targetPageMin: pageRange.min,
+        targetPageMax: pageRange.max
+      };
+    }
+    const normalizedHeroPortraitName = compactInlineText(heroPortraitName);
+    const normalizedPortraitHeroTarget = compactInlineText(selectedPortraitHeroTarget);
+    const normalizedHeroAge = compactInlineText(heroAgeInput);
+    const heroGenderLabel = heroGender
+      ? HERO_GENDER_OPTIONS.find((option) => option.value === heroGender)?.label
+      : undefined;
+    const normalizedCompanionHeroes = companionHeroes
+      .slice(0, Math.max(0, heroCount - 1))
+      .map((hero, index) => {
+        const name = compactInlineText(hero.name);
+        const genderLabel = hero.gender
+          ? HERO_GENDER_OPTIONS.find((option) => option.value === hero.gender)?.label
+          : undefined;
+        return name
+          ? `${index + 2}. kahraman: ${name}${genderLabel ? ` (${genderLabel})` : ''}`
+          : '';
+      })
+      .filter(Boolean);
     const characterHints = [
-      manualStoryBlueprint || undefined
+      normalizedHeroPortraitName ? `Ana karakter: ${normalizedHeroPortraitName}.` : undefined,
+      normalizedHeroAge ? `Ana karakter yaşı: ${normalizedHeroAge}.` : undefined,
+      heroGenderLabel ? `Ana karakter cinsiyeti: ${heroGenderLabel}.` : undefined,
+      normalizedCompanionHeroes.length > 0 ? `Diğer kahramanlar: ${normalizedCompanionHeroes.join('; ')}.` : undefined
     ].filter(Boolean) as string[];
     const promptFacts = [
       `Tur: ${selectedBookType}`,
-      selectedSubGenre ? `Alt tur: ${selectedSubGenre}` : undefined,
-      normalizedBookTitleInput ? `Kitap adi: ${normalizedBookTitleInput}` : undefined,
+      effectiveSubGenre ? `Alt tur: ${effectiveSubGenre}` : undefined,
+      effectiveTheme ? `Tema: ${effectiveTheme}` : undefined,
+      normalizedHeroPortraitName ? `Ana karakter: ${normalizedHeroPortraitName}` : undefined,
+      normalizedHeroAge ? `Ana karakter yasi: ${normalizedHeroAge}` : undefined,
+      heroGenderLabel ? `Ana karakter cinsiyeti: ${heroGenderLabel}` : undefined,
+      `Kahraman sayisi: ${heroCount}`,
+      normalizedCompanionHeroes.length > 0 ? normalizedCompanionHeroes.join(' | ') : undefined,
       normalizedPlace ? `Mekan: ${normalizedPlace}` : undefined,
-      normalizedTime ? `Zaman: ${normalizedTime}` : undefined
+      normalizedTime ? `Zaman: ${normalizedTime}` : undefined,
+      worldTypeLabel ? `Dunya tipi: ${worldTypeLabel}` : undefined,
+      normalizedPremise ? `Hikaye cekirdegi: ${normalizedPremise}` : undefined
     ].filter(Boolean) as string[];
     const promptFactsBlock = promptFacts.length > 0
       ? `Kullanici baglami (zorunlu): ${promptFacts.join(' | ')}.`
       : undefined;
     const customInstructionParts = [
       promptFactsBlock,
-      manualStoryBlueprint || undefined,
+      normalizedPortraitHeroTarget ? `Portre referansı ${normalizedPortraitHeroTarget} adlı kahramana aittir; görsellerde bu kahramanın kimlik tutarlılığı korunmalı.` : undefined,
+      normalizedPremise ? `Hikaye çekirdeği: ${normalizedPremise}.` : undefined,
       normalizedLanguageText ? `Üretim dili zorunluluğu: ${normalizedLanguageText}.` : undefined
     ].filter(Boolean) as string[];
     return {
       bookType: selectedBookType,
-      subGenre: selectedSubGenre || undefined,
+      subGenre: effectiveSubGenre || undefined,
       languageText: normalizedLanguageText || undefined,
       characters: characterHints.join(' ').trim() || undefined,
       settingPlace: normalizedPlace || undefined,
       settingTime: normalizedTime || undefined,
-      endingStyle: selectedEndingStyle,
+      endingStyle: 'happy',
       customInstructions: customInstructionParts.join(' '),
       targetPageMin: pageRange.min,
       targetPageMax: pageRange.max
@@ -2375,30 +2846,15 @@ export default function HomeView({
   const handleCreateSmartBook = async () => {
     if (requireLoginForGeneration()) return;
 
-    const isAutoStoryMode = storyInputMode === 'auto';
-    const topicHint = searchTerm.trim();
-    const detailHint = storyInputMode === 'manual'
-      ? compactInlineText(storyBlueprintInput)
-      : '';
+    const topicHint = selectedStoryPremise.trim();
+    const detailHint = selectedStoryPremise.trim();
     const selectedFile = sourceFile;
-    const selectedHeroPortraitFile = selectedBookType === 'fairy_tale' ? heroPortraitFile : null;
-    const selectedHeroPortraitName = compactInlineText(heroPortraitName);
+    const selectedHeroPortraitFile = selectedBookType === 'story' ? null : heroPortraitFile;
+    const selectedHeroPortraitName = compactInlineText(selectedPortraitHeroTarget);
     const creativeBrief = buildCreativeBriefPayload();
 
     if (selectedHeroPortraitFile && !selectedHeroPortraitName) {
-      setSourceNotice(t('Ana karakter adını yazın.'));
-      return;
-    }
-
-    if (
-      !isAutoStoryMode &&
-      !detailHint &&
-      !creativeBrief.characters &&
-      !creativeBrief.settingPlace &&
-      !creativeBrief.settingTime &&
-      !creativeBrief.customInstructions
-    ) {
-      setSourceNotice('Masal/hikaye/roman üretimi için en az kurgu notu, mekan veya zaman girin.');
+      setSourceNotice(t('Portre eklenecek kahramanı seçin.'));
       return;
     }
 
@@ -2406,10 +2862,21 @@ export default function HomeView({
       topicHint,
       detailHint,
       selectedSubGenre,
-      bookLanguageInput,
-      storyBlueprintInput,
-      settingPlaceInput,
+      selectedTheme,
+      customSubGenreInput,
+      customThemeInput,
+      selectedWorkbookLevel,
+      heroPortraitName,
+      heroAgeInput,
+      ...companionHeroes.map((hero) => `${hero.name} ${hero.gender}`),
+      settingTimeLabel,
+      settingPlaceLabel,
+      worldTypeLabel,
+      selectedStoryPremise,
+      customPremiseInput,
       settingTimeInput,
+      settingPlaceInput,
+      worldTypeInput,
       creativeBrief?.characters,
       creativeBrief?.settingPlace,
       creativeBrief?.settingTime,
@@ -2421,7 +2888,9 @@ export default function HomeView({
     }
 
     if (!onRequireCredit('create', selectedCreateCreditCost)) {
-      setSourceNotice(`${t('Fortale oluşturmak için')} ${selectedCreateCreditCost} ${t('oluşturma kredisi gerekiyor.')}`);
+      setSourceNotice(
+        t('Fortale oluşturmak için {{var0}} oluşturma kredisi gerekiyor.').replace('{{var0}}', String(selectedCreateCreditCost))
+      );
       return;
     }
 
@@ -2429,6 +2898,9 @@ export default function HomeView({
     writePendingBookGenerationJob(null);
     setIsGenerating(true);
     setActiveGeneratingBookType(selectedBookType);
+    const generationStartedAt = Date.now();
+    generationStartedAtMsRef.current = generationStartedAt;
+    setGenerationStartedAtMs(generationStartedAt);
     resetGenerationProgress(1);
     setSourceNotice(null);
     try {
@@ -2463,22 +2935,22 @@ export default function HomeView({
 
       if (!resolvedTopic) resolvedTopic = '';
 
-      const normalizedTopic = isAutoStoryMode
-        ? toTitleCaseTr(resolvedTopic)
-        : compactInlineText(resolvedTopic);
-      const allowAiBookTitleGeneration = !topicHint;
+      const normalizedTopic = compactInlineText(resolvedTopic);
+      const allowAiBookTitleGeneration = selectedBookType === 'story' || !topicHint;
+      const generationLanguage = normalizeAppLanguageCode(bookLanguageInput) || language;
       stopBookGenerationPolling(true);
       writePendingBookGenerationJob(null);
       setActiveGeneratingBookType(selectedBookType);
+      setActiveGeneratingLanguage(generationLanguage);
       setGenerationStatus('İçerik hazırlanıyor');
       raiseGenerationProgress(6);
 
       const jobState = await startBookGenerationJob({
         topic: normalizedTopic || undefined,
         sourceContent,
-        ageGroup: selectedAgeGroup,
+        ageGroup: selectedBookType === 'story' ? workbookAgeGroupForSelectedLevel : selectedAgeGroup,
         bookType: selectedBookType,
-        subGenre: selectedSubGenre || undefined,
+        subGenre: effectiveSubGenre || undefined,
         targetPageCount: targetPageCountPreview,
         creativeBrief,
         allowAiBookTitleGeneration,
@@ -2496,6 +2968,7 @@ export default function HomeView({
       writePendingBookGenerationJob({
         jobId: jobState.jobId,
         bookType: selectedBookType,
+        language: generationLanguage,
         topic: normalizedTopic || undefined,
         startedAt: new Date().toISOString()
       });
@@ -2507,7 +2980,7 @@ export default function HomeView({
       }
 
       if (jobState.status === 'completed' && jobState.course) {
-        completeGeneratedBook(jobState.course);
+        await completeGeneratedBook(jobState.course);
         return;
       }
 
@@ -2553,9 +3026,10 @@ export default function HomeView({
 
   const renderHomeCourseCard = (course: CourseData) => {
     const canDelete = canDeleteCourse ? canDeleteCourse(course) : true;
+    const displayCoverImageUrl = course.deviceCoverImageUrl || course.coverImageUrl;
     const openState = courseOpenStates[course.id] || { status: 'idle', progress: 0, updatedAt: 0 };
     const isOpenDownloading = openState.status === 'downloading';
-    const isOpenReady = openState.status === 'ready';
+    const isOpenReady = openState.status === 'ready' || courseHasReadableContent(course);
     const isOpenFailed = openState.status === 'failed';
     const openProgress = Math.max(0, Math.min(100, Math.round(openState.progress || 0)));
 
@@ -2568,24 +3042,24 @@ export default function HomeView({
           : t('İndir');
 
     const actionIcon = isOpenReady
-      ? <Check size={11} className="mr-1" />
+      ? <Check size={15} strokeWidth={2.8} />
       : isOpenDownloading
-        ? null
+        ? <span className="fortale-shelf-action-percent">%{openProgress}</span>
         : isOpenFailed
-          ? null
-          : <Download size={11} className="mr-1" />;
+          ? <Download size={14} strokeWidth={2.5} />
+          : <Download size={14} strokeWidth={2.5} />;
 
     const actionButtonStyle: React.CSSProperties = isOpenReady
       ? {
-        borderColor: 'rgba(110, 231, 183, 0.55)',
-        background: 'linear-gradient(135deg, rgba(110, 231, 183, 0.28) 0%, rgba(61, 117, 78, 0.34) 100%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), 0 10px 24px rgba(52,211,153,0.14)'
+        borderColor: 'rgba(139, 187, 244, 0.55)',
+        background: 'rgba(31, 76, 125, 0.42)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), 0 10px 24px rgba(96,151,214,0.14)'
       }
       : isOpenDownloading
         ? {
-          borderColor: 'rgba(126, 183, 155, 0.52)',
-          background: 'linear-gradient(135deg, rgba(44, 82, 72, 0.56) 0%, rgba(13, 54, 42, 0.5) 100%)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 24px rgba(16,185,129,0.14)'
+          borderColor: 'rgba(139, 187, 244, 0.52)',
+          background: 'rgba(8, 46, 91, 0.5)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 24px rgba(96,151,214,0.14)'
         }
         : isOpenFailed
           ? {
@@ -2609,12 +3083,12 @@ export default function HomeView({
             onCourseSelect(course.id);
           }
         }}
-        className={`fortale-shelf-card group ${isOpenReady ? 'is-ready' : ''}`}
+        className={`fortale-shelf-card group book-type-${course.bookType || 'book'} ${isOpenReady ? 'is-ready' : ''}`}
       >
         <div className="fortale-shelf-cover">
-          {course.coverImageUrl ? (
+          {displayCoverImageUrl ? (
             <img
-              src={course.coverImageUrl}
+              src={displayCoverImageUrl}
               alt={`${course.topic} ${t('Fortale kapağı')}`}
               className="h-full w-full object-cover object-center border-0"
             />
@@ -2624,17 +3098,30 @@ export default function HomeView({
             </div>
           )}
           <div className="fortale-shelf-cover-fade" />
-          <span className="fortale-shelf-type">{t(bookTypeToLabel(course.bookType))}</span>
+          <div className="fortale-shelf-meta-row">
+            <span className="fortale-shelf-type">{t(bookTypeToLabel(course.bookType))}</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (isOpenDownloading) return;
+                onCourseSelect(course.id);
+              }}
+              disabled={isOpenDownloading}
+              className={`fortale-shelf-action is-icon-only ${isOpenReady ? 'is-ready' : isOpenDownloading ? 'is-loading' : ''}`}
+              style={actionButtonStyle}
+              title={actionLabel}
+              aria-label={actionLabel}
+            >
+              {actionIcon}
+            </button>
+          </div>
           {isOpenDownloading && (
             <div className="fortale-shelf-download-overlay">
               <div className="fortale-shelf-download-bar">
                 <span style={{ width: `${openProgress}%` }} />
               </div>
-            </div>
-          )}
-          {isOpenReady && (
-            <div className="fortale-shelf-ready-badge">
-              <Check size={10} />
             </div>
           )}
           {canDelete && (
@@ -2652,24 +3139,6 @@ export default function HomeView({
               <Trash2 size={12} />
             </button>
           )}
-          <button
-            type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (isOpenDownloading) return;
-              onCourseSelect(course.id);
-            }}
-            disabled={isOpenDownloading}
-            data-no-ui-translate="true"
-            className={`fortale-shelf-action ${isOpenReady ? 'is-ready' : isOpenDownloading ? 'is-loading' : ''}`}
-            style={actionButtonStyle}
-            title={actionLabel}
-            aria-label={actionLabel}
-          >
-            {actionIcon}
-            {actionLabel}
-          </button>
         </div>
 
         <div className="fortale-shelf-body">
@@ -2681,19 +3150,20 @@ export default function HomeView({
 
   const hasStickyContent = Boolean(stickyModal.title.trim() || stickyModal.text.trim());
   const isCreationIntroOnly = !isCreationWizardOpen && !isGenerating;
-  const selectedBookTheme = resolveBookTypeTheme(selectedBookType);
-  const visibleWizardTheme = accentedBookType ? resolveBookTypeTheme(accentedBookType) : NEUTRAL_BOOK_TYPE_THEME;
-  const activeProgressTheme = resolveBookTypeTheme(activeGeneratingBookType || selectedBookType);
-  const finalPreferenceStep = 3;
-  const storyModeStep = 4;
-  const settingDetailsStep = 5;
+  const themeStep = 3;
+  const ageGroupStep = 4;
+  const storyModeStep = 5;
+  const optionalBookDetailsStep = 6;
+  const premiseStep = 7;
+  const portraitStep = 8;
+  const summaryStep = 9;
   const visibleCreationSteps = useMemo<number[]>(
-    () => {
-      const steps = [1, 2, 3, 4];
-      if (storyInputMode === 'auto') return steps;
-      return [1, 2, 3, 4, 5];
-    },
-    [storyInputMode]
+    () => selectedBookType === 'story'
+      ? [1, premiseStep, ageGroupStep, 2, themeStep, summaryStep]
+      : selectedBookType === 'fairy_tale'
+        ? [1, 2, 3, 5, 6, 7, 8, 9]
+        : [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    [selectedBookType]
   );
   const currentVisibleStepIndexRaw = visibleCreationSteps.indexOf(creationStep);
   const currentVisibleStepIndex = currentVisibleStepIndexRaw >= 0 ? currentVisibleStepIndexRaw : 0;
@@ -2707,25 +3177,64 @@ export default function HomeView({
     setCreationStep(nextVisibleStep ?? previousVisibleStep ?? visibleCreationSteps[0] ?? 1);
   }, [creationStep, currentVisibleStepIndexRaw, visibleCreationSteps]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const keepFocusedWizardInputVisible = () => {
+      const activeElement = document.activeElement;
+      if (!(activeElement instanceof HTMLElement)) return;
+      if (!activeElement.classList.contains('fortale-wizard-keyboard-input')) return;
+      window.setTimeout(() => {
+        activeElement.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      }, 80);
+    };
+
+    window.addEventListener('focusin', keepFocusedWizardInputVisible);
+    window.visualViewport?.addEventListener('resize', keepFocusedWizardInputVisible);
+    window.visualViewport?.addEventListener('scroll', keepFocusedWizardInputVisible);
+
+    return () => {
+      window.removeEventListener('focusin', keepFocusedWizardInputVisible);
+      window.visualViewport?.removeEventListener('resize', keepFocusedWizardInputVisible);
+      window.visualViewport?.removeEventListener('scroll', keepFocusedWizardInputVisible);
+    };
+  }, []);
+
+
   const isCreationStepComplete = (step: number): boolean => {
     if (step === 1) return Boolean(selectedBookType);
-    if (step === 2) return Boolean(selectedSubGenre);
-    if (step === finalPreferenceStep) return Boolean(selectedEndingStyle) && Boolean(selectedAgeGroup) && Boolean(bookLanguageInput.trim());
-    if (step === storyModeStep) {
-      const storyModeComplete = storyInputMode === 'auto' || (storyInputMode === 'manual' && Boolean(storyBlueprintInput.trim()));
-      const portraitComplete =
-        selectedBookType !== 'fairy_tale' ||
-        !heroPortraitFile ||
-        Boolean(heroPortraitName.trim());
-      return storyModeComplete && portraitComplete;
+    if (selectedBookType === 'story') {
+      if (step === premiseStep) return Boolean(selectedStoryPremise.trim());
+      if (step === ageGroupStep) return Boolean(selectedWorkbookLevel);
+      if (step === 2) return Boolean(effectiveSubGenre);
+      if (step === themeStep) return true;
+      if (step === summaryStep) return true;
     }
-    if (step === settingDetailsStep) {
+    if (step === 2) return Boolean(effectiveSubGenre);
+    if (step === themeStep) return Boolean(effectiveTheme);
+    if (step === ageGroupStep) return Boolean(selectedAgeGroup);
+    if (step === storyModeStep) {
+      const companionNameCount = companionHeroes
+        .slice(0, Math.max(0, heroCount - 1))
+        .filter((hero) => Boolean(hero.name.trim())).length;
+      return Boolean(heroPortraitName.trim()) && Boolean(heroAgeInput.trim()) && companionNameCount === Math.max(0, heroCount - 1);
+    }
+    if (step === optionalBookDetailsStep) {
+      return Boolean(settingTimeChoice) &&
+        Boolean(settingPlaceChoice) &&
+        Boolean(worldTypeChoice) &&
+        (settingTimeChoice !== 'custom' || Boolean(settingTimeInput.trim())) &&
+        (settingPlaceChoice !== 'custom' || Boolean(settingPlaceInput.trim())) &&
+        (worldTypeChoice !== 'custom' || Boolean(worldTypeInput.trim()));
+    }
+    if (step === premiseStep) return Boolean(selectedStoryPremise.trim());
+    if (step === portraitStep) {
       return (
-        selectedBookType !== 'fairy_tale' ||
         !heroPortraitFile ||
-        Boolean(heroPortraitName.trim())
+        Boolean(selectedPortraitHeroTarget.trim())
       );
     }
+    if (step === summaryStep) return true;
     return false;
   };
   const getNextCreationStep = (step: number): number => {
@@ -2740,99 +3249,296 @@ export default function HomeView({
   };
   const isCurrentStepComplete = isCreationStepComplete(creationStep);
   const isAllStepsComplete = visibleCreationSteps.every((step) => isCreationStepComplete(step));
-  const stepProgressPercent = Math.round((currentVisibleStepNumber / totalVisibleStepCount) * 100);
-  const currentStepTitle = (() => {
+  const selectedBookTypeLabel = HOME_SPLIT_BOOK_TYPES.find((option) => option.value === selectedBookType)?.label || 'Kitap';
+  const currentStepBaseTitle = (() => {
     if (creationStep === 1) return t('Kitap Türü');
+    if (selectedBookType === 'story' && creationStep === premiseStep) return t('Konu');
+    if (selectedBookType === 'story' && creationStep === ageGroupStep) return t('Seviye');
+    if (selectedBookType === 'story' && creationStep === 2) return t('Çalışma Kitabı Türü');
+    if (selectedBookType === 'story' && creationStep === themeStep) return t('Ek İçerikler');
     if (creationStep === 2) return t('Alt Tür');
-    if (creationStep === finalPreferenceStep) return `${t('Final Tercihi')} + ${t('Yaş Grubu')} + ${t('Dil (Yazın)')}`;
-    if (creationStep === storyModeStep) return t('Kurgu Modu');
-    if (creationStep === settingDetailsStep) return `${t('Hikayenin Mekanı')} + ${t('Hikayenin Zamanı')} + ${t('Kitabın Adı')}`;
+    if (creationStep === themeStep) return t('Tema');
+    if (creationStep === ageGroupStep) return t('Yaş Grubu');
+    if (creationStep === storyModeStep) return t('Kahramanlar');
+    if (creationStep === optionalBookDetailsStep) return t('Evren');
+    if (creationStep === premiseStep) return t('Hikaye Çekirdeği');
+    if (creationStep === portraitStep) return t('Kahraman Portresi');
+    if (creationStep === summaryStep) return t('Genel Bakış');
     return t('Kitap Bilgileri');
   })();
+  const currentStepTitle = isCreationWizardOpen
+    ? `${t(selectedBookTypeLabel)} / ${currentStepBaseTitle}`
+    : currentStepBaseTitle;
   const canMoveNext = currentVisibleStepIndex < totalVisibleStepCount - 1 && isCurrentStepComplete && !isGenerating;
   const canCreateOnFinalStep = currentVisibleStepIndex === totalVisibleStepCount - 1 && isAllStepsComplete && !isGenerating;
-  const wizardFieldClass = 'fortale-input-surface mt-1 h-10 w-full rounded-xl border px-2.5 text-[13px] text-zinc-100 placeholder:text-[#b8d8ca] focus:outline-none';
-  const wizardFieldStyle = (): React.CSSProperties => ({
-    borderColor: CREATE_FORM_GREEN_TONE.border,
-    background: 'linear-gradient(180deg, rgba(58,104,86,0.86) 0%, rgba(24,75,56,0.84) 100%)',
-    backgroundColor: 'rgba(28, 75, 58, 0.8)',
-    boxShadow: `inset 0 0 0 1px ${CREATE_FORM_GREEN_TONE.fill}, 0 0 12px ${CREATE_FORM_GREEN_TONE.glow}`
+  const translateTemplate = (template: string, values: Record<string, string | number>): string => (
+    Object.entries(values).reduce(
+      (message, [key, value]) => message.split(`{{${key}}}`).join(String(value)),
+      t(template)
+    )
+  );
+  const trimmedSettingTime = settingTimeLabel ? compactInlineText(settingTimeLabel) : '';
+  const trimmedSettingPlace = settingPlaceLabel ? compactInlineText(settingPlaceLabel) : '';
+  const trimmedHeroPortraitName = compactInlineText(heroPortraitName);
+  const trimmedHeroAge = compactInlineText(heroAgeInput);
+  const heroGenderLabel = heroGender ? HERO_GENDER_OPTIONS.find((option) => option.value === heroGender)?.label : undefined;
+  const companionHeroSummary = companionHeroes
+    .slice(0, Math.max(0, heroCount - 1))
+    .map((hero) => {
+      const name = compactInlineText(hero.name);
+      const genderLabel = hero.gender ? HERO_GENDER_OPTIONS.find((option) => option.value === hero.gender)?.label : undefined;
+      return name ? `${name}${genderLabel ? ` (${t(genderLabel)})` : ''}` : '';
+    })
+    .filter(Boolean)
+    .join(', ');
+  const workbookExtraSummary = [
+    includeWorkbookExamples ? t('Örnekler') : undefined,
+    includeWorkbookQuiz ? t('Quiz') : undefined,
+    includeWorkbookRelatedBooks ? t('İlgili Kitaplar') : undefined
+  ].filter(Boolean).join(', ') || t('Seçilmedi');
+  const bookOverviewRows = selectedBookType === 'story'
+    ? [
+      { label: t('Kitap Türü'), value: t(bookTypeToLabel(selectedBookType)) },
+      { label: t('Konu'), value: selectedStoryPremise || t('Belirtilmedi') },
+      { label: t('Seviye'), value: selectedWorkbookLevel ? t(selectedWorkbookLevel) : t('Belirtilmedi') },
+      { label: t('Çalışma Kitabı Türü'), value: effectiveSubGenre ? t(effectiveSubGenre) : t('Belirtilmedi') },
+      { label: t('Ek İçerikler'), value: workbookExtraSummary }
+    ]
+    : [
+      { label: t('Kitap Türü'), value: t(bookTypeToLabel(selectedBookType)) },
+      { label: t('Alt Tür'), value: effectiveSubGenre ? t(effectiveSubGenre) : t('Belirtilmedi') },
+      { label: t('Tema'), value: effectiveTheme ? t(effectiveTheme) : t('Belirtilmedi') },
+      ...(selectedBookType !== 'fairy_tale' ? [{ label: t('Yaş Grubu'), value: t(getSmartBookAgeGroupLabel(selectedAgeGroup)) }] : []),
+      { label: t('Ana Kahraman'), value: trimmedHeroPortraitName || t('Belirtilmedi') },
+      { label: t('Yaş'), value: trimmedHeroAge || t('Belirtilmedi') },
+      ...(heroGenderLabel ? [{ label: t('Cinsiyet'), value: t(heroGenderLabel) }] : []),
+      ...(companionHeroSummary ? [{ label: t('Diğer Kahramanlar'), value: companionHeroSummary }] : []),
+      ...(trimmedSettingTime ? [{ label: t('Hikayenin Zamanı'), value: trimmedSettingTime }] : []),
+      ...(trimmedSettingPlace ? [{ label: t('Hikayenin Yeri'), value: trimmedSettingPlace }] : []),
+      ...(worldTypeLabel ? [{ label: t('Dünya Tipi'), value: t(worldTypeLabel) }] : []),
+      ...(selectedStoryPremise ? [{ label: t('Hikaye Çekirdeği'), value: selectedStoryPremise }] : []),
+      {
+        label: t('Portre'),
+        value: heroPortraitFile
+          ? (selectedPortraitHeroTarget || t('Portre eklendi'))
+          : t('Portre eklenmedi')
+      }
+    ];
+  const createCreditUseSentence = translateTemplate(
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.',
+    { creditCount: selectedCreateCreditCost }
+  );
+  const WIZARD_FIELD_HEIGHT_PX = 54;
+  const wizardFieldClass = 'fortale-input-surface fortale-wizard-field fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 text-[13px] text-zinc-100 placeholder:text-white/35 focus:outline-none';
+  const wizardFieldStyle = (options: { fixedHeight?: boolean } = {}): React.CSSProperties => ({
+    borderColor: 'rgba(139, 187, 244, 0.24)',
+    background: 'rgba(18, 58, 102, 0.76)',
+    boxSizing: 'border-box',
+    ...(options.fixedHeight === false
+      ? {}
+      : {
+        height: WIZARD_FIELD_HEIGHT_PX,
+        minHeight: WIZARD_FIELD_HEIGHT_PX,
+        maxHeight: WIZARD_FIELD_HEIGHT_PX,
+        lineHeight: '1'
+      })
   });
-  const wizardTextareaClass = 'fortale-input-surface mt-1 w-full rounded-xl border px-2.5 py-2.5 text-[13px] text-zinc-100 placeholder:text-[#b8d8ca] resize-none focus:outline-none';
-  const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
-    borderColor: isSelected ? selectedBookTheme.actionBorder : CREATE_FORM_GREEN_TONE.border,
-    background: isSelected
-      ? selectedBookTheme.actionBackground
-      : 'linear-gradient(180deg, rgba(42,77,68,0.64) 0%, rgba(13,35,29,0.76) 100%)',
-    boxShadow: isSelected
-      ? `inset 0 0 0 1px ${selectedBookTheme.tone.fill}, 0 0 16px ${selectedBookTheme.actionGlow}`
-      : `inset 0 0 0 1px ${CREATE_FORM_GREEN_TONE.fill}, 0 0 12px ${CREATE_FORM_GREEN_TONE.glow}`
-  });
-  const primaryActionButtonStyle: React.CSSProperties = {
-    borderColor: visibleWizardTheme.actionBorder,
-    background: visibleWizardTheme.actionBackground,
-    boxShadow: `inset 0 0 0 1px ${visibleWizardTheme.tone.fill}, 0 0 14px ${visibleWizardTheme.actionGlow}`
+  const wizardInlineControlStyle: React.CSSProperties = {
+    borderColor: 'rgba(139, 187, 244, 0.42)',
+    background: 'rgba(18, 58, 102, 0.82)',
+    boxSizing: 'border-box',
+    height: 50,
+    minHeight: 50,
+    maxHeight: 50,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 16,
+    marginTop: 4,
+    padding: '0 12px',
+    lineHeight: 1,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.13), inset 0 0 0 1px rgba(139, 187, 244, 0.18)'
   };
+  const wizardTextareaClass = 'fortale-input-surface fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 py-3 text-[13px] text-zinc-100 placeholder:text-white/35 resize-none focus:outline-none';
+  const selectedBookTypeOptionStyle = selectedBookType === 'fairy_tale'
+    ? {
+      borderColor: 'rgba(255,255,255,0.72)',
+      background: 'linear-gradient(135deg, rgba(255,255,255,0.96), rgba(220,236,255,0.9))',
+      color: 'rgba(8, 28, 55, 0.98)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 18px rgba(220,236,255,0.16)'
+    }
+    : selectedBookType === 'novel'
+    ? {
+      borderColor: 'rgba(255,140,140,0.68)',
+      background: 'linear-gradient(135deg, rgba(248,113,113,0.96), rgba(239,68,68,0.9))',
+      color: '#ffffff',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.24), 0 8px 18px rgba(239,68,68,0.16)'
+    }
+    : {
+      borderColor: 'rgba(255,238,140,0.72)',
+      background: 'linear-gradient(135deg, rgba(255,236,120,0.96), rgba(250,204,21,0.9))',
+      color: 'rgba(8, 28, 55, 0.98)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5), 0 8px 18px rgba(250,204,21,0.16)'
+    };
+  const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
+    borderColor: isSelected ? selectedBookTypeOptionStyle.borderColor : 'rgba(135, 164, 197, 0.18)',
+    background: isSelected ? selectedBookTypeOptionStyle.background : 'rgba(18, 58, 102, 0.64)',
+    color: isSelected ? selectedBookTypeOptionStyle.color : 'rgba(190, 220, 255, 0.72)',
+    minHeight: 46,
+    boxShadow: isSelected ? selectedBookTypeOptionStyle.boxShadow : undefined
+  });
+  const primaryActionButtonStyle: React.CSSProperties = selectedBookType === 'fairy_tale'
+    ? {
+      background: 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94))',
+      color: 'rgba(8, 28, 55, 0.98)',
+      borderColor: 'rgba(255,255,255,0.76)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 10px 24px rgba(220,236,255,0.22)'
+    }
+    : selectedBookType === 'novel'
+    ? {
+      background: 'linear-gradient(135deg, rgba(248,113,113,0.98), rgba(239,68,68,0.94))',
+      color: '#ffffff',
+      borderColor: 'rgba(255,140,140,0.72)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 24px rgba(239,68,68,0.22)'
+    }
+    : {
+      background: 'linear-gradient(135deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94))',
+      color: 'rgba(8, 28, 55, 0.98)',
+      borderColor: 'rgba(255,238,140,0.78)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5), 0 10px 24px rgba(250,204,21,0.2)'
+    };
+  const secondaryActionButtonStyle: React.CSSProperties = {
+    background: '#102f56',
+    color: 'rgba(225,240,255,0.92)',
+    borderColor: 'rgba(139,187,244,0.24)'
+  };
+  const disabledActionButtonStyle: React.CSSProperties = {
+    background: 'rgba(10, 20, 32, 0.45)',
+    color: 'rgba(169, 199, 236, 0.34)',
+    borderColor: 'rgba(135, 164, 197, 0.1)'
+  };
+  const genderPickerOptions = [{ value: '' as WizardHeroGender, label: 'Seçilmedi' }, ...HERO_GENDER_OPTIONS];
+  const renderGenderPicker = (
+    value: WizardHeroGender,
+    onSelect: (nextValue: WizardHeroGender) => void
+  ) => (
+    <FortaleDropdown
+      label={t('Cinsiyet')}
+      value={value}
+      options={genderPickerOptions.map((option) => ({ value: option.value, label: t(option.label) }))}
+      onChange={onSelect}
+      triggerClassName="!h-[46px] !rounded-[14px] !px-3 !text-[13px]"
+    />
+  );
   const renderHeroPortraitPanel = () => (
-    <div className="rounded-xl border px-2.5 py-2.5" style={wizardFieldStyle()}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[12px] font-bold text-white">{t('Portre Ekle')}</p>
-          <p className="mt-0.5 text-[11px] leading-snug text-[#d7efe6]">
-            {heroPortraitFile
-              ? `${heroPortraitFile.name} · ${t('+1 kredi')}`
-              : t('Portre eklemek isteğe bağlıdır · +1 kredi')}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {heroPortraitFile && (
+    <div className="space-y-3">
+      {/* Feature card */}
+      <div className="relative overflow-hidden rounded-[22px]" style={{ background: 'linear-gradient(145deg, #0e2d55 0%, #091c38 100%)', border: '1px solid rgba(155, 199, 255, 0.22)' }}>
+        {/* Decorative glow blob */}
+        <div aria-hidden style={{ position: 'absolute', top: -24, right: -24, width: 140, height: 140, borderRadius: '50%', background: 'rgba(100, 160, 255, 0.11)', filter: 'blur(36px)', pointerEvents: 'none' }} />
+
+        <div className="relative px-4 pt-5 pb-4">
+          {/* Header row */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-[46px] w-[46px] shrink-0 rounded-[14px] flex items-center justify-center" style={{ background: 'rgba(100, 160, 255, 0.16)', border: '1px solid rgba(155, 199, 255, 0.26)' }}>
+              <UserRound size={21} style={{ color: '#9BC7FF' }} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[15px] font-extrabold leading-tight text-white">{t('Kitabın Kahramanı Sen Ol')}</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: 'rgba(155, 199, 255, 0.55)' }}>{t('İsteğe bağlıdır · +1 kredi')}</p>
+            </div>
+          </div>
+
+          {/* Benefit */}
+          <div className="mb-4">
+            <div className="flex items-start gap-2">
+              <span className="mt-[3px] shrink-0 text-[9px]" style={{ color: 'rgba(155, 199, 255, 0.45)' }}>✦</span>
+              <p className="text-[12px] leading-snug" style={{ color: 'rgba(190, 220, 255, 0.76)' }}>{t('Kendi fotoğrafını yükle — kitaptaki kahraman her sayfada sana benzsin')}</p>
+            </div>
+          </div>
+
+          {/* Portrait preview or upload CTA */}
+          {heroPortraitFile && heroPortraitPreviewUrl ? (
+            <div>
+              <div className="relative overflow-hidden rounded-[18px]" style={{ aspectRatio: '1 / 1', border: '1px solid rgba(155, 199, 255, 0.2)' }}>
+                <img
+                  src={heroPortraitPreviewUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-full w-full object-cover"
+                />
+                <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 55%, rgba(5, 15, 30, 0.72) 100%)' }} />
+                {/* Overlay controls */}
+                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-3 pb-3">
+                  <p className="truncate text-[12px] font-bold text-white/90">
+                    {selectedPortraitHeroTarget || t('Portre eklendi')}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => heroPortraitInputRef.current?.click()}
+                      className="h-8 rounded-[12px] px-3 text-[11px] font-semibold inline-flex items-center gap-1"
+                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(139, 187, 244, 0.36)', color: '#c8e2ff' }}
+                    >
+                      {t('Değiştir')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearHeroPortrait}
+                      className="h-8 w-8 rounded-[12px] inline-flex items-center justify-center"
+                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(135, 164, 197, 0.26)', color: 'rgba(190, 220, 255, 0.5)' }}
+                      aria-label={t('Portreyi kaldır')}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={clearHeroPortrait}
-              className="fortale-action-button h-8 w-8 rounded-xl border inline-flex items-center justify-center"
-              title={t('Kaldır')}
-              aria-label={t('Portreyi kaldır')}
+              onClick={() => heroPortraitInputRef.current?.click()}
+              className="w-full rounded-[18px] border px-4 py-4 text-[14px] font-extrabold inline-flex items-center justify-center gap-2.5 transition-opacity active:opacity-75"
+              style={{ background: 'rgba(14, 45, 90, 0.7)', borderColor: 'rgba(155, 199, 255, 0.32)', borderStyle: 'dashed', color: '#d6eaff' }}
             >
-              <X size={14} />
+              <ImagePlus size={18} />
+              {t('Fotoğraf Seç')}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => heroPortraitInputRef.current?.click()}
-            className="fortale-action-button h-8 px-2.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1.5 is-primary"
-            style={primaryActionButtonStyle}
-          >
-            {heroPortraitFile ? <UserRound size={14} /> : <ImagePlus size={14} />}
-            {heroPortraitFile ? t('Değiştir') : t('Ekle')}
-          </button>
         </div>
       </div>
-      <p className="mt-2 text-[11px] leading-snug text-[#b8d8ca]">
-        {t('Portre eklerseniz bu kişi masalın ana karakteri olur. Görsel masal üretimi +1 kredi kullanır.')}
-      </p>
-      <div className="mt-2 space-y-2">
-        <div>
-          <label className="mb-1 block text-[11px] font-semibold text-[#d7efe6]">{t('Ana karakter adı')}</label>
-          <input
-            value={heroPortraitName}
-            onChange={(event) => setHeroPortraitName(event.target.value)}
-            maxLength={60}
-            placeholder={t('Örn: Aras')}
-            className={wizardFieldClass}
-            style={wizardFieldStyle()}
-          />
+
+      {/* Hero assignment — only when portrait is added */}
+      {heroPortraitFile && portraitHeroOptions.length > 0 && (
+        <div className="rounded-[22px] border p-3" style={{ borderColor: 'rgba(190, 220, 255, 0.16)', background: 'rgba(8, 36, 70, 0.46)' }}>
+          <p className="fortale-section-kicker mb-3">{t('Portre hangi kahramana ait?')}</p>
+          <div className="grid grid-cols-2 gap-2">
+            {portraitHeroOptions.map((name) => {
+              const isSelected = selectedPortraitHeroTarget === name;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setSelectedPortraitHeroName(name)}
+                  className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                  style={wizardOptionButtonStyle(isSelected)}
+                  aria-pressed={isSelected}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
-  const wizardThemeVars = {
-    '--fortale-wizard-progress': visibleWizardTheme.progress,
-    '--fortale-wizard-action-bg': visibleWizardTheme.actionBackground,
-    '--fortale-wizard-action-border': visibleWizardTheme.actionBorder,
-    '--fortale-wizard-action-glow': visibleWizardTheme.actionGlow,
-    '--fortale-wizard-tone-fill': visibleWizardTheme.tone.fill,
-    '--fortale-wizard-tone-border': visibleWizardTheme.tone.border
-  } as React.CSSProperties;
+  const wizardThemeVars = {} as React.CSSProperties;
+  const wizardAccentColor = (activeGeneratingBookType ?? selectedBookType) === 'fairy_tale'
+    ? 'linear-gradient(90deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94))'
+    : (activeGeneratingBookType ?? selectedBookType) === 'novel'
+    ? 'linear-gradient(90deg, rgba(248,113,113,0.98), rgba(239,68,68,0.94))'
+    : 'linear-gradient(90deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94))';
   const showStickyNotes = false;
   const stickyModalTop =
     stickyRowContainerRef.current
@@ -3042,402 +3748,778 @@ export default function HomeView({
             className="hidden"
           />
 
-          <form
-            onSubmit={(event) => event.preventDefault()}
-            className="relative z-10 rounded-2xl"
+          {/* UNIFIED CREATE CONTAINER — intro'da kısa (raf görünsün), wizard 2+'de tam yükseklik */}
+          <div
+            ref={wizardInlineRef}
+            className="flex flex-col rounded-[18px]"
+            style={{
+              height: (!isGenerating && (isCreationIntroOnly || creationStep === 1))
+                ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
+                : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
+              minHeight: '320px',
+            }}
           >
-            <div
-              className={`fortale-create-panel ${isCreationIntroOnly ? 'is-type-only' : 'is-open'} rounded-2xl p-2.5 relative overflow-hidden${(isGenerating || isCreationIntroOnly) ? '' : ' border'}`}
-              style={{
-                ...wizardThemeVars,
-                borderColor: visibleWizardTheme.tone.border,
-                boxShadow: `inset 0 0 0 1px ${visibleWizardTheme.tone.fill}`
-              }}
-            >
-              {isCreationWizardOpen && (
+            {/* TOP BAR: generating'de gizle, intro'da invisible (layout tutmak için) */}
+            {!isGenerating && (
+              <div
+                className="flex items-center justify-between gap-3 px-4 pt-3 pb-2"
+                style={{ visibility: isCreationIntroOnly ? 'hidden' : 'visible', pointerEvents: isCreationIntroOnly ? 'none' : 'auto' }}
+              >
+                <p className="text-[14px] font-bold text-white">{currentStepTitle}</p>
                 <button
                   type="button"
+                  onClick={() => { setCreationWizardOpen(false); setCreationStep(1); setAccentedBookType(null); }}
+                  className="h-8 w-8 shrink-0 rounded-[18px] border flex items-center justify-center"
+                  style={{ borderColor: 'rgba(135, 164, 197, 0.18)', background: 'rgba(10, 20, 32, 0.42)', color: 'rgba(190, 220, 255, 0.5)' }}
                   aria-label={t('Kapat')}
-                  onClick={() => {
-                    setCreationWizardOpen(false);
-                    setCreationStep(1);
-                  }}
-                  className="absolute top-2 right-2 h-6 w-6 rounded-md bg-white/5 flex items-center justify-center text-white/60 hover:text-white transition-colors"
                 >
-                  <X size={12} />
+                  <X size={14} />
                 </button>
-              )}
-              <div className={`px-1.5 pb-2 ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
-                <p className="text-[15px] font-bold text-white">
-                  {isGenerating ? t('Fortale oluşturuluyor...') : currentStepTitle}
-                </p>
-                {!isGenerating && (
-                  <div className="fortale-wizard-progress-track mt-2 h-1.5 rounded-full overflow-hidden">
+              </div>
+            )}
+
+            {/* PROGRESS DOTS: generating'de gizle, intro'da invisible */}
+            {!isGenerating && (
+              <div
+                className="px-4 pb-2 border-b border-white/[0.06]"
+                style={{ visibility: isCreationIntroOnly ? 'hidden' : 'visible' }}
+              >
+                <div className="flex gap-1.5">
+                  {visibleCreationSteps.map((_, index) => (
                     <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${stepProgressPercent}%`,
-                        background: visibleWizardTheme.progress
-                      }}
+                      key={index}
+                      className="h-[3px] flex-1 rounded-[18px] transition-colors duration-200"
+                      style={{ background: index <= currentVisibleStepIndex ? wizardAccentColor : 'rgba(255,255,255,0.1)' }}
                     />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* CONTENT AREA */}
+            <div
+              className={`flex-1 min-h-0 scrollbar-hide ${
+                (isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1))
+                  ? 'flex flex-col items-center justify-center overflow-visible'
+                  : 'overflow-y-auto px-4 pb-2'
+              }`}
+            >
+              {/* TYPE ORB: intro ve wizard adım 1'de göster */}
+              {(isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1)) && (
+                <div className="fortale-type-step">
+                  <div className={`fortale-type-copy ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
+                    <span>{t('Kitap Türünü Seç')}</span>
                   </div>
-                )}
-                {!isGenerating && (
-                  <div className="fortale-step-rail" style={{ gridTemplateColumns: `repeat(${totalVisibleStepCount}, minmax(0, 1fr))` }}>
-                    {visibleCreationSteps.map((_, index) => {
-                      const stepNo = index + 1;
-                      const isDone = index < currentVisibleStepIndex;
-                      const isCurrent = index === currentVisibleStepIndex;
+                  <div className="fortale-type-orb" role="group" aria-label={t('Kitap Türünü Seç')}>
+                    <span className="fortale-type-divider horizontal" aria-hidden="true" />
+                    <span className="fortale-type-divider left" aria-hidden="true" />
+                    <span className="fortale-type-core" aria-hidden="true">
+                      <FLogo size={22} />
+                    </span>
+                    {HOME_SPLIT_BOOK_TYPES.map((option) => {
+                      const isSelected = isCreationWizardOpen && selectedBookType === option.value;
+                      const isAccented = accentedBookType === option.value;
+                      const Icon = option.icon;
+                      const translatedLabel = t(option.label);
+                      const labelWords = translatedLabel.trim().split(/\s+/);
+                      const labelLines = option.value === 'story' && labelWords.length > 1
+                        ? [labelWords.slice(0, -1).join(' '), labelWords[labelWords.length - 1]]
+                        : null;
                       return (
-                        <span
-                          key={stepNo}
-                          className={`fortale-step-dot ${isDone ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''}`}
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleBookTypeSelect(option.value)}
+                          className={`fortale-type-choice ${option.placement} accent-${option.value} ${isSelected ? 'selected' : ''} ${isAccented ? 'is-accented' : ''}`}
+                          aria-pressed={isSelected}
+                          title={t(option.hint)}
                         >
-                          {stepNo}
-                        </span>
+                          <Icon size={option.placement === 'top' ? 22 : 18} strokeWidth={1.8} />
+                          <span className={`fortale-type-label ${labelLines ? 'two-line' : ''}`}>
+                            {labelLines
+                              ? labelLines.map((line) => <span key={line}>{line}</span>)
+                              : translatedLabel}
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {!isGenerating && (
-              <fieldset className={`fortale-create-fields ${isCreationIntroOnly ? 'is-type-only' : ''} ${creationStep === 1 ? 'is-type-picker' : ''} px-1.5 pb-1`}>
-                {creationStep === 1 && (
-                  <div className="fortale-type-step">
-                    <div className={`fortale-type-copy ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
-                      <span>{t('Kitap Türünü Seç')}</span>
-                    </div>
-                    <div className="fortale-type-orb" role="group" aria-label={t('Kitap Türünü Seç')}>
-                      <span className="fortale-type-divider horizontal" aria-hidden="true" />
-                      <span className="fortale-type-divider left" aria-hidden="true" />
-                      <span className="fortale-type-core" aria-hidden="true">
-                        <FLogo size={22} />
-                      </span>
-                      {HOME_SPLIT_BOOK_TYPES.map((option) => {
-                        const isSelected = isCreationWizardOpen && selectedBookType === option.value;
-                        const isAccented = accentedBookType === option.value;
-                        const Icon = option.icon;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => handleBookTypeSelect(option.value)}
-                            className={`fortale-type-choice ${option.placement} accent-${option.value} ${isSelected ? 'selected' : ''} ${isAccented ? 'is-accented' : ''}`}
-                            aria-pressed={isSelected}
-                            title={t(option.hint)}
-                          >
-                            <Icon size={option.placement === 'top' ? 22 : 18} strokeWidth={1.8} />
-                            <span className="fortale-type-label">{t(option.label)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {creationStep === 2 && (
-                  <div>
-                    <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#d7efe6]">{t('Alt Tür Seç')}</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || []).map((sub, index) => {
-                        const isSelected = selectedSubGenre === sub;
-                        return (
-                          <button
-                            key={sub}
-                            type="button"
-                            onClick={() => setSelectedSubGenre(sub)}
-                            className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
-                            style={{
-                              color: isSelected ? '#ffffff' : '#d7efe6',
-                              ...wizardOptionButtonStyle(isSelected)
-                            }}
-                          >
-                            {t(sub)}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                  </div>
-                )}
-
-                {creationStep === finalPreferenceStep && (
-                  <div className="space-y-3">
-                    <div>
-                      <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#d7efe6]">{t('Final Tercihi')}</p>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {SMARTBOOK_ENDING_OPTIONS.map((option) => {
-                          const isSelected = selectedEndingStyle === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setSelectedEndingStyle(option.value)}
-                              className="fortale-form-button rounded-xl border px-2 py-1.5 text-[12px] font-bold transition-colors"
-                              style={{
-                                color: isSelected ? '#ffffff' : '#d7efe6',
-                                ...wizardOptionButtonStyle(isSelected)
-                              }}
-                              title={t(option.hint)}
-                            >
-                              {t(option.label)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#d7efe6]">{t('Yaş Grubunu Seç')}</p>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {SMARTBOOK_AGE_GROUP_OPTIONS.filter((opt) => selectedBookType === 'fairy_tale' ? ['1-6', '7+'].includes(opt.value) : !['1-6', '7+', '1-3', '4-6', '7-9'].includes(opt.value)).map((option) => {
-                          const isSelected = selectedAgeGroup === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setSelectedAgeGroup(option.value)}
-                              className="fortale-form-button rounded-xl border px-1.5 py-1.5 text-center transition-colors"
-                              style={wizardOptionButtonStyle(isSelected)}
-                              aria-pressed={isSelected}
-                              title={t(option.hint)}
-                            >
-                              <span className="block text-[11px] font-bold text-white">{t(option.label)}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kitap Dili')}</label>
-                      <input
-                        value={bookLanguageInput}
-                        onChange={(event) => setBookLanguageInput(event.target.value)}
-                        maxLength={64}
-                        placeholder={t('Örn: Türkçe, English, Español')}
-                        className={wizardFieldClass}
-                        style={wizardFieldStyle()}
+              {/* GENERATING STATE */}
+              {isGenerating && (
+                <div className="flex flex-col h-full min-h-0">
+                  <div className="mt-3">
+                    <div className="w-full overflow-hidden rounded-[18px]">
+                      <video
+                        className="h-auto w-full block"
+                        src={BOOK_CREATING_LOOP_VIDEO_SRC}
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        preload="auto"
                       />
                     </div>
+                    <p className="mt-3 text-center text-[15px] font-bold text-white">
+                      {generationStatus
+                        ? translateGenerationStatusLabel(generationStatus, generationDisplayLanguage)
+                        : translateGenerationStatusLabel('Sunucuda üretim başlatılıyor', generationDisplayLanguage)}
+                    </p>
+                    <p className="mt-1 text-center text-[13px] text-white/50">
+                      {formatGenerationRemainingTime(displayedGenerationMinutesRemaining, generationDisplayLanguage)}
+                    </p>
                   </div>
-                )}
-
-                {creationStep === storyModeStep && (
-                  <div className="space-y-2">
-                    <div>
-                      <p className="mb-1 text-[12px] font-semibold tracking-wide text-[#d7efe6]">{t('Kurgu Modu')}</p>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setStoryInputMode('manual')}
-                          className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
-                          style={{
-                            color: storyInputMode === 'manual' ? '#ffffff' : '#d7efe6',
-                            ...wizardOptionButtonStyle(storyInputMode === 'manual')
-                          }}
-                        >
-                          {t('Detay Gireceğim')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setStoryInputMode('auto')}
-                          className="fortale-form-button rounded-xl border px-2 py-1.5 text-left transition-colors text-[12px] font-bold"
-                          style={{
-                            color: storyInputMode === 'auto' ? '#ffffff' : '#d7efe6',
-                            ...wizardOptionButtonStyle(storyInputMode === 'auto')
-                          }}
-                        >
-                          {t('Otomatik Oluştur')}
-                        </button>
-                      </div>
+                  <div className="mt-4">
+                    <div className="h-1.5 overflow-hidden rounded-[18px] bg-white/10">
+                      <div
+                        className="h-full rounded-[18px] transition-all duration-300"
+                        style={{ width: `${Math.max(1, Math.min(100, generationProgress || 0))}%`, background: wizardAccentColor }}
+                      />
                     </div>
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <p className="text-[14px] text-white/50 tabular-nums">
+                        %{Math.max(1, Math.min(100, Math.round(generationProgress || 0)))}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCancelGeneration}
+                        className="text-[12px] text-white/35 px-2 py-0.5"
+                      >
+                        {t('İptal')}
+                      </button>
+                    </div>
+                  </div>
+                  {(() => {
+                    const bookType = activeGeneratingBookType ?? selectedBookType;
+                    const langFacts = getLiteraryFactsForBookType(bookType, generationDisplayLanguage);
+                    if (!langFacts.length || currentLiteraryFactIndex === null) return null;
+                    const fact = langFacts[currentLiteraryFactIndex % langFacts.length];
+                    return (
+                      <div className="flex items-center justify-center px-2 mt-auto pt-8">
+                        <p
+                          key={currentLiteraryFactIndex}
+                          className="text-center italic leading-relaxed text-[#a8c8bc]"
+                          style={{ fontSize: 15, animation: 'fadeIn 0.8s ease' }}
+                        >
+                          &ldquo;{fact}&rdquo;
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
-                    <div>
-                      {storyInputMode === 'manual' ? (
-                        <>
-                          <label className="text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Karakterler ve Detaylar')}</label>
-                          <textarea
-                            value={storyBlueprintInput}
-                            onChange={(event) => setStoryBlueprintInput(event.target.value)}
-                            maxLength={1600}
-                            rows={5}
-                            placeholder={t('Girdiğiniz detaylar size özgü kitap kurgulanmasını sağlayacaktır. Karakterleri, kitabın ana temasını, çatışmayı, olay örgüsünü ve odaklanılacak detayları birlikte yazın')}
-                            className={wizardTextareaClass}
+              {/* WIZARD STEPS 2-6 */}
+              {isCreationWizardOpen && !isGenerating && creationStep !== 1 && (
+                <fieldset className="fortale-wizard-fields" style={{ border: 'none', padding: 0, margin: 0 }}>
+
+                  {/* ── ADIM 2: Alt Tür ── */}
+                  {creationStep === 2 && (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Alt tür')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(selectedBookType === 'story'
+                            ? WORKBOOK_CATEGORY_OPTIONS
+                            : (SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || [])).map((sub) => {
+                            const isSelected = selectedSubGenre === sub;
+                            return (
+                              <button
+                                key={sub}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSubGenre(sub);
+                                  if (selectedSubGenre !== sub) {
+                                    setSelectedTheme('');
+                                  }
+                                }}
+                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {t(sub)}
+                              </button>
+                            );
+                          })}
+                          {selectedBookType !== 'story' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSubGenre(CUSTOM_WIZARD_OPTION);
+                                setSelectedTheme('');
+                              }}
+                              className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                              style={wizardOptionButtonStyle(selectedSubGenre === CUSTOM_WIZARD_OPTION)}
+                              aria-pressed={selectedSubGenre === CUSTOM_WIZARD_OPTION}
+                            >
+                              {t('Diğer')}
+                            </button>
+                          )}
+                        </div>
+                        {selectedBookType !== 'story' && selectedSubGenre === CUSTOM_WIZARD_OPTION && (
+                          <input
+                            value={customSubGenreInput}
+                            onChange={(event) => setCustomSubGenreInput(event.target.value)}
+                            maxLength={80}
+                            placeholder={t('Kendi alt türünü yaz')}
+                            className={wizardFieldClass}
                             style={wizardFieldStyle()}
                           />
-                        </>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-[12px] text-[#b8d8ca]">
-                            {t('Otomatik modda model kurgu detaylarını kendisi oluşturur.')}
-                          </p>
-                          {selectedBookType === 'fairy_tale' && renderHeroPortraitPanel()}
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── ADIM 3: Tema ── */}
+                  {creationStep === themeStep && (
+                    <div className="space-y-2.5 pt-1">
+                      <div className={selectedBookType === 'story' ? '' : 'fortale-library-panel rounded-2xl border px-3 py-3'}>
+                        <p className="fortale-section-kicker mb-2.5">{t(selectedBookType === 'story' ? 'Ek İçerikler' : 'Tema')}</p>
+                        {selectedBookType === 'story' ? (
+                          <div className="space-y-2">
+                            {WORKBOOK_EXTRA_OPTIONS.map((option) => {
+                              const isSelected = option.key === 'examples'
+                                ? includeWorkbookExamples
+                                : option.key === 'quiz'
+                                  ? includeWorkbookQuiz
+                                  : includeWorkbookRelatedBooks;
+                              return (
+                                <button
+                                  key={option.key}
+                                  type="button"
+                                  onClick={() => {
+                                    if (option.key === 'examples') setIncludeWorkbookExamples((value) => !value);
+                                    else if (option.key === 'quiz') setIncludeWorkbookQuiz((value) => !value);
+                                    else setIncludeWorkbookRelatedBooks((value) => !value);
+                                  }}
+                                  className="relative w-full rounded-2xl border py-3.5 pl-4 pr-14 text-left transition-all active:scale-[0.98]"
+                                  style={wizardOptionButtonStyle(isSelected)}
+                                  aria-pressed={isSelected}
+                                >
+                                  <span className="block text-[14px] font-extrabold">{t(option.label)}</span>
+                                  <span className={`mt-1 block text-[11px] font-semibold leading-snug ${isSelected ? 'opacity-100' : 'opacity-70'}`}>
+                                    {t(option.hint)}
+                                  </span>
+                                  <span
+                                    aria-hidden="true"
+                                    className="absolute right-4 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[7px] border"
+                                    style={{
+                                      borderColor: isSelected ? '#ffffff' : 'rgba(207,228,255,0.65)',
+                                      background: isSelected ? '#fff8d6' : 'rgba(8,35,66,0.16)',
+                                      color: isSelected ? '#082342' : '#ffffff',
+                                      boxShadow: isSelected
+                                        ? '0 3px 10px rgba(3,18,38,0.32), inset 0 0 0 1px rgba(8,35,66,0.08)'
+                                        : 'inset 0 1px 0 rgba(255,255,255,0.12)'
+                                    }}
+                                  >
+                                    {isSelected && <Check size={16} strokeWidth={3.4} />}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <>
+                        <div className="grid grid-cols-2 gap-2">
+                          {selectedSubGenreThemes.map((theme) => {
+                            const isSelected = selectedTheme === theme;
+                            return (
+                              <button
+                                key={theme}
+                                type="button"
+                                onClick={() => setSelectedTheme(theme)}
+                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {t(theme)}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTheme(CUSTOM_WIZARD_OPTION)}
+                            className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                            style={wizardOptionButtonStyle(selectedTheme === CUSTOM_WIZARD_OPTION)}
+                            aria-pressed={selectedTheme === CUSTOM_WIZARD_OPTION}
+                          >
+                            {t('Diğer')}
+                          </button>
+                        </div>
+                        {selectedTheme === CUSTOM_WIZARD_OPTION && (
+                          <input
+                            value={customThemeInput}
+                            onChange={(event) => setCustomThemeInput(event.target.value)}
+                            maxLength={80}
+                            placeholder={t('Kendi temanı yaz')}
+                            className={wizardFieldClass}
+                            style={wizardFieldStyle()}
+                          />
+                        )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── ADIM 4: Yaş Grubu ── */}
+                  {creationStep === ageGroupStep && (
+                    <div className="space-y-2.5 pt-1">
+                      <p className="fortale-section-kicker mb-3">{t(selectedBookType === 'story' ? 'Seviye' : 'Yaş grubu')}</p>
+                      <div className="space-y-2">
+                        {(selectedBookType === 'story' ? WORKBOOK_LEVEL_OPTIONS : ageGroupOptionsForSelectedBookType).map((option) => {
+                          const isSelected = selectedBookType === 'story'
+                            ? selectedWorkbookLevel === option.value
+                            : selectedAgeGroup === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => {
+                                if (selectedBookType === 'story') setSelectedWorkbookLevel(option.value as WorkbookLevel);
+                                else setSelectedAgeGroup(option.value as SmartBookAgeGroup);
+                              }}
+                              className="w-full rounded-2xl border px-4 py-4 text-center transition-all active:scale-[0.98]"
+                              style={{
+                                ...wizardOptionButtonStyle(isSelected),
+                                minHeight: 74
+                              }}
+                              aria-pressed={isSelected}
+                            >
+                              <span className="block text-[15px] font-extrabold">{t(option.label)}</span>
+                              <span className={`mt-1.5 block text-[12px] font-semibold leading-snug ${isSelected ? 'opacity-100' : 'opacity-70'}`}>
+                                {t(option.hint)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── ADIM 5: Kahramanlar ── */}
+                  {creationStep === storyModeStep && (
+                    <div className="space-y-2.5 pt-1">
+                      <div
+                        className="fortale-library-panel relative rounded-2xl border px-3 py-3"
+                      >
+                        <div className="space-y-3">
+                          <div>
+                            <label className="fortale-section-kicker mb-2 block">{t('Ana kahraman adı')}</label>
+                            <input
+                              value={heroPortraitName}
+                              onChange={(event) => setHeroPortraitName(event.target.value)}
+                              maxLength={60}
+                              placeholder={t('Örn: Aras')}
+                              className={wizardFieldClass}
+                              style={wizardFieldStyle()}
+                            />
+                          </div>
+                          <div className="fortale-hero-inline-row grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="fortale-section-kicker mb-2 block">{t('Yaş')}</label>
+                              <input
+                                value={heroAgeInput}
+                                onChange={(event) => setHeroAgeInput(event.target.value)}
+                                maxLength={24}
+                                inputMode="numeric"
+                                placeholder={t('Örn: 9')}
+                                className="fortale-input-surface fortale-wizard-keyboard-input fortale-hero-age-input w-full text-[13px] text-zinc-100 placeholder:text-white/35 focus:outline-none"
+                                style={wizardInlineControlStyle}
+                              />
+                            </div>
+                            <div>
+                              <label className="fortale-section-kicker mb-2 block">
+                                {t('Cinsiyet')} <span className="font-normal opacity-50">({t('opsiyonel')})</span>
+                              </label>
+                              {renderGenderPicker(heroGender, setHeroGender)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="fortale-library-panel relative z-[1] rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Kahraman sayısı')}</p>
+                        <div className="grid grid-cols-4 gap-2">
+                          {HERO_COUNT_OPTIONS.map((count) => {
+                            const isSelected = heroCount === count;
+                            return (
+                              <button
+                                key={count}
+                                type="button"
+                                onClick={() => handleHeroCountChange(count)}
+                                className="rounded-xl border px-2 py-2.5 text-center text-[13px] font-bold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {count}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {heroCount > 1 && (
+                        <div
+                          className="fortale-library-panel relative rounded-2xl border px-3 py-3 space-y-3"
+                        >
+                          <p className="fortale-section-kicker">{t('Diğer kahramanlar')}</p>
+                          {Array.from({ length: heroCount - 1 }, (_, index) => {
+                            const companion = companionHeroes[index] || { name: '', gender: '' };
+                            return (
+                              <div key={index} className="grid grid-cols-[minmax(0,1fr)_138px] gap-2">
+                                <div>
+                                  <label className="fortale-section-kicker mb-2 block">{index + 2}. {t('kahraman adı')}</label>
+                                  <input
+                                    value={companion.name}
+                                    onChange={(event) => updateCompanionHero(index, { name: event.target.value })}
+                                    maxLength={60}
+                                    placeholder={t('Örn: Zeynep')}
+                                    className={wizardFieldClass}
+                                    style={wizardFieldStyle()}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="fortale-section-kicker mb-2 block">
+                                    {t('Cinsiyet')} <span className="font-normal opacity-50">({t('opsiyonel')})</span>
+                                  </label>
+                                  {renderGenderPicker(
+                                    companion.gender,
+                                    (nextGender) => updateCompanionHero(index, { gender: nextGender })
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
+
                     </div>
-                  </div>
-                )}
-
-                {creationStep === settingDetailsStep && (
-                  <div className="space-y-2">
-                    {selectedBookType === 'fairy_tale' && renderHeroPortraitPanel()}
-                    <label className="text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Hikayenin Zamanı')}</label>
-                    <input
-                      value={settingTimeInput}
-                      onChange={(event) => setSettingTimeInput(event.target.value)}
-                      maxLength={120}
-                      placeholder={t("Örn: 1800'ler, günümüz, 2090 sonrası")}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                    <label className="block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Hikayenin Mekanı')}</label>
-                    <input
-                      value={settingPlaceInput}
-                      onChange={(event) => setSettingPlaceInput(event.target.value)}
-                      maxLength={120}
-                      placeholder={t('Örn: İstanbul, antik kent, Mars kolonisi')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                    <label className="block text-[12px] text-[#d7efe6] font-semibold tracking-wide">{t('Kitabın Adı')}</label>
-                    <input
-                      value={searchTerm}
-                      onChange={(event) => {
-                        setSearchTerm(event.target.value);
-                        if (sourceNotice) setSourceNotice(null);
-                      }}
-                      maxLength={140}
-                      placeholder={t('Örn: Albert Einstein ve Kuramları')}
-                      className={wizardFieldClass}
-                      style={wizardFieldStyle()}
-                    />
-                  </div>
-                )}
-
-              </fieldset>
-              )}
-
-              {isGenerating ? (
-                <>
-                <div className="mt-3">
-                  <div className="w-full overflow-hidden rounded-xl">
-                    <video
-                      className="h-auto w-full block"
-                      src={BOOK_CREATING_LOOP_VIDEO_SRC}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      preload="auto"
-                    />
-                  </div>
-                  <p className="mt-3 text-center text-[15px] font-bold text-white">
-                    {generationStatus ? translateGenerationStatusLabel(generationStatus, language) : t('Fortale oluşturuluyor...')}
-                  </p>
-                  <p className="mt-1 text-center text-[13px] text-[#b8d8ca]">
-                    {t('Tahmini okuma süresi')}: {displayedGenerationMinutes} {t('dk')}
-                  </p>
-
-                </div>
-                <div className="mt-4">
-                  <div className="overflow-hidden rounded-full h-1.5 bg-white/15">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${Math.max(1, Math.min(100, generationProgress || 0))}%`,
-                        background: activeProgressTheme.progress
-                      }}
-                    />
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between">
-                    <p className="text-[14px] text-white/60 tabular-nums">
-                      %{Math.max(1, Math.min(100, Math.round(generationProgress || 0)))}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleCancelGeneration}
-                      className="text-[12px] text-white/40 hover:text-red-400 transition-colors px-2 py-0.5"
-                    >
-                      {t('İptal')}
-                    </button>
-                  </div>
-                </div>
-                </>
-              ) : (
-                <>
-                <div className={`mt-3 flex items-center gap-2 ${currentVisibleStepIndex === 0 ? 'justify-end' : 'justify-between'} ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
-                  {currentVisibleStepIndex > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
-                      className="fortale-action-button h-10 px-3.5 rounded-2xl border text-[12px] font-semibold inline-flex items-center gap-1.5"
-                    >
-                      <ArrowLeft size={14} />
-                      {t('Geri')}
-                    </button>
                   )}
 
-                  {currentVisibleStepIndex < totalVisibleStepCount - 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (requireLoginForGeneration()) return;
-                        setCreationStep((prev) => getNextCreationStep(prev));
-                      }}
-                      disabled={!canMoveNext}
-                      className={`fortale-action-button h-10 px-4 rounded-2xl border text-[12px] font-bold inline-flex items-center gap-1.5 ${canMoveNext
-                        ? 'text-white active:scale-95'
-                        : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
-                        } ${canMoveNext ? 'is-primary' : ''}`}
-                      style={canMoveNext ? primaryActionButtonStyle : undefined}
-                    >
-                      {t('İleri')}
-                      <ArrowRight size={14} />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void handleCreateSmartBook()}
-                      disabled={!canCreateOnFinalStep}
-                      className={`fortale-action-button h-10 px-4 rounded-2xl border text-[12px] font-bold inline-flex items-center gap-1.5 ${canCreateOnFinalStep
-                        ? 'text-white active:scale-95'
-                        : 'border-[#3f556f]/30 text-[#7288a2] bg-[#172233]'
-                        } ${canCreateOnFinalStep ? 'is-primary' : ''}`}
-                      style={canCreateOnFinalStep ? primaryActionButtonStyle : undefined}
-                    >
-                      <BookPlus size={15} />
-                      {`${t('Oluştur')} (${selectedCreateCreditCost} ${t('kredi')})`}
-                    </button>
+                  {/* ── ADIM 5: Evren ── */}
+                  {creationStep === optionalBookDetailsStep && (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Zaman')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {SETTING_TIME_OPTIONS.map((option) => {
+                            const isSelected = settingTimeChoice === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => {
+                                  setSettingTimeChoice(option.value);
+                                  if (option.value !== 'custom') {
+                                    setSettingTimeInput('');
+                                  }
+                                }}
+                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {t(option.label)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {settingTimeChoice === 'custom' && (
+                          <input
+                            value={settingTimeInput}
+                            onChange={(event) => setSettingTimeInput(event.target.value)}
+                            maxLength={120}
+                            placeholder={t("Örn: 1800'ler, günümüz, 2090 sonrası")}
+                            className={wizardFieldClass}
+                            style={wizardFieldStyle()}
+                          />
+                        )}
+                      </div>
+
+                      <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Mekan')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {SETTING_PLACE_OPTIONS.map((option) => {
+                            const isSelected = settingPlaceChoice === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => {
+                                  setSettingPlaceChoice(option.value);
+                                  if (option.value !== 'custom') {
+                                    setSettingPlaceInput('');
+                                  }
+                                }}
+                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {t(option.label)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {settingPlaceChoice === 'custom' && (
+                          <input
+                            value={settingPlaceInput}
+                            onChange={(event) => setSettingPlaceInput(event.target.value)}
+                            maxLength={120}
+                            placeholder={t('Örn: İstanbul, antik kent, Mars kolonisi')}
+                            className={wizardFieldClass}
+                            style={wizardFieldStyle()}
+                          />
+                        )}
+                      </div>
+
+                      <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Dünya tipi')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {WORLD_TYPE_OPTIONS.map((option) => {
+                            const isSelected = worldTypeChoice === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => {
+                                  setWorldTypeChoice(option.value);
+                                  if (option.value !== 'custom') {
+                                    setWorldTypeInput('');
+                                  }
+                                }}
+                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {t(option.label)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {worldTypeChoice === 'custom' && (
+                          <input
+                            value={worldTypeInput}
+                            onChange={(event) => setWorldTypeInput(event.target.value)}
+                            maxLength={120}
+                            placeholder={t('Örn: gerçekçi, büyülü, alternatif evren')}
+                            className={wizardFieldClass}
+                            style={wizardFieldStyle()}
+                          />
+                        )}
+                      </div>
+                    </div>
                   )}
-                </div>
-                </>
+
+                  {/* ── ADIM 6: Hikaye Çekirdeği ── */}
+                  {creationStep === premiseStep && (
+                    <div className="space-y-2.5 pt-1">
+                      {selectedBookType === 'story' ? (
+                        <div>
+                          <label className="fortale-section-kicker mb-2 block">{t('Konu')}</label>
+                          <textarea
+                            value={customPremiseInput}
+                            onChange={(event) => {
+                              setPremiseMode('custom');
+                              setSelectedPremise('');
+                              setCustomPremiseInput(event.target.value);
+                            }}
+                            maxLength={600}
+                            rows={5}
+                            placeholder={t('Örn: Paralel evrenler, fotosentez veya kuantum bilgisayarlar')}
+                            className={wizardTextareaClass}
+                            style={wizardFieldStyle({ fixedHeight: false })}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                      <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Konu kaynağı')}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPremiseMode('examples');
+                              setCustomPremiseInput('');
+                            }}
+                            className="rounded-xl border px-3 py-3 text-left transition-all active:scale-[0.98]"
+                            style={wizardOptionButtonStyle(premiseMode === 'examples')}
+                            aria-pressed={premiseMode === 'examples'}
+                          >
+                            <span className="block text-[12px] font-bold">{t('Örneklerden seç')}</span>
+                            <span className={`mt-0.5 block text-[11px] font-semibold ${premiseMode === 'examples' ? 'opacity-100' : 'opacity-70'}`}>
+                              {t('Fortale hazır çekirdekler sunsun')}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPremiseMode('custom');
+                              setSelectedPremise('');
+                            }}
+                            className="rounded-xl border px-3 py-3 text-left transition-all active:scale-[0.98]"
+                            style={wizardOptionButtonStyle(premiseMode === 'custom')}
+                            aria-pressed={premiseMode === 'custom'}
+                          >
+                            <span className="block text-[12px] font-bold">{t('Diğer')}</span>
+                            <span className={`mt-0.5 block text-[11px] font-semibold ${premiseMode === 'custom' ? 'opacity-100' : 'opacity-70'}`}>
+                              {t('Konu fikrini sen belirle')}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {premiseMode === 'examples' ? (
+                        <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                          <p className="fortale-section-kicker mb-2.5">{t('Hikaye çekirdeği')}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {STORY_PREMISE_OPTIONS.map((premise) => {
+                              const isSelected = selectedPremise === premise;
+                              return (
+                                <button
+                                  key={premise}
+                                  type="button"
+                                  onClick={() => setSelectedPremise(premise)}
+                                  className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                  style={wizardOptionButtonStyle(isSelected)}
+                                  aria-pressed={isSelected}
+                                >
+                                  {t(premise)}
+                                </button>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPremiseMode('custom');
+                                setSelectedPremise('');
+                              }}
+                              className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                              style={wizardOptionButtonStyle(false)}
+                              aria-pressed={false}
+                            >
+                              {t('Diğer')}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                          <label className="fortale-section-kicker mb-2 block">{t('Konu')}</label>
+                          <textarea
+                            value={customPremiseInput}
+                            onChange={(event) => setCustomPremiseInput(event.target.value)}
+                            maxLength={600}
+                            rows={4}
+                            placeholder={t('Örn: Kahraman, herkesin unuttuğu eski bir sırrı çözmek zorunda kalır.')}
+                            className={wizardTextareaClass}
+                            style={wizardFieldStyle({ fixedHeight: false })}
+                          />
+                        </div>
+                      )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── ADIM 7: Kahraman Portresi ── */}
+                  {creationStep === portraitStep && (
+                    <div className="pt-1">
+                      {renderHeroPortraitPanel()}
+                    </div>
+                  )}
+
+                  {/* ── ADIM 8: Genel Bakış ── */}
+                  {creationStep === summaryStep && (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="fortale-library-panel rounded-2xl border px-3 py-3">
+                        <p className="text-[16px] font-bold text-white">{t('Kitabınıza genel bakış')}</p>
+                        <p className="mt-1 text-[12px] leading-snug text-white/45">
+                          {t('Oluşturmadan önce seçimlerinizi son kez kontrol edin.')}
+                        </p>
+                      </div>
+
+                      <div className="fortale-library-panel overflow-hidden rounded-2xl border">
+                        {bookOverviewRows.map((row, index) => (
+                          <div
+                            key={`${row.label}-${index}`}
+                            className={`flex items-start justify-between gap-4 px-3.5 py-3 ${index > 0 ? 'border-t border-white/[0.08]' : ''}`}
+                          >
+                            <span className="shrink-0 text-[12px] font-semibold text-white/50">{row.label}</span>
+                            <span className="min-w-0 text-right text-[12px] font-bold leading-snug text-white">
+                              {row.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="fortale-library-panel rounded-2xl border px-3.5 py-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-[13px] font-bold text-white">{t('Maliyet')}</span>
+                          <span className="text-[15px] font-extrabold text-white">{selectedCreateCreditCost} {t('kredi')}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-snug text-white/45">{createCreditUseSentence}</p>
+                      </div>
+                    </div>
+                  )}
+                </fieldset>
               )}
             </div>
-          </form>
 
-          {isGenerating && (() => {
-            const bookType = activeGeneratingBookType ?? selectedBookType;
-            const factsForType = (bookType === 'fairy_tale' || bookType === 'story' || bookType === 'novel')
-              ? LITERARY_FACTS[bookType] : null;
-            const langFacts = factsForType
-              ? (factsForType[language] ?? factsForType['en'] ?? factsForType['tr'] ?? []) : [];
-            if (!langFacts.length) return null;
-            const order = literaryFactOrderRef.current;
-            const shuffledIndex = order.length > 0 ? order[literaryFactIndex % order.length] : literaryFactIndex;
-            const fact = langFacts[shuffledIndex % langFacts.length];
-            return (
-              <div className="flex items-center justify-center px-6" style={{ minHeight: '30vh' }}>
-                <p
-                  key={literaryFactIndex}
-                  className="text-center italic leading-relaxed text-[#a8c8bc]"
-                  style={{ fontSize: 15, animation: 'fadeIn 0.8s ease' }}
-                >
-                  &ldquo;{fact}&rdquo;
-                </p>
-              </div>
-            );
-          })()}
+          </div>
         </section>
+
+        {/* WIZARD GERİ / İLERİ — bottom nav üstüne fixed */}
+        {isCreationWizardOpen && !isGenerating && (
+          <div className="fixed left-0 right-0 z-[35] pointer-events-none" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+            <div className="app-chrome-width">
+              {creationStep === portraitStep && (
+                <p
+                  className="mx-4 mb-1 rounded-[16px] border px-3 py-2 text-center text-[11px] font-semibold leading-snug pointer-events-auto"
+                  style={{ borderColor: 'rgba(139,187,244,0.18)', background: 'rgba(8,36,70,0.72)', color: 'rgba(207,228,255,0.78)' }}
+                >
+                  {t('Fotoğrafın AI tarafından kitabın görsel stiline uyarlanır. İsteğe bağlıdır, eklenirse +1 kredi kullanır.')}
+                </p>
+              )}
+              <div className="flex gap-2 px-4 py-2 pointer-events-auto">
+                {currentVisibleStepIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
+                    className="h-[52px] flex-1 rounded-[18px] border text-[13px] font-semibold inline-flex items-center justify-center gap-2"
+                    style={secondaryActionButtonStyle}
+                  >
+                    <ArrowLeft size={14} />{t('Geri')}
+                  </button>
+                )}
+                {currentVisibleStepIndex < totalVisibleStepCount - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => { if (requireLoginForGeneration()) return; setCreationStep((prev) => getNextCreationStep(prev)); }}
+                    disabled={!canMoveNext}
+                    className="h-[52px] flex-[2] rounded-[18px] border text-[13px] font-bold inline-flex items-center justify-center gap-2"
+                    style={canMoveNext ? primaryActionButtonStyle : disabledActionButtonStyle}
+                  >
+                    {t('İleri')}<ArrowRight size={14} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canCreateOnFinalStep) return;
+                      void handleCreateSmartBook();
+                    }}
+                    disabled={!canCreateOnFinalStep}
+                    className="h-[52px] flex-[2] rounded-[18px] border text-[13px] font-bold inline-flex items-center justify-center gap-2"
+                    style={canCreateOnFinalStep ? primaryActionButtonStyle : disabledActionButtonStyle}
+                  >
+                    <BookPlus size={15} />{t('Oluştur')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {isLoginRequiredModalOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[120]">
@@ -3469,7 +4551,7 @@ export default function HomeView({
                       setLoginRequiredModalOpen(false);
                       onRequestLogin?.();
                     }}
-                    className="h-12 rounded-2xl border border-[#7eb3ef]/38 bg-[linear-gradient(135deg,rgba(35,87,152,0.95),rgba(29,72,128,0.95))] text-[14px] font-bold text-white"
+                    className="h-12 rounded-2xl border border-[#7eb3ef]/38 bg-[#0b2342] text-[14px] font-bold text-white"
                   >
                     {t('Giriş Yap')}
                   </button>
@@ -3565,7 +4647,7 @@ export default function HomeView({
 
         {isCreationIntroOnly && (homeShelfCourses.length > 0 ? (
           <section className="fortale-shelf-section pb-4">
-            <div className="fortale-shelf-scroll touch-scroll-x">
+            <div ref={homeShelfScrollRef} className="fortale-shelf-scroll touch-scroll-x">
               {homeShelfCourses.map((course) => renderHomeCourseCard(course))}
             </div>
           </section>
@@ -3580,7 +4662,7 @@ export default function HomeView({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">{t('Yeni Bir Fortale Başlat')}</h3>
-                  <p className="text-[10px] text-[#d2e6ff] mt-1">{t('Build Your Epic')}</p>
+                  <p className="text-[10px] text-[#d2e6ff] mt-1">{t('Create, Discover and Share')}</p>
                   <p className="text-[10px] text-text-secondary max-w-[220px] mt-1">{t('Konu yazarak veya doküman yükleyerek hemen başlayabilirsin.')}</p>
                 </div>
               </>
@@ -3726,7 +4808,7 @@ export default function HomeView({
                         void handleReminderApply();
                       }}
                       disabled={!reminderDraft}
-                      className="px-3 h-8 rounded-lg border border-emerald-400/70 text-[11px] text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-45 disabled:hover:bg-transparent transition-colors"
+                      className="px-3 h-8 rounded-lg border border-sky-300/70 text-[11px] text-sky-200 hover:bg-sky-500/10 disabled:opacity-45 disabled:hover:bg-transparent transition-colors"
                     >
                       {t('Kaydet')}
                     </button>
@@ -3768,7 +4850,7 @@ export default function HomeView({
                       void handleStickyCopy();
                     }}
                     disabled={!hasStickyContent}
-                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent ${isStickyCopyConfirmed ? 'text-emerald-400 bg-emerald-500/15' : 'text-zinc-300 hover:text-white hover:bg-white/10'}`}
+                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent ${isStickyCopyConfirmed ? 'text-sky-300 bg-sky-500/15' : 'text-zinc-300 hover:text-white hover:bg-white/10'}`}
                     title={isStickyCopyConfirmed ? t('Kopyalandı.') : t('Kopyala')}
                   >
                     {isStickyCopyConfirmed ? <Check size={14} /> : <Copy size={14} />}
@@ -3794,7 +4876,7 @@ export default function HomeView({
                       setReminderDraft(toLocalDateTimeValue(stickyModal.reminderAt));
                       setIsReminderPickerOpen(true);
                     }}
-                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center ${stickyModal.reminderAt ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-300 hover:text-white hover:bg-white/10'}`}
+                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center ${stickyModal.reminderAt ? 'text-sky-300 bg-sky-500/10' : 'text-zinc-300 hover:text-white hover:bg-white/10'}`}
                     title={stickyModal.reminderAt ? t('Hatırlatıcıyı düzenle') : t('Hatırlatıcı ekle')}
                   >
                     <Bell size={14} />

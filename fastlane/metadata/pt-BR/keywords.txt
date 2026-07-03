@@ -1,1 +1,1 @@
-conto,historia,romance,livro,infantil,criar,ia,podcast,audiobook,epub,pdf,capa,ficcao,escrita,autor
+conto,historia,romance,retrato,personagem,ia,livro,criar,capa,visual,podcast,epub,pdf,narrativa,arte

@@ -26,6 +26,17 @@ service firebase.storage {
       allow read: if isSignedIn();
       allow write: if false;
     }
+
+    // Community snapshots and covers are written only by Cloud Functions.
+    // Cover download tokens are returned by the callable catalog API; full
+    // packages are copied server-side into the buyer's private smartbooks path.
+    match /communityPackages/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /communityCovers/{allPaths=**} {
+      allow read, write: if false;
+    }
     
     match /{allPaths=**} {
       allow read, write: if false;

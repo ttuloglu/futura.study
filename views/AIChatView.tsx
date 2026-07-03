@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Check, Copy, Download, Plus, Send, Share2, User } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { chatWithAI } from '../ai';
+import { useUiI18n } from '../i18n/uiI18n';
 
 interface AIChatViewProps {
   onBack: () => void;
@@ -10,20 +11,19 @@ interface AIChatViewProps {
 
 type DownloadFormat = 'txt' | 'md';
 
-const THINKING_LABEL = 'Düşünüyor';
-
 function AssistantAvatar() {
+  const { t } = useUiI18n();
   return (
     <div className="chat-avatar">
       <span className="chat-avatar-aura" />
       <span className="chat-avatar-ring" />
-      <img src="/favicon-red.svg" alt="Asistan" className="chat-avatar-icon" />
+      <img src="/favicon-red.svg" alt={t('Asistan')} className="chat-avatar-icon" />
     </div>
   );
 }
 
-function formatMessageTime(value: Date): string {
-  return value.toLocaleTimeString('tr-TR', {
+function formatMessageTime(value: Date, locale: string): string {
+  return value.toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit'
   });
@@ -45,11 +45,12 @@ function buildDownloadName(content: string, format: DownloadFormat): string {
 }
 
 export default function AIChatView({ onBack: _onBack, context: _context }: AIChatViewProps) {
+  const { locale, t } = useUiI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Merhaba. İstediğin konuda konuşabiliriz.',
+      content: t('Merhaba. İstediğin konuda konuşabiliriz.'),
       timestamp: new Date()
     }
   ]);
@@ -95,7 +96,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
   const getChatErrorMessage = (error: unknown): string => {
     const rawMessage = (error as { message?: string } | null)?.message;
     if (!rawMessage || typeof rawMessage !== 'string') {
-      return 'Bağlantı hatası.';
+      return t('Bağlantı hatası.');
     }
 
     const sanitized = rawMessage
@@ -103,7 +104,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
       .replace(/\s*\(functions\/[a-z-]+\)\.?$/i, '')
       .trim();
 
-    return sanitized || 'Bağlantı hatası.';
+    return sanitized || t('Bağlantı hatası.');
   };
 
   const handleCopyMessage = async (message: ChatMessage) => {
@@ -138,7 +139,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
   const handleShareMessage = async (message: ChatMessage) => {
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'Fortale Chat', text: message.content });
+        await navigator.share({ title: t('Fortale Chat'), text: message.content });
         return;
       }
 
@@ -223,9 +224,9 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
 
                 <div className={`space-y-1.5 ${isAssistant ? '' : 'items-end flex flex-col'}`}>
                   <span className="text-[10px] font-medium text-zinc-500 px-1 inline-flex items-center gap-1">
-                    <span>{isAssistant ? 'Asistan' : 'Sen'}</span>
+                    <span>{isAssistant ? t('Asistan') : t('Sen')}</span>
                     <span>•</span>
-                    <span>{formatMessageTime(msg.timestamp)}</span>
+                    <span>{formatMessageTime(msg.timestamp, locale)}</span>
                   </span>
 
                   <div
@@ -246,7 +247,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                         className={`h-6 w-6 rounded-md flex items-center justify-center transition-colors ${
                           isCopied ? 'text-accent-green' : 'hover:text-white'
                         }`}
-                        title="Kopyala"
+                        title={t('Kopyala')}
                       >
                         {isCopied ? <Check size={12} /> : <Copy size={12} />}
                       </button>
@@ -258,7 +259,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                             setOpenDownloadMenuFor((prev) => (prev === msg.id ? null : msg.id))
                           }
                           className="h-6 w-6 rounded-md flex items-center justify-center transition-colors hover:text-white"
-                          title="İndir"
+                          title={t('İndir')}
                         >
                           <Download size={12} />
                         </button>
@@ -270,14 +271,14 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                               onClick={() => handleDownloadMessage(msg, 'txt')}
                               className="w-full rounded-md px-2 py-1.5 text-left text-[11px] text-zinc-300 hover:bg-white/5 hover:text-white"
                             >
-                              Metin indir
+                              {t('Metin indir')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDownloadMessage(msg, 'md')}
                               className="w-full rounded-md px-2 py-1.5 text-left text-[11px] text-zinc-300 hover:bg-white/5 hover:text-white"
                             >
-                              Markdown indir
+                              {t('Markdown indir')}
                             </button>
                           </div>
                         )}
@@ -287,7 +288,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                         type="button"
                         onClick={() => void handleShareMessage(msg)}
                         className="h-6 w-6 rounded-md flex items-center justify-center transition-colors hover:text-white"
-                        title="Paylaş"
+                        title={t('Paylaş')}
                       >
                         <Share2 size={12} />
                       </button>
@@ -300,7 +301,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                         className={`h-6 w-6 rounded-md flex items-center justify-center transition-colors ${
                           isCopied ? 'text-accent-green' : 'hover:text-white'
                         }`}
-                        title="Kopyala"
+                        title={t('Kopyala')}
                       >
                         {isCopied ? <Check size={12} /> : <Copy size={12} />}
                       </button>
@@ -316,7 +317,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
               <AssistantAvatar />
               <div className="chat-thinking-surface rounded-2xl border border-white/10 bg-[#0f141d]/92 px-3 py-2 min-w-[200px]">
                 <div className="flex items-center gap-2 h-6">
-                  <span className="text-[12px] text-zinc-100">{THINKING_LABEL}</span>
+                  <span className="text-[12px] text-zinc-100">{t('Düşünüyor')}</span>
                   <span className="flex items-center gap-1 ml-1">
                     <span className="w-1 h-1 bg-zinc-300 rounded-full animate-bounce" />
                     <span
@@ -345,7 +346,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder="Mesajını yaz..."
+              placeholder={t('Mesajını yaz...')}
               rows={1}
               className="chat-input flex-1 bg-transparent border-none text-white text-sm py-2 px-1 focus:outline-none placeholder:text-text-secondary/50 font-medium resize-none max-h-[120px]"
             />

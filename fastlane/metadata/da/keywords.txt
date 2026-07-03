@@ -1,1 +1,1 @@
-eventyr,historie,roman,børnebog,bogskaber,ai,podcast,lydbog,epub,pdf,omslag,fiktion,skrivning,app
+eventyr,historie,roman,portræt,karakter,ai bog,bogskaber,omslag,billede,podcast,epub,pdf,fortælling

@@ -17,13 +17,13 @@ import {
   BookOpenText,
   CheckCircle2,
   ClipboardCheck,
-  Clock3,
   Download,
   History,
   Lock,
   Mic,
   PauseCircle,
   PlayCircle,
+  SkipBack,
   Target,
   Zap,
   X,
@@ -107,7 +107,7 @@ const QUIZ_TIME_LIMIT_SECONDS = 300;
 const READING_WORDS_PER_MINUTE = 180;
 const QUIZ_FEEDBACK_DELAY_MS = 2000;
 const PODCAST_CREATING_LOOP_VIDEO_SRC = '/animations/podcast-creating-loop.mp4';
-const VISUAL_STORY_SLIDE_TRANSITION_MS = 1000;
+const VISUAL_STORY_SLIDE_TRANSITION_MS = 500;
 const PDF_BACKGROUND_PRESETS = [
   { id: 'milk-white', label: 'Süt beyaz', color: '#fffaf0' },
   { id: 'candy-blue', label: 'Şeker mavi', color: '#d9f2ff' },
@@ -162,7 +162,7 @@ const PODCAST_VOICE_PREVIEW_TEXTS: Record<string, string> = {
   th: 'ยินดีต้อนรับสู่ Fortale สร้างเรื่องราวสุดยิ่งใหญ่ของคุณ',
   tr: "Fortale'e hoş geldiniz. Epik hikayelerinizi oluşturun."
 };
-type FairyTaleBackgroundTrackKey = 'classic' | 'modern' | 'adventure' | 'mythic' | 'educational';
+type FairyTaleBackgroundTrackKey = 'classic' | 'modern' | 'adventure' | 'mythic' | 'educational' | 'twilight';
 
 type FairyTaleBackgroundTrack = {
   key: FairyTaleBackgroundTrackKey;
@@ -195,23 +195,38 @@ const FAIRY_TALE_BACKGROUND_TRACKS: Record<FairyTaleBackgroundTrackKey, FairyTal
     key: 'educational',
     label: 'Under the Quilt - 20s Loop',
     src: '/audio/fairy-tales/under-the-quilt-loop-20s.mp3'
+  },
+  twilight: {
+    key: 'twilight',
+    label: 'Twilight at the Pass',
+    src: '/audio/fairy-tales/twilight-at-the-pass.mp3'
   }
 };
 
 const FAIRY_TALE_SUBGENRE_TRACK_KEYS: Record<string, FairyTaleBackgroundTrackKey> = {
+  // legacy long-form keys (kept for backwards compatibility)
   'klasik masal': 'classic',
   'modern masal': 'modern',
   'macera masalı': 'adventure',
   'mitolojik esintili': 'mythic',
-  'eğitici masal': 'educational'
+  'eğitici masal': 'educational',
+  // current short-form keys (matches SMARTBOOK_SUBGENRE_OPTIONS values lowercased)
+  'klasik': 'classic',
+  'modern': 'modern',
+  'macera': 'adventure',
+  'mitolojik': 'twilight',
+  'fantastik': 'twilight',
+  'kültürel': 'twilight',
+  'eğitici': 'educational',
+  'bilimkurgu': 'modern'
 };
 let exportUtilsPromise: Promise<typeof import('../utils/exportUtils')> | null = null;
 
 function resolveBookTypeLabel(bookType: CourseData['bookType'] | undefined, t: (value: string) => string): string {
   if (bookType === 'fairy_tale') return t('Masal');
-  if (bookType === 'story') return t('Hikaye');
-  if (bookType === 'novel') return t('Roman');
-  return t('Roman');
+  if (bookType === 'story') return t('Çalışma Kitabı');
+  if (bookType === 'novel') return t('Hikaye');
+  return t('Hikaye');
 }
 
 function isFairyTaleBookType(bookType: CourseData['bookType'] | undefined): boolean {
@@ -260,6 +275,9 @@ function detectLikelyBookLanguageFromText(value: string): ReturnType<typeof norm
 function buildBookTypeSubGenreLabel(courseData: CourseData, t: (value: string) => string): string {
   const bookTypeLabel = resolveBookTypeLabel(courseData.bookType, t);
   const subGenre = String(courseData.subGenre || '').trim();
+  if (courseData.bookType === 'story') {
+    return subGenre ? `${bookTypeLabel}- ${t(subGenre)}` : bookTypeLabel;
+  }
   const ageLabel = getSmartBookAgeGroupLabel(courseData.ageGroup);
   const ageGroupLabel = ageLabel === 'Genel' ? `${ageLabel} ${t('Yaş Grubu')}` : `${ageLabel} ${t('Grubu')}`;
   if (!subGenre) return `${bookTypeLabel} I ${ageGroupLabel}`;
@@ -733,8 +751,7 @@ const VISUAL_STORY_TRANSITION_SFX_SRC = '/audio/glass-canopy-transition.mp3';
 const VISUAL_STORY_TRANSITION_SFX_GAIN = 0.05;
 const VISUAL_STORY_BACKGROUND_IDLE_GAIN = 0.18;
 const VISUAL_STORY_BACKGROUND_NARRATION_GAIN = 0.08;
-const VISUAL_STORY_IOS_BACKGROUND_IDLE_GAIN = 0.14;
-const VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN = 0.055;
+const VISUAL_STORY_IOS_BACKGROUND_GAIN_MULTIPLIER = 1.10;
 const VISUAL_STORY_BACKGROUND_GAIN_RAMP_SECONDS = 0.28;
 
 type VisualStoryMotionPoint = {
@@ -765,11 +782,51 @@ function isNativeIosRuntime(): boolean {
   }
 }
 
+function isAbsoluteVisualStoryMediaUrl(value: string): boolean {
+  const normalized = String(value || '').trim();
+  return Boolean(
+    normalized &&
+    (
+      /^[a-z][a-z0-9+.-]*:/i.test(normalized) ||
+      normalized.startsWith('//') ||
+      normalized.startsWith('/') ||
+      normalized.startsWith('#')
+    )
+  );
+}
+
 function getVisualStoryBackgroundGain(isNarrating: boolean): number {
-  if (isNativeIosRuntime()) {
-    return isNarrating ? VISUAL_STORY_IOS_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_IOS_BACKGROUND_IDLE_GAIN;
+  const baseGain = isNarrating ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
+  return isNativeIosRuntime()
+    ? baseGain * VISUAL_STORY_IOS_BACKGROUND_GAIN_MULTIPLIER
+    : baseGain;
+}
+
+function getVisualStoryBackgroundPlaybackSrc(track: FairyTaleBackgroundTrack): string {
+  return track.src;
+}
+
+function setAudioElementSrcPreservingTime(audio: HTMLAudioElement, src: string): void {
+  const currentSrcPath = audio.currentSrc || audio.src || '';
+  if (currentSrcPath.endsWith(src)) return;
+  const previousTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+  const wasPaused = audio.paused;
+  audio.src = src;
+  audio.load();
+  const restoreTime = () => {
+    try {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        audio.currentTime = previousTime % audio.duration;
+      }
+    } catch {
+      // Ignore media state races during source swaps.
+    }
+    audio.removeEventListener('loadedmetadata', restoreTime);
+  };
+  audio.addEventListener('loadedmetadata', restoreTime);
+  if (!wasPaused) {
+    void audio.play().catch(() => undefined);
   }
-  return isNarrating ? VISUAL_STORY_BACKGROUND_NARRATION_GAIN : VISUAL_STORY_BACKGROUND_IDLE_GAIN;
 }
 
 function normalizeVisualStoryNarrationSource(value: string | undefined | null): string {
@@ -838,8 +895,8 @@ function resolveVisualStoryNarrationLanguage(
   fallbackText: string
 ): ReturnType<typeof normalizeAppLanguageCode> {
   return (
-    normalizeAppLanguageCode(courseData.language) ||
     detectLikelyBookLanguageFromText(fallbackText) ||
+    normalizeAppLanguageCode(courseData.language) ||
     detectLikelyBookLanguageFromText(courseData.topic || '') ||
     'tr'
   );
@@ -1092,7 +1149,7 @@ function logVisualStoryNarrationCosts(
   });
 }
 
-const _FAIRY_COLORS = ['#60a5fa', '#f87171', '#e879f9', '#4ade80', '#22d3ee', '#fb923c', '#fbbf24', '#a78bfa'];
+const _FAIRY_COLORS = ['#60a5fa', '#f87171', '#e879f9', '#60a5fa', '#22d3ee', '#fb923c', '#fbbf24', '#a78bfa'];
 
 type FairyOverlayStar = {
   id: number;
@@ -1138,7 +1195,7 @@ type FairyAmbientDust = {
 function buildStoryTextAmbient(seed: string | undefined) {
   const next = createSeededRandom(`${String(seed || 'visual-story')}|text-ambient`);
   const starPoints = buildUniqueOverlayBands(5, next, [[8, 42], [56, 94]], [6, 94]);
-  const dust: FairyAmbientDust[] = Array.from({ length: 144 }, (_, index) => ({
+  const dust: FairyAmbientDust[] = Array.from({ length: 288 }, (_, index) => ({
     left: Number((8 + (next() * 86)).toFixed(2)),
     bottom: Number((4 + (next() * 70)).toFixed(2)),
     size: Number((1.1 + (next() * 0.9)).toFixed(2)),
@@ -1207,7 +1264,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 55, y: 21, s: 1.0, dur: 4.6, delay: 2.0, lo: 0.07, hi: 0.60, color: '#60a5fa' },
     { x: 76, y: 78, s: 2.4, dur: 3.0, delay: 0.6, lo: 0.19, hi: 1.00, color: '#f87171' },
     { x: 95, y: 43, s: 1.2, dur: 3.7, delay: 1.5, lo: 0.09, hi: 0.70, color: '#e879f9' },
-    { x: 30, y: 92, s: 1.5, dur: 2.5, delay: 0.3, lo: 0.12, hi: 0.80, color: '#4ade80' },
+    { x: 30, y: 92, s: 1.5, dur: 2.5, delay: 0.3, lo: 0.12, hi: 0.80, color: '#60a5fa' },
     { x: 6,  y: 58, s: 1.8, dur: 3.4, delay: 1.0, lo: 0.14, hi: 0.88, color: '#22d3ee' },
     { x: 42, y: 77, s: 1.1, dur: 4.2, delay: 0.5, lo: 0.09, hi: 0.66, color: '#fb923c' },
     { x: 86, y: 49, s: 2.0, dur: 2.8, delay: 1.8, lo: 0.16, hi: 0.92, color: '#fbbf24' },
@@ -1215,7 +1272,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 62, y: 59, s: 1.6, dur: 2.1, delay: 0.9, lo: 0.13, hi: 0.86, color: '#60a5fa' },
     { x: 91, y: 26, s: 1.0, dur: 4.5, delay: 1.4, lo: 0.08, hi: 0.64, color: '#f87171' },
     { x: 34, y: 46, s: 2.2, dur: 3.0, delay: 0.7, lo: 0.18, hi: 0.96, color: '#e879f9' },
-    { x: 53, y: 83, s: 1.4, dur: 2.6, delay: 1.2, lo: 0.11, hi: 0.78, color: '#4ade80' },
+    { x: 53, y: 83, s: 1.4, dur: 2.6, delay: 1.2, lo: 0.11, hi: 0.78, color: '#60a5fa' },
     { x: 76, y: 37, s: 1.7, dur: 3.8, delay: 0.1, lo: 0.14, hi: 0.88, color: '#22d3ee' },
     { x: 22, y: 70, s: 1.0, dur: 4.0, delay: 1.6, lo: 0.08, hi: 0.62, color: '#fb923c' },
     { x: 48, y: 14, s: 2.5, dur: 2.4, delay: 0.4, lo: 0.20, hi: 1.00, color: '#fbbf24' },
@@ -1223,7 +1280,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 9,  y: 87, s: 1.9, dur: 2.9, delay: 0.8, lo: 0.15, hi: 0.90, color: '#60a5fa' },
     { x: 37, y: 24, s: 1.3, dur: 4.3, delay: 1.3, lo: 0.10, hi: 0.74, color: '#f87171' },
     { x: 80, y: 61, s: 1.6, dur: 3.1, delay: 0.6, lo: 0.12, hi: 0.82, color: '#e879f9' },
-    { x: 16, y: 42, s: 2.1, dur: 2.7, delay: 1.9, lo: 0.17, hi: 0.94, color: '#4ade80' },
+    { x: 16, y: 42, s: 2.1, dur: 2.7, delay: 1.9, lo: 0.17, hi: 0.94, color: '#60a5fa' },
   ], []);
 
   const dust = useMemo(() => [
@@ -1272,7 +1329,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 38, y: 45, s: 2.6, dur: 5.6, delay: 0.7, op: 0.59, color: '#60a5fa' },
     { x: 62, y: 99, s: 3.8, dur: 3.7, delay: 2.0, op: 0.74, color: '#f87171' },
     { x: 73, y: 56, s: 3.0, dur: 4.5, delay: 0.9, op: 0.67, color: '#e879f9' },
-    { x: 86, y: 22, s: 3.5, dur: 5.0, delay: 1.5, op: 0.62, color: '#4ade80' },
+    { x: 86, y: 22, s: 3.5, dur: 5.0, delay: 1.5, op: 0.62, color: '#60a5fa' },
     { x: 28, y: 87, s: 4.3, dur: 3.8, delay: 2.3, op: 0.76, color: '#22d3ee' },
     { x: 11, y: 55, s: 3.1, dur: 4.6, delay: 0.4, op: 0.68, color: '#fb923c' },
     { x: 47, y: 33, s: 3.6, dur: 5.2, delay: 1.2, op: 0.63, color: '#fbbf24' },
@@ -1280,7 +1337,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 83, y: 16, s: 4.0, dur: 3.6, delay: 0.6, op: 0.65, color: '#60a5fa' },
     { x: 4,  y: 73, s: 3.3, dur: 4.9, delay: 1.8, op: 0.59, color: '#f87171' },
     { x: 21, y: 41, s: 3.7, dur: 5.3, delay: 0.2, op: 0.70, color: '#e879f9' },
-    { x: 55, y: 67, s: 2.7, dur: 4.0, delay: 1.6, op: 0.62, color: '#4ade80' },
+    { x: 55, y: 67, s: 2.7, dur: 4.0, delay: 1.6, op: 0.62, color: '#60a5fa' },
     { x: 79, y: 28, s: 4.4, dur: 3.5, delay: 0.9, op: 0.77, color: '#22d3ee' },
     { x: 16, y: 95, s: 3.0, dur: 4.8, delay: 2.4, op: 0.64, color: '#fb923c' },
     { x: 40, y: 12, s: 3.8, dur: 5.1, delay: 0.3, op: 0.69, color: '#fbbf24' },
@@ -1288,7 +1345,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 92, y: 36, s: 4.1, dur: 3.9, delay: 2.2, op: 0.73, color: '#60a5fa' },
     { x: 8,  y: 88, s: 3.4, dur: 5.4, delay: 0.5, op: 0.66, color: '#f87171' },
     { x: 32, y: 23, s: 2.8, dur: 4.2, delay: 1.4, op: 0.61, color: '#e879f9' },
-    { x: 54, y: 74, s: 3.9, dur: 3.7, delay: 2.0, op: 0.74, color: '#4ade80' },
+    { x: 54, y: 74, s: 3.9, dur: 3.7, delay: 2.0, op: 0.74, color: '#60a5fa' },
     { x: 71, y: 43, s: 3.2, dur: 5.0, delay: 0.7, op: 0.67, color: '#22d3ee' },
     { x: 89, y: 65, s: 2.6, dur: 4.5, delay: 1.3, op: 0.60, color: '#fb923c' },
     { x: 17, y: 29, s: 4.2, dur: 3.8, delay: 2.8, op: 0.75, color: '#fbbf24' },
@@ -1296,7 +1353,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 58, y: 15, s: 3.6, dur: 4.0, delay: 1.7, op: 0.70, color: '#60a5fa' },
     { x: 75, y: 58, s: 2.4, dur: 4.7, delay: 0.8, op: 0.57, color: '#f87171' },
     { x: 96, y: 77, s: 4.0, dur: 3.6, delay: 2.3, op: 0.72, color: '#e879f9' },
-    { x: 12, y: 34, s: 3.3, dur: 5.5, delay: 0.4, op: 0.65, color: '#4ade80' },
+    { x: 12, y: 34, s: 3.3, dur: 5.5, delay: 0.4, op: 0.65, color: '#60a5fa' },
     { x: 31, y: 91, s: 2.7, dur: 4.2, delay: 1.9, op: 0.59, color: '#22d3ee' },
     { x: 48, y: 19, s: 4.5, dur: 3.9, delay: 0.6, op: 0.78, color: '#fb923c' },
     { x: 64, y: 63, s: 3.1, dur: 5.0, delay: 2.1, op: 0.66, color: '#fbbf24' },
@@ -1304,7 +1361,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 6,  y: 77, s: 3.7, dur: 3.7, delay: 2.6, op: 0.69, color: '#60a5fa' },
     { x: 25, y: 52, s: 3.0, dur: 5.1, delay: 0.3, op: 0.63, color: '#f87171' },
     { x: 43, y: 38, s: 4.1, dur: 4.3, delay: 1.5, op: 0.72, color: '#e879f9' },
-    { x: 59, y: 85, s: 2.5, dur: 3.8, delay: 0.9, op: 0.58, color: '#4ade80' },
+    { x: 59, y: 85, s: 2.5, dur: 3.8, delay: 0.9, op: 0.58, color: '#60a5fa' },
     { x: 77, y: 11, s: 3.8, dur: 4.9, delay: 2.0, op: 0.70, color: '#22d3ee' },
     { x: 93, y: 54, s: 3.2, dur: 5.3, delay: 0.2, op: 0.64, color: '#fb923c' },
     { x: 19, y: 70, s: 4.3, dur: 4.0, delay: 1.6, op: 0.74, color: '#fbbf24' },
@@ -1312,7 +1369,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 51, y: 92, s: 3.5, dur: 3.5, delay: 0.7, op: 0.68, color: '#60a5fa' },
     { x: 69, y: 48, s: 2.6, dur: 5.2, delay: 1.3, op: 0.59, color: '#f87171' },
     { x: 84, y: 31, s: 4.0, dur: 4.1, delay: 0.5, op: 0.73, color: '#e879f9' },
-    { x: 3,  y: 60, s: 3.3, dur: 4.8, delay: 2.2, op: 0.66, color: '#4ade80' },
+    { x: 3,  y: 60, s: 3.3, dur: 4.8, delay: 2.2, op: 0.66, color: '#60a5fa' },
     { x: 24, y: 6,  s: 2.7, dur: 5.6, delay: 0.8, op: 0.60, color: '#22d3ee' },
     { x: 45, y: 76, s: 4.4, dur: 3.7, delay: 1.8, op: 0.76, color: '#fb923c' },
     { x: 72, y: 21, s: 3.1, dur: 4.5, delay: 0.1, op: 0.65, color: '#fbbf24' },
@@ -1320,7 +1377,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 14, y: 84, s: 3.6, dur: 4.2, delay: 0.6, op: 0.70, color: '#60a5fa' },
     { x: 37, y: 17, s: 4.1, dur: 3.9, delay: 1.4, op: 0.74, color: '#f87171' },
     { x: 53, y: 59, s: 2.4, dur: 5.4, delay: 2.0, op: 0.57, color: '#e879f9' },
-    { x: 70, y: 89, s: 3.9, dur: 4.0, delay: 0.4, op: 0.72, color: '#4ade80' },
+    { x: 70, y: 89, s: 3.9, dur: 4.0, delay: 0.4, op: 0.72, color: '#60a5fa' },
     { x: 88, y: 44, s: 3.0, dur: 4.7, delay: 1.1, op: 0.65, color: '#22d3ee' },
     { x: 7,  y: 27, s: 4.2, dur: 3.6, delay: 2.5, op: 0.77, color: '#fb923c' },
     { x: 27, y: 97, s: 2.7, dur: 5.1, delay: 0.3, op: 0.62, color: '#fbbf24' },
@@ -1328,7 +1385,7 @@ function FairyTaleStarsOverlay({ seed: _seed }: { seed?: string | number }) {
     { x: 65, y: 72, s: 2.9, dur: 3.8, delay: 0.9, op: 0.63, color: '#60a5fa' },
     { x: 82, y: 13, s: 4.0, dur: 5.2, delay: 2.1, op: 0.71, color: '#f87171' },
     { x: 20, y: 47, s: 3.3, dur: 4.1, delay: 0.5, op: 0.66, color: '#e879f9' },
-    { x: 42, y: 63, s: 3.7, dur: 4.9, delay: 1.3, op: 0.69, color: '#4ade80' },
+    { x: 42, y: 63, s: 3.7, dur: 4.9, delay: 1.3, op: 0.69, color: '#60a5fa' },
   ], []);
 
   return (
@@ -1411,6 +1468,7 @@ function VisualStoryReader({
   const [nativeViewerLaunchToken, setNativeViewerLaunchToken] = useState(0);
   const [nativeViewerError, setNativeViewerError] = useState<string | null>(null);
   const swiperRef = useRef<SwiperType | null>(null);
+  const fullscreenSwiperRef = useRef<SwiperType | null>(null);
   const nativeViewerOpenedRef = useRef(false);
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
   const backgroundAudioContextRef = useRef<AudioContext | null>(null);
@@ -1418,6 +1476,9 @@ function VisualStoryReader({
   const backgroundAudioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const backgroundAudioSourceElementRef = useRef<HTMLAudioElement | null>(null);
   const backgroundAudioMixerUnavailableRef = useRef(false);
+  const backgroundAudioSourceSwapInFlightRef = useRef(false);
+  const backgroundRemotePausedNarrationRef = useRef(false);
+  const isNarrationPlayingRef = useRef(false);
   const lastViewportPortraitRef = useRef(isPortraitViewport);
   const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
   const transitionAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1433,6 +1494,10 @@ function VisualStoryReader({
     () => resolveVisualStoryBackgroundTrack(courseData.subGenre),
     [courseData.subGenre]
   );
+  const backgroundPlaybackSrc = getVisualStoryBackgroundPlaybackSrc(backgroundTrack);
+  useEffect(() => {
+    isNarrationPlayingRef.current = isNarrationPlaying;
+  }, [isNarrationPlaying]);
   const getOrCreateBackgroundAudioMixer = useCallback(() => {
     const audio = backgroundAudioRef.current;
     if (!audio || typeof window === 'undefined') return null;
@@ -1483,7 +1548,7 @@ function VisualStoryReader({
     const mixer = getOrCreateBackgroundAudioMixer();
     if (!mixer) {
       if (audio) {
-        audio.volume = clampedGain;
+        audio.volume = Math.min(1, clampedGain);
       }
       return;
     }
@@ -1497,6 +1562,15 @@ function VisualStoryReader({
     mixer.gainNode.gain.setValueAtTime(mixer.gainNode.gain.value, now);
     mixer.gainNode.gain.linearRampToValueAtTime(clampedGain, now + rampSeconds);
   }, [getOrCreateBackgroundAudioMixer]);
+  const switchBackgroundAudioSource = useCallback((audio: HTMLAudioElement, src: string) => {
+    const currentSrcPath = audio.currentSrc || audio.src || '';
+    if (currentSrcPath.endsWith(src)) return;
+    backgroundAudioSourceSwapInFlightRef.current = true;
+    setAudioElementSrcPreservingTime(audio, src);
+    window.setTimeout(() => {
+      backgroundAudioSourceSwapInFlightRef.current = false;
+    }, 700);
+  }, []);
   const prepareBackgroundAudioMixer = useCallback(async () => {
     const mixer = getOrCreateBackgroundAudioMixer();
     if (!mixer || mixer.context.state !== 'suspended') return;
@@ -1532,10 +1606,11 @@ function VisualStoryReader({
   );
 
   const pages = useMemo<VisualStoryPage[]>(() => {
+    const displayCoverImageUrl = courseData.deviceCoverImageUrl || courseData.coverImageUrl;
     const coverPage: VisualStoryPage = {
       id: 'cover',
       title: courseData.topic || t('Kapak'),
-      imageUrl: courseData.coverImageUrl,
+      imageUrl: displayCoverImageUrl,
       audioUrl: coverAudioOverrideUrl || courseData.coverNarrationAudioUrl,
       text: derivedCoverNarrationScript
     };
@@ -1582,9 +1657,7 @@ function VisualStoryReader({
     const normalizedUrl = String(rawUrl || '').trim();
     return Boolean(
       normalizedUrl &&
-      !/^https?:\/\//i.test(normalizedUrl) &&
-      !/^data:/i.test(normalizedUrl) &&
-      !normalizedUrl.startsWith('blob:')
+      !isAbsoluteVisualStoryMediaUrl(normalizedUrl)
     );
   }, []);
   const buildPreviewImageState = useCallback((url: string, suffix: string, alt: string): ImagePreviewState | null => {
@@ -1663,10 +1736,14 @@ function VisualStoryReader({
     ));
     return objectUrl;
   }, [isBundledVisualStoryAssetPath, loadVisualStoryBundleZip, resolvedBundledVisualStoryAudioUrls]);
+  const resolveVisualStoryAudioUrl = useCallback((rawUrl: string | null | undefined): string => {
+    const normalizedUrl = String(rawUrl || '').trim();
+    if (!normalizedUrl) return '';
+    if (!isBundledVisualStoryAssetPath(normalizedUrl)) return normalizedUrl;
+    return resolvedBundledVisualStoryAudioUrls[normalizedUrl.replace(/^\.?\//, '')] || '';
+  }, [isBundledVisualStoryAssetPath, resolvedBundledVisualStoryAudioUrls]);
   const currentPageAudioRawUrl = String(currentPage?.audioUrl || '').trim();
-  const currentPageAudioUrl = isBundledVisualStoryAssetPath(currentPageAudioRawUrl)
-    ? (resolvedBundledVisualStoryAudioUrls[currentPageAudioRawUrl.replace(/^\.?\//, '')] || '')
-    : currentPageAudioRawUrl;
+  const currentPageAudioUrl = resolveVisualStoryAudioUrl(currentPageAudioRawUrl);
   const pageHasNarrationAudio = useCallback((page: VisualStoryPage | null | undefined) => (
     Boolean(String(page?.audioUrl || '').trim())
   ), []);
@@ -1684,7 +1761,16 @@ function VisualStoryReader({
     )
   );
   const hasAvailableNarrationAudio = hasAnyNarrationAudio || isCurrentPageNarratable;
-  const canStartNarrationAction = hasAvailableNarrationAudio || canGenerateNarrationAudio;
+  // True when the course metadata signals audio exists even if URLs aren't loaded yet.
+  const courseKnowsAboutAudio = Boolean(
+    courseData.visualStoryAudioStatus === 'ready' ||
+    courseData.visualStoryAudioStatus === 'partial' ||
+    courseData.bundle?.includesPodcast === true ||
+    (courseData.nodes || []).some((node) => String(node.pageAudioStoragePath || '').trim()) ||
+    String(courseData.coverNarrationAudioStoragePath || '').trim()
+  );
+  const showsAsHavingAudio = hasAvailableNarrationAudio || courseKnowsAboutAudio;
+  const canStartNarrationAction = showsAsHavingAudio || canGenerateNarrationAudio;
 
   const selectedPdfBackgroundPreset =
     PDF_BACKGROUND_PRESETS.find((preset) => preset.id === selectedPdfBackgroundPresetId) || PDF_BACKGROUND_PRESETS[0];
@@ -1719,6 +1805,15 @@ function VisualStoryReader({
   useEffect(() => {
     setBackgroundMusicError(null);
   }, [backgroundTrack.src]);
+
+  useEffect(() => {
+    const audio = backgroundAudioRef.current;
+    if (!audio) return;
+    switchBackgroundAudioSource(audio, backgroundPlaybackSrc);
+    if (isBackgroundMusicEnabled && audio.paused) {
+      void audio.play().catch(() => undefined);
+    }
+  }, [backgroundPlaybackSrc, isBackgroundMusicEnabled, switchBackgroundAudioSource]);
 
   useEffect(() => {
     setBackgroundAudioLevel(getVisualStoryBackgroundGain(isNarrationPlaying));
@@ -1756,10 +1851,10 @@ function VisualStoryReader({
   };
 
   useEffect(() => {
-    const swiper = swiperRef.current;
-    if (!swiper || swiper.destroyed) return;
-    if (swiper.activeIndex === pageIndex) return;
-    swiper.slideTo(pageIndex, 0);
+    [swiperRef.current, fullscreenSwiperRef.current].forEach((swiper) => {
+      if (!swiper || swiper.destroyed || swiper.activeIndex === pageIndex) return;
+      swiper.slideTo(pageIndex, 0);
+    });
   }, [pageIndex]);
 
   const clearNarrationTimers = (options?: { pauseAudio?: boolean }) => {
@@ -1780,6 +1875,8 @@ function VisualStoryReader({
   };
 
   const stopAllVisualStoryAudio = () => {
+    backgroundRemotePausedNarrationRef.current = false;
+    backgroundAudioSourceSwapInFlightRef.current = true;
     clearNarrationTimers({ pauseAudio: true });
     stopAudioElement(backgroundAudioRef.current);
     stopAudioElement(narrationAudioRef.current);
@@ -1787,24 +1884,81 @@ function VisualStoryReader({
     setIsNarrationPlaying(false);
     setIsBackgroundMusicEnabled(false);
     setMotionPhase('idle');
+    window.setTimeout(() => {
+      backgroundAudioSourceSwapInFlightRef.current = false;
+    }, 250);
   };
 
+  const handleBackgroundAudioPause = useCallback(() => {
+    if (backgroundAudioSourceSwapInFlightRef.current) return;
+    if (!isNarrationPlayingRef.current) return;
+    const narrationAudio = narrationAudioRef.current;
+    if (!narrationAudio || narrationAudio.ended) return;
+    backgroundRemotePausedNarrationRef.current = true;
+    narrationAudio.pause();
+    setMotionPhase('pause');
+  }, []);
+
+  const handleBackgroundAudioPlay = useCallback(() => {
+    if (backgroundAudioSourceSwapInFlightRef.current) return;
+    if (!backgroundRemotePausedNarrationRef.current) return;
+    backgroundRemotePausedNarrationRef.current = false;
+    const narrationAudio = narrationAudioRef.current;
+    if (!narrationAudio || narrationAudio.ended) return;
+    setBackgroundAudioLevel(getVisualStoryBackgroundGain(true), 0.04);
+    void narrationAudio.play().then(() => {
+      if (isNarrationPlayingRef.current) {
+        setMotionPhase('reading');
+      }
+    }).catch(() => undefined);
+  }, [setBackgroundAudioLevel]);
+
+  // pagehide = true page exit (navigation away) → full stop
   useEffect(() => {
-    const stopForDocumentExit = () => {
-      stopAllVisualStoryAudio();
-    };
-    const stopForHiddenDocument = () => {
-      if (document.visibilityState === 'hidden') {
-        stopAllVisualStoryAudio();
+    const stopForDocumentExit = () => stopAllVisualStoryAudio();
+    window.addEventListener('pagehide', stopForDocumentExit);
+    return () => window.removeEventListener('pagehide', stopForDocumentExit);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // visibilitychange = app backgrounded/foregrounded on iOS
+  // Do NOT pause on hidden — iOS AVAudioSession (.playback + UIBackgroundModes: audio) keeps
+  // the audio element running in the background. We only resume on foreground return in case
+  // iOS did suspend the element while the app was low priority.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') {
+        if (isNarrationPlaying) {
+          const narr = narrationAudioRef.current;
+          if (narr && narr.paused && !narr.ended) {
+            narr.play().catch(() => undefined);
+          }
+        }
+        if (isBackgroundMusicEnabled) {
+          const bg = backgroundAudioRef.current;
+          if (bg && bg.paused && !bg.ended) {
+            bg.play().catch(() => undefined);
+          }
+          void prepareBackgroundAudioMixer();
+        }
       }
     };
-    document.addEventListener('visibilitychange', stopForHiddenDocument);
-    window.addEventListener('pagehide', stopForDocumentExit);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isNarrationPlaying, isBackgroundMusicEnabled, prepareBackgroundAudioMixer]);
+
+  // Screen Wake Lock — keep screen on while narration is playing
+  useEffect(() => {
+    if (!isNarrationPlaying) return;
+    if (!('wakeLock' in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    (navigator.wakeLock as any).request('screen').then((l: WakeLockSentinel) => {
+      lock = l;
+    }).catch(() => undefined);
     return () => {
-      document.removeEventListener('visibilitychange', stopForHiddenDocument);
-      window.removeEventListener('pagehide', stopForDocumentExit);
+      lock?.release().catch(() => undefined);
     };
-  });
+  }, [isNarrationPlaying]);
 
   useEffect(() => {
     return () => {
@@ -1822,6 +1976,27 @@ function VisualStoryReader({
       console.error('Visual story bundled audio resolution failed:', error);
     });
   }, [currentPageAudioRawUrl, currentPageAudioUrl, ensureBundledVisualStoryAudioUrl, isBundledVisualStoryAssetPath]);
+
+  // Ref to always call the latest ensureBundledVisualStoryAudioUrl without re-triggering the preload loop
+  const ensureBundledAudioRef = useRef(ensureBundledVisualStoryAudioUrl);
+  ensureBundledAudioRef.current = ensureBundledVisualStoryAudioUrl;
+
+  useEffect(() => {
+    const bundledUrls = pages
+      .map((page) => String(page.audioUrl || '').trim())
+      .filter((url) => isBundledVisualStoryAssetPath(url));
+    if (bundledUrls.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const url of bundledUrls) {
+        if (cancelled) break;
+        await ensureBundledAudioRef.current(url).catch((error) => {
+          console.error('Visual story bundled audio prefetch failed:', error);
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pages, isBundledVisualStoryAssetPath]);
 
   const hydrateVisualStoryNarrationAudio = useCallback(async (): Promise<boolean> => {
     if (!courseData.id || !onResolveCourseForExport) return false;
@@ -1874,11 +2049,7 @@ function VisualStoryReader({
   useEffect(() => {
     if (!hasMissingNarrationAudio) return;
     if (!courseData.id || !onResolveCourseForExport) return;
-    if (
-      courseData.visualStoryAudioStatus !== 'ready' &&
-      courseData.visualStoryAudioStatus !== 'partial' &&
-      courseData.bundle?.includesPodcast !== true
-    ) {
+    if (!courseKnowsAboutAudio) {
       return;
     }
     void hydrateVisualStoryNarrationAudio();
@@ -1886,6 +2057,7 @@ function VisualStoryReader({
     courseData.bundle?.includesPodcast,
     courseData.id,
     courseData.visualStoryAudioStatus,
+    courseKnowsAboutAudio,
     hasMissingNarrationAudio,
     hydrateVisualStoryNarrationAudio,
     onResolveCourseForExport
@@ -1897,12 +2069,24 @@ function VisualStoryReader({
       setMotionPhase('idle');
       return;
     }
+    setMotionPhase('pause');
+    const runId = narrationRunIdRef.current;
     if (!currentPageAudioUrl) {
       if (isBundledVisualStoryAssetPath(currentPageAudioRawUrl)) {
-        setMotionPhase('pause');
         void ensureBundledVisualStoryAudioUrl(currentPageAudioRawUrl).catch((error) => {
           console.error('Visual story narration bundled audio could not be prepared:', error);
           setNarrationError(t('Masal sesi başlatılamadı.'));
+          setIsNarrationPlaying(false);
+          setIsBackgroundMusicEnabled(false);
+          setMotionPhase('idle');
+        });
+        return;
+      }
+      if (courseKnowsAboutAudio) {
+        void hydrateVisualStoryNarrationAudio().then((didHydrate) => {
+          if (runId !== narrationRunIdRef.current) return;
+          if (didHydrate) return;
+          setNarrationError(t('Bu sayfa için masal sesi henüz hazır değil.'));
           setIsNarrationPlaying(false);
           setIsBackgroundMusicEnabled(false);
           setMotionPhase('idle');
@@ -1917,8 +2101,6 @@ function VisualStoryReader({
     }
 
     setNarrationError(null);
-    setMotionPhase('pause');
-    const runId = narrationRunIdRef.current;
     narrationStartTimerRef.current = window.setTimeout(() => {
       if (runId !== narrationRunIdRef.current) return;
       const currentAudio = narrationAudioRef.current;
@@ -1951,7 +2133,9 @@ function VisualStoryReader({
     currentPage?.title,
     currentPageAudioRawUrl,
     currentPageAudioUrl,
+    courseKnowsAboutAudio,
     ensureBundledVisualStoryAudioUrl,
+    hydrateVisualStoryNarrationAudio,
     isBundledVisualStoryAssetPath,
     isNarrationPlaying,
     pageIndex,
@@ -2042,6 +2226,7 @@ function VisualStoryReader({
     activePageIndexRef.current = clampedIndex;
     setPageIndex(clampedIndex);
     swiperRef.current?.slideTo(clampedIndex, speed);
+    fullscreenSwiperRef.current?.slideTo(clampedIndex, speed);
   };
 
   useEffect(() => {
@@ -2108,7 +2293,7 @@ function VisualStoryReader({
     }
 
     let didGenerateNarration = false;
-    const shouldGenerateNarrationAudio = hasMissingNarrationAudio && canGenerateNarrationAudio;
+    const shouldGenerateNarrationAudio = hasMissingNarrationAudio && canGenerateNarrationAudio && !courseKnowsAboutAudio;
     if ((hasMissingNarrationAudio || !isCurrentPageNarratable) && shouldGenerateNarrationAudio) {
       const generated = await handleGenerateVisualStoryNarration();
       if (generated) {
@@ -2128,12 +2313,14 @@ function VisualStoryReader({
         return;
       }
     }
+
     // Start background music synchronously inside the user-gesture call stack
     // so Chrome/iOS autoplay policy allows it.
     const bgAudio = backgroundAudioRef.current;
     if (bgAudio) {
       bgAudio.loop = true;
       bgAudio.muted = false;
+      switchBackgroundAudioSource(bgAudio, getVisualStoryBackgroundPlaybackSrc(backgroundTrack));
       setBackgroundAudioLevel(getVisualStoryBackgroundGain(true), 0.04);
       void prepareBackgroundAudioMixer();
       if (bgAudio.paused) bgAudio.currentTime = 0;
@@ -2334,7 +2521,7 @@ function VisualStoryReader({
       await exportCourseToEpub(courseData);
     } catch (error) {
       console.error('Visual story ePub export failed:', error);
-      window.alert(t('ePub indirilemedi.'));
+      window.alert(t('EPUB indirilemedi.'));
     } finally {
       setIsEpubDownloading(false);
     }
@@ -2348,92 +2535,128 @@ function VisualStoryReader({
     backdropFilter: 'blur(14px)'
   };
 
-  const renderVisualStoryDownloadMenu = () => (
+  const renderVisualStoryDownloadMenu = (rotatedFullscreen = false) => (
     <div
-      className="absolute right-3 bottom-[56px] z-[160] grid w-[268px] gap-2 rounded-2xl p-2 shadow-[0_22px_42px_-22px_rgba(0,0,0,0.95)]"
+      className={`${rotatedFullscreen ? 'fixed left-1/2 top-1/2' : 'absolute right-0 bottom-[56px]'} z-[160] rounded-2xl p-2`}
       style={{
-        background: 'linear-gradient(180deg, rgba(12,23,39,0.94) 0%, rgba(8,21,16,0.92) 100%)',
-        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 22px 42px rgba(0,0,0,0.32)',
+        width: rotatedFullscreen
+          ? 'min(520px, calc(100dvh - 32px))'
+          : 'min(520px, calc(100vw - 24px))',
+        transform: rotatedFullscreen ? 'translate(-50%, -50%) rotate(90deg)' : undefined,
+        transformOrigin: rotatedFullscreen ? 'center' : undefined,
+        background: 'linear-gradient(160deg, rgba(24,38,57,0.92) 0%, rgba(17,22,29,0.94) 55%, rgba(14,24,38,0.95) 100%)',
+        border: '1px dashed rgba(120,171,226,0.34)',
+        boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18), 0 22px 42px rgba(0,0,0,0.32)',
         backdropFilter: 'blur(18px)'
       }}
       onClick={(event) => event.stopPropagation()}
     >
-      {isVisualStoryPdfPaletteOpen && (
-        <div
-          className="rounded-xl border p-2"
-          style={{
-            background: 'rgba(255,255,255,0.07)',
-            borderColor: 'rgba(255,255,255,0.14)'
-          }}
-        >
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold leading-none text-white">
-              {t('PDF arka planı')}
-            </span>
-            <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#cfe2f7]">
-              {t(selectedPdfBackgroundPreset.label)}
-            </span>
-          </div>
-          <div className="grid grid-cols-5 gap-2">
-            {PDF_BACKGROUND_PRESETS.map((preset) => {
-              const isSelected = preset.id === selectedPdfBackgroundPresetId;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
-                  disabled={isPdfDownloading || isEpubDownloading}
-                  className="h-8 w-8 rounded-full border transition-all active:scale-95 disabled:opacity-70"
-                  style={{
-                    background: preset.color,
-                    borderColor: isSelected ? '#9fd8e8' : 'rgba(255,255,255,0.46)',
-                    borderWidth: isSelected ? 2.5 : 1,
-                    boxShadow: isSelected ? '0 0 0 3px rgba(159,216,232,0.22)' : 'none'
-                  }}
-                  aria-label={t(preset.label)}
-                  title={t(preset.label)}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => {
-            if (!isVisualStoryPdfPaletteOpen) {
-              setIsVisualStoryPdfPaletteOpen(true);
-              return;
-            }
-            void handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color);
-          }}
+          onClick={() => setIsVisualStoryPdfPaletteOpen((current) => !current)}
           disabled={isPdfDownloading || isEpubDownloading}
-          className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-          style={{ ...visualStoryGlassControlStyle, color: '#ffffff', borderColor: 'rgba(255,255,255,0.28)' }}
-          aria-label={t('PDF İndir')}
-          title={t('PDF İndir')}
+          className="group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed text-white transition-all whitespace-nowrap hover:-translate-y-[1px] active:scale-95 disabled:opacity-70"
+          style={{
+            background: 'linear-gradient(135deg, rgba(28,57,91,0.98) 0%, rgba(22,42,67,0.96) 100%)',
+            borderColor: 'rgba(143,197,255,0.45)',
+            boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+          }}
+          aria-label={t('Fortale PDF')}
+          title={t('Fortale PDF')}
         >
-          {isPdfDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-          <span className="text-[10px] font-bold leading-none text-white">
-            {isPdfDownloading ? t('Hazırlanıyor') : t('PDF İndir')}
+          {isPdfDownloading ? (
+            <FaviconSpinner size={16} />
+          ) : (
+            <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+          )}
+          <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+            {isPdfDownloading ? t('Hazırlanıyor') : t('Fortale PDF')}
           </span>
         </button>
+
         <button
           type="button"
           onClick={handleVisualStoryEpubDownload}
           disabled={isPdfDownloading || isEpubDownloading}
-          className="group h-10 inline-flex items-center justify-center gap-1.5 rounded-2xl border px-2 text-white transition-all active:scale-95 disabled:opacity-70"
-          style={{ ...visualStoryGlassControlStyle, color: '#ffffff', borderColor: 'rgba(255,255,255,0.28)' }}
-          aria-label={t('EPUB İndir')}
-          title={t('EPUB İndir')}
+          className="group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed text-white transition-all whitespace-nowrap hover:-translate-y-[1px] active:scale-95 disabled:opacity-70"
+          style={{
+            background: 'linear-gradient(135deg, rgba(28,57,91,0.98) 0%, rgba(22,42,67,0.96) 100%)',
+            borderColor: 'rgba(143,197,255,0.45)',
+            boxShadow: 'inset 0 0 0 1px rgba(130,179,235,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+          }}
+          aria-label={t('Fortale ePub')}
+          title={t('Fortale ePub')}
         >
-          {isEpubDownloading ? <FaviconSpinner size={16} /> : <Download size={14} />}
-          <span className="text-[10px] font-bold leading-none text-white">
-            {isEpubDownloading ? t('Hazırlanıyor') : t('EPUB İndir')}
+          {isEpubDownloading ? (
+            <FaviconSpinner size={16} />
+          ) : (
+            <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+          )}
+          <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+            {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
           </span>
         </button>
       </div>
+      {isVisualStoryPdfPaletteOpen && !isPdfDownloading && (
+        <div className="mt-2 rounded-2xl border border-dashed px-3 py-2"
+          style={{
+            background: 'linear-gradient(160deg, rgba(24,38,57,0.92) 0%, rgba(17,22,29,0.94) 55%, rgba(14,24,38,0.95) 100%)',
+            borderColor: 'rgba(120,171,226,0.34)',
+            boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18)'
+          }}
+        >
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
+            {t(selectedPdfBackgroundPreset.label)}
+          </p>
+          <div className="flex items-center gap-2">
+            <div
+              className="touch-scroll-x hide-scrollbar min-w-0 flex-1 pb-1"
+              style={{
+                WebkitOverflowScrolling: 'touch',
+                overflowX: 'scroll',
+                overflowY: 'hidden'
+              }}
+            >
+              <div className="flex w-max flex-nowrap items-center gap-2 pr-1">
+                {PDF_BACKGROUND_PRESETS.map((preset) => {
+                  const isSelected = preset.id === selectedPdfBackgroundPresetId;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setSelectedPdfBackgroundPresetId(preset.id)}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all"
+                      style={{
+                        background: preset.color,
+                        borderColor: isSelected ? '#f04e5e' : 'rgba(210,231,255,0.42)',
+                        borderWidth: isSelected ? 2.5 : 1,
+                        boxShadow: isSelected ? '0 0 0 3px rgba(240,78,94,0.18)' : 'none'
+                      }}
+                      title={t(preset.label)}
+                      aria-label={t(preset.label)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleVisualStoryPdfDownload(selectedPdfBackgroundPreset.color)}
+              disabled={isPdfDownloading || isEpubDownloading}
+              className="ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-95 disabled:opacity-70"
+              style={{
+                background: 'rgba(27, 67, 110, 0.98)',
+                borderColor: 'rgba(171,214,255,0.5)',
+                boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+              }}
+            >
+              <Download size={13} style={{ color: '#ffffff' }} />
+              <span style={{ color: '#ffffff' }}>{t('İndir')}</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -2441,12 +2664,12 @@ function VisualStoryReader({
     return (
       <div
         className="relative min-h-dvh overflow-hidden text-white"
-        style={{ background: 'linear-gradient(180deg, #314b56 0%, #1c352f 44%, #081510 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)' }}
       >
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            background: 'radial-gradient(circle at 18% 0%, rgba(126,166,176,0.24), transparent 36%), radial-gradient(circle at 86% 8%, rgba(118,146,109,0.2), transparent 34%), linear-gradient(180deg, rgba(232,245,241,0.12) 0%, rgba(1,8,6,0.22) 100%)'
+            background: 'radial-gradient(circle at 17% 0%, rgba(80,118,172,0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74,112,168,0.18), transparent 34%), linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(76,128,190,0.18) 100%)'
           }}
           aria-hidden
         />
@@ -2456,7 +2679,7 @@ function VisualStoryReader({
           onClick={onBack}
           className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white/70 active:scale-95"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
-          aria-label="Geri"
+          aria-label={t('Geri')}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
         </button>
@@ -2531,23 +2754,24 @@ function VisualStoryReader({
     <div
       className="relative min-h-dvh overflow-hidden text-white"
       style={{
-        background: 'linear-gradient(180deg, #314b56 0%, #1c352f 44%, #081510 100%)'
+        background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
       }}
     >
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: 'radial-gradient(circle at 18% 0%, rgba(126,166,176,0.24), transparent 36%), radial-gradient(circle at 86% 8%, rgba(118,146,109,0.2), transparent 34%), linear-gradient(180deg, rgba(232,245,241,0.12) 0%, rgba(1,8,6,0.22) 100%)'
+          background: 'radial-gradient(circle at 17% 0%, rgba(80,118,172,0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74,112,168,0.18), transparent 34%), linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(76,128,190,0.18) 100%)'
         }}
         aria-hidden
       />
       <FairyTaleStarsOverlay seed={currentPage?.id || courseData.topic || 'visual-story'} />
 	      <audio
-	        key={backgroundTrack.src}
 	        ref={backgroundAudioRef}
-	        src={backgroundTrack.src}
+	        src={backgroundPlaybackSrc}
         preload="auto"
         loop
+        onPause={handleBackgroundAudioPause}
+        onPlay={handleBackgroundAudioPlay}
 	        hidden
 	        aria-hidden="true"
 	      />
@@ -2572,7 +2796,7 @@ function VisualStoryReader({
         <div
           className="fixed inset-0 z-[140]"
           style={{
-            background: 'linear-gradient(180deg, #314b56 0%, #1c352f 44%, #081510 100%)'
+            background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
           }}
           onClick={() => {
             if (isDownloadMenuOpen) {
@@ -2586,7 +2810,7 @@ function VisualStoryReader({
           <div
             className="pointer-events-none absolute inset-0"
             style={{
-              background: 'radial-gradient(circle at 18% 0%, rgba(126,166,176,0.24), transparent 36%), radial-gradient(circle at 86% 8%, rgba(118,146,109,0.2), transparent 34%), linear-gradient(180deg, rgba(232,245,241,0.12) 0%, rgba(1,8,6,0.22) 100%)'
+              background: 'radial-gradient(circle at 17% 0%, rgba(80,118,172,0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74,112,168,0.18), transparent 34%), linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(76,128,190,0.18) 100%)'
             }}
           />
           <div
@@ -2603,6 +2827,12 @@ function VisualStoryReader({
               longSwipesRatio={0.14}
               longSwipesMs={180}
               threshold={8}
+              onSwiper={(swiper) => {
+                fullscreenSwiperRef.current = swiper;
+                if (swiper.activeIndex !== pageIndex) {
+                  swiper.slideTo(pageIndex, 0);
+                }
+              }}
               onSlideChange={(swiper) => {
                 setPageIndex(swiper.activeIndex);
                 setVisualImageFullscreenPageIndex(swiper.activeIndex);
@@ -2656,7 +2886,7 @@ function VisualStoryReader({
             }}
 	          >
 	            <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
-	              <div className="flex flex-col items-start gap-0.5">
+	              <div className="relative flex h-10 items-center">
                 <button
                   type="button"
                   onClick={(event) => {
@@ -2667,13 +2897,13 @@ function VisualStoryReader({
                   className="relative h-10 rounded-2xl border inline-flex items-center justify-center overflow-hidden transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed px-4 gap-2 text-white"
                   style={{
                     minWidth: '90px',
-                    background: hasAvailableNarrationAudio
+                    background: showsAsHavingAudio
                       ? isNarrationPlaying
                         ? 'linear-gradient(135deg, rgba(30,10,10,0.94) 0%, rgba(87,29,29,0.88) 100%)'
-                        : 'linear-gradient(135deg, rgba(10,30,12,0.94) 0%, rgba(29,87,35,0.88) 100%)'
+                        : 'linear-gradient(135deg, rgba(8,36,70,0.94) 0%, rgba(31,76,125,0.88) 100%)'
                       : 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
-                    borderColor: hasAvailableNarrationAudio
-                      ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(34,197,94,0.38)'
+                    borderColor: showsAsHavingAudio
+                      ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(96,165,250,0.38)'
                       : 'rgba(96,165,250,0.34)',
                     boxShadow: '0 12px 22px rgba(15,23,42,0.18)',
                     backdropFilter: 'blur(14px)',
@@ -2681,9 +2911,9 @@ function VisualStoryReader({
                   }}
                   aria-label={
                     isNarrationGenerating ? `%${Math.round(narrationGenerationProgress)}`
-                      : hasAvailableNarrationAudio
+                      : showsAsHavingAudio
                         ? isNarrationPlaying ? t('Masalı duraklat') : t('Oynat')
-                        : t('Seslendir')
+                        : t('Masalı Seslendir')
                   }
                 >
                   {isNarrationGenerating && (
@@ -2695,17 +2925,28 @@ function VisualStoryReader({
                   <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
                     {isNarrationGenerating ? (
                       <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
-                    ) : hasAvailableNarrationAudio ? (
+                    ) : showsAsHavingAudio ? (
                       isNarrationPlaying
                         ? <PauseCircle size={18} />
                         : <><PlayCircle size={16} /><span>{t('Oynat')}</span></>
                     ) : (
-                      <><Mic size={16} /><span>{t('Seslendir')}</span></>
+                      <><Mic size={16} /><span>{t('Masalı Seslendir')}</span></>
                     )}
                   </span>
                 </button>
-                <span className="pl-2 text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
-                  Fortale
+                {showsAsHavingAudio && (
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); handleRestartNarrationFromBeginning(); }}
+                    className="ml-2 h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/80 transition-all duration-200 active:scale-95"
+                    style={{ ...visualStoryGlassControlStyle, ...fullscreenOverlayControlStyle }}
+                    aria-label={t('Başa al')}
+                  >
+                    <SkipBack size={16} />
+                  </button>
+                )}
+                <span className="pointer-events-none absolute left-2 top-[calc(100%+2px)] text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
+                  © Fortale
                 </span>
 		              </div>
                 <div
@@ -2768,7 +3009,7 @@ function VisualStoryReader({
                 >
                   <X size={14} />
                 </button>
-                {isDownloadMenuOpen && renderVisualStoryDownloadMenu()}
+                {isDownloadMenuOpen && renderVisualStoryDownloadMenu(isRotatedVisualFullscreenLayout)}
               </div>
             </div>
           </div>
@@ -2825,7 +3066,7 @@ function VisualStoryReader({
         }}
       >
         <div className="mx-auto flex w-full max-w-[720px] items-center justify-between gap-3 px-3 pointer-events-auto">
-          <div className="flex flex-col items-start gap-0.5">
+          <div className="relative flex h-10 items-center">
             <button
               type="button"
               onClick={() => {
@@ -2835,13 +3076,13 @@ function VisualStoryReader({
               className="relative h-10 rounded-2xl border inline-flex items-center justify-center overflow-hidden transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed px-4 gap-2 text-white"
               style={{
                 minWidth: '90px',
-                background: hasAvailableNarrationAudio
+                background: showsAsHavingAudio
                   ? isNarrationPlaying
                     ? 'linear-gradient(135deg, rgba(30,10,10,0.94) 0%, rgba(87,29,29,0.88) 100%)'
-                    : 'linear-gradient(135deg, rgba(10,30,12,0.94) 0%, rgba(29,87,35,0.88) 100%)'
+                    : 'linear-gradient(135deg, rgba(8,36,70,0.94) 0%, rgba(31,76,125,0.88) 100%)'
                   : 'linear-gradient(135deg, rgba(12,23,39,0.94) 0%, rgba(29,53,87,0.88) 100%)',
-                borderColor: hasAvailableNarrationAudio
-                  ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(34,197,94,0.38)'
+                borderColor: showsAsHavingAudio
+                  ? isNarrationPlaying ? 'rgba(248,113,113,0.38)' : 'rgba(96,165,250,0.38)'
                   : 'rgba(96,165,250,0.34)',
                 boxShadow: '0 12px 22px rgba(15,23,42,0.18)',
                 backdropFilter: 'blur(14px)',
@@ -2849,9 +3090,9 @@ function VisualStoryReader({
               }}
               aria-label={
                 isNarrationGenerating ? `%${Math.round(narrationGenerationProgress)}`
-                  : hasAvailableNarrationAudio
+                  : showsAsHavingAudio
                     ? isNarrationPlaying ? t('Masalı duraklat') : t('Oynat')
-                    : t('Seslendir')
+                    : t('Masalı Seslendir')
               }
             >
               {isNarrationGenerating && (
@@ -2863,17 +3104,28 @@ function VisualStoryReader({
               <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
                 {isNarrationGenerating ? (
                   <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
-                ) : hasAvailableNarrationAudio ? (
+                ) : showsAsHavingAudio ? (
                   isNarrationPlaying
                     ? <PauseCircle size={18} />
                     : <><PlayCircle size={16} /><span>{t('Oynat')}</span></>
                 ) : (
-                  <><Mic size={16} /><span>{t('Seslendir')}</span></>
+                  <><Mic size={16} /><span>{t('Masalı Seslendir')}</span></>
                 )}
               </span>
             </button>
-            <span className="pl-2 text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
-              Fortale
+            {showsAsHavingAudio && (
+              <button
+                type="button"
+                onClick={() => handleRestartNarrationFromBeginning()}
+                className="ml-2 h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/80 transition-all duration-200 active:scale-95"
+                style={visualStoryGlassControlStyle}
+                aria-label={t('Başa al')}
+              >
+                <SkipBack size={16} />
+              </button>
+            )}
+            <span className="pointer-events-none absolute left-2 top-[calc(100%+2px)] text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
+              © Fortale
             </span>
           </div>
           {isDownloadMenuOpen && renderVisualStoryDownloadMenu()}
@@ -2990,7 +3242,7 @@ function VisualStoryReader({
 	                  <div
 	                    className="relative z-10 grid min-h-0 flex-1 grid-rows-[auto_minmax(0,52%)_minmax(0,1fr)] pt-[calc(env(safe-area-inset-top,0px)+10px)]"
 	                    style={{
-	                      background: 'linear-gradient(180deg, rgba(49,75,86,0.94) 0%, rgba(28,53,47,0.94) 52%, rgba(8,21,16,0.96) 100%)',
+	                      background: 'linear-gradient(180deg, rgba(6,18,36,0.96) 0%, rgba(11,35,66,0.96) 52%, rgba(33,76,122,0.96) 100%)',
                         paddingTop: isNativeIosVisualStory ? 'calc(env(safe-area-inset-top,0px) + 2px)' : undefined
 	                    }}
 	                  >
@@ -3041,7 +3293,7 @@ function VisualStoryReader({
                         )}
                       </div>
                     </div>
-                    <div className="relative -mt-9 flex min-h-0 items-stretch justify-center overflow-hidden px-4 pb-5 pt-0">
+                    <div className="relative flex min-h-0 items-stretch justify-center overflow-hidden px-4 pb-5 pt-3">
                       {isActiveVisualPage && (
                         <div className="fortale-story-text-ambient" aria-hidden="true">
                           {currentTextAmbient.stars.map((star, starIndex) => (
@@ -3092,7 +3344,7 @@ function VisualStoryReader({
                             className="m-0 text-center font-semibold text-white"
                             style={{
                               fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
-                              fontSize: '17px',
+                              fontSize: 'calc(17px + var(--visual-story-reader-font-offset, 0px))',
                               lineHeight: 1.62,
                               letterSpacing: '0.01em',
                               textShadow: '0 2px 8px rgba(0,0,0,0.46)'
@@ -3167,6 +3419,21 @@ export default function CourseFlowView({
   const [readingFullscreenFontStep, setReadingFullscreenFontStep] = useState(0);
   const [fullscreenActiveImageIndex, setFullscreenActiveImageIndex] = useState(0);
   const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
+  const coverPreviewImgRef = useRef<HTMLImageElement | null>(null);
+  const coverPreviewScaleRef = useRef(1);
+  const coverPreviewOffsetRef = useRef({ x: 0, y: 0 });
+  const [coverPreviewScale, setCoverPreviewScale] = useState(1);
+  const [coverPreviewOffset, setCoverPreviewOffset] = useState({ x: 0, y: 0 });
+  const coverPreviewPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const coverPreviewPinchRef = useRef<{
+    distance: number;
+    startScale: number;
+    ncx: number;
+    ncy: number;
+    ax: number;
+    ay: number;
+  } | null>(null);
+  const coverPreviewPanRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const [podcastGenerationVisualProgress, setPodcastGenerationVisualProgress] = useState(6);
   const [hydratedContentNodeIds, setHydratedContentNodeIds] = useState<string[]>([]);
   const podcastGenerationProgressRef = useRef<{
@@ -3206,6 +3473,9 @@ export default function CourseFlowView({
     courseData?.bookType === 'fairy_tale' ||
     courseData?.bookType === 'story' ||
     courseData?.bookType === 'novel';
+  const shouldBoostFullscreenReaderOnIpad =
+    isReadingFullscreen &&
+    (courseData?.bookType === 'story' || courseData?.bookType === 'novel');
   const readingFullscreenFontScale = useMemo(() => {
     if (readingFullscreenFontStep <= -1) return 0.92;
     if (readingFullscreenFontStep === 0) return 1;
@@ -3327,6 +3597,97 @@ export default function CourseFlowView({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [coverPreviewImageUrl]);
+
+  useEffect(() => {
+    coverPreviewScaleRef.current = 1;
+    coverPreviewOffsetRef.current = { x: 0, y: 0 };
+    setCoverPreviewScale(1);
+    setCoverPreviewOffset({ x: 0, y: 0 });
+    coverPreviewPointersRef.current.clear();
+    coverPreviewPinchRef.current = null;
+    coverPreviewPanRef.current = null;
+  }, [coverPreviewImageUrl]);
+
+  const updateCoverPreviewTransform = (scale: number, offset: { x: number; y: number }) => {
+    coverPreviewScaleRef.current = scale;
+    coverPreviewOffsetRef.current = offset;
+    setCoverPreviewScale(scale);
+    setCoverPreviewOffset(offset);
+  };
+
+  const clampCoverPreviewOffset = (x: number, y: number, scale: number) => {
+    const img = coverPreviewImgRef.current;
+    if (!img || scale <= 1) return { x: 0, y: 0 };
+    const maxX = (img.offsetWidth * (scale - 1)) / 2;
+    const maxY = (img.offsetHeight * (scale - 1)) / 2;
+    return { x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) };
+  };
+
+  const handleCoverPreviewPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'touch') e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    coverPreviewPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = Array.from(coverPreviewPointersRef.current.values());
+    if (pts.length === 2) {
+      const [p1, p2] = pts;
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+      const rect = coverPreviewImgRef.current?.getBoundingClientRect();
+      const rcx = rect ? rect.left + rect.width / 2 : midX;
+      const rcy = rect ? rect.top + rect.height / 2 : midY;
+      const s = coverPreviewScaleRef.current;
+      coverPreviewPinchRef.current = {
+        distance: Math.max(dist, 1),
+        startScale: s,
+        ncx: rcx - coverPreviewOffsetRef.current.x,
+        ncy: rcy - coverPreviewOffsetRef.current.y,
+        ax: s > 0 ? (midX - rcx) / s : 0,
+        ay: s > 0 ? (midY - rcy) / s : 0
+      };
+      coverPreviewPanRef.current = null;
+    } else if (pts.length === 1 && coverPreviewScaleRef.current > 1) {
+      coverPreviewPanRef.current = {
+        x: e.clientX, y: e.clientY,
+        ox: coverPreviewOffsetRef.current.x, oy: coverPreviewOffsetRef.current.y
+      };
+      coverPreviewPinchRef.current = null;
+    }
+  };
+
+  const handleCoverPreviewPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!coverPreviewPointersRef.current.has(e.pointerId)) return;
+    if (e.pointerType === 'touch') e.preventDefault();
+    e.stopPropagation();
+    coverPreviewPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = Array.from(coverPreviewPointersRef.current.values());
+    if (pts.length === 2 && coverPreviewPinchRef.current) {
+      const [p1, p2] = pts;
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+      const nextScale = Math.max(1, Math.min(5, (dist / coverPreviewPinchRef.current.distance) * coverPreviewPinchRef.current.startScale));
+      const { ncx, ncy, ax, ay } = coverPreviewPinchRef.current;
+      updateCoverPreviewTransform(nextScale, clampCoverPreviewOffset(midX - ncx - ax * nextScale, midY - ncy - ay * nextScale, nextScale));
+    } else if (pts.length === 1 && coverPreviewPanRef.current && coverPreviewScaleRef.current > 1) {
+      const dx = e.clientX - coverPreviewPanRef.current.x;
+      const dy = e.clientY - coverPreviewPanRef.current.y;
+      updateCoverPreviewTransform(coverPreviewScaleRef.current, clampCoverPreviewOffset(coverPreviewPanRef.current.ox + dx, coverPreviewPanRef.current.oy + dy, coverPreviewScaleRef.current));
+    }
+  };
+
+  const handleCoverPreviewPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    coverPreviewPointersRef.current.delete(e.pointerId);
+    e.stopPropagation();
+    const pts = Array.from(coverPreviewPointersRef.current.values());
+    if (pts.length < 2) coverPreviewPinchRef.current = null;
+    if (pts.length === 1 && coverPreviewScaleRef.current > 1) {
+      coverPreviewPanRef.current = { x: pts[0].x, y: pts[0].y, ox: coverPreviewOffsetRef.current.x, oy: coverPreviewOffsetRef.current.y };
+    } else if (pts.length === 0) {
+      coverPreviewPanRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const isGeneratingPodcast = activeExportKey === 'podcast-generate';
@@ -3600,8 +3961,8 @@ export default function CourseFlowView({
       if (node.type === 'lecture') {
         if (node.title) return node.title;
         if (courseData?.bookType === 'fairy_tale') return `Masal Kısmı ${index + 1}`;
-        if (courseData?.bookType === 'story') return `Hikaye Kısmı ${index + 1}`;
-        if (courseData?.bookType === 'novel') return `Roman Kısmı ${index + 1}`;
+        if (courseData?.bookType === 'story') return `Çalışma Kitabı Kısmı ${index + 1}`;
+        if (courseData?.bookType === 'novel') return `Hikaye Kısmı ${index + 1}`;
         return `Bölüm ${index + 1}`;
       }
       return node.title || NODE_VISUALS[node.type]?.label || `Bölüm ${index + 1}`;
@@ -3635,7 +3996,7 @@ export default function CourseFlowView({
           markdown: displayContent,
           heading: sectionTitle,
           subtitle: showNodeSubtitle ? node.title : undefined,
-          durationLabel: formatLocalizedDurationLabel(node.duration, t),
+          durationLabel: undefined,
           imageIndex: null,
           activeImageIndex: Math.max(0, lastSeenImageIndex)
         });
@@ -3658,7 +4019,7 @@ export default function CourseFlowView({
           markdown: section.markdown,
           heading: sectionIndex === 0 ? sectionTitle : undefined,
           subtitle: sectionIndex === 0 && showNodeSubtitle ? node.title : undefined,
-          durationLabel: sectionIndex === 0 ? formatLocalizedDurationLabel(node.duration, t) : undefined,
+          durationLabel: undefined,
           imageIndex,
           activeImageIndex: imageIndex
         });
@@ -4395,8 +4756,8 @@ export default function CourseFlowView({
     const bookTypeLabel = courseData?.bookType === 'fairy_tale'
       ? 'Masal'
       : courseData?.bookType === 'story'
-        ? 'Hikaye'
-        : 'Roman';
+        ? 'Çalışma Kitabı'
+        : 'Hikaye';
 
     if (creatorName) {
       return `${bookTypeLabel}: ${bookTitle}. Kurgulayan: ${creatorName}.`;
@@ -4504,7 +4865,8 @@ export default function CourseFlowView({
       const retryMatch = raw.match(/retry in\s+(\d+(?:\.\d+)?)s/i) || raw.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/i);
       if (retryMatch) {
         const retrySeconds = Math.max(1, Math.ceil(Number.parseFloat(retryMatch[1] || '0')));
-        return `${t('Podcast sırası yoğun. Sistem kota nedeniyle bekliyor; yaklaşık')} ${retrySeconds} ${t('sn sonra tekrar deneyin. Kredi iade edildi.')}`;
+        return t('Podcast sırası yoğun. Sistem kota nedeniyle bekliyor; yaklaşık {{var0}} sn sonra tekrar deneyin. Kredi iade edildi.')
+          .replace('{{var0}}', String(retrySeconds));
       }
       if (normalized.includes('podcast sırası çok yoğun')) {
         return t('Podcast sırası çok yoğun. Birkaç dakika sonra tekrar deneyin. Kredi iade edildi.');
@@ -4668,7 +5030,9 @@ export default function CourseFlowView({
     }
 
     if (!onRequireCredit('create', PODCAST_CREATE_CREDIT_COST)) {
-      showIosPopup(`${t('Podcast oluşturmak için')} ${PODCAST_CREATE_CREDIT_COST} ${t('kredi gerekir.')}`);
+      showIosPopup(
+        t('Podcast oluşturmak için {{var0}} kredi gerekir.').replace('{{var0}}', String(PODCAST_CREATE_CREDIT_COST))
+      );
       return;
     }
 
@@ -4916,6 +5280,7 @@ export default function CourseFlowView({
 
   if (!courseData) return null;
   const isFairyTaleBook = isFairyTaleBookType(courseData.bookType);
+  const displayCoverImageUrl = courseData.deviceCoverImageUrl || courseData.coverImageUrl;
   const headerPodcastNode = getPodcastCarrierNode(courseData.nodes);
   const effectiveHeaderPodcastLanguage = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
   const effectiveHeaderPodcastLanguageLabel = getAppLanguageLabel(
@@ -4946,7 +5311,7 @@ export default function CourseFlowView({
           onClick={onBack}
           className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white/70 active:scale-95"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
-          aria-label="Geri"
+          aria-label={t('Geri')}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
         </button>
@@ -4974,8 +5339,7 @@ export default function CourseFlowView({
       ref={fullscreenReaderScrollRef}
       className={isReadingFullscreen ? 'overflow-y-auto px-4 pb-24' : 'view-container'}
       style={{
-        background: '#1A1F26',
-        backgroundImage: 'none',
+        background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)',
         height: isReadingFullscreen ? '100dvh' : undefined,
         paddingTop: isReadingFullscreen ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : undefined
       }}
@@ -5012,7 +5376,7 @@ export default function CourseFlowView({
                   ? 'radial-gradient(ellipse at 50% 50%, rgba(106,163,224,0.10), rgba(0,0,0,0) 58%)'
                   : activeMilestone.tone === 'focus'
                     ? 'radial-gradient(ellipse at 50% 50%, rgba(219,194,141,0.10), rgba(0,0,0,0) 58%)'
-                    : 'radial-gradient(ellipse at 50% 50%, rgba(104,186,146,0.08), rgba(0,0,0,0) 58%)'
+                    : 'radial-gradient(ellipse at 50% 50%, rgba(96,151,214,0.08), rgba(0,0,0,0) 58%)'
             }}
           />
           <div
@@ -5037,7 +5401,7 @@ export default function CourseFlowView({
                       ? 'linear-gradient(180deg, rgba(90,169,255,0.22), rgba(90,169,255,0))'
                       : activeMilestone.tone === 'focus'
                         ? 'linear-gradient(180deg, rgba(219,194,141,0.2), rgba(219,194,141,0))'
-                        : 'linear-gradient(180deg, rgba(104,186,146,0.2), rgba(104,186,146,0))'
+                        : 'linear-gradient(180deg, rgba(96,151,214,0.2), rgba(96,151,214,0))'
                 }}
               />
               {!prefersReducedMotion && (activeMilestone.tone === 'success' || activeMilestone.tone === 'completion' || activeMilestone.tone === 'focus') && (
@@ -5086,13 +5450,13 @@ export default function CourseFlowView({
                         ? 'rgba(86,133,190,0.14)'
                         : activeMilestone.tone === 'focus'
                           ? 'rgba(173,149,124,0.12)'
-                          : 'rgba(104,186,146,0.12)',
+                          : 'rgba(96,151,214,0.12)',
                     borderColor:
                       activeMilestone.tone === 'completion'
                         ? 'rgba(181,201,228,0.18)'
                         : activeMilestone.tone === 'focus'
                           ? 'rgba(173,149,124,0.16)'
-                          : 'rgba(104,186,146,0.18)'
+                          : 'rgba(96,151,214,0.18)'
                   }}
                 >
                   {!prefersReducedMotion && (
@@ -5105,7 +5469,7 @@ export default function CourseFlowView({
                               ? 'rgba(181,201,228,0.24)'
                               : activeMilestone.tone === 'focus'
                                 ? 'rgba(219,194,141,0.24)'
-                                : 'rgba(104,186,146,0.22)'
+                                : 'rgba(96,151,214,0.22)'
                         }}
                       />
                       <span
@@ -5116,7 +5480,7 @@ export default function CourseFlowView({
                               ? 'rgba(181,201,228,0.14)'
                               : activeMilestone.tone === 'focus'
                                 ? 'rgba(219,194,141,0.14)'
-                                : 'rgba(104,186,146,0.12)'
+                                : 'rgba(96,151,214,0.12)'
                         }}
                       />
                     </>
@@ -5222,7 +5586,7 @@ export default function CourseFlowView({
       {coverPreviewImageUrl && (
         <div
           className="fixed inset-0 z-[70] bg-black/78 backdrop-blur-[3px] flex items-center justify-center p-4"
-          onClick={() => setCoverPreviewImageUrl(null)}
+          onClick={() => { if (coverPreviewScaleRef.current <= 1) setCoverPreviewImageUrl(null); }}
         >
           <div
             className="absolute right-4 z-[71] flex items-center gap-2"
@@ -5231,7 +5595,7 @@ export default function CourseFlowView({
           >
             <button
               type="button"
-              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
               onClick={async () => {
                 try {
                   const topicSlug = String(courseData.topic || 'gorsel')
@@ -5256,7 +5620,7 @@ export default function CourseFlowView({
             </button>
             <button
               type="button"
-              className="h-10 w-10 rounded-xl border border-dashed border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
               onClick={() => setCoverPreviewImageUrl(null)}
               aria-label={t('Kapat')}
               title={t('Kapat')}
@@ -5264,12 +5628,30 @@ export default function CourseFlowView({
               <X size={18} />
             </button>
           </div>
-          <img
-            src={coverPreviewImageUrl}
-            alt={`${courseData.topic} ${t('Görsel')}`}
-            className="max-h-[92vh] max-w-[95vw] object-contain rounded-md shadow-[0_22px_40px_-24px_rgba(0,0,0,0.95)]"
-            onClick={(event) => event.stopPropagation()}
-          />
+          <div
+            className="flex items-center justify-center select-none"
+            style={{ touchAction: 'none' }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={handleCoverPreviewPointerDown}
+            onPointerMove={handleCoverPreviewPointerMove}
+            onPointerUp={handleCoverPreviewPointerUp}
+            onPointerCancel={handleCoverPreviewPointerUp}
+          >
+            <img
+              ref={coverPreviewImgRef}
+              src={coverPreviewImageUrl}
+              alt={`${courseData.topic} ${t('Görsel')}`}
+              className="max-h-[92vh] max-w-[95vw] object-contain shadow-[0_22px_40px_-24px_rgba(0,0,0,0.95)]"
+              style={{
+                transform: `translate3d(${coverPreviewOffset.x}px, ${coverPreviewOffset.y}px, 0) scale(${coverPreviewScale})`,
+                transformOrigin: 'center center',
+                touchAction: 'none',
+                WebkitUserSelect: 'none',
+                WebkitTouchCallout: 'none'
+              }}
+              draggable={false}
+            />
+          </div>
         </div>
       )}
       <div className="app-content-width">
@@ -5288,22 +5670,22 @@ export default function CourseFlowView({
                 return (
                   <div
                     className="shrink-0 mt-1.5 w-[72px] h-[96px] rounded-[3px] relative overflow-hidden"
-                    style={courseData.coverImageUrl ? { background: 'transparent' } : { background: `linear-gradient(135deg, hsl(${hue},52%,24%), hsl(${hue},40%,13%))` }}
+                    style={displayCoverImageUrl ? { background: 'transparent' } : { background: `linear-gradient(135deg, hsl(${hue},52%,24%), hsl(${hue},40%,13%))` }}
                   >
-                    {courseData.coverImageUrl && (
+                    {displayCoverImageUrl && (
                       <>
                         <img
-                          src={courseData.coverImageUrl}
+                          src={displayCoverImageUrl}
                           alt={`${courseData.topic} ${t('Kitap kapağı')}`}
 	                          className="absolute inset-0 w-full h-full object-contain object-center border-0 cursor-zoom-in"
 	                          onClick={(event) => {
 	                            event.stopPropagation();
-	                            setCoverPreviewImageUrl(courseData.coverImageUrl || null);
+	                            setCoverPreviewImageUrl(displayCoverImageUrl || null);
 	                          }}
 	                        />
                       </>
                     )}
-                    {!courseData.coverImageUrl && (
+                    {!displayCoverImageUrl && (
                       <>
                         <div className="absolute left-0 top-0 bottom-0 w-[4px] opacity-50" style={{ background: `hsl(${hue},60%,55%)` }} />
                         <div className="absolute inset-0 flex items-center justify-center opacity-10">
@@ -5348,9 +5730,9 @@ export default function CourseFlowView({
                         <button
                           onClick={handlePdfPaletteToggle}
                           disabled={isExportBusy || !canDownloadFullSmartBook}
-                          className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${canDownloadFullSmartBook
+                          className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border transition-all whitespace-nowrap ${canDownloadFullSmartBook
                             ? 'text-white hover:-translate-y-[1px] active:scale-95'
-                            : 'bg-[#162031] border border-dashed border-[#5a7392]/35 text-white/55'
+                            : 'bg-[#162031] border-[#5a7392]/35 text-white/55'
                             } ${isExportBusy ? 'opacity-85 cursor-wait' : ''}`}
                           style={canDownloadFullSmartBook
                             ? {
@@ -5377,9 +5759,9 @@ export default function CourseFlowView({
                         <button
                           onClick={handleFullSmartBookEpubDownload}
                           disabled={isExportBusy || !canDownloadFullSmartBook}
-                          className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${canDownloadFullSmartBook
+                          className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border transition-all whitespace-nowrap ${canDownloadFullSmartBook
                             ? 'text-white hover:-translate-y-[1px] active:scale-95'
-                            : 'bg-[#162031] border border-dashed border-[#5a7392]/35 text-white/55'
+                            : 'bg-[#162031] border-[#5a7392]/35 text-white/55'
                             } ${isExportBusy ? 'opacity-85 cursor-wait' : ''}`}
                           style={canDownloadFullSmartBook
                             ? {
@@ -5407,7 +5789,7 @@ export default function CourseFlowView({
                           <button
                             onClick={handlePodcastDownload}
                             disabled={isExportBusy}
-                            className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border border-dashed transition-all whitespace-nowrap ${isExportBusy ? 'opacity-85 cursor-wait' : 'hover:-translate-y-[1px] active:scale-95'
+                            className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border transition-all whitespace-nowrap ${isExportBusy ? 'opacity-85 cursor-wait' : 'hover:-translate-y-[1px] active:scale-95'
                               }`}
                             style={{
                               background: 'rgba(31, 64, 102, 0.92)',
@@ -5432,7 +5814,7 @@ export default function CourseFlowView({
                       </div>
                       {isPdfPaletteOpen && canDownloadFullSmartBook && !isFullPdfExporting && (
                         <div
-                          className="mt-2 rounded-2xl border border-dashed px-3 py-2"
+                          className="mt-2 rounded-2xl border px-3 py-2"
                           style={{
                             background: 'linear-gradient(160deg, rgba(24,38,57,0.92) 0%, rgba(17,22,29,0.94) 55%, rgba(14,24,38,0.95) 100%)',
                             borderColor: 'rgba(120,171,226,0.34)',
@@ -5488,7 +5870,7 @@ export default function CourseFlowView({
                             <button
                               type="button"
                               onClick={handlePdfPaletteDownload}
-                              className="ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-95"
+                              className="ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-[10px] font-bold text-white transition-all hover:-translate-y-[1px] active:scale-95"
                               style={{
                                 background: 'rgba(27, 67, 110, 0.98)',
                                 borderColor: 'rgba(171,214,255,0.5)',
@@ -5779,7 +6161,7 @@ export default function CourseFlowView({
                   className="fixed z-[110] flex items-center gap-2"
                   style={{
                     right: '12px',
-                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)'
+                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 2px)'
                   }}
                 >
                   <button
@@ -5817,7 +6199,7 @@ export default function CourseFlowView({
                   className="fixed z-[110] inline-flex items-center rounded-xl border border-dashed overflow-hidden"
                   style={{
                     left: '12px',
-                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 2px)',
                     background: 'rgba(17,22,29,0.82)',
                     borderColor: 'rgba(173,149,124,0.16)'
                   }}
@@ -5874,19 +6256,24 @@ export default function CourseFlowView({
               </button>
             )}
             <div className={`${isReadingFullscreen ? 'pt-0' : 'pt-12'} space-y-7`}>
-	              {hasFullscreenStickyImages ? (
-	                <>
-	                  <div className="sticky top-0 z-20 pb-4 pt-1">
-	                    <button
-	                      type="button"
-	                      className={`block overflow-hidden bg-black/20 ${shouldUseWideFullscreenStickyImage ? 'w-[calc(100%+2rem)] -mx-4 rounded-[12px]' : 'w-full rounded-[18px]'}`}
-	                      style={{ height: shouldUseWideFullscreenStickyImage ? 'clamp(170px, 34dvh, 300px)' : 'clamp(148px, 28dvh, 220px)' }}
-	                      onTouchStart={handleFullscreenImageTouchStart}
-	                      onTouchEnd={handleFullscreenImageTouchEnd}
-		                      onClick={() => setCoverPreviewImageUrl(fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src || null)}
-	                      aria-label={t('Tam ekran aç')}
-	                      title={t('Tam ekran aç')}
-	                    >
+              {hasFullscreenStickyImages ? (
+                <>
+                  <div className="sticky -top-2 z-20 pb-3 pt-0">
+                    <button
+                      type="button"
+                      className={`block overflow-hidden bg-transparent ${shouldUseWideFullscreenStickyImage ? 'w-[calc(100%+2rem)] -mx-4' : 'w-full'}`}
+                      style={{
+                        height: shouldUseWideFullscreenStickyImage ? 'clamp(170px, 34dvh, 300px)' : 'clamp(148px, 28dvh, 220px)',
+                        background: 'transparent',
+                        border: 0,
+                        boxShadow: 'none'
+                      }}
+                      onTouchStart={handleFullscreenImageTouchStart}
+                      onTouchEnd={handleFullscreenImageTouchEnd}
+                      onClick={() => setCoverPreviewImageUrl(fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src || null)}
+                      aria-label={t('Tam ekran aç')}
+                      title={t('Tam ekran aç')}
+                    >
 	                      <img
 	                        key={fullscreenReaderContent.images[fullscreenActiveImageIndex]?.key || 'fullscreen-sticky-image'}
 	                        src={fullscreenReaderContent.images[fullscreenActiveImageIndex]?.src}
@@ -5941,7 +6328,7 @@ export default function CourseFlowView({
                           <StyledMarkdown
                             content={section.markdown}
                             variant="inline"
-                            className="text-sm md:text-[15px]"
+                            className={`text-sm md:text-[15px] ${shouldBoostFullscreenReaderOnIpad ? 'smartbook-ipad-reader-boost' : ''}`}
                             quoteFirstParagraph={Boolean(section.heading) && index === 0 && !isNarrativeBook}
                             readerMode="default"
                             fullscreenFontScale={readingFullscreenFontScale}
@@ -5992,12 +6379,11 @@ export default function CourseFlowView({
                     style={{ borderColor: 'rgba(173,149,124,0.12)' }}
                   >
                     {!isReadingFullscreen && (
-                      <header className="mb-4 border-b border-dashed pb-3" style={{ borderColor: 'rgba(173,149,124,0.12)' }}>
-                        <div className="flex items-center justify-between gap-2">
-                          <h2 className="text-base md:text-[17px] font-bold text-white/95 leading-[1.3]">{sectionTitle}</h2>
-                          <span className="text-[11px] font-bold text-white/55">{formatLocalizedDurationLabel(node.duration, t)}</span>
-                        </div>
-                        {showNodeSubtitle && (
+	                      <header className="mb-4 border-b border-dashed pb-3" style={{ borderColor: 'rgba(173,149,124,0.12)' }}>
+	                        <div className="flex items-center justify-between gap-2">
+	                          <h2 className="text-base md:text-[17px] font-bold text-white/95 leading-[1.3]">{sectionTitle}</h2>
+	                        </div>
+	                        {showNodeSubtitle && (
                           <p className="mt-1 text-[11px] md:text-[12px] text-white/60">{node.title}</p>
                         )}
                       </header>
@@ -6053,7 +6439,7 @@ export default function CourseFlowView({
                       <StyledMarkdown
                         content={displayContent}
                         variant="inline"
-                        className="text-sm md:text-[15px]"
+                        className={`text-sm md:text-[15px] ${shouldBoostFullscreenReaderOnIpad ? 'smartbook-ipad-reader-boost' : ''}`}
                         quoteFirstParagraph={node.type === 'lecture' && !isNarrativeBook}
                         readerMode="default"
                         fullscreenFontScale={isReadingFullscreen ? readingFullscreenFontScale : 1}
@@ -6294,11 +6680,11 @@ function PodcastInlinePlayer({
         <div className="pointer-events-none min-w-0 flex-1">
           <div className="flex h-4 max-w-full items-center justify-start gap-[3px] opacity-95">
             {[
-              '#34d399', '#38bdf8', '#60a5fa', '#fb7185',
-              '#a78bfa', '#22d3ee', '#10b981', '#38bdf8',
-              '#f43f5e', '#4ade80', '#06b6d4', '#818cf8',
-              '#06b6d4', '#fb7185', '#0ea5e9', '#2dd4bf',
-              '#60a5fa', '#f43f5e', '#34d399', '#a78bfa'
+              '#60a5fa', '#38bdf8', '#60a5fa', '#fb7185',
+              '#a78bfa', '#22d3ee', '#3b82f6', '#38bdf8',
+              '#f43f5e', '#60a5fa', '#38bdf8', '#818cf8',
+              '#38bdf8', '#fb7185', '#0ea5e9', '#38bdf8',
+              '#60a5fa', '#f43f5e', '#60a5fa', '#a78bfa'
             ].map((color, idx) => (
               <span
                 key={`eq-${idx}`}

@@ -1,1 +1,1 @@
-masal,hikaye,öykü,roman,çocuk kitabı,kitap oluştur,ai kitap,podcast,sesli kitap,epub,pdf,kapak,kurgu
+masal,hikaye,öykü,roman,portre,karakter,ai kitap,kitap oluştur,kapak,görsel,podcast,epub,pdf,kitabı

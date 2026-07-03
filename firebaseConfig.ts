@@ -1,4 +1,5 @@
 import { initializeApp, type FirebaseOptions } from "firebase/app";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
@@ -10,7 +11,7 @@ import {
   type Auth
 } from "firebase/auth";
 
-const DEFAULT_IOS_FIREBASE_API_KEY = "AIzaSyBdEkWrSvC5-zwzqM-cgMnkcU_HmnTlb5Y";
+// iOS-specific Firebase credentials — loaded from env, never hardcoded in source.
 const DEFAULT_IOS_BUNDLE_ID = "com.company.fstudy";
 const FIREBASE_AUTH_HOSTS = new Set([
   "identitytoolkit.googleapis.com",
@@ -22,7 +23,7 @@ const isNativeRuntime = Capacitor.isNativePlatform();
 const nativePlatform = isNativeRuntime ? Capacitor.getPlatform() : "web";
 const isNativeIosRuntime = nativePlatform === "ios";
 const nativeIosApiKey = String(
-  import.meta.env.VITE_FIREBASE_API_KEY_IOS || DEFAULT_IOS_FIREBASE_API_KEY
+  import.meta.env.VITE_FIREBASE_API_KEY_IOS || import.meta.env.VITE_FIREBASE_API_KEY || ""
 ).trim();
 const nativeIosBundleId = String(
   import.meta.env.VITE_FIREBASE_IOS_BUNDLE_ID || DEFAULT_IOS_BUNDLE_ID
@@ -167,7 +168,35 @@ if (shouldUseFunctionsEmulator) {
   }
 }
 
-const appCheckReady = Promise.resolve(null);
+// App Check — aktif sadece web'de (native Capacitor runtime'da reCAPTCHA çalışmaz,
+// orada zaten Apple/Google imzalı binary koruması var).
+// Cloud Functions'da enforceAppCheck henüz açık değil; bu satır token akışını başlatır
+// ve monitoring verileri oluşturur. Enforcement ayrıca etkinleştirilecek.
+const appCheckSiteKey = String(import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY || "").trim();
+const appCheckDebugToken = String(import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || "").trim();
+
+const appCheckReady: Promise<null> = (() => {
+  if (isNativeRuntime || !appCheckSiteKey) {
+    // Native runtime veya site key yoksa: no-op (uygulamayı kırmaz)
+    return Promise.resolve(null);
+  }
+  return new Promise<null>((resolve) => {
+    try {
+      // Debug token'ı yalnızca geliştirme ortamında (npm run dev) aktif et
+      if (appCheckDebugToken && import.meta.env.DEV) {
+        (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = appCheckDebugToken;
+      }
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true
+      });
+    } catch (error) {
+      // App Check başlatma hatası uygulamayı kesmez
+      console.warn("[AppCheck] Initialization failed:", error);
+    }
+    resolve(null);
+  });
+})();
 const isSupportedAnalyticsOrigin =
   typeof window !== "undefined" &&
   /^(http|https):$/i.test(window.location.protocol);

@@ -1,12 +1,13 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth, type UserRecord } from "firebase-admin/auth";
-import { FieldPath, FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getMessaging } from "firebase-admin/messaging";
 import { defineSecret } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -21,21 +22,12 @@ const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 const MAILJET_API_KEY_SECRET = defineSecret("MAILJET_API_KEY");
 const MAILJET_SECRET_KEY_SECRET = defineSecret("MAILJET_SECRET_KEY");
 const EMAIL_LOGIN_OTP_SECRET = defineSecret("EMAIL_LOGIN_OTP_SECRET");
-const GEMINI_PLANNER_MODEL =
-  (
-    process.env.GEMINI_PLANNER_MODEL ||
-    readValueFromDotEnv("GEMINI_PLANNER_MODEL") ||
-    "gemini-2.5-flash"
-  ).trim();
-// Book long-form prose is pinned here. Keep this exact model unless cost/quality policy changes.
-const GEMINI_CONTENT_MODEL = "gemini-flash-latest";
-const GEMINI_QUALITY_MODEL =
-  (
-    process.env.GEMINI_QUALITY_MODEL ||
-    readValueFromDotEnv("GEMINI_QUALITY_MODEL") ||
-    GEMINI_PLANNER_MODEL ||
-    "gemini-2.5-flash"
-  ).trim();
+const GEMINI_BOOK_MODEL = "gemini-3.1-flash-lite";
+const GEMINI_PLANNER_MODEL = GEMINI_BOOK_MODEL;
+const GEMINI_CONTENT_MODEL = GEMINI_BOOK_MODEL;
+const GEMINI_QUALITY_MODEL = GEMINI_BOOK_MODEL;
+const GEMINI_PLANNING_THINKING_CONFIG = { thinkingLevel: ThinkingLevel.HIGH };
+const GEMINI_CONTENT_THINKING_CONFIG = { thinkingLevel: ThinkingLevel.MEDIUM };
 const GEMINI_FLASH_TTS_MODEL =
   (
     process.env.GEMINI_FLASH_TTS_MODEL ||
@@ -70,13 +62,7 @@ const OPENAI_MINI_TTS_FAIRY_INSTRUCTIONS =
   ).trim();
 // Keep podcast narration on Gemini Flash TTS (2.5) while preserving the same chunking/merge backend flow.
 const PODCAST_TTS_PROVIDER: "google" = "google";
-const GEMINI_QUIZ_REVIEW_MODEL =
-  (
-    process.env.GEMINI_QUIZ_REVIEW_MODEL ||
-    readValueFromDotEnv("GEMINI_QUIZ_REVIEW_MODEL") ||
-    GEMINI_PLANNER_MODEL ||
-    "gemini-2.5-flash"
-  ).trim();
+const GEMINI_QUIZ_REVIEW_MODEL = GEMINI_BOOK_MODEL;
 const OPENAI_IMAGE_MODEL = "gpt-image-2-2026-04-21";
 const OPENAI_IMAGE_QUALITY: "low" = "low";
 const OPENAI_COVER_MODEL = OPENAI_IMAGE_MODEL;
@@ -87,10 +73,10 @@ const OPENAI_IMAGE_EDITS_API_URL = "https://api.openai.com/v1/images/edits";
 const OPENAI_TTS_API_URL = "https://api.openai.com/v1/audio/speech";
 const CONTENT_COMPLETION_MARKER = "[[SMARTBOOK_END]]";
 const FAIRY_TALE_TOTAL_IMAGE_COUNT = 4;
-const STORY_TOTAL_IMAGE_COUNT = 5;
+const STORY_TOTAL_IMAGE_COUNT = 2;
 const NOVEL_TOTAL_IMAGE_COUNT = 6;
 const VISUAL_FAIRY_TALE_PAGE_COUNT = 8;
-const IMAGE_PROMPT_MAX_CHARS = 7_500;
+const IMAGE_PROMPT_MAX_CHARS = 4_800;
 const PODCAST_VOICE_OPTIONS = [
   "Kore",
   "Leda",
@@ -197,14 +183,18 @@ const GOOGLE_FLASH_LITE_INPUT_USD_PER_1M =
   Number(process.env.GOOGLE_FLASH_LITE_INPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_FLASH_LITE_INPUT_USD_PER_1M") || "0.1");
 const GOOGLE_FLASH_LITE_OUTPUT_USD_PER_1M =
   Number(process.env.GOOGLE_FLASH_LITE_OUTPUT_USD_PER_1M || readValueFromDotEnv("GOOGLE_FLASH_LITE_OUTPUT_USD_PER_1M") || "0.4");
-const GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M =
+const GOOGLE_GEMINI_3_1_FLASH_LITE_INPUT_USD_PER_1M =
   Number(
+    process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_INPUT_USD_PER_1M ||
+    readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_INPUT_USD_PER_1M") ||
     process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M ||
     readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M") ||
     "0.25"
   );
-const GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M =
+const GOOGLE_GEMINI_3_1_FLASH_LITE_OUTPUT_USD_PER_1M =
   Number(
+    process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_OUTPUT_USD_PER_1M ||
+    readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_OUTPUT_USD_PER_1M") ||
     process.env.GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M ||
     readValueFromDotEnv("GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M") ||
     "1.5"
@@ -281,6 +271,7 @@ const OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE =
   Number(process.env.OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE || readValueFromDotEnv("OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE") || "0.006");
 const OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE =
   Number(process.env.OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE || readValueFromDotEnv("OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE") || "0.005");
+const OPENAI_GPT_IMAGE_LOW_LANDSCAPE_USD_PER_IMAGE = 0.005;
 const OPENAI_GPT_IMAGE_INPUT_USD_PER_1M =
   Number(process.env.OPENAI_GPT_IMAGE_INPUT_USD_PER_1M || readValueFromDotEnv("OPENAI_GPT_IMAGE_INPUT_USD_PER_1M") || "5");
 const OPENAI_GPT_IMAGE_INPUT_IMAGE_USD_PER_1M =
@@ -359,7 +350,7 @@ const SYSTEM_INSTRUCTION_BASE =
 
 const SYSTEM_INSTRUCTION_BY_BOOK_TYPE: Partial<Record<SmartBookBookType, string>> = {
   fairy_tale: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir MASAL metnidir. Güçlü masalsı atmosfer, berrak neden-sonuç, yaşa uygun duygu akışı ve tatmin edici/umutlu kapanış kur. Masalı yapay ders metnine, aşırı mekanik şablona, karikatürize iyi-kötü ikiliğine veya zoraki büyü gösterisine çevirme. Doğal Türkçe düzyazı kullan; masalda baskın anlatıcı omurgası çoğunlukla doğal '-mış/-miş' masal sesi olabilir ama bunu her cümlede mekanik zincire dönüştürme. Arada kısa ve yerinde döşeme/tekerleme kullanılabilir; ancak metni manzum satır kırılmasına, yapay ritme veya tekdüze söz dizimine sürükleme. Gerektiğinde görülen geçmiş, geniş zaman ve yumuşak anlatı zamanı geçişlerini doğal biçimde harmanla. Dil yaş grubuna göre basit, somut ve akıcı olmalı.",
-  story: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir HİKAYE metnidir. Tüm metin edebi hikaye üslubuyla yazılmalıdır: güçlü olay örgüsü, karakter gelişimi, sahne geçişleri ve dramatik gerilimle ilerlemelidir. Kısa ve yoğun bir anlatı kur.",
+  story: SYSTEM_INSTRUCTION_BASE + " Bu içerik bilimsel/akademik bir ÇALIŞMA KİTABIDIR. Kurmaca hikaye yazma. Konuyu seçilen eğitim seviyesine uygun doğrulukta; başlıklar, alt başlıklar, tablolar, listeler, kavram ilişkileri ve somut açıklamalarla öğret. Bilimsel kesinlik düzeyini açıkça belirt, uydurma kaynak veya doğrulanmamış iddia üretme.",
   novel: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir ROMAN metnidir. Tüm metin edebi roman üslubuyla yazılmalıdır: katmanlı karakter dönüşümü, geniş anlatı derinliği, sürekli gerilim ve tema birliğiyle ilerlemelidir. Zengin ve derin bir anlatım kur."
 };
 
@@ -543,7 +534,7 @@ interface AiGatewayResponse {
 const ALLOWED_DIFFICULTIES = new Set(["Kolay", "Orta", "Zor", "Zorlayıcı ve Bilimsel"]);
 type PlanTier = "free" | "premium";
 type UsageField = "podcastCreditsUsed" | "quizCreditsUsed" | "chatMessagesUsed";
-type CreditActionType = "create";
+type CreditActionType = "create" | "community_download";
 type CreditGatewayOperation = "getWallet" | "consume" | "refund";
 
 interface CreditWalletSnapshot {
@@ -813,6 +804,90 @@ function preferredLanguageLabel(language: PreferredLanguage): string {
   return PREFERRED_LANGUAGE_LABELS[language] || PREFERRED_LANGUAGE_LABELS.tr;
 }
 
+function resolvePreferredLanguageAlias(value: unknown): PreferredLanguage | null {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/_/g, "-")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("tr-TR");
+  if (!normalized) return null;
+
+  const aliasMap: Record<string, PreferredLanguage> = {
+    ar: "ar",
+    arabic: "ar",
+    arapca: "ar",
+    da: "da",
+    danish: "da",
+    danca: "da",
+    de: "de",
+    deutsch: "de",
+    german: "de",
+    almanca: "de",
+    el: "el",
+    greek: "el",
+    yunanca: "el",
+    en: "en",
+    english: "en",
+    ingilizce: "en",
+    es: "es",
+    spanish: "es",
+    espanol: "es",
+    ispanyolca: "es",
+    fi: "fi",
+    finnish: "fi",
+    fince: "fi",
+    fr: "fr",
+    french: "fr",
+    francais: "fr",
+    fransizca: "fr",
+    hi: "hi",
+    hindi: "hi",
+    id: "id",
+    indonesian: "id",
+    endonezce: "id",
+    it: "it",
+    italian: "it",
+    italiano: "it",
+    italyanca: "it",
+    ja: "ja",
+    japanese: "ja",
+    japonca: "ja",
+    ko: "ko",
+    korean: "ko",
+    korece: "ko",
+    nl: "nl",
+    dutch: "nl",
+    hollandaca: "nl",
+    flamanca: "nl",
+    no: "no",
+    norwegian: "no",
+    norvecce: "no",
+    pl: "pl",
+    polish: "pl",
+    lehce: "pl",
+    pt: "pt-BR",
+    "pt-br": "pt-BR",
+    portuguese: "pt-BR",
+    "portuguese brazil": "pt-BR",
+    "portuguese brasil": "pt-BR",
+    "brazilian portuguese": "pt-BR",
+    portekizce: "pt-BR",
+    sv: "sv",
+    swedish: "sv",
+    isvecce: "sv",
+    th: "th",
+    thai: "th",
+    tayca: "th",
+    tr: "tr",
+    turkish: "tr",
+    turkce: "tr",
+    "türkçe": "tr"
+  };
+
+  return aliasMap[normalized] || null;
+}
+
 interface UsageReportEntry {
   label: string;
   provider: "google" | "openai";
@@ -898,6 +973,11 @@ interface SmartBookCreativeBrief {
   customInstructions?: string;
   targetPageMin?: number;
   targetPageMax?: number;
+  workbookLevel?: string;
+  workbookCategory?: string;
+  includeExamples?: boolean;
+  includeQuiz?: boolean;
+  includeRelatedBooks?: boolean;
 }
 
 type OpenAiLowImageSizeMode = "cover-3x4" | "square-1x1" | "poster-16x9";
@@ -1074,7 +1154,7 @@ function resolveVertexProjectId(): string {
 
 function requiresGlobalVertexLocation(model: string): boolean {
   const normalized = String(model || "").trim().toLowerCase();
-  return normalized === "gemini-3.1-flash-lite-preview" || normalized === "gemini-3-flash-preview";
+  return normalized === "gemini-3.1-flash-lite" || normalized === "gemini-3.1-flash-lite-preview" || normalized === "gemini-3-flash-preview";
 }
 
 function resolveVertexLocation(): string {
@@ -1128,6 +1208,11 @@ function createGoogleGenAiClient(): GoogleGenAI {
 }
 
 function resolvePreferredLanguage(...parts: Array<string | undefined>): PreferredLanguage {
+  for (const part of parts) {
+    const explicitAlias = resolvePreferredLanguageAlias(part);
+    if (explicitAlias) return explicitAlias;
+  }
+
   const raw = parts
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
     .join(" ")
@@ -1203,6 +1288,11 @@ function resolvePreferredLanguageFromBrief(
 }
 
 function detectContentLanguageCode(...parts: Array<string | undefined>): ContentLanguageCode {
+  for (const part of parts) {
+    const explicitAlias = resolvePreferredLanguageAlias(part);
+    if (explicitAlias) return explicitAlias;
+  }
+
   const raw = parts
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
     .join(" ")
@@ -1499,7 +1589,7 @@ function buildTopicSpecificBookDescription(
   const safeTopic = compactDescriptionText(topic) || "Konu";
   const safeCategory = compactDescriptionText(category);
   const safeSubGenre = compactDescriptionText(subGenre || "");
-  const isNarrative = bookType === "fairy_tale" || bookType === "story" || bookType === "novel";
+  const isNarrative = bookType === "fairy_tale" || bookType === "novel";
   const isEn = usesEnglishPromptScaffold(preferredLanguage);
 
   if (isNarrative) {
@@ -1797,7 +1887,7 @@ function getBookPageRangeByType(
     if (audienceLevel === "7-9") return { min: 13, max: 15, suggested: 14 };
     return { min: 10, max: 12, suggested: 11 };
   }
-  if (bookType === "story") return { min: 20, max: 25, suggested: 22 };
+  if (bookType === "story") return { min: 12, max: 15, suggested: 14 };
   return { min: 30, max: 35, suggested: 32 };
 }
 
@@ -1971,6 +2061,11 @@ function normalizeSmartBookCreativeBrief(
     endingStyle,
     narrativeStyle: compactInline(record.narrativeStyle, 220),
     customInstructions: compactInline(record.customInstructions, 900),
+    workbookLevel: compactInline(record.workbookLevel, 80),
+    workbookCategory: compactInline(record.workbookCategory, 120),
+    includeExamples: record.includeExamples === true,
+    includeQuiz: record.includeQuiz === true,
+    includeRelatedBooks: record.includeRelatedBooks === true,
     targetPageMin,
     targetPageMax: targetPageMax && targetPageMin && targetPageMax < targetPageMin ? targetPageMin : targetPageMax
   };
@@ -1979,12 +2074,12 @@ function normalizeSmartBookCreativeBrief(
 function bookTypeLabelForPrompt(bookType: SmartBookBookType, isEn: boolean): string {
   if (isEn) {
     if (bookType === "fairy_tale") return "Fairy Tale";
-    if (bookType === "story") return "Story";
+    if (bookType === "story") return "Workbook";
     if (bookType === "novel") return "Novel";
     return "Academic";
   }
   if (bookType === "fairy_tale") return "Masal";
-  if (bookType === "story") return "Hikaye";
+  if (bookType === "story") return "Çalışma Kitabı";
   if (bookType === "novel") return "Roman";
   return "Akademik";
 }
@@ -2030,6 +2125,10 @@ function isNarrativeBookTitleTooGeneric(
   if (/^(?:[a-z0-9ğüşıöç]+)(?:nin|nın|nun|nün|in|ın|un|ün)\s+/u.test(normalizedTitle)) return true;
 
   const tokens = normalizedTitle.split(" ").filter(Boolean);
+  if (tokens.length > 5) return true;
+  if (tokens.length >= 5 && tokens.some((token) => token === "ve" || token === "ile" || token === "and" || token === "of" || token === "the")) {
+    return true;
+  }
   if (tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => GENERIC_NARRATIVE_TITLE_TOKENS.has(token))) {
     return true;
   }
@@ -2240,8 +2339,8 @@ function buildNarrativeTitleDirection(
   isEn: boolean
 ): string {
   return isEn
-    ? "Title direction: create an original, concise, natural-sounding book title (and chapter titles) only from the story content and brief. Do not use suggested/example words, stock formulas, or repeated character-name patterns."
-    : "Baslik yonu: kitap adi (ve bolum basliklari) yalnizca hikaye icerigi ve brief'ten uretilen ozgun, kisa ve dogal bir yapiya sahip olmali. Ornek/tavsiye kelime, hazir kalip veya karakter adlarini tekrar eden mekanik formatlar kullanma.";
+    ? "Title direction: create an original, concise, natural-sounding book title (and chapter titles) only from the story content and brief. Book title should usually be 2-4 words; 5 words only if exceptionally natural. Do not lengthen it with filler/connectors like 'and', 'of', or 'the'. Do not use suggested/example words, stock formulas, or repeated character-name patterns."
+    : "Baslik yonu: kitap adi (ve bolum basliklari) yalnizca hikaye icerigi ve brief'ten uretilen ozgun, kisa ve dogal bir yapiya sahip olmali. Kitap adi genelde 2-4 kelime olmali; 5 kelime sadece cok dogal ve gucluyse kullan. 've', 'ile', 'bir' gibi dolgu/baglaclarla basligi uzatma. Ornek/tavsiye kelime, hazir kalip veya karakter adlarini tekrar eden mekanik formatlar kullanma.";
 }
 
 function buildNarrativeContentAutonomyDirective(isEn: boolean): string {
@@ -2439,21 +2538,49 @@ function buildNovelSinglePathDirective(
 
 function buildNarrativeSubGenreVisualCue(subGenre: string | undefined): string {
   const key = normalizeStoryPathKey(subGenre);
-  if (key.includes("fantastik") || key.includes("masal")) return "fantasy atmosphere, magical motifs, creature/world continuity";
-  if (key.includes("bilim kurgu")) return "speculative technology cues, coherent futuristic design language";
-  if (key.includes("distopik")) return "oppressive architecture, constrained palette, surveillance-pressure mood";
-  if (key.includes("utopik") || key.includes("utopik")) return "clean idealized architecture with subtle systemic tension";
-  if (key.includes("korku")) return "dark atmospheric framing, suspense mood, no explicit gore";
-  if (key.includes("gizem") || key.includes("polisiye")) return "clue-centric composition, suspicious details, investigative mood";
-  if (key.includes("romantik")) return "emotion-first framing, soft lighting, relational focus";
-  if (key.includes("macera")) return "dynamic movement, journey motifs, environmental scale";
-  if (key.includes("psikolojik")) return "internal tension visual metaphors, controlled surreal touches";
-  if (key.includes("gerilim")) return "high-pressure cinematic framing, sharp contrast, momentum";
-  if (key.includes("aile")) return "warm domestic tone, trust-and-bond cues";
-  if (key.includes("dram")) return "character-centric emotional framing, grounded scene texture";
-  if (key.includes("komedi") || key.includes("mizah")) return "expressive character acting, lively timing cues, light visual rhythm";
-  if (key.includes("tarihsel")) return "period-authentic costume, props, and architecture";
-  return "subgenre-faithful scene language with clear narrative readability";
+  if (key.includes("fantastik")) return "luminous spell-light effects, magical creature surface details, enchanted environment glow, wonder-first scene hierarchy";
+  if (key.includes("masal") || key.includes("klasik")) return "glowing lantern warmth, fairy-dust particle trails, enchanted forest depth, storybook golden-hour light";
+  if (key.includes("bilimkurgu") || key.includes("bilim")) return "gleaming technology surfaces, deep-space star luminosity, futuristic architecture with human warmth, holographic color accents";
+  if (key.includes("distopik")) return "concrete surveillance geometry, fractured skyline symbolism, crowd-scale pressure, bright rebel color accent against structured city tones";
+  if (key.includes("utopik")) return "crystalline utopian architecture, soft idealized light, harmonic crowd choreography, subtle systemic tension cracks";
+  if (key.includes("korku")) return "suspenseful discovery mood, moonlit clarity, misty atmosphere with colorful rim light, warm guiding light, readable character reactions";
+  if (key.includes("gizem") || key.includes("polisiye")) return "hidden clue details embedded in scene corners, investigative visual tension, warm lamplit atmosphere, confident color contrast";
+  if (key.includes("romantik")) return "golden-hour soft bloom, warm light connecting two figures, characters leaning toward each other, rose-and-amber color story";
+  if (key.includes("macera")) return "hero in motion against epic backdrop, destination visible on horizon, environmental scale dwarfing character, kinetic energy lines";
+  if (key.includes("psikolojik")) return "symbolic object placement, expressive close character acting, clear emotional contrast, ordered visual metaphors, polished editorial intrigue";
+  if (key.includes("gerilim")) return "urgent cinematic composition, strong directional movement, countdown-tension pressure, crisp readable lighting, decisive action framing";
+  if (key.includes("aile")) return "warm golden domestic light, generational connection body language, home-texture detail, trust-and-belonging visual warmth";
+  if (key.includes("dram")) return "expressive character faces with authentic emotion, touch-point between figures, real-world texture weight, intimate cinematic framing";
+  if (key.includes("komedi") || key.includes("mizah")) return "rubberhose-style pose exaggeration, visual punchline timing, bright ironic color contrast, elastic surprised expressions";
+  if (key.includes("tarihsel")) return "authentic period costume stitching detail, era-specific light sources (candle/torch/gaslamp), aged parchment color warmth, historical architecture texture";
+  if (key.includes("mitolojik")) return "divine light rays, mythic scale figures towering against ancient skies, rune and mosaic pattern details, god-among-mortals composition";
+  if (key.includes("kulturel") || key.includes("kultural")) return "intricate cultural textile patterns woven into environment, authentic regional architecture, ceremonial color palette, cultural costume authenticity";
+  if (key.includes("super") || key.includes("kahraman")) return "explosive kinetic energy lines, heroic silhouette against city skyline, cape and costume motion dynamics, impact-frame composition";
+  if (key.includes("alternati") || key.includes("dunya")) return "world-unique impossible architecture, alien flora and fauna details, rule-breaking physics visible in scene, discovery-map composition";
+  if (key.includes("genclik")) return "youthful expressive faces, peer-group dynamics energy, contemporary environment texture, coming-of-age emotional clarity";
+  return "rich scene detail supporting narrative, clear focal character, genre-faithful color atmosphere";
+}
+
+function buildFairyTaleSafeSubGenreVisualCue(subGenre: string | undefined): string {
+  const key = normalizeStoryPathKey(subGenre);
+  if (key.includes("fantastik")) return "rainbow spell-light effects, friendly magical creature details, enchanted glow, wonder-first cheerful scene hierarchy";
+  if (key.includes("masal") || key.includes("klasik")) return "golden fairy-tale light, friendly enchanted forest or palace details, magical sparkle, timeless storybook warmth";
+  if (key.includes("bilimkurgu") || key.includes("bilim")) return "friendly rounded technology, toy-like spacecraft, glowing planets, optimistic cosmic wonder, bright holographic accents";
+  if (key.includes("korku") || key.includes("gerilim")) return "gentle spooky playfulness made safe with warm lantern light, smiling/curious characters, colorful highlights, no horror mood";
+  if (key.includes("gizem") || key.includes("polisiye")) return "warm clue-finding adventure, sparkling discovery trail, friendly suspense, bright lantern-lit details";
+  if (key.includes("romantik")) return "warm friendship and affection, golden-hour soft glow, kind body language, rose-and-amber color warmth";
+  if (key.includes("macera")) return "friendly motion, sunny quest path, destination visible on horizon, colorful open scenic scale";
+  if (key.includes("psikolojik")) return "simple emotion-symbol details made child-readable, warm reassuring colors, no surreal distortion or unease";
+  if (key.includes("aile")) return "warm home or community light, trust-and-bond body language, cozy texture detail, belonging";
+  if (key.includes("dram")) return "gentle emotion, expressive kind faces, comforting touch-point between figures, warm real-world texture";
+  if (key.includes("komedi") || key.includes("mizah")) return "playful exaggerated poses, visual punchline timing, bright color contrast, elastic surprised expressions";
+  if (key.includes("tarihsel")) return "bright period costume details, friendly era-specific props, warm candle/sun light, historical architecture texture";
+  if (key.includes("mitolojik")) return "golden mythic light, friendly legendary scale, simple ancient motifs, child-safe wonder";
+  if (key.includes("kulturel") || key.includes("kultural")) return "joyful cultural textile patterns, authentic regional architecture, celebratory bright palette, respectful costume detail";
+  if (key.includes("super") || key.includes("kahraman")) return "heroic playful motion, colorful costume dynamics, bright city or fantasy backdrop, child-safe impact-frame composition";
+  if (key.includes("alternati") || key.includes("dunya")) return "unique whimsical architecture, friendly unusual flora and fauna, colorful discovery-map composition";
+  if (key.includes("genclik")) return "youthful expressive faces, friend-group energy, cheerful contemporary texture, clear growing-up emotion";
+  return "bright magical scene detail, clear focal character, cheerful genre-faithful color atmosphere";
 }
 
 function buildNarrativePedagogyDirective(
@@ -2534,111 +2661,309 @@ function buildNarrativeVisualStyleDirective(
   subGenre?: string,
   isCover = false
 ): string {
-  const cue = buildNarrativeSubGenreVisualCue(subGenre);
   const key = normalizeStoryPathKey(subGenre);
-  if (bookType === "story") {
-    if (audienceLevel === "general") {
-      return isCover
-        ? `Style: adult story cover language with cinematic realism, believable rendering, premium lighting, and grounded dramatic atmosphere. Avoid cartoon, anime, comic, or child-book aesthetics. Visual cue: ${cue}.`
-        : `Style: adult story visual language with cinematic realism, grounded believable rendering, natural textures/materials, and strong filmic lighting. STRICTLY avoid cartoon, anime, comic, illustrated storybook, or child-book aesthetics. Visual cue: ${cue}.`;
+  const cue = bookType === "fairy_tale"
+    ? buildFairyTaleSafeSubGenreVisualCue(subGenre)
+    : buildNarrativeSubGenreVisualCue(subGenre);
+  const fairyTaleAgeStyle =
+    audienceLevel === "1-3" || audienceLevel === "1-6"
+      ? "Age style: preschool-safe design with large rounded shapes, soft plush-like characters, simple readable faces, one clear focal action, and extra warm daylight."
+      : audienceLevel === "4-6"
+        ? "Age style: early-childhood design with rounded expressive characters, playful props, clear silhouettes, and bright inviting color blocks."
+        : "Age style: richer 7+ animated-feature detail with lively environments, dynamic poses, layered but readable scene storytelling, and still fully child-safe emotion.";
+  const fairyTaleBrightLock =
+    "Global visual lock: premium bright family animated-feature look, polished 3D cartoon / high-end children's storybook illustration, saturated joyful colors, soft daylight or warm glowing lantern light, clear appealing character expressions, rounded friendly shapes, magical sparkle, clean readable staging. Strictly avoid gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, realistic photography, and uncanny faces. If the scene is night, mystery, or danger, make it safe and luminous with warm lanterns, moon-sparkle, colorful highlights, and wonder-first mood.";
+  const fairyTaleForm = isCover
+    ? "front cover with a strong joyful hero composition"
+    : "storybook page illustration with a concrete readable story moment";
+  const storyNovelVisualLock = audienceLevel === "general"
+    ? "Global visual lock: mature premium narrative cover/illustration for a general audience, saturated but tasteful palette, clear readable lighting, warm or luminous accent light, natural adult-facing character design, crisp silhouettes, balanced contrast, polished cinematic clarity, bright full color range. No child-book look, no cute mascot design, no chibi, no plush-like rounded characters, no preschool/YA cartoon styling, no childish animated-feature language."
+    : "Global visual lock: vivid premium narrative illustration, saturated but tasteful palette, clear readable lighting, warm or luminous accent light, appealing natural faces, crisp silhouettes, balanced contrast, polished cinematic clarity, bright full color range.";
+
+  // ─── MASAL ──────────────────────────────────────────────────────────────────
+  if (bookType === "fairy_tale") {
+    // Klasik
+    if (key.includes("klasik")) {
+      return `Style: classic enchanted ${fairyTaleForm} — sunlit palace/forest charm, golden storybook glow, sapphire/rose/sunflower accents, hand-painted warmth over polished cartoon character rendering, timeless magical invitation. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("komedi")) {
-      return isCover
-        ? `Style: bold comedic illustrated cover language with elastic posing, upbeat rhythm, bright controlled palette, and expressive character acting. No dystopian heaviness. Visual cue: ${cue}.`
-        : `Style: lively comedic illustration with expressive poses, playful timing, clean silhouettes, bright controlled palette, and motion-forward scene rhythm. Visual cue: ${cue}.`;
+    // Modern
+    if (key.includes("modern")) {
+      return `Style: modern colorful ${fairyTaleForm} — contemporary kid-friendly world, crisp rounded forms, cheerful urban/nature details, candy-bright accents, polished CG-cartoon finish with tactile storybook texture. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("distopik")) {
-      return isCover
-        ? `Style: dystopian illustrated cover language with oppressive geometry, systemic pressure, low-saturation palette, and controlled dramatic contrast. No comedy energy. Visual cue: ${cue}.`
-        : `Style: dystopian scene illustration with constrained palette, oppressive composition, architectural pressure, and survival-focused framing. Visual cue: ${cue}.`;
+    // Macera
+    if (key.includes("macer")) {
+      return `Style: bright magical-adventure ${fairyTaleForm} — open sunny vistas, energetic but friendly action poses, clear travel/quest path, turquoise sky, emerald landscapes, coral and golden highlights, playful momentum. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("gerilim")) {
-      return isCover
-        ? `Style: thriller cover language with sharp tension, compressed space, directional lighting, and high-pressure cinematic framing. Visual cue: ${cue}.`
-        : `Style: thriller illustration with sharp contrast, directional light, compressed framing, and continuous momentum. Visual cue: ${cue}.`;
+    // Mitolojik
+    if (key.includes("mitolojik")) {
+      return `Style: luminous mythic ${fairyTaleForm} — golden sun rays, friendly legendary scale, simple ancient motifs, mosaic-inspired color details, bright ivory/turquoise/crimson accents, ceremonial wonder without darkness. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("romantik")) {
-      return isCover
-        ? `Style: romantic illustrated cover language with emotion-first composition, elegant color harmony, intimate spacing, and soft focal lighting. Visual cue: ${cue}.`
-        : `Style: romantic scene illustration with emotion-first framing, soft focal lighting, warm palette control, and relational visual tension. Visual cue: ${cue}.`;
+    // Fantastik
+    if (key.includes("fantastik")) {
+      return `Style: dazzling fantasy ${fairyTaleForm} — rainbow spell-light, sparkling floating details, friendly magical creatures, bright enchanted architecture, soft glow effects, prismatic teal/gold/pink/violet palette kept cheerful and readable. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("macera")) {
-      return isCover
-        ? `Style: adventure cover language with bold scale, forward movement, sweeping environment design, and high-clarity heroic composition. Visual cue: ${cue}.`
-        : `Style: adventure illustration with kinetic composition, environmental scale, travel momentum, and decisive action staging. Visual cue: ${cue}.`;
+    // Kültürel
+    if (key.includes("kulturel") || key.includes("kultural")) {
+      return `Style: vibrant cultural-folklore ${fairyTaleForm} — celebratory regional motifs, textile/pattern details, warm saffron, peacock teal, ruby, ivory, leaf green, joyful festival-like color harmony, respectful crafted texture. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("psikolojik")) {
-      return isCover
-        ? `Style: psychological illustrated cover language with restrained palette, symbolic framing, subtle visual distortion, and interior tension. Visual cue: ${cue}.`
-        : `Style: psychological scene illustration with restrained palette, internal tension cues, controlled surreal touches, and intimate visual unease. Visual cue: ${cue}.`;
+    // Bilimkurgu
+    if (key.includes("bilimkurgu") || key.includes("bilim")) {
+      return `Style: cheerful sci-fi fairy-tale ${fairyTaleForm} — friendly rounded robots, toy-like spacecraft, glowing planets, bright cyan/magenta/sun-yellow accents, optimistic cosmic wonder, clean futuristic shapes. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (audienceLevel === "7-11") {
-      return `Style: STRICTLY non-photorealistic. 2D animated/cartoon storybook look, colorful and family-safe. Photorealism is forbidden. Visual cue: ${cue}.`;
+    // Eğitici
+    if (key.includes("egitici") || key.includes("eğitici")) {
+      return `Style: joyful educational ${fairyTaleForm} — discovery-first clarity, friendly props, clean readable objects, sky blue, sunflower yellow, leaf green, peach and coral accents, reassuring expressions and warm classroom/nature light. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (audienceLevel === "12-18") {
-      return `Style: STRICTLY non-photorealistic. Anime-inspired cinematic illustration (not chibi), expressive lighting and dynamic framing. Photorealism is forbidden. Visual cue: ${cue}.`;
+    // Gizem (catch-all for mystery-adjacent)
+    if (key.includes("gizem")) {
+      return `Style: bright enchanted-mystery ${fairyTaleForm} — curious clue-finding mood, warm lantern glow, sparkling breadcrumb trails, jewel-colored but not dark environment, friendly suspense, inviting discovery details. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    return isCover
-      ? `Style: cinematic stylized cover illustration. Photorealistic look is allowed but not required; stylized look is preferred. Visual cue: ${cue}.`
-      : `Style: cinematic stylized illustration blending animated film language with artistic brush texture. Visual cue: ${cue}.`;
+    // Default masal (Klasik olmayan / belirtilmemiş)
+    return `Style: premium magical ${fairyTaleForm} — colorful animated-family-film warmth, polished cartoon characters, bright scenic color, soft magical glow, expressive joyful faces, inviting storybook detail. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
   }
 
-  if (bookType === "novel") {
-    if (audienceLevel === "general") {
+  // ─── HİKAYE ─────────────────────────────────────────────────────────────────
+  if (bookType === "story") {
+    // Yaş: 7-11
+    if (audienceLevel === "7-11") {
       return isCover
-        ? `Style: adult novel cover language with cinematic realism, premium composition, believable anatomy/materials, and mature atmosphere. Avoid cartoon, anime, comic, or child-book aesthetics. Visual cue: ${cue}.`
-        : `Style: adult novel visual language with cinematic realism, believable anatomy, grounded textures, mature atmosphere, and strong filmic lighting. STRICTLY avoid cartoon, anime, comic, graphic-novel, or child-book aesthetics. Visual cue: ${cue}.`;
+        ? `Style: vibrant animated-film storybook cover — bold saturated palette, clear expressive character silhouette, colorful environment, premium family-animation energy. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
+        : `Style: vibrant animated-film storybook illustration — bold saturated colors, expressive characters, clear readable scene, animated-movie warmth. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("komedi") || key.includes("mizah")) {
+    // Yaş: 12-18
+    if (audienceLevel === "12-18") {
       return isCover
-        ? `Style: literary-comedic cover language with smart visual wit, memorable character silhouette, elegant color contrast, and long-form narrative personality. Visual cue: ${cue}.`
-        : `Style: literary-comedic illustration with smart visual wit, expressive acting, refined palette control, and sustained character-driven humor. Visual cue: ${cue}.`;
+        ? `Style: cinematic anime-influenced cover — dynamic composition, expressive luminous lighting (teal, amber, coral), strong character presence, polished contemporary animation finish. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
+        : `Style: cinematic anime-influenced illustration — expressive luminous lighting, dynamic character framing, richly colored backgrounds, emotional clarity, polished contemporary animation energy. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
     }
-    if (key.includes("distopik")) {
-      return isCover
-        ? `Style: dystopian novel cover language with civic scale, authoritarian structure, bleak elegance, and atmosphere of system pressure. Visual cue: ${cue}.`
-        : `Style: dystopian novel illustration with civic scale, authoritarian geometry, bleak elegance, and layered social pressure. Visual cue: ${cue}.`;
-    }
-    if (key.includes("psikolojik")) {
-      return isCover
-        ? `Style: psychological novel cover language with introspective symbolism, muted palette, subtle fractures, and emotionally loaded negative space. Visual cue: ${cue}.`
-        : `Style: psychological novel illustration with muted palette, introspective symbolism, emotional fracture, and controlled visual unease. Visual cue: ${cue}.`;
-    }
-    if (key.includes("tarihsel")) {
-      return isCover
-        ? `Style: historical novel cover language with period-authentic costume, tactile material detail, elegant composition, and era-specific atmosphere. Visual cue: ${cue}.`
-        : `Style: historical illustration with period-authentic costume, tactile props, era-correct architecture, and textured atmosphere. Visual cue: ${cue}.`;
-    }
+    // Fantastik
     if (key.includes("fantastik")) {
       return isCover
-        ? `Style: fantasy novel cover language with deep world-building, mythic scale, magical system coherence, and premium illustrated atmosphere. Visual cue: ${cue}.`
-        : `Style: fantasy novel illustration with deep world-building, magical-system coherence, mythic scale, and premium illustrated atmosphere. Visual cue: ${cue}.`;
+        ? `Style: epic fantasy cover illustration — bright cobalt sky, golden magical glow, intricate world-building environmental detail, heroic character silhouette, painterly premium finish. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: epic fantasy scene illustration — luminous magical lighting, saturated cobalt, warm gold, teal and vibrant magenta palette, detailed world-building environment, dynamic character staging. ${storyNovelVisualLock} Visual cue: ${cue}.`;
     }
-    if (audienceLevel === "7-11") {
-      return `Style: STRICTLY non-photorealistic. Filmlike illustrated graphic-novel look, clear silhouettes, family-safe intensity. Photorealism is forbidden. Visual cue: ${cue}.`;
+    // Bilimkurgu
+    if (key.includes("bilimkurgu") || key.includes("bilim")) {
+      return isCover
+        ? `Style: cinematic sci-fi cover — sweeping cosmic vista, luminous technology aesthetics, teal, purple and warm amber accent light, pristine futuristic design, epic scale. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: cinematic sci-fi scene illustration — glowing holographic environments, luminous spectrum palette with warm human focal light, futuristic design language, sense of discovery and scale. ${storyNovelVisualLock} Visual cue: ${cue}.`;
     }
-    if (audienceLevel === "12-18") {
-      return `Style: STRICTLY non-photorealistic. Cinematic graphic-novel / illustrated style with strong atmosphere and emotional depth. Photorealism is forbidden. Visual cue: ${cue}.`;
-    }
-    return isCover
-      ? `Style: mature cinematic cover language with painterly / charcoal-art options. Photorealism is allowed but not required. Visual cue: ${cue}.`
-      : `Style: mature cinematic illustration with painterly / charcoal-art option, coherent world continuity. Visual cue: ${cue}.`;
-  }
-
-  if (bookType === "fairy_tale") {
-    if (key.includes("eğitici") || key.includes("egitici")) {
-      return "Style: STRICTLY non-photorealistic vivid colorful storybook illustration with magical warmth, clean shapes, reassuring expressions, and pedagogy-first visual clarity. Photorealism is forbidden.";
-    }
+    // Macera
     if (key.includes("macer")) {
-      return "Style: STRICTLY non-photorealistic magical adventure storybook illustration with bright wonder, readable motion, bold scenic rhythm, and warm fantasy charm. Photorealism is forbidden.";
+      return isCover
+        ? `Style: cinematic adventure cover — hero in bold motion against sweeping epic landscape, warm golden backlight, colorful sky, environmental scale and forward momentum. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: cinematic adventure scene illustration — kinetic composition, environmental grandeur, clear luminous lighting, characters in purposeful action against richly detailed world. ${storyNovelVisualLock} Visual cue: ${cue}.`;
     }
-    if (key.includes("gizem")) {
-      return "Style: STRICTLY non-photorealistic fairy-tale illustration with luminous mystery, readable silhouettes, soft suspense, and child-safe magical atmosphere. Photorealism is forbidden.";
+    // Gizem / Polisiye
+    if (key.includes("gizem") || key.includes("polisiye")) {
+      return isCover
+        ? `Style: stylish mystery cover — rich teal-amber-crimson palette, warm lamplit perspective, hidden visual details inviting scrutiny, modern color confidence and elegant investigative composition. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: stylish mystery scene illustration — warm lamplit clarity, rich color contrast, clue-laden scene details, visual tension with compositional elegance. ${storyNovelVisualLock} Visual cue: ${cue}.`;
     }
-    return "Style: STRICTLY non-photorealistic vivid colorful storybook/cartoon illustration with magical warmth. Photorealism is forbidden.";
+    // Dram
+    if (key.includes("dram")) {
+      return isCover
+        ? `Style: painterly emotional drama cover — warm cinematic lighting, expressive character face as focal point, rich amber, sienna and teal color depth, human connection radiating from composition. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: painterly drama illustration — rich warm lighting, expressive authentic character emotion, grounded real-world texture, intimate cinematic framing. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Romantik
+    if (key.includes("romantik")) {
+      return isCover
+        ? `Style: luminous romantic cover — golden-hour soft bloom, warm rose-and-amber color story, two figures in intimate composition, soft focal lighting, beautiful and emotionally inviting. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: luminous romantic scene illustration — golden soft-focus light, warm rose-and-amber palette, emotion-first framing, warmth radiating between characters. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Korku
+    if (key.includes("korku")) {
+      return isCover
+        ? `Style: suspense-adventure cover — crisp moonlit clarity, warm guiding light, vivid crimson, silver and teal accents, elegant tension, readable character emotion, no gratuitous imagery. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: suspense-adventure scene illustration — clear moonlit atmosphere, warm practical light, vivid color accents, elegant tension, readable character emotion and setting detail. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Tarihi
+    if (key.includes("tarihsel")) {
+      return isCover
+        ? `Style: rich historical period cover — tapestry-like texture, authentic period costuming, warm parchment, jewel and sunlit tones, museum-quality painted composition, era-specific atmosphere. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: rich historical period illustration — painterly period-authentic detail, warm candlelit or sunlit atmosphere, era-correct architecture and costume, museum-quality texture. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Gerilim
+    if (key.includes("gerilim")) {
+      return isCover
+        ? `Style: high-tension action-suspense cover — bold depth composition, crisp directional lighting, vivid teal-and-amber palette, kinetic visual momentum, stylish cinematic tension. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: high-tension action-suspense scene — crisp cinematic contrast, directional practical lighting, compressed-space composition, relentless visual momentum. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Mitolojik
+    if (key.includes("mitolojik")) {
+      return isCover
+        ? `Style: mythological epic cover — divine golden radiance, heroic figures at mythic scale, rich ancient mosaic palette (gold, crimson, cobalt), ornate compositional grandeur. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: mythological epic scene illustration — heroic scale, divine lighting, ancient ornamental detail, rich warm-gold-and-crimson palette. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Kültürel
+    if (key.includes("kulturel") || key.includes("kultural")) {
+      return isCover
+        ? `Style: vibrant cultural literary cover — regional color tradition in full bloom, intricate cultural patterns as compositional elements, authentic costuming, celebratory visual richness. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: vibrant cultural scene illustration — authentic regional motifs and colors, intricate pattern details, cultural costuming, celebratory warmth. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Gençlik
+    if (key.includes("genclik")) {
+      return isCover
+        ? `Style: dynamic YA cover — bold colorful palette, energetic cinematic composition, strong youthful character presence, contemporary illustration style with emotional impact. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: dynamic YA scene illustration — bold color story, expressive youthful characters, contemporary visual language, high emotional energy. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Süper Kahraman
+    if (key.includes("super") || key.includes("kahraman")) {
+      return isCover
+        ? `Style: dynamic superhero graphic-novel cover — bold ink outlines, saturated primary-and-electric palette, explosive kinetic composition, heroic character staging, premium comic-art polish. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: dynamic superhero graphic-novel scene — bold linework, saturated color, kinetic impact-frame composition, heroic staging. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Psikolojik
+    if (key.includes("psikolojik")) {
+      return isCover
+        ? `Style: psychological intrigue cover — visually rich symbolic composition, jewel-toned palette, polished editorial clarity, introspective visual intrigue, ordered metaphorical details. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: psychological intrigue scene illustration — symbolically rich composition, vivid palette, ordered visual metaphors, internal emotion made clear through concrete objects and expression. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Distopik
+    if (key.includes("distopik")) {
+      return isCover
+        ? `Style: dystopian cinematic cover — bold graphic civic architecture as visual backdrop, single vivid rebel accent color cutting through structured city tones, powerful cinematic lighting, graphically striking. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: dystopian cinematic scene — powerful architectural scale, single accent color point of resistance against structured city tones, dramatic but readable directional lighting. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Alternatif Dünya
+    if (key.includes("alternati")) {
+      return isCover
+        ? `Style: world-building wonder cover — impossible unique architecture establishing new reality rules, rich alien-yet-inviting color palette, discovery-map composition, sense of boundless new world. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: world-building scene illustration — unique environmental language, alien flora and architecture, rich color establishing distinct world rules, discovery energy. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Komedi / Mizah
+    if (key.includes("komedi") || key.includes("mizah")) {
+      return isCover
+        ? `Style: bold comedic cover — elastic character poses mid-expression, bright ironic color contrast, visual punchline timing in composition, lively upbeat energy. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: bold comedic illustration — rubberhose-inspired expressive poses, bright warm palette, visual comedy timing, elastic and joyful. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Genel yetişkin fallback
+    return isCover
+      ? `Style: premium cinematic cover illustration — rich luminous lighting, vivid color story, strong character composition, painterly texture with photographic clarity. ${storyNovelVisualLock} Visual cue: ${cue}.`
+      : `Style: premium cinematic scene illustration — luminous lighting, rich color palette, expressive characters, detailed environment, painterly quality. ${storyNovelVisualLock} Visual cue: ${cue}.`;
   }
 
-  return "Style: colorized charcoal / fine-art illustration, rich texture, realistic and cinematic.";
+  // ─── ROMAN ──────────────────────────────────────────────────────────────────
+  if (bookType === "novel") {
+    // Yaş: 7-11
+    if (audienceLevel === "7-11") {
+      return isCover
+        ? `Style: vibrant illustrated novel cover — bold saturated palette, clear compelling character composition, animated-film quality illustration. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
+        : `Style: vibrant illustrated novel scene — rich saturated colors, clear expressive characters, cinematic storybook quality. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
+    }
+    // Yaş: 12-18
+    if (audienceLevel === "12-18") {
+      return isCover
+        ? `Style: cinematic graphic-novel cover — strong luminous composition, dramatic character staging, expressive illustrative lighting. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
+        : `Style: cinematic graphic-novel scene — expressive luminous lighting, strong character presence, detailed environments, emotional clarity. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
+    }
+    // Fantastik
+    if (key.includes("fantastik")) {
+      return isCover
+        ? `Style: premium epic fantasy novel cover — expansive world-building visual architecture, mythic scale, rich magical atmosphere (bright cobalt, luminous gold, vivid teal), painterly oil-finish quality. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: premium epic fantasy illustration — luminous magical environments, richly detailed world, clear magical color accents, premium painterly quality. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Bilimkurgu
+    if (key.includes("bilimkurgu") || key.includes("bilim")) {
+      return isCover
+        ? `Style: premium sci-fi novel cover — stunning speculative architecture, cool luminous palette (space blue, teal, soft amber), pristine futuristic design with human emotional anchor, epic scale. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: premium sci-fi illustration — luminous technology aesthetics, space-blue palette with warm human focal light, speculative world detail, sense of wonder and discovery. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Macera
+    if (key.includes("macer")) {
+      return isCover
+        ? `Style: cinematic adventure novel cover — sweeping epic landscape, heroic character in bold composition, colorful sky, environmental scale and forward-motion energy. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: cinematic adventure illustration — kinetic composition, grand environmental scale, luminous lighting, decisive character action. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Romantik
+    if (key.includes("romantik")) {
+      return isCover
+        ? `Style: luminous romantic novel cover — soft golden-hour bloom, rose-and-amber color story, intimate character composition, emotionally warm and beautifully rendered. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: luminous romantic illustration — warm soft-focus light, emotional character framing, rich rose-and-gold palette, relational visual warmth. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Tarihi
+    if (key.includes("tarihsel")) {
+      return isCover
+        ? `Style: museum-quality historical novel cover — rich period-authentic painted detail, tapestry-warm color palette, authentic costuming and architecture, aged-gold elegance. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: museum-quality historical illustration — painterly period detail, warm era-authentic lighting, rich material textures, architectural and costume authenticity. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Psikolojik
+    if (key.includes("psikolojik")) {
+      return isCover
+        ? `Style: visually striking psychological novel cover — symbolically rich composition, jewel-toned palette, emotionally charged negative space, polished editorial clarity, introspective visual power. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: visually striking psychological illustration — symbolically layered scene, jewel-toned palette, ordered visual poetry, internal world made visually compelling through concrete details. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Distopik
+    if (key.includes("distopik")) {
+      return isCover
+        ? `Style: powerful dystopian novel cover — monumental civic architecture as backdrop, single vivid accent color (crimson, electric blue) as point of resistance, powerful cinematic lighting, graphically striking. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: powerful dystopian illustration — architectural scale and social pressure, readable contrast lighting, vivid accent color against structured city palette, graphically bold. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Komedi / Mizah
+    if (key.includes("komedi") || key.includes("mizah")) {
+      return isCover
+        ? `Style: literary comedic novel cover — elegant wit in visual composition, memorable character silhouette with expressive irony, refined saturated palette, smart humor translated to premium illustration. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: literary comedic illustration — refined expressive character acting, witty visual composition, elegant color palette, sustained intelligent humor. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Korku
+    if (key.includes("korku")) {
+      return isCover
+        ? `Style: suspense novel cover — crisp moonlit clarity with dramatic color accent light (crimson, silver, teal), elegant tension, readable character emotion, polished cinematic intrigue. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: suspense illustration — clear moonlit atmosphere with vivid accent light, elegant tension, rich readable color palette, polished cinematic intrigue. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Gerilim
+    if (key.includes("gerilim")) {
+      return isCover
+        ? `Style: cinematic action-suspense novel cover — sharp directional lighting, bold depth composition, vivid teal-and-amber palette, visual momentum and tension. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: cinematic action-suspense scene illustration — crisp contrast, directional practical lighting, compressed composition, relentless visual tension. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Gizem / Polisiye
+    if (key.includes("gizem") || key.includes("polisiye")) {
+      return isCover
+        ? `Style: stylish literary mystery cover — rich teal-amber-crimson palette, warm lamplit depth, sophisticated investigative elegance with modern color confidence. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: stylish literary mystery illustration — warm lamplit scenes, rich color contrast, visual intrigue embedded in scene details. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Mitolojik
+    if (key.includes("mitolojik")) {
+      return isCover
+        ? `Style: epic mythological novel cover — divine golden radiance, heroic figures at mythic scale, rich ancient palette, ornate compositional grandeur. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: epic mythological illustration — divine light, ancient ornamental richness, heroic compositional scale, warm gold-and-crimson palette. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Kültürel
+    if (key.includes("kulturel") || key.includes("kultural")) {
+      return isCover
+        ? `Style: rich cultural literary novel cover — regional visual tradition elevated to premium illustration, intricate cultural patterns, authentic costuming, celebratory color richness. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: rich cultural illustration — intricate authentic regional motifs, ceremonial color palette, cultural costuming, opulent visual richness. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Gençlik
+    if (key.includes("genclik")) {
+      return isCover
+        ? `Style: dynamic YA novel cover — bold colorful palette, strong youthful character presence, energetic contemporary composition, emotional cinematic impact. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: dynamic YA illustration — bold color story, expressive youthful characters, high emotional energy, contemporary visual language. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Süper Kahraman
+    if (key.includes("super") || key.includes("kahraman")) {
+      return isCover
+        ? `Style: premium superhero novel cover — bold ink-and-color graphic art, saturated electric palette, explosive heroic composition, premium illustrated impact. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: premium superhero illustration — bold linework, saturated color story, kinetic heroic staging, graphic-novel polish. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Alternatif Dünya
+    if (key.includes("alternati")) {
+      return isCover
+        ? `Style: world-building novel cover — unique impossible architecture establishing entirely new reality, rich alien-yet-inviting palette, boundless discovery energy. ${storyNovelVisualLock} Visual cue: ${cue}.`
+        : `Style: world-building illustration — unique environmental language, alien-yet-coherent world rules visible in scene, rich distinctive color palette. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+    }
+    // Genel yetişkin fallback
+    return isCover
+      ? `Style: premium literary novel cover — rich luminous cinematic lighting, vivid expressive color palette, strong character composition, painterly texture with photographic depth. ${storyNovelVisualLock} Visual cue: ${cue}.`
+      : `Style: premium literary illustration — luminous lighting, rich color depth, expressive character presence, detailed environment, painterly quality. ${storyNovelVisualLock} Visual cue: ${cue}.`;
+  }
+
+  // ─── Genel fallback ──────────────────────────────────────────────────────────
+  return isCover
+    ? `Style: premium illustrated cover — rich cinematic lighting, vivid expressive palette, compelling character composition, painterly quality. Visual cue: ${cue}.`
+    : `Style: premium illustration — atmospheric lighting, rich color palette, expressive characters, detailed environment. Visual cue: ${cue}.`;
 }
 
 function buildCoverTitleTypographyDirective(
@@ -2659,7 +2984,7 @@ function buildCoverTitleTypographyDirective(
       return "Baslik tipografisi distopik dunyaya uygun, geometrik, sert, kontrollu ve tasarlanmis poster lettering hissi vermeli. Ince duz caption veya daktilo yazisi YASAK.";
     }
     if (key.includes("gizem") || key.includes("polisiye") || key.includes("gerilim")) {
-      return "Baslik tipografisi gizem/gerilim tonuna uygun, keskin, sinematik ve gerilim tasiyan stilize lettering olmali. Basit duz metin gibi yazilip gecilmemeli.";
+      return "Baslik tipografisi gizem/gerilim tonuna uygun, keskin, sinematik ve enerjik stilize lettering olmali. Basit duz metin gibi yazilip gecilmemeli.";
     }
     if (key.includes("romantik")) {
       return "Baslik tipografisi romantik tona uygun, zarif, duygulu ve tasarimli olmali; editoriyal kapak lettering hissi vermeli. Jenerik daktilo veya mekanik metin YASAK.";
@@ -2668,7 +2993,7 @@ function buildCoverTitleTypographyDirective(
       return "Baslik tipografisi macera hissini guclendiren cesur, dinamik ve stilize kapak yazisi olmali. Duz metin etiketi gibi gorunmemeli.";
     }
     if (key.includes("psikolojik")) {
-      return "Baslik tipografisi psikolojik tona uygun, rafine, huzursuzluk hissi tasiyan, stilize editoriyal lettering olmali. Duz daktilo gibi gecistirilmemeli.";
+      return "Baslik tipografisi psikolojik tona uygun, rafine, katmanli ve stilize editoriyal lettering olmali. Duz daktilo gibi gecistirilmemeli.";
     }
     return "Baslik tipografisi hikaye alt turune uygun, ozel tasarlanmis, stilize display/editoriyal kapak yazisi olmali. Duz daktilo, jenerik sistem fontu veya sonradan eklenmis caption gorunumu YASAK.";
   }
@@ -2681,7 +3006,7 @@ function buildCoverTitleTypographyDirective(
       return "Baslik tipografisi distopik romana uygun, guclu, sert, tasarlanmis ve mimari his tasiyan bir lettering olmali. Duz daktilo/caption gorunumu YASAK.";
     }
     if (key.includes("psikolojik")) {
-      return "Baslik tipografisi psikolojik romana uygun, rafine, gerilimli, editoriyal ve stilize olmali; kapaga edebi agirlik vermeli. Mekanik duz yazi gibi gorunmemeli.";
+      return "Baslik tipografisi psikolojik romana uygun, rafine, katmanli, editoriyal ve stilize olmali; kapaga edebi agirlik vermeli. Mekanik duz yazi gibi gorunmemeli.";
     }
     if (key.includes("tarihsel")) {
       return "Baslik tipografisi tarihsel romana uygun, donem hissi veren, zarif ve ozel tasarlanmis olmali. Duz daktilo, modern caption veya sade tek satir metin YASAK.";
@@ -2716,12 +3041,12 @@ function buildCoverCompositionAntiClicheDirective(
     if (key.includes("distopik")) return "Kapak klişe yasağı: sadece gri şehir silüeti + tek yalnız figür klişesine düşme; seçilen sistem baskısını özgün bir görsel fikirle anlat.";
     if (key.includes("gizem")) return "Kapak klişe yasağı: büyüteç, dedektif şapkası, anahtar deliği gibi stok gizem ikonlarına yaslanma; özgün ipucu atmosferi kur.";
     if (key.includes("romantik")) return "Kapak klişe yasağı: birbirine bakan çift + gün batımı klişesine düşme; ilişkinin özgül gerilimini veya mesafesini seç.";
-    if (key.includes("korku")) return "Kapak klişe yasağı: sadece karanlık koridor veya tek göz klişisi çizme; özgün tehdit hissini seç.";
+    if (key.includes("korku")) return "Kapak klişe yasağı: sadece koridor, tek göz veya stok tehdit ikonuna düşme; özgün, renkli ve okunaklı bir tehlike fikri seç.";
     return "Kapak klişe yasağı: seçilen hikaye alt türünü stok poster kompozisyonlarına indirme; özgün bir merkez görsel fikir seç.";
   }
   if (bookType === "novel") {
     if (key.includes("tarihsel")) return "Kapak klişe yasağı: sadece dönem kostümü giyen karakter portresi çizme; dönemin sosyal/dramatik çatışmasını taşıyan bir kompozisyon kur.";
-    if (key.includes("psikolojik")) return "Kapak klişe yasağı: kırık ayna, tek göz, yüzün yarısı gölgede gibi aşırı kullanılmış klişelere yaslanma; özgün zihinsel baskı imgesi bul.";
+    if (key.includes("psikolojik")) return "Kapak klişe yasağı: kırık ayna, tek göz veya yarım yüz gibi aşırı kullanılmış klişelere yaslanma; özgün zihinsel baskı imgesi bul.";
     if (key.includes("fantastik")) return "Kapak klişe yasağı: ortada kahraman, arkada kale, etrafta parlayan sis klişisine düşme; dünyaya özgü güç ilişkisini göster.";
     if (key.includes("distopik")) return "Kapak klişe yasağı: sadece kapüşonlu figür + baskıcı şehir klişisine düşme; sistemin özgül baskı biçimini seç.";
     if (key.includes("romantik")) return "Kapak klişe yasağı: jenerik çift pozu ve pembe parlama klişisinden kaçın; ilişkinin özgül ruh halini yakala.";
@@ -2752,12 +3077,39 @@ function buildCreativeBriefInstruction(
   }
 
   if (bookType === "story") {
-    return buildNarrativeBriefBlock(brief, isEn, lockedLanguage, targetPageCount, {
-      typeLabel: isEn ? "Story" : "Hikaye",
-      styleDirective: isEn
-        ? "Write this entirely as a story: one dominant conflict, compact scene economy, sharp progression, dramatic tension, character-driven plot, no filler."
-        : "Bu metni tamamen hikaye olarak yaz: tek baskın çatışma, kısa-yoğun sahneler, keskin ilerleme, dramatik gerilim, karakter odaklı olay örgüsü, dolgu yok."
-    }, audienceLevel);
+    const level = brief.workbookLevel || (isEn ? "Middle school" : "Ortaokul");
+    const category = brief.workbookCategory || brief.subGenre || (isEn ? "Scientific" : "Bilimsel");
+    const lockedBlock = [
+      isEn ? "LOCKED INPUTS (DO NOT OVERRIDE):" : "KİLİTLİ GİRDİLER (DEĞİŞTİRME):",
+      isEn ? "- Type: Scientific/academic workbook" : "- Tür: Bilimsel/akademik çalışma kitabı",
+      isEn ? `- Education level: ${level}` : `- Eğitim seviyesi: ${level}`,
+      isEn ? `- Category: ${category}` : `- Kategori: ${category}`,
+      lockedLanguage
+        ? (isEn ? `- Output language: ${lockedLanguage}` : `- Çıktı dili: ${lockedLanguage}`)
+        : (isEn ? "- Output language: follow detected user language" : "- Çıktı dili: tespit edilen kullanıcı dili")
+    ];
+    const lines = [
+      isEn
+        ? `Length goal: target about ${targetPageCount} pages, normally 12-15 pages. This is a soft layout target; never truncate a naturally complete result and never regenerate solely because the rendered page count is shorter or longer.`
+        : `Uzunluk hedefi: yaklaşık ${targetPageCount} sayfa, normalde 12-15 sayfa. Bu yumuşak bir yerleşim hedefidir; doğal biçimde tamamlanan metni asla kesme ve yalnızca sayfa sayısı kısa/uzun çıktı diye yeniden üretme.`,
+      isEn
+        ? "Use scientific textbook structure: meaningful headings/subheadings, markdown tables and lists, definitions, mechanisms, comparisons, evidence limits, and clear transitions."
+        : "Bilimsel ders kitabı yapısı kullan: anlamlı başlık/alt başlıklar, markdown tabloları ve listeler, tanımlar, mekanizmalar, karşılaştırmalar, kanıt sınırları ve açık geçişler.",
+      brief.includeExamples
+        ? (isEn ? "Weave at least 2-3, preferably about 5, current real-life examples naturally into the explanation. Never label them Example 1/2." : "En az 2-3, tercihen yaklaşık 5 güncel gerçek yaşam örneğini anlatıma doğal biçimde yedir. Bunları Örnek 1/2 diye başlıklandırma.")
+        : (isEn ? "Do not force a separate examples section." : "Ayrı bir örnekler bölümü zorlama."),
+      brief.includeQuiz
+        ? (isEn ? "The final section must include exactly 8 multiple-choice and 4 true/false questions, followed by an answer key." : "Son bölümde tam 8 çoktan seçmeli ve 4 doğru/yanlış soru ile ardından cevap anahtarı bulunmalı.")
+        : (isEn ? "Do not add a quiz." : "Quiz ekleme."),
+      brief.includeRelatedBooks
+        ? (isEn ? "The final section must include at least 4 relevant, real reading recommendations." : "Son bölümde konuyla ilgili en az 4 gerçek okuma önerisi bulunmalı.")
+        : (isEn ? "Do not add a related-books section." : "İlgili kitaplar bölümü ekleme."),
+      isEn ? "Always finish with an Important section and a concise glossary." : "Her zaman Önemli bölümü ve kısa bir Terimler Sözlüğü ile tamamla."
+    ];
+    if (brief.customInstructions) {
+      lines.push(isEn ? `Custom notes: ${brief.customInstructions}` : `Ek notlar: ${brief.customInstructions}`);
+    }
+    return `${lockedBlock.join("\n")}\n\n${lines.join("\n")}`;
   }
 
   if (bookType === "novel") {
@@ -3133,6 +3485,7 @@ function extractUsageNumbers(rawUsage: unknown): {
   totalTokens: number;
   inputTextTokens: number;
   inputImageTokens: number;
+  thinkingTokens: number;
 } {
   const usage = (rawUsage && typeof rawUsage === "object")
     ? rawUsage as Record<string, unknown>
@@ -3158,7 +3511,7 @@ function extractUsageNumbers(rawUsage: unknown): {
     usage.text_input_tokens ??
     (inputTextTokens + inputImageTokens)
   );
-  const outputTokens = toNonNegativeIntToken(
+  const visibleOutputTokens = toNonNegativeIntToken(
     usage.candidatesTokenCount ??
     usage.outputTokenCount ??
     usage.outputTokens ??
@@ -3171,18 +3524,28 @@ function extractUsageNumbers(rawUsage: unknown): {
     usage.text_output_tokens ??
     usage.audio_output_tokens
   );
+  const thinkingTokens = toNonNegativeIntToken(
+    usage.thoughtsTokenCount ??
+    usage.thinkingTokenCount ??
+    usage.thought_tokens ??
+    usage.thinking_tokens ??
+    usage.total_thought_tokens
+  );
+  // Gemini bills visible response tokens and hidden thinking tokens at the output rate.
+  const outputTokens = visibleOutputTokens + thinkingTokens;
   const totalTokensRaw = toNonNegativeIntToken(
     usage.totalTokenCount ??
     usage.totalTokens ??
     usage.total_tokens
   );
-  const totalTokens = totalTokensRaw > 0 ? totalTokensRaw : inputTokens + outputTokens;
+  const totalTokens = Math.max(totalTokensRaw, inputTokens + outputTokens);
   return {
     inputTokens,
     outputTokens,
     totalTokens,
     inputTextTokens: inputTextTokens > 0 ? inputTextTokens : Math.max(0, inputTokens - inputImageTokens),
-    inputImageTokens
+    inputImageTokens,
+    thinkingTokens
   };
 }
 
@@ -3207,10 +3570,10 @@ function costForGemini3FlashPreview(inputTokens: number, outputTokens: number): 
   );
 }
 
-function costForGemini31FlashLitePreview(inputTokens: number, outputTokens: number): number {
+function costForGemini31FlashLite(inputTokens: number, outputTokens: number): number {
   return roundUsd(
-    (inputTokens / 1_000_000) * GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_INPUT_USD_PER_1M +
-    (outputTokens / 1_000_000) * GOOGLE_GEMINI_3_1_FLASH_LITE_PREVIEW_OUTPUT_USD_PER_1M
+    (inputTokens / 1_000_000) * GOOGLE_GEMINI_3_1_FLASH_LITE_INPUT_USD_PER_1M +
+    (outputTokens / 1_000_000) * GOOGLE_GEMINI_3_1_FLASH_LITE_OUTPUT_USD_PER_1M
   );
 }
 
@@ -3224,7 +3587,7 @@ function costForGemini25Flash(inputTokens: number, outputTokens: number): number
 function costForGeminiModel(model: string, inputTokens: number, outputTokens: number): number {
   const normalized = String(model || "").toLowerCase();
   if (normalized.includes("gemini-3.1-flash-lite")) {
-    return costForGemini31FlashLitePreview(inputTokens, outputTokens);
+    return costForGemini31FlashLite(inputTokens, outputTokens);
   }
   if (normalized.includes("gemini-3-flash")) {
     return costForGemini3FlashPreview(inputTokens, outputTokens);
@@ -3258,6 +3621,7 @@ function resolveOpenAiGptImagePricing(
 } {
   const normalizedModel = String(model || OPENAI_IMAGE_MODEL).trim().toLowerCase();
   const isSquare = (sizeMode || "cover-3x4") === "square-1x1";
+  const isLandscape = sizeMode === "poster-16x9";
   if (normalizedModel.includes("gpt-image-1.5")) {
     return {
       inputTextUsdPer1M: OPENAI_GPT_IMAGE_15_INPUT_TEXT_USD_PER_1M,
@@ -3284,7 +3648,9 @@ function resolveOpenAiGptImagePricing(
     outputImageUsdPer1M: OPENAI_GPT_IMAGE_OUTPUT_USD_PER_1M,
     lowOutputUsdPerImage: isSquare
       ? OPENAI_GPT_IMAGE_LOW_SQUARE_USD_PER_IMAGE
-      : OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE
+      : isLandscape
+        ? OPENAI_GPT_IMAGE_LOW_LANDSCAPE_USD_PER_IMAGE
+        : OPENAI_GPT_IMAGE_LOW_RECT_USD_PER_IMAGE
   };
 }
 
@@ -3899,7 +4265,7 @@ function buildNarrativeSceneCues(content: string | undefined, imageCount: number
     const key = normalizeCueKey(cleaned);
     if (!key || seenKeys.has(key)) continue;
     seenKeys.add(key);
-    uniqueUnits.push(cleaned.slice(0, 680));
+    uniqueUnits.push(cleaned.slice(0, 260));
   }
 
   if (uniqueUnits.length === 0) {
@@ -3922,7 +4288,7 @@ function buildNarrativeSceneCues(content: string | undefined, imageCount: number
       : i === safeCount - 1
         ? "Sonuç anı:"
         : `Aşama ${i + 1}:`;
-    cues.push(`${phasePrefix} ${base}`.slice(0, 680));
+    cues.push(`${phasePrefix} ${base}`.slice(0, 260));
   }
 
   return cues;
@@ -3968,12 +4334,8 @@ function extractSpeciesIdentityLocks(inputs: Array<string | undefined>): string[
 function buildFourPanelActionVariationGuide(): string {
   return `
 Panel diversity lock (hard):
-- Panel 1 must show setup/intent before major movement.
-- Panel 2 must show progression/motion (a clearly different action).
-- Panel 3 must show obstacle/turning point (new spatial relation).
-- Panel 4 must show consequence/result after the turning point.
-- Use a different dominant action verb per panel; repeating the same chase/pose/action loop across all panels is forbidden.
-- At least two panels must differ in camera distance (e.g., wide vs medium/close) and character pose.
+- P1 setup, P2 progression, P3 turning point, P4 consequence; each is a different action.
+- Vary pose, spatial relation, and camera distance; never repeat one composition/action loop.
   `.trim();
 }
 
@@ -3985,7 +4347,7 @@ function buildNarrativeFourPanelCues(content: string | undefined): string[] {
     "Turning beat:",
     "Result beat:"
   ];
-  return baseCues.map((cue, index) => `${phasePrefix[index] || `Beat ${index + 1}:`} ${cue}`.slice(0, 740));
+  return baseCues.map((cue, index) => `${phasePrefix[index] || `Beat ${index + 1}:`} ${cue}`.slice(0, 300));
 }
 
 function buildCharacterContinuityLock(
@@ -3995,7 +4357,7 @@ function buildCharacterContinuityLock(
     storySoFarContent?: string;
   }
 ): string {
-  const safeCharacters = compactInline(characters, 320) || "Ana karakter seti";
+  const safeCharacters = compactInline(characters, 180) || "Ana karakter seti";
   const speciesLocks = extractSpeciesIdentityLocks([
     characters,
     options?.storySoFarContent,
@@ -4006,15 +4368,9 @@ function buildCharacterContinuityLock(
     : "- Species identity lock: use only the species actually established by the character roster, current section, and story-so-far context; do not invent a new substitute animal.";
   return `
 Character continuity lock (mandatory):
-- Keep recurring characters IDENTICAL across all visuals in this book sequence.
-- Treat the protagonist defined in the character roster as a LOCKED anchor identity; do not reinterpret, replace, or morph that character into another animal or another character.
-- Character roster authority: if a named character is introduced with a species/type, that exact name-species pairing is LOCKED for the whole book sequence.
-- Preserve the same facial identity (face shape, eyes, nose, mouth proportions), hair color/style, skin tone, and body proportions.
-- Keep signature outfit colors and key accessories stable unless the section explicitly changes them.
-- Only pose, expression, and camera angle may change between scenes.
-- HARD ban: never swap identity class or replace a named/main character with another animal or another character.
-- Use only the identities explicitly supported by the real book inputs: character roster, current section text, and story-so-far continuity.
-- If the current section omits species/name details, inherit the established identity from previous sections.
+- Keep each named character's species/type, face, hair, skin tone, proportions, outfit colors, and key accessories identical across the book.
+- Never replace or morph the protagonist; only pose, expression, and camera may change.
+- If details are omitted, inherit them from the roster and prior continuity; invent no substitute character/animal.
 ${speciesLockLine}
 - Character roster reference: ${safeCharacters}
   `.trim();
@@ -4030,21 +4386,25 @@ function buildFairyTaleSectionImagePrompt(
   totalSections: number,
   previousSectionContent?: string,
   storySoFarContent?: string,
-  useFourPanelCompositeForSection: boolean = false
+  useFourPanelCompositeForSection: boolean = false,
+  heroPortraitName?: string
 ): string {
-  const characters = compactInline(creativeBrief?.characters, 320) || "Masalın ana karakterleri";
-  const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Masalın geçtiği ana mekan";
-  const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Belirsiz masal zamanı";
+  const characters = compactInline(creativeBrief?.characters, 180) || "Masalın ana karakterleri";
+  const settingPlace = compactInline(creativeBrief?.settingPlace, 120) || "Masalın geçtiği ana mekan";
+  const settingTime = compactInline(creativeBrief?.settingTime, 120) || "Belirsiz masal zamanı";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || "Masal";
   const styleLine = buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, subGenre, false);
+  const heroPortraitDirective = heroPortraitName
+    ? buildNarrativeHeroPortraitDirective(heroPortraitName)
+    : "";
   const continuityLock = buildCharacterContinuityLock(characters, {
     sectionContent,
     storySoFarContent
   });
   const panelVariationGuide = buildFourPanelActionVariationGuide();
-  const sectionExcerpt = String(sectionContent || "").replace(/\s+/g, " ").trim().slice(0, 2_400);
-  const previousExcerpt = String(previousSectionContent || "").replace(/\s+/g, " ").trim().slice(-650);
-  const storySoFarExcerpt = String(storySoFarContent || "").replace(/\s+/g, " ").trim().slice(-700);
+  const sectionExcerpt = String(sectionContent || "").replace(/\s+/g, " ").trim().slice(0, 1_100);
+  const previousExcerpt = String(previousSectionContent || "").replace(/\s+/g, " ").trim().slice(-280);
+  const storySoFarExcerpt = String(storySoFarContent || "").replace(/\s+/g, " ").trim().slice(-280);
 
   if (useFourPanelCompositeForSection) {
     const panelCues = buildNarrativeFourPanelCues(sectionContent);
@@ -4101,6 +4461,7 @@ Panel-to-grid mapping (mandatory):
 - Bottom-right panel: Scene cue #4 (resulting moment, close/medium close shot).
 
 ${styleLine}
+${heroPortraitDirective}
 ${continuityLock}
 ${panelVariationGuide}
 
@@ -4120,7 +4481,9 @@ Rules:
 13) Keep the mood child-friendly, vivid, readable, and visually coherent for a fairy tale book.
 14) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
 15) Do not invent substitute animals. The protagonist species and identity from the character roster/story continuity are locked.
-16) Absolutely no prompt/system/backend/meta text in visuals.
+16) Hard visual ban: no gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, photorealism, realistic photo faces, uncanny faces, or scary monster framing.
+17) If the scene is night, mystery, conflict, or danger, render it as safe wonder with warm lantern light, sparkling moon/snow/glow accents, friendly readable expressions, and bright color highlights.
+18) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
   }
 
@@ -4155,6 +4518,7 @@ ${storySoFarExcerpt}
 ` : ""}
 
 ${styleLine}
+${heroPortraitDirective}
 ${continuityLock}
 
 Rules:
@@ -4169,7 +4533,19 @@ Rules:
 9) Use rich visual storytelling quality: expressive faces/poses, clear staging, detailed environment, and coherent lighting.
 10) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
 11) Do not invent substitute animals. The protagonist species and identity from the character roster/story continuity are locked.
-12) Absolutely no prompt/system/backend/meta text in visuals.
+12) Hard visual ban: no gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, photorealism, realistic photo faces, uncanny faces, or scary monster framing.
+13) If the scene is night, mystery, conflict, or danger, render it as safe wonder with warm lantern light, sparkling moon/snow/glow accents, friendly readable expressions, and bright color highlights.
+14) Absolutely no prompt/system/backend/meta text in visuals.
+  `.trim();
+}
+
+function buildNarrativeHeroPortraitDirective(heroPortraitName?: string): string {
+  const name = String(heroPortraitName || "").replace(/\s+/g, " ").trim();
+  const subject = name || "the uploaded portrait subject";
+  return `
+HERO PORTRAIT — CHARACTER IDENTITY REFERENCE:
+- Redraw ${subject} in the requested scene style while preserving recognizable face shape, skin tone, hair, and distinctive features.
+- Do not paste/show the photo or use a generic substitute face; integrate the character naturally and prominently.
   `.trim();
 }
 
@@ -4186,7 +4562,9 @@ async function generateLessonImages(
     outlinePositions: { current: number; total: number };
     previousChapterContent?: string;
     storySoFarContent?: string;
-  }
+  },
+  heroPortraitImage?: OpenAiImageReference,
+  heroPortraitName?: string
 ): Promise<{ images: LessonImageAsset[]; usageEntry: UsageReportEntry }> {
   const imagePlan = getImageCountPlanByBookType(bookType);
   const isNarrative = bookType === "fairy_tale" || bookType === "story" || bookType === "novel";
@@ -4297,19 +4675,25 @@ ${brainAllowed
         .map((line) => cleanInfographicHintText(line))
         .filter((line) => line.length >= 4 && line.length <= 110)
     )
-  ).slice(0, 8);
+  ).slice(0, 4);
 
-  const characters = compactInline(creativeBrief?.characters, 320) || "Belirgin karakter kimlikleri model tarafından tutarlı biçimde tanımlanmalı.";
-  const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Konuya uygun birincil mekan";
-  const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Konuya uygun dönem";
+  const characters = compactInline(creativeBrief?.characters, 180) || "Belirgin karakter kimlikleri model tarafından tutarlı biçimde tanımlanmalı.";
+  const settingPlace = compactInline(creativeBrief?.settingPlace, 120) || "Konuya uygun birincil mekan";
+  const settingTime = compactInline(creativeBrief?.settingTime, 120) || "Konuya uygun dönem";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
   const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
+  const heroPortraitDirective = heroPortraitImage
+    ? buildNarrativeHeroPortraitDirective(heroPortraitName)
+    : "";
+  const referenceImageOptions = heroPortraitImage
+    ? { referenceImages: [heroPortraitImage] }
+    : {};
   const continuityLock = buildCharacterContinuityLock(characters, {
     sectionContent: languageEvidenceText,
     storySoFarContent: narrativeContext?.storySoFarContent
   });
   const sceneCues = buildNarrativeSceneCues(languageEvidenceText, imageCount);
-  const activeSectionExcerpt = String(languageEvidenceText || "").replace(/\s+/g, " ").trim().slice(0, 2_400);
+  const activeSectionExcerpt = String(languageEvidenceText || "").replace(/\s+/g, " ").trim().slice(0, 1_100);
   const panelVariationGuide = buildFourPanelActionVariationGuide();
   const totalSections = Math.max(1, narrativeContext?.outlinePositions.total || 1);
   const activeSectionIndex = Math.max(1, Math.min(totalSections, narrativeContext?.outlinePositions.current || 1));
@@ -4326,7 +4710,7 @@ ${brainAllowed
   const previousChapterSnippet = String(narrativeContext?.previousChapterContent || "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(-1200);
+    .slice(-320);
   const narrativeImageCountForSection = (section: number): number => {
     if (!isNarrative) return imageCount;
     if (section < 1 || section > totalSections) return 0;
@@ -4361,7 +4745,8 @@ ${brainAllowed
       totalSections,
       previousChapterSnippet,
       narrativeContext?.storySoFarContent,
-      useFourPanelCompositeForSection
+      useFourPanelCompositeForSection,
+      heroPortraitName
     );
     let fairyImageGenerated = false;
     let lastFairyImageError: unknown = null;
@@ -4369,7 +4754,8 @@ ${brainAllowed
       try {
         const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, 1, {
           sizeMode: "poster-16x9",
-          modelOverride: OPENAI_LECTURE_IMAGE_MODEL
+          modelOverride: OPENAI_LECTURE_IMAGE_MODEL,
+          ...referenceImageOptions
         });
         if (imageResult.images.length > 0) {
           finalImages = imageResult.images;
@@ -4452,6 +4838,7 @@ Panel-to-grid mapping (mandatory):
 - Bottom-right: cue #4 (result beat).
 
 ${styleLine}
+${heroPortraitDirective}
 ${continuityLock}
 ${panelVariationGuide}
 
@@ -4491,6 +4878,7 @@ ${nextSceneCue ? `Upcoming scene cue (do not jump directly to this one yet):\n""
 ${chunkBlock ? `Narrative clues highlighting THIS SPECIFIC MOMENT:\n${chunkBlock}` : ""}
 
 ${styleLine}
+${heroPortraitDirective}
 ${continuityLock}
 
 Rules:
@@ -4516,7 +4904,8 @@ Rules:
         try {
           const chunkResult = await requestLowQualityLessonImages(openAiApiKey, chunkPrompt, 1, {
             sizeMode: "poster-16x9",
-            modelOverride: OPENAI_LECTURE_IMAGE_MODEL
+            modelOverride: OPENAI_LECTURE_IMAGE_MODEL,
+            ...referenceImageOptions
           });
           if (chunkResult.images.length > 0) {
             finalImages.push(chunkResult.images[0]);
@@ -4574,6 +4963,7 @@ ${sequenceLabel}
 ${storyHintBlock ? `Narrative clues from current section:\n${storyHintBlock}` : ""}
 
 ${styleLine}
+${heroPortraitDirective}
 ${continuityLock}
 ${narrativeTimelineLock}
 
@@ -4596,7 +4986,8 @@ Rules:
 
     const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt, imageCount, {
       sizeMode: "poster-16x9",
-      modelOverride: OPENAI_LECTURE_IMAGE_MODEL
+      modelOverride: OPENAI_LECTURE_IMAGE_MODEL,
+      ...referenceImageOptions
     });
     finalImages = imageResult.images;
     totalInputTokens = imageResult.usage.inputTokens;
@@ -4675,6 +5066,7 @@ Rules:
     costUsdInputImage: costBreakdown.costUsdInputImage,
     costUsdOutputImage: costBreakdown.costUsdOutputImage,
     costMode: costBreakdown.costMode,
+    referenceImageCount: heroPortraitImage ? 1 : 0,
     quality: costBreakdown.quality,
     size: costBreakdown.size
   };
@@ -4702,7 +5094,7 @@ async function generateRemedialImagesWithOpenAi(
         .map((line) => line.replace(/^[#>*\-\d.\s]+/, "").replace(/\*\*/g, "").trim())
         .filter((line) => line.length >= 4 && line.length <= 110)
     )
-  ).slice(0, 8);
+  ).slice(0, 4);
   const visualFocuses = pickRemedialVisualFocuses(hintPool, topic, nodeTitle);
 
   if (bookType === "academic") {
@@ -4786,9 +5178,9 @@ ${brainAllowed
     throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
   }
 
-  const characters = compactInline(creativeBrief?.characters, 320) || "Infer an original, path-faithful cast from the selected type, sub-genre, topic, and scene clues. Do not use stock placeholder protagonists.";
-  const settingPlace = compactInline(creativeBrief?.settingPlace, 200) || "Infer a specific, story-faithful place from the selected path and section clues. Avoid generic placeholder scenery.";
-  const settingTime = compactInline(creativeBrief?.settingTime, 200) || "Infer a story-faithful time-of-day or era from the selected path and scene clues. Avoid generic placeholder timing.";
+  const characters = compactInline(creativeBrief?.characters, 180) || "Infer a path-faithful cast; avoid stock placeholders.";
+  const settingPlace = compactInline(creativeBrief?.settingPlace, 120) || "Infer a specific story-faithful place.";
+  const settingTime = compactInline(creativeBrief?.settingTime, 120) || "Infer a story-faithful time or era.";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
   const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
   const conceptHints = hintPool.length ? hintPool.map((item, idx) => `${idx + 1}) ${item}`).join("\n") : "";
@@ -4874,7 +5266,9 @@ async function generateCourseCover(
   openAiApiKey: string,
   audienceLevel: SmartBookAudienceLevel = "general",
   creativeBrief?: SmartBookCreativeBrief,
-  coverContext?: string
+  coverContext?: string,
+  heroPortraitImage?: OpenAiImageReference,
+  heroPortraitName?: string
 ): Promise<{ coverImageUrl: string; usageEntry: UsageReportEntry }> {
   if (!openAiApiKey) {
     throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
@@ -4884,10 +5278,11 @@ async function generateCourseCover(
   const titleText = String(topic || "").replace(/\s+/g, " ").trim();
   const titleLanguage = contentLanguageLabel(detectContentLanguageCode(titleText));
   const isFairyTale = bookType === "fairy_tale";
-  const isStory = bookType === "story";
+  const isWorkbook = bookType === "story";
+  const isStory = false;
   const isNovel = bookType === "novel";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || "";
-  const normalizedCoverContext = String(coverContext || "").replace(/\s+/g, " ").trim().slice(0, 3200);
+  const normalizedCoverContext = String(coverContext || "").replace(/\s+/g, " ").trim().slice(0, 900);
   const narrativeVisualStyle = buildNarrativeVisualStyleDirective(
     isStory ? "story" : isNovel ? "novel" : isFairyTale ? "fairy_tale" : "academic",
     audienceLevel,
@@ -4902,18 +5297,27 @@ async function generateCourseCover(
     isStory ? "story" : isNovel ? "novel" : isFairyTale ? "fairy_tale" : "academic",
     subGenre
   );
+  const coverHeroPortraitImage = isWorkbook ? undefined : heroPortraitImage;
+  const heroPortraitDirective = (isFairyTale || isStory || isNovel) && coverHeroPortraitImage
+    ? buildNarrativeHeroPortraitDirective(heroPortraitName)
+    : "";
   const prompt = `
 Konu / Kitap adı: ${titleText}
 Kapakta kullanılacak dil (varsa görünür metin için): ${titleLanguage}
 ${subGenre ? `Alt tür: ${subGenre}` : ""}
 ${normalizedCoverContext ? `İçerik bağlamı (kapak buna sadık olmalı): ${normalizedCoverContext}` : ""}
+${heroPortraitDirective}
 
 ${isFairyTale
       ? "Sadece 1 adet çocuklara yönelik, masalsı, sevimli, 2D animasyon veya suluboya tarzında (ASLA FOTOGERÇEKÇİ OLMAYAN) bir masal kitabı kapağı üret."
       : isStory
-        ? "Sadece 1 adet hikaye kapağı üret. Görsel, seçilen alt türün görsel tonunu taşımalı; hikayenin duygusal merkezini, baskın çatışmasını ve atmosferini özgün biçimde hissettirmeli."
+        ? (audienceLevel === "general"
+          ? "Sadece 1 adet genel/yetişkin hikaye kapağı üret. Görsel, seçilen alt türün tonunu premium kapak diliyle taşımalı; çocuksu çizgi film, sevimli maskot, chibi, çocuk kitabı ve okul çağı animasyon estetiği kullanma."
+          : "Sadece 1 adet yaş grubuna uygun hikaye kapağı üret. Görsel, seçilen alt türün görsel tonunu taşımalı; hikayenin duygusal merkezini, baskın çatışmasını ve atmosferini özgün biçimde hissettirmeli.")
         : isNovel
-          ? "Sadece 1 adet roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren sinematik/sanatsal bir kapak olmalı."
+          ? (audienceLevel === "general"
+            ? "Sadece 1 adet genel/yetişkin roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren olgun, premium, sinematik/sanatsal bir kapak olmalı; çocuksu çizgi film, sevimli maskot, chibi, çocuk kitabı ve okul çağı animasyon estetiği kullanma."
+            : "Sadece 1 adet yaş grubuna uygun roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren sinematik/sanatsal bir kapak olmalı.")
           : "Sadece 1 adet modern, profesyonel, bilimsel ve konuya doğrudan bağlı Fortale kapak görseli üret."}
 Stil yönü: ${narrativeVisualStyle}
 Alt türe özel başlık tipografisi: ${coverTitleTypographyDirective}
@@ -4929,17 +5333,23 @@ Kurallar:
 ${isFairyTale
       ? "2) Kapak tasarımı minik çocuklar için sevimli, renkli ve fantastik olmalı. Kesinlikle karanlık, korkutucu veya fotogerçekçi (photorealistic) olmamalı."
       : isStory
-        ? "2) Kapak tasarımı hikaye alt türüne sadık olmalı; çizgi film/anime/sinematik illüstrasyon dili kullan."
-        : isNovel
-          ? "2) Kapak tasarımı roman alt türüne sadık olmalı; yaş grubuna göre sinematik illüstrasyon, karakalem veya sanatsal üslup optimize edilmeli."
+        ? (audienceLevel === "general"
+          ? "2) Kapak tasarımı hikaye alt türüne sadık olmalı; genel/yetişkin okur için olgun sinematik illüstrasyon veya premium gerçekçi kapak dili kullan. Çocuk kitabı, çizgi film, anime, chibi, oyuncak/plush karakter ve sevimli maskot görünümü YASAK."
+          : "2) Kapak tasarımı hikaye alt türüne ve seçilen yaş grubuna sadık olmalı; yaşa uygun çizgi film/anime/sinematik illüstrasyon dili kullan.")
+      : isNovel
+          ? (audienceLevel === "general"
+            ? "2) Kapak tasarımı roman alt türüne sadık olmalı; genel/yetişkin okur için olgun sinematik illüstrasyon, premium gerçekçi kapak dili veya renkli sanatsal üslup kullan. Çocuk kitabı, çizgi film, anime, chibi, oyuncak/plush karakter ve sevimli maskot görünümü YASAK."
+            : "2) Kapak tasarımı roman alt türüne ve seçilen yaş grubuna sadık olmalı; yaş grubuna göre sinematik illüstrasyon veya renkli sanatsal üslup optimize edilmeli.")
           : "2) Kapak tasarımı akademik ve bilimsel hissi vermeli; rastgele soyut ikonlardan kaçın."}
 ${isFairyTale || ((isStory || isNovel) && (audienceLevel === "7-11" || audienceLevel === "12-18"))
       ? "2.1) KESİN KURAL: Photorealistic/foto-gerçekçi görünüm YASAK. Kapak mutlaka çizgi film/illüstrasyon stilinde olmalı."
-      : "2.1) Photorealistic görünüm sadece genel yaş grubunda opsiyoneldir; zorunlu değildir."}
+      : (isStory || isNovel)
+        ? "2.1) Genel yaş grubunda photorealistic/foto-gerçekçi görünüm kullanılabilir ama zorunlu değildir. Hangi üslup seçilirse seçilsin sonuç yetişkin/premium kapak gibi görünmeli; çocuksu veya genç-okur kapağı gibi görünmemeli."
+        : "2.1) Photorealistic görünüm sadece genel yaş grubunda opsiyoneldir; zorunlu değildir."}
 ${isFairyTale
       ? "3) Masalın konusunu temsil eden sihirli, sevimli veya fantastik öğeler kullan (ör. konuşan hayvanlar, şatolar, masal kahramanları)."
       : isStory || isNovel
-        ? "3) Kapak, seçilen alt türün bağlamını doğrudan yansıtsın; anlatı atmosferi ve karakter yönelimini görselde taşısın."
+        ? "3) Kapak, seçilen alt türün bağlamını doğrudan yansıtsın; anlatı duygusunu, karakter yönelimini ve merkezi çatışmayı görselde taşısın."
         : "3) Konuyu temsil eden somut bilimsel öğeler kullan (ör. deney düzeneği, veri görselleştirme, alanla ilişkili nesneler)."}
 3.1) İçerik bağlamı verildiyse kapak sahnesini bu bağlamdaki karakter/olay/atmosferle uyumlu kur; alakasız sahne üretme.
 4) Renk dengesi profesyonel ve temiz olsun; kompozisyon net, kaliteli ve odaklı olsun.
@@ -4956,7 +5366,8 @@ ${brainAllowed && !isFairyTale
 
   const imageResult = await requestLowQualityLessonImages(openAiApiKey, prompt.trim(), 1, {
     sizeMode: "cover-3x4",
-    modelOverride: OPENAI_COVER_MODEL
+    modelOverride: OPENAI_COVER_MODEL,
+    referenceImages: coverHeroPortraitImage ? [coverHeroPortraitImage] : undefined
   });
   if (!imageResult.images.length) {
     throw new HttpsError("internal", "Fortale kapağı üretilemedi.");
@@ -4987,6 +5398,7 @@ ${brainAllowed && !isFairyTale
     costUsdInputImage: costBreakdown.costUsdInputImage,
     costUsdOutputImage: costBreakdown.costUsdOutputImage,
     costMode: costBreakdown.costMode,
+    referenceImageCount: coverHeroPortraitImage ? 1 : 0,
     quality: costBreakdown.quality,
     size: costBreakdown.size
   };
@@ -5340,12 +5752,12 @@ function normalizeCreditWalletSnapshot(value: unknown): CreditWalletSnapshot | n
   const createCredits = Number(raw.createCredits);
   if (!Number.isFinite(createCredits)) return null;
   return {
-    createCredits: Math.max(0, Math.floor(createCredits))
+    createCredits: Math.max(0, Math.round(createCredits * 10) / 10)
   };
 }
 
 function sanitizeCreditAction(value: unknown): CreditActionType {
-  if (value !== "create") {
+  if (value !== "create" && value !== "community_download") {
     throw new HttpsError("invalid-argument", "Invalid credit action.");
   }
   return value;
@@ -5507,8 +5919,23 @@ function resolveWebhookAuthHeaderToken(headers: Record<string, unknown>): string
     : String(authorizationRaw || "");
   const trimmed = authorization.trim();
   if (!trimmed) return "";
-  const bearerMatch = trimmed.match(/^bearer\s+(.+)$/i);
-  return (bearerMatch ? bearerMatch[1] : trimmed).trim();
+  const fullHeaderLineMatch = trimmed.match(/^authorization\s*:\s*(.+)$/i);
+  const withoutHeaderName = (fullHeaderLineMatch ? fullHeaderLineMatch[1] : trimmed).trim();
+  const unquoted = withoutHeaderName.replace(/^['"]|['"]$/g, "").trim();
+  if (!unquoted) return "";
+  const bearerMatch = unquoted.match(/^bearer\s+(.+)$/i);
+  return (bearerMatch ? bearerMatch[1] : unquoted).trim();
+}
+
+function resolveWebhookUrlToken(query: Record<string, unknown>): string {
+  const raw =
+    query.rc_auth ||
+    query.revenuecat_auth ||
+    query.webhook_auth ||
+    query.token ||
+    "";
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return String(value || "").trim();
 }
 
 async function applyRevenueCatCreditPackEvent(
@@ -5572,7 +5999,7 @@ function resolveBookCreateCreditCost(
 ): number {
   const key = typeof bookTypeValue === "string" ? bookTypeValue.trim() : "";
   const baseCost = BOOK_TYPE_CREATE_CREDIT_COST[key] ?? 1;
-  return baseCost + (key === "fairy_tale" && options?.hasVisualHeroPortrait ? 1 : 0);
+  return baseCost + (options?.hasVisualHeroPortrait ? 1 : 0);
 }
 
 function hasVisualHeroPortraitForCredit(payload: Record<string, unknown>): boolean {
@@ -6171,6 +6598,8 @@ function assertSafeBookBrief(brief: SmartBookCreativeBrief | undefined): void {
     { label: "creativeBrief.settingPlace", value: brief.settingPlace },
     { label: "creativeBrief.settingTime", value: brief.settingTime },
     { label: "creativeBrief.narrativeStyle", value: brief.narrativeStyle },
+    { label: "creativeBrief.workbookLevel", value: brief.workbookLevel },
+    { label: "creativeBrief.workbookCategory", value: brief.workbookCategory },
     { label: "creativeBrief.customInstructions", value: brief.customInstructions }
   ]);
 }
@@ -6503,6 +6932,7 @@ ${content.slice(0, 18000)}
     contents: prompt,
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
+      thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
       temperature: 0.1,
       maxOutputTokens: 900,
       responseMimeType: "application/json"
@@ -6594,6 +7024,7 @@ ${retryHint ? `10) DÜZELTME: ${retryHint}` : ""}
       contents: prompt,
       config: {
         systemInstruction: getSystemInstructionForBookType(options.bookType),
+        thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
         temperature: options.temperature ?? 0.45,
         maxOutputTokens: options.maxOutputTokens
       }
@@ -6737,6 +7168,7 @@ ${normalizedTopicHint ? `5) Konu ipucu verildi: "${normalizedTopicHint}". Doküm
         }
       ],
       config: {
+        thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG,
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.3,
         maxOutputTokens: 2200,
@@ -6801,6 +7233,7 @@ Sadece JSON nesnesi döndür:
 {"topic":"...","sourceContent":"..."}
 `,
       config: {
+        thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG,
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.3,
         maxOutputTokens: 2200,
@@ -6873,10 +7306,9 @@ ${sourceContent.slice(0, 9000)}
 
   let expectedChapterCount = Math.max(3, Math.ceil(targetPageCount / 4));
   const isFairyTalePrompt = normalizedBrief.bookType === "fairy_tale";
-  const isStoryPrompt = normalizedBrief.bookType === "story";
+  const isWorkbookPrompt = normalizedBrief.bookType === "story";
   const isNovelPrompt = normalizedBrief.bookType === "novel";
-  const isStoryOrNovelPrompt = isStoryPrompt || isNovelPrompt;
-  const isNarrativePrompt = isFairyTalePrompt || isStoryOrNovelPrompt;
+  const isNarrativePrompt = isFairyTalePrompt || isNovelPrompt;
 
   let structureRules = "";
   if (isFairyTalePrompt) {
@@ -6889,17 +7321,17 @@ ${sourceContent.slice(0, 9000)}
 5) Sonuç (çözüm, kısa sonrası/huzur sahnesi ve sıcak kapanış)
 Her adımın type değeri MUTLAKA "lecture" olmalı. Podcast, reinforce, retention, quiz, exam gibi adımlar KESİNLİKLE OLMAYACAK.
 KRİTİK BAŞLIK KURALI: title alanlarında "Giriş", "Bölüm 1", "Döşeme", "Gelişme", "Sonuç", "Dilek" gibi teknik etiketleri YAZMA. Her title doğal/edebi masal başlığı olmalı.`;
-  } else if (isStoryPrompt) {
+  } else if (isWorkbookPrompt) {
     expectedChapterCount = 5;
-    structureRules = `KRİTİK KURAL: Hikaye akışını TAM OLARAK 5 ADIM olarak üret:
-1) Giriş / Serim
-2) Gelişme / Düğüm
-3) Doruk Noktası / Kritik An
-4) Çözüm
-5) Final / Sonuç
+    structureRules = `KRİTİK KURAL: Çalışma kitabını TAM OLARAK 5 AKADEMİK BÖLÜM olarak planla:
+1) Konunun kapsamı, ön bilgileri ve temel kavramları
+2) Ana mekanizmalar, süreçler veya kuramsal yapı
+3) Kanıtlar, karşılaştırmalar, tablolar ve kritik ayrımlar
+4) Uygulamalar, sonuçlar ve seçildiyse anlatıma yedirilmiş gerçek yaşam örnekleri
+5) Önemli noktalar, terimler sözlüğü ve seçilen final ekleri
 Her adımın type değeri MUTLAKA "lecture" olmalı.
-KRİTİK BAŞLIK KURALI: title alanlarında "Giriş", "Gelişme", "Doruk", "Çözüm", "Final", "Bölüm 1" gibi teknik etiketleri YAZMA; her biri doğal/edebi hikaye başlığı olmalı.
-Hikaye tek baskın çatışma hattında akmalı; karakter sayısı kontrollü olmalı; zaman akışı odaklı kalmalı.`;
+Podcast, reinforce, retention, quiz veya exam tipinde ayrı adım üretme; quiz seçildiyse beşinci lecture içeriğinin sonunda yer alacak.
+Başlıklar konuya özgü ve öğretici olmalı; "Bölüm 1", "Giriş", "Detaylar", "Final" gibi jenerik başlıklar kullanma.`;
   } else if (isNovelPrompt) {
     expectedChapterCount = NOVEL_CHAPTER_COUNT;
     structureRules = `KRİTİK KURAL: Roman akışını TAM OLARAK ${NOVEL_CHAPTER_COUNT} ADIM olarak üret:
@@ -6920,7 +7352,7 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
 4) retention`;
   }
 
-  const statusRules = isNarrativePrompt
+  const statusRules = isNarrativePrompt || isWorkbookPrompt
     ? "- Sadece lecture adımı üret. İlk adım current, diğerleri locked olsun."
     : `- lecture: current
 - podcast: locked
@@ -6928,10 +7360,12 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
 - retention: locked`;
   const bookTitleRule = lockUserProvidedBookTitle
     ? "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını aynen koru."
+    : isWorkbookPrompt
+      ? "11) bookTitle alanını AI üretmeli: konu girdisini kitap adı sanma veya aynen kopyalama. Konunun özünü taşıyan, özgün, doğal ve profesyonel bir çalışma kitabı adı yaz; kategori etiketi ya da 'Çalışma Kitabı' gibi jenerik ad kullanma."
     : isNarrativePrompt
-      ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün, doğal ve profesyonel bir kitap adı üretmeli. Kısa ve kitap adı formatında olmalı. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
+      ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün, doğal ve profesyonel bir kitap adı üretmeli. Genelde 2-4 kelime olmalı; 5 kelime sadece gerçekten doğal ve güçlü ise kullanılabilir. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
       : allowAiBookTitleGeneration
-        ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün ve profesyonel bir kitap adı üretmeli. Kısa ve kitap adı formatında olmalı. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
+        ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün ve profesyonel bir kitap adı üretmeli. Genelde 2-4 kelime olmalı; 5 kelime sadece gerçekten doğal ve güçlü ise kullanılabilir. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
         : "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını koru.";
 
   const prompt = `
@@ -6940,9 +7374,9 @@ ${sourceBlock}
 ${outlineAudienceInstruction}
 Kitap brief:
 ${creativeBriefInstruction}
-${isStoryPrompt ? "KRITIK KURAL (KALITE): Bu bir HIKAYE uretimidir. Hikaye 20-25 sayfa bandinda, 20 sayfa alt sinirina sadik, tek baskin catisma hattina sahip ve odakli bir zaman akisi icinde planlanmali." : ""}
+${isWorkbookPrompt ? "KRİTİK KURAL (KALİTE): Bu bir ÇALIŞMA KİTABI üretimidir. Kurmaca yazma. Yaklaşık 12-15 sayfalık bilimsel açıklama planla; 20 sayfa üst sınırı yalnızca yumuşak hedeftir, tamamlanmış içeriği kesme. Başlık, alt başlık, tablo ve liste kullanımını bölümlere dengeli dağıt." : ""}
 ${isNovelPrompt ? "KRİTİK KURAL (KALİTE): Bu bir ROMAN üretimidir. Roman 30-35 sayfa bandında planlanmalı; 30 sayfa altına düşmemeli ve olay örgüsünde derinlik korunmalı." : ""}
-${isStoryOrNovelPrompt ? "KRİTİK KURAL (KALİTE): Bölüm başlıkları teknik etiket olamaz. 'Bölüm 1', 'Giriş', 'Perde I' gibi başlıklar yerine doğal/edebi başlıklar kullan." : ""}
+${isNovelPrompt ? "KRİTİK KURAL (KALİTE): Bölüm başlıkları teknik etiket olamaz. 'Bölüm 1', 'Giriş', 'Perde I' gibi başlıklar yerine doğal/edebi başlıklar kullan." : ""}
 
 Sadece JSON nesnesi döndür.
 ${structureRules}
@@ -6963,7 +7397,7 @@ JSON nesnesi alanları:
 - subGenre (string) -> brief ile uyumlu kısa alt tür adı
 - targetPageCount (number) -> brief hedef aralığına uygun toplam sayfa hedefi
 - searchTags (string[]) -> arama için 6-10 kısa etiket
-- outline (array) -> ${isFairyTalePrompt ? "tam olarak 5 blok: Döşeme, Giriş, Gelişme 1, Gelişme 2, Sonuç (title alanları teknik etiket değil doğal masal başlıkları olmalı)" : (isStoryPrompt ? "tam olarak 5 adım: Giriş/Serim, Gelişme/Düğüm, Doruk, Çözüm, Final (title alanları teknik etiket değil doğal hikaye başlıkları olmalı)" : (isNovelPrompt ? `tam olarak ${NOVEL_CHAPTER_COUNT} adım: Hazırlık/Dünya İnşası, I. Perde Kurulum, II. Perde Yüzleşme I, II. Perde Yüzleşme II, II. Perde Yüzleşme III, III. Perde Çözüm/Final (title alanları teknik etiket değil doğal roman başlıkları olmalı)` : (isNarrativePrompt ? `hedef uzunluğa ulaşacak kadar en az 3-10 adımlık hikaye akışı (Beklenen: ~${expectedChapterCount} bölüm)` : "4 adımlık akış")))}
+- outline (array) -> ${isFairyTalePrompt ? "tam olarak 5 blok: Döşeme, Giriş, Gelişme 1, Gelişme 2, Sonuç (title alanları teknik etiket değil doğal masal başlıkları olmalı)" : (isWorkbookPrompt ? "tam olarak 5 akademik lecture bölümü; temel kavramlardan uygulama ve final özetine ilerleyen konuya özgü başlıklar" : (isNovelPrompt ? `tam olarak ${NOVEL_CHAPTER_COUNT} adım: Hazırlık/Dünya İnşası, I. Perde Kurulum, II. Perde Yüzleşme I, II. Perde Yüzleşme II, II. Perde Yüzleşme III, III. Perde Çözüm/Final (title alanları teknik etiket değil doğal roman başlıkları olmalı)` : (isNarrativePrompt ? `hedef uzunluğa ulaşacak kadar en az 3-10 adımlık hikaye akışı (Beklenen: ~${expectedChapterCount} bölüm)` : "4 adımlık akış")))}
 
 Sabit kategori listesi (SADECE bunlardan biri seçilecek):
 ${categoryListBlock}
@@ -6990,6 +7424,7 @@ ${statusRules}
     model: GEMINI_PLANNER_MODEL,
     contents: prompt,
     config: {
+      thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG,
       temperature: 1,
       maxOutputTokens: 3500,
       responseMimeType: "application/json",
@@ -7025,7 +7460,7 @@ ${statusRules}
     }
   });
 
-  const narrativeBrief = normalizedBrief.bookType === "story" || normalizedBrief.bookType === "novel" || normalizedBrief.bookType === "fairy_tale";
+  const narrativeBrief = normalizedBrief.bookType === "novel" || normalizedBrief.bookType === "fairy_tale";
   const outlineTemplate: Array<{
     type: TimelineNode["type"];
     status: TimelineNode["status"];
@@ -7213,8 +7648,8 @@ ${statusRules}
       chapterTitle?: string;
     }
   ): string => {
-    const characterSeed = buildNarrativeTitleFragment(params.characters || "", 3);
-    const placeSeed = buildNarrativeTitleFragment(params.settingPlace || "", 3);
+    const characterSeed = buildNarrativeTitleFragment(params.characters || "", 2);
+    const placeSeed = buildNarrativeTitleFragment(params.settingPlace || "", 2);
     const timeSeed = buildNarrativeTitleFragment(params.settingTime || "", 2);
     const chapterSeed = buildNarrativeTitleFragment(params.chapterTitle || "", 4);
     const subGenreSeed = buildNarrativeTitleFragment(params.subGenre || "", 2);
@@ -7323,6 +7758,7 @@ Kurallar:
 3) bookTitle mutlaka özgün, edebi ve konuya/brief'e sadık olsun.
 4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket, karakter adı listesi veya hazır klişe kalıp olmasın.
 4.1) bookTitle kısa ve gerçek bir kitap adı formatında olsun; örnek/tavsiye kelime kullanma.
+4.2) bookTitle genelde 2-4 kelime olmalı. 5 kelime sadece gerçekten doğal ve çok güçlü ise kabul edilir. "ve", "ile", "bir", "the/of/and" gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma.
 5) bookDescription tam olarak 1-2 cümlelik, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
 6) bookDescription generic, öğretici şablon, uygulama içi placeholder veya "bu kitap ..." diye mekanik tanıtım metni gibi durmamalı.
 7) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
@@ -7352,6 +7788,7 @@ JSON şeması:
       model: GEMINI_PLANNER_MODEL,
       contents: repairPrompt,
       config: {
+        thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG,
         temperature: 1,
         maxOutputTokens: 1200,
         responseMimeType: "application/json",
@@ -7428,7 +7865,36 @@ JSON şeması:
     };
   };
 
-  if (narrativeBrief) {
+  if (isWorkbookPrompt) {
+    const workbookFallbacks = useEnglishScaffold
+      ? [
+        ["Foundations and Scope", "Define the subject, prerequisites, scope, and core vocabulary."],
+        ["How It Works", "Explain the main mechanisms, processes, or theoretical structure."],
+        ["Evidence and Distinctions", "Compare concepts, organize evidence, and clarify common misconceptions."],
+        ["Applications and Consequences", "Connect the subject to applications, implications, and real life where requested."],
+        ["Important Points and Review", "Close with Important points, glossary, and the selected final supplements."]
+      ]
+      : [
+        ["Temeller ve Kapsam", "Konuyu, gerekli ön bilgileri, kapsamı ve temel kavramları açıkla."],
+        ["Nasıl İşler?", "Ana mekanizmaları, süreçleri veya kuramsal yapıyı açıkla."],
+        ["Kanıtlar ve Kritik Ayrımlar", "Kavramları karşılaştır, kanıtları düzenle ve yaygın yanılgıları gider."],
+        ["Uygulamalar ve Sonuçlar", "Konuyu uygulamalar, etkiler ve seçildiyse gerçek yaşam bağlantılarıyla derinleştir."],
+        ["Önemli Noktalar ve Tekrar", "Önemli noktalar, terimler sözlüğü ve seçilen final ekleriyle tamamla."]
+      ];
+    const lectureNodes = rawOutline.filter((item) => isRecord(item) && (!item.type || item.type === "lecture"));
+    outline = Array.from({ length: 5 }, (_, index) => {
+      const raw = isRecord(lectureNodes[index]) ? lectureNodes[index] : null;
+      const fallback = workbookFallbacks[index];
+      return {
+        id: raw && typeof raw.id === "string" ? raw.id.replace(/\s+/g, "-").trim() : `lecture-${index + 1}`,
+        title: raw && typeof raw.title === "string" && raw.title.trim() ? raw.title.replace(/\s+/g, " ").trim() : fallback[0],
+        description: raw && typeof raw.description === "string" && raw.description.trim() ? raw.description.replace(/\s+/g, " ").trim() : fallback[1],
+        type: "lecture",
+        status: index === 0 ? "current" : "locked",
+        duration: raw && typeof raw.duration === "string" && raw.duration.trim() ? raw.duration.replace(/\s+/g, " ").trim() : "10 dk"
+      };
+    });
+  } else if (narrativeBrief) {
     if (rawOutline.length > 0) {
       const sourceNarrativeOutline = normalizedBrief.bookType === "fairy_tale"
         ? rawOutline.slice(0, FAIRY_TALE_CHAPTER_COUNT)
@@ -7564,13 +8030,13 @@ JSON şeması:
     .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  const isNarrativeBookType = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "story" || normalizedBrief.bookType === "novel";
+  const isNarrativeBookType = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "novel";
   const generatedBookTitleLooksUsable =
     generatedBookTitle.length >= 3 &&
     generatedBookTitle.length <= 96 &&
     (!isNarrativeBookType
       ? (
-        generatedBookTitle.toLocaleLowerCase("tr-TR") !== normalizedTopic.toLocaleLowerCase("tr-TR") &&
+        (normalizedBrief.bookType === "story" || generatedBookTitle.toLocaleLowerCase("tr-TR") !== normalizedTopic.toLocaleLowerCase("tr-TR")) &&
         !/^(?:masal|hikaye|öykü|roman|kitap|book)$/iu.test(generatedBookTitle)
       )
       : !isNarrativeBookTitleTooGeneric(generatedBookTitle, {
@@ -7664,7 +8130,9 @@ JSON şeması:
   const rawBookCategory = parsed && typeof parsed.bookCategory === "string" ? parsed.bookCategory.replace(/\s+/g, " ").trim() : "";
   const finalBookCategory = finalBookType === "academic"
     ? canonicalizeSmartBookCategoryForOutline(rawBookCategory, normalizedTopic, sourceContent, outline)
-    : "Edebiyat";
+    : finalBookType === "story"
+      ? (normalizedBrief.workbookCategory || normalizedBrief.subGenre || rawBookCategory || "Bilimsel")
+      : "Edebiyat";
 
   const seenTagKeys = new Set<string>();
   const normalizedTags: string[] = [];
@@ -7825,6 +8293,11 @@ function looksGenericVisualStoryTitle(value: string, subGenre?: string): boolean
     return true;
   }
   const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  const titleTokens = normalizedKey.split(" ").filter(Boolean);
+  if (titleTokens.length > 5) return true;
+  if (titleTokens.length >= 5 && titleTokens.some((token) => token === "ve" || token === "ile" || token === "and" || token === "of" || token === "the")) {
+    return true;
+  }
   if (wordCount <= 3 && /(masal|hikaye|öykü|macera|storybook|story|tale|adventure)/i.test(normalized)) {
     return true;
   }
@@ -7839,7 +8312,7 @@ function selectVisualStoryTitleSeed(...values: Array<unknown>): string {
       .trim();
     if (!normalized) continue;
     if (looksGenericVisualStoryTitle(normalized)) continue;
-    const words = normalized.split(/\s+/).filter(Boolean).slice(0, 5);
+    const words = normalized.split(/\s+/).filter(Boolean).slice(0, 4);
     if (words.length > 0) return words.join(" ");
   }
   return "";
@@ -7943,58 +8416,61 @@ function buildVisualFairyTaleStyleAnchor(
   const isEn = usesEnglishPromptScaffold(preferredLanguage);
   const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
   const key = normalizeStoryPathKey(subGenre);
+  const brightLock = isEn
+    ? "premium bright family animated-feature look, polished 3D cartoon / children's picture-book finish, saturated joyful colors, soft daylight, warm magical glow, rounded appealing characters, clear readable staging; never gloomy, gothic, horror, noir, surrealist, bleak, muted, grey-brown, heavily shadowed, photorealistic, or uncanny"
+    : "premium parlak aile animasyon filmi görünümü, cilalı 3D çizgi film / çocuk resimli kitabı bitişi, doygun neşeli renkler, yumuşak gün ışığı, sıcak büyülü ışıma, yuvarlak sevimli karakterler, net okunaklı sahneleme; asla kasvetli, gotik, korku, noir, sürrealist, soluk, gri-kahverengi, ağır gölgeli, fotogerçekçi veya tekinsiz değil";
   if (key.includes("klasik")) {
     return bucket === "7+"
       ? (isEn
-        ? "lush classic fairy-tale animation illustration, detailed hand-painted cartoon backgrounds, glowing storybook light, timeless European fairy-tale warmth"
-        : "zengin klasik masal animasyon ilustrasyonu, detaylı elde boyanmış çizgi film arka planları, parlayan hikaye kitabı ışığı, zamansız Avrupa masalı sıcaklığı")
+        ? `classic enchanted fairy-tale animation illustration, sunlit palace/forest charm, golden storybook glow, sapphire/rose/sunflower accents, richer environment detail for ages 7+, ${brightLock}`
+        : `klasik büyülü masal animasyon ilustrasyonu, güneşli saray/orman cazibesi, altın hikaye kitabı ışıması, safir/pembe/ayçiçeği aksanları, 7+ için daha zengin çevre detayı, ${brightLock}`)
       : (isEn
-        ? "vivid classic storybook illustration, bright gouache-watercolor feel, clear shapes, golden glow, warm fairy-tale charm"
-        : "canlı klasik hikaye kitabı ilustrasyonu, parlak guaj-sulu boya hissi, net şekiller, altın ışıma, sıcak masal cazibesi");
+        ? `vivid classic storybook cartoon illustration, big rounded shapes, golden daylight, warm fairy-tale charm, simple readable focal action, ${brightLock}`
+        : `canlı klasik hikaye kitabı çizgi film ilustrasyonu, büyük yuvarlak şekiller, altın gün ışığı, sıcak masal cazibesi, basit okunaklı odak eylem, ${brightLock}`);
   }
   if (key.includes("modern")) {
     return bucket === "7+"
       ? (isEn
-        ? "detailed modern animated-feature illustration, crisp cartoon rendering, saturated playful palette, expressive contemporary children's-book energy"
-        : "detaylı modern animasyon filmi ilustrasyonu, temiz çizgi film renderı, doygun oyunlu palet, çağdaş çocuk kitabı enerjisi")
+        ? `detailed modern animated-feature illustration, crisp rounded CG-cartoon rendering, cheerful contemporary world, saturated playful palette, expressive 7+ children's-book energy, ${brightLock}`
+        : `detaylı modern animasyon filmi ilustrasyonu, temiz yuvarlak CG-çizgi film renderı, neşeli çağdaş dünya, doygun oyunlu palet, 7+ çağdaş çocuk kitabı enerjisi, ${brightLock}`)
       : (isEn
-        ? "bright modern storybook cartoon illustration, clean rounded shapes, colorful contemporary warmth, lively kid-friendly polish"
-        : "parlak modern hikaye kitabı çizgi film ilustrasyonu, temiz yuvarlak formlar, renkli çağdaş sıcaklık, canlı çocuk dostu cila");
+        ? `bright modern storybook cartoon illustration, clean rounded shapes, colorful contemporary warmth, lively kid-friendly polish, ${brightLock}`
+        : `parlak modern hikaye kitabı çizgi film ilustrasyonu, temiz yuvarlak formlar, renkli çağdaş sıcaklık, canlı çocuk dostu cila, ${brightLock}`);
   }
   if (key.includes("macer")) {
     return bucket === "7+"
       ? (isEn
-        ? "cinematic adventure cartoon illustration, detailed environment storytelling, dynamic movement, heroic child-safe animated action"
-        : "sinematik macera çizgi film ilustrasyonu, detaylı çevre hikaye anlatımı, dinamik hareket, kahramansı ama çocuk güvenli animasyon aksiyonu")
+        ? `bright magical-adventure cartoon illustration, open sunny vistas, detailed environment storytelling, dynamic friendly movement, heroic child-safe animated action, ${brightLock}`
+        : `parlak büyülü macera çizgi film ilustrasyonu, açık güneşli manzaralar, detaylı çevre hikaye anlatımı, dinamik ve dostça hareket, kahramansı ama çocuk güvenli animasyon aksiyonu, ${brightLock}`)
       : (isEn
-        ? "vivid magical adventure storybook illustration, bold motion, bright scenic rhythm, readable quest energy"
-        : "canlı büyülü macera hikaye kitabı ilustrasyonu, cesur hareket, parlak sahne ritmi, okunaklı görev/yolculuk enerjisi");
+        ? `vivid magical adventure storybook illustration, bold friendly motion, bright scenic rhythm, readable quest energy, ${brightLock}`
+        : `canlı büyülü macera hikaye kitabı ilustrasyonu, cesur ve dostça hareket, parlak sahne ritmi, okunaklı görev/yolculuk enerjisi, ${brightLock}`);
   }
   if (key.includes("mitolojik")) {
     return bucket === "7+"
       ? (isEn
-        ? "mythic animated illustration, luminous ancient motifs, ceremonial atmosphere, detailed fantasy cartoon worldbuilding"
-        : "mitolojik animasyon ilustrasyonu, ışıklı kadim motifler, törensel atmosfer, detaylı fantastik çizgi film dünya kurma")
+        ? `luminous mythic animated illustration, friendly legendary scale, golden sun rays, bright ancient motifs, detailed fantasy cartoon worldbuilding, ${brightLock}`
+        : `ışıklı mitolojik animasyon ilustrasyonu, dostça efsanevi ölçek, altın güneş ışınları, parlak kadim motifler, detaylı fantastik çizgi film dünya kurma, ${brightLock}`)
       : (isEn
-        ? "luminous mythic storybook illustration, magical glow, simple sacred motifs, child-safe legendary wonder"
-        : "ışıklı mitolojik hikaye kitabı ilustrasyonu, büyülü parlama, sade kutsal motifler, çocuk güvenli efsanevi hayranlık");
+        ? `luminous mythic storybook cartoon illustration, magical glow, simple ancient motifs, child-safe legendary wonder, ${brightLock}`
+        : `ışıklı mitolojik hikaye kitabı çizgi film ilustrasyonu, büyülü parlama, sade kadim motifler, çocuk güvenli efsanevi hayranlık, ${brightLock}`);
   }
   if (key.includes("eğitici") || key.includes("egitici")) {
     return bucket === "7+"
       ? (isEn
-        ? "detailed discovery-cartoon illustration, bright educational adventure look, tactile nature details, joyful animated clarity"
-        : "detaylı keşif-çizgi film ilustrasyonu, parlak eğitici macera görünümü, dokulu doğa ayrıntıları, neşeli animasyon berraklığı")
+        ? `detailed discovery-cartoon illustration, bright educational adventure look, tactile nature/object details, joyful animated clarity, ${brightLock}`
+        : `detaylı keşif-çizgi film ilustrasyonu, parlak eğitici macera görünümü, dokulu doğa/nesne ayrıntıları, neşeli animasyon berraklığı, ${brightLock}`)
       : (isEn
-        ? "vivid educational storybook illustration, cheerful discovery mood, clean readable objects, bright reassuring colors"
-        : "canlı eğitici hikaye kitabı ilustrasyonu, neşeli keşif havası, temiz okunaklı nesneler, parlak güven veren renkler");
+        ? `vivid educational storybook cartoon illustration, cheerful discovery mood, clean readable objects, bright reassuring colors, ${brightLock}`
+        : `canlı eğitici hikaye kitabı çizgi film ilustrasyonu, neşeli keşif havası, temiz okunaklı nesneler, parlak güven veren renkler, ${brightLock}`);
   }
   return bucket === "7+"
     ? (isEn
-      ? "detailed colorful children's animation illustration, rich cartoon environments, lively child-safe fantasy warmth"
-      : "detaylı renkli çocuk animasyon ilustrasyonu, zengin çizgi film çevreleri, canlı ve çocuk güvenli fantastik sıcaklık")
+      ? `detailed colorful children's animation illustration, rich bright cartoon environments, lively child-safe fantasy warmth, polished family animated-feature finish, ${brightLock}`
+      : `detaylı renkli çocuk animasyon ilustrasyonu, zengin parlak çizgi film çevreleri, canlı ve çocuk güvenli fantastik sıcaklık, cilalı aile animasyon filmi bitişi, ${brightLock}`)
     : (isEn
-      ? "vivid colorful children's storybook illustration, warm magical cartoon look"
-      : "canlı renkli çocuk hikaye kitabı ilustrasyonu, sıcak büyülü çizgi film görünümü");
+      ? `vivid colorful children's storybook cartoon illustration, warm magical cartoon look, simple rounded shapes, ${brightLock}`
+      : `canlı renkli çocuk hikaye kitabı çizgi film ilustrasyonu, sıcak büyülü çizgi film görünümü, sade yuvarlak şekiller, ${brightLock}`);
 }
 
 function stripVisualStoryCoverHeading(value: string, title: string): string {
@@ -8047,8 +8523,8 @@ function buildVisualFairyTalePlanInputBlock(
       : "",
     options?.heroPortraitName
       ? (isEn
-        ? `- Portrait character: ${options.heroPortraitName} is the main character and must stay central in the story.`
-        : `- Portre karakteri: ${options.heroPortraitName} ana karakterdir ve hikayenin merkezinde kalmalı.`)
+        ? `- Portrait character: ${options.heroPortraitName} is the user-selected character for portrait identity consistency.`
+        : `- Portre karakteri: ${options.heroPortraitName}, kullanıcının portreyle eşleştirdiği kahramandır; görsel kimliği tutarlı kalmalı.`)
       : "",
     brief.settingPlace
       ? (isEn ? `- User place: ${brief.settingPlace}` : `- Kullanıcı mekanı: ${brief.settingPlace}`)
@@ -8111,7 +8587,7 @@ ${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienc
 Kurallar:
 1) storyText alanına tek parça, özgün, ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümlelik bir masal yaz.
 2) Masal seçilen alt türde olsun, ama alt tür adını bookTitle olarak kullanma.
-3) ${allowAiBookTitleGeneration ? "bookTitle özgün, doğal ve kitap adı gibi olsun. 'Klasik Masal', 'Modern Masal', 'Macera Masalı', 'Eğitici Masal', 'Masal Kitabı', 'Hikaye' gibi alt tür/jenerik adlar yasak." : "Kullanıcı başlığını bozma; ama başlık alt tür veya jenerik etiket gibi kaldıysa doğal ve özgün kitap adına yumuşat."}
+3) ${allowAiBookTitleGeneration ? "bookTitle özgün, doğal ve kitap adı gibi olsun. Genelde 2-4 kelime olmalı; 5 kelime sadece gerçekten doğal ve güçlü ise kullanılabilir. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma. 'Klasik Masal', 'Modern Masal', 'Macera Masalı', 'Eğitici Masal', 'Masal Kitabı', 'Hikaye' gibi alt tür/jenerik adlar yasak." : "Kullanıcı başlığını bozma; ama başlık alt tür veya jenerik etiket gibi kaldıysa 2-4 kelimelik doğal ve özgün kitap adına yumuşat. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma."}
 4) Üslup referansı: ${referenceTitles}. Bu masallar gibi zamansız, net, akılda kalan ve çocukların takip edebileceği bir masal yaz; bu eserlerden karakter, olay veya cümle kopyalama.
 5) ${buildVisualFairyTaleAudienceNarrativeDirective(audienceLevel, preferredLanguage)}
 6) ${buildVisualFairyTaleSubGenreNarrativeDirective(normalizedBrief.subGenre, preferredLanguage)}
@@ -8123,7 +8599,7 @@ Kurallar:
 12) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
 13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
 14) ${languageInstruction(preferredLanguage)}
-15) ${options?.heroPortraitName ? `${options.heroPortraitName} ana karakter olmalı; yan karakter, anlatıcı veya sahne dışı kişi olamaz. characterBible alanında bu karakteri görsel tutarlılık için net tanımla.` : "Ana karakter storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
+15) ${options?.heroPortraitName ? `${options.heroPortraitName} portreyle eşleştirilen kahramandır; characterBible alanında bu karakteri görsel tutarlılık için net tanımla.` : "Ana karakter storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
 
 Sadece JSON döndür.
 `.trim();
@@ -8140,6 +8616,7 @@ Sadece JSON döndür.
       contents: prompt,
       config: {
         systemInstruction: getSystemInstructionForBookType("fairy_tale"),
+        thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG,
         temperature: 0.95,
         maxOutputTokens: 5200,
         responseMimeType: "application/json",
@@ -8272,16 +8749,16 @@ function buildVisualStoryPageImagePrompt(params: {
   const subGenreKey = normalizeStoryPathKey(params.creativeBrief?.subGenre);
   const subGenreVisualRule =
     subGenreKey.includes("klasik")
-      ? "Subgenre image rule: timeless fairy-tale glow, elegant storybook staging, and classic magical charm."
+      ? "Subgenre image rule: timeless fairy-tale glow, elegant sunlit storybook staging, classic magical charm, bright gold/sapphire/rose color accents."
       : subGenreKey.includes("modern")
         ? "Subgenre image rule: polished contemporary cartoon finish, crisp forms, bright upbeat energy, and fresh present-day appeal."
         : subGenreKey.includes("macer")
-          ? "Subgenre image rule: dynamic movement, quest energy, scenic scale, and bold adventurous rhythm."
+          ? "Subgenre image rule: dynamic friendly movement, quest energy, open sunny scenic scale, and bold adventurous rhythm."
           : subGenreKey.includes("mitolojik")
-            ? "Subgenre image rule: luminous mythic atmosphere, ancient-symbol feel, ceremonial wonder, and legendary child-safe grandeur."
+            ? "Subgenre image rule: luminous golden mythic atmosphere, simple ancient-symbol feel, ceremonial wonder, and legendary child-safe grandeur without darkness."
             : subGenreKey.includes("eğitici") || subGenreKey.includes("egitici")
               ? "Subgenre image rule: discovery-first visual clarity, bright curiosity, tactile objects/nature details, and playful learning warmth."
-              : "Subgenre image rule: vivid magical children's-book appeal with strong readability.";
+              : "Subgenre image rule: vivid magical children's-book appeal with strong readability, saturated cheerful colors, and family animated-feature warmth.";
   return `
 Create exactly 1 landscape 15:10 children's picture-book spread illustration.
 
@@ -8298,15 +8775,17 @@ Story text is rendered separately by the app. This illustration must be text-fre
 Rules:
 1) Landscape 15:10 only. Wide picture-book spread composition.
 2) ${audienceBucket === "7+"
-    ? "Detailed animated-feature / premium cartoon illustration for ages 7+. Rich environment storytelling, expressive lighting, readable detail, and slightly more layered visual ideas are welcome."
-    : "Beautiful children's storybook illustration for ages 1-6. Keep shapes readable, expressions warm, props concrete, and the focal action instantly understandable."}
+    ? "Detailed bright animated-feature / premium 3D cartoon storybook illustration for ages 7+. Rich environment storytelling, expressive lighting, readable detail, and slightly more layered visual ideas are welcome, but keep the mood colorful, safe, and inviting."
+    : "Beautiful bright children's storybook / polished 3D cartoon illustration for ages 1-6. Keep shapes readable and rounded, expressions warm, props concrete, colors saturated, and the focal action instantly understandable."}
 3) Depict the requested event clearly, warmly, and with one readable focal action.
 4) ${subGenreVisualRule}
 5) No written words, letters, subtitles, watermark, logo, UI, signage, speech bubble, or decorative typography.
 6) Keep recurring characters visually identical across pages.
 7) Keep the composition clean and uncluttered so separate story text can be read comfortably in the app.
 8) STRICTLY non-photorealistic. Lively, colorful, child-safe illustration only.
-9) No prompt/system/backend/meta text anywhere.
+9) Hard visual ban: no gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, photorealism, realistic photo faces, uncanny faces, or scary monster framing.
+10) If the scene is night, mystery, conflict, or danger, render it as safe wonder with warm lantern light, sparkling moon/snow/glow accents, friendly readable expressions, and bright color highlights.
+11) No prompt/system/backend/meta text anywhere.
 `.trim();
 }
 
@@ -8320,11 +8799,11 @@ async function generateVisualStoryImage(
     ? [
       "Hero portrait reference:",
       heroPortraitName
-        ? `- Use the attached portrait only as the identity reference for ${heroPortraitName}, the main recurring fairy-tale character.`
-        : "- Use the attached portrait only as the identity reference for the main recurring fairy-tale character.",
+        ? `- Use the attached portrait only as the identity reference for ${heroPortraitName}, the user-selected story character.`
+        : "- Use the attached portrait only as the identity reference for the user-selected story character.",
       heroPortraitName
-        ? `- ${heroPortraitName} must be the central main character in the image, not a side character, background character, narrator, or separate reference figure.`
-        : "- The portrait-based character must be the central main character in the image, not a side character, background character, narrator, or separate reference figure.",
+        ? `- When ${heroPortraitName} appears in an image, preserve the portrait identity and do not use the portrait for any other character.`
+        : "- When the portrait-based character appears in an image, preserve the portrait identity and do not use the portrait for any other character.",
       "- The portrait is not a face layer, sticker, cutout, or separate real-photo person. Never paste a realistic photo face into the illustration and never show the uploaded reference photo inside or beside the scene.",
       "- Redraw the portrait subject fully in the same non-photorealistic storybook illustration style, brushwork, lighting, and color palette as every other character.",
       "- Preserve identity through illustrated equivalents of face shape, jaw/chin, hair length/style/hairline, brows, eye spacing, nose, mouth, skin tone, and recognizable expression cues.",
@@ -8876,6 +9355,7 @@ ${attempt > 1 ? `5) DÜZELTME: ${singlePassRetryHint || "Önceki denemede eksik/
 `.trim(),
         config: {
           systemInstruction: getSystemInstructionForBookType(options.bookType),
+          thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
           temperature: options.temperature ?? 1,
           maxOutputTokens: options.maxOutputTokens
         }
@@ -8930,6 +9410,7 @@ Görev:
             contents: continuationPrompt,
             config: {
               systemInstruction: getSystemInstructionForBookType(options.bookType),
+              thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
               temperature: options.temperature ?? 1,
               maxOutputTokens: Math.max(900, Math.min(2600, options.maxOutputTokens))
             }
@@ -9060,6 +9541,7 @@ ${maxAllowedChars > 0 ? `- En fazla ${maxAllowedChars} karakterde kal; metni kes
             contents: emergencyPrompt,
             config: {
               systemInstruction: getSystemInstructionForBookType(options.bookType),
+              thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
               temperature: options.temperature ?? 1,
               maxOutputTokens: Math.max(1800, Math.min(options.maxOutputTokens, isNovelBook ? 4200 : 3600))
             }
@@ -9148,6 +9630,7 @@ ${retryHint ? `7) DÜZELTME: ${retryHint}` : ""}
 `.trim(),
       config: {
         systemInstruction: getSystemInstructionForBookType(options.bookType),
+        thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
         temperature: options.temperature ?? 1,
         maxOutputTokens: options.maxOutputTokens
       }
@@ -9299,6 +9782,7 @@ Görev:
               contents: expansionPrompt,
               config: {
                 systemInstruction: getSystemInstructionForBookType(options.bookType),
+                thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
                 temperature: options.temperature ?? 1,
                 maxOutputTokens: Math.max(1400, options.maxOutputTokens)
               }
@@ -9358,6 +9842,7 @@ Acil tamamlama modu:
           contents: emergencyPrompt,
           config: {
             systemInstruction: getSystemInstructionForBookType(options.bookType),
+            thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
             temperature: 1,
             maxOutputTokens: Math.max(1200, Math.min(6400, options.maxOutputTokens))
           }
@@ -9536,7 +10021,9 @@ async function generateLectureContent(
     previousChapterContent?: string;
     storySoFarContent?: string;
   },
-  deferImageGeneration: boolean = false
+  deferImageGeneration: boolean = false,
+  heroPortraitImage?: OpenAiImageReference,
+  heroPortraitName?: string
 ): Promise<{ content: string; usageEntries: UsageReportEntry[] }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, creativeBrief?.bookType, creativeBrief?.subGenre, targetPageCountRaw);
   const preferredLanguage = resolvePreferredLanguageFromBrief(normalizedBrief, topic, nodeTitle);
@@ -9559,10 +10046,14 @@ async function generateLectureContent(
     audienceLevel
   );
   const briefInstruction = buildCreativeBriefInstruction(normalizedBrief, preferredLanguage, targetPageCount, audienceLevel);
-  const isNarrative = normalizedBrief.bookType !== "academic";
+  const heroPortraitNarrativeInstruction = heroPortraitName
+    ? `PORTRE KİMLİK KİLİDİ: Kullanıcının eklediği portredeki kişi "${heroPortraitName}" adlı seçili kahramandır. Bu karakter göründüğü sahnelerde portredeki kimlik ipuçlarıyla tutarlı kalmalı; portre başka karakterlere uygulanmamalı.`
+    : "";
+  const isWorkbook = normalizedBrief.bookType === "story";
+  const isNarrative = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "novel";
   const isFairyTale = normalizedBrief.bookType === "fairy_tale";
   const isToddlerFairy = isFairyTale && audienceLevel === "1-3";
-  const isStory = normalizedBrief.bookType === "story";
+  const isStory = normalizedBrief.bookType === "story" && isNarrative;
   const isNovel = normalizedBrief.bookType === "novel";
   const isSinglePartFairyTale = isFairyTale && chapterCount <= 1;
   const fairyAudienceRule = isFairyTale
@@ -9683,7 +10174,7 @@ async function generateLectureContent(
   const previousChapterContextLimit = isFairyTale ? 1_800 : 3_200;
   let storySoFarSnippet = storySoFarRaw.slice(-storySoFarContextLimit);
   const previousChapterSnippet = previousChapterRaw.slice(-previousChapterContextLimit);
-  if (!isFairyTale && storySoFarRaw.trim()) {
+  if (isNarrative && !isFairyTale && storySoFarRaw.trim()) {
     try {
       const continuityPrompt = `
 ${isStory ? "Aşağıdaki hikaye bölümlerini sıradaki bölümü yazdırmak için DEVAMLILIK ÖZETİNE dönüştür." : "Aşağıdaki roman bölümlerini sıradaki bölümü yazdırmak için DEVAMLILIK ÖZETİNE dönüştür."}
@@ -9714,6 +10205,7 @@ Kurallar:
         contents: continuityPrompt,
         config: {
           systemInstruction: getSystemInstructionForBookType(normalizedBrief.bookType),
+          thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
           temperature: 0.35,
           maxOutputTokens: 900
         }
@@ -9829,7 +10321,36 @@ ${previousChapterSnippet ? `- SON BÖLÜMÜN KALDIĞI YER (Bu noktadan KESİNTİ
 - ${isLastChapter ? "Bu bölüm FİNAL/SONUÇ bölümüdür. Hikayedeki asıl çatışmayı mantıklı ve tamamen DÜĞÜMÜ ÇÖZÜLMÜŞ biçimde bitir." : "Bu bir ara bölümdür. Gerilimi canlı tut; hikayeyi erken bitirme."}`
     : `DİKKAT: Diğer bölüme geçiş için kapıyı açık bırak, hikayeyi acilen burada sonlandırma (Bölüm 1 veya ara bölüm ise olaylar devam etmelidir).`;
 
-  const lecturePrompt = isNarrative
+  const lecturePrompt = isWorkbook
+    ? `
+"${topic}" konulu bilimsel/akademik çalışma kitabının "${nodeTitle}" bölümünü yaz.
+Bu, toplam ${chapterCount} bölümlük çalışma kitabının ${chapterPosition}. bölümüdür.
+
+Kitap brief:
+${briefInstruction}
+
+İçerik gereksinimleri:
+1) Bölümü seçilen eğitim seviyesine (${normalizedBrief.workbookLevel || "Ortaokul"}) ve türe (${normalizedBrief.workbookCategory || normalizedBrief.subGenre || "Bilimsel"}) göre yaz.
+2) Yaklaşık ${sectionWordTargets.lectureMin} kelimelik dolu bir bölüm hedefle; bilgi tamamlandığında metni yapay biçimde uzatma veya kesme.
+3) Anlamlı ## ve ### başlıklar, gerektiği yerde markdown tablo ve listeleri kullan. Başlıkları sadece biçim olsun diye çoğaltma.
+4) Kavramları tanımla; mekanizma, neden-sonuç, kritik ayrım ve yaygın yanılgıları bilimsel doğrulukla açıkla.
+5) Uydurma kaynak, kitap, araştırma, kişi, tarih veya kesinlik üretme. Bilimsel belirsizlik varsa sınırını açıkça belirt.
+6) İlkokul düzeyinde somut ve sade; ortaokul düzeyinde kavramsal ama erişilebilir; üniversite düzeyinde teknik ve analitik anlat.
+7) ${normalizedBrief.includeExamples ? "Gerçek yaşamdan en az 2-3, tercihen yaklaşık 5 güncel örneği açıklamanın içine doğal biçimde yedir; 'Örnek 1', 'Örnek 2' başlıkları kullanma." : "Ayrı bir örnekler bölümü zorlama; yalnızca açıklama için zorunluysa kısa somut bağlantı kur."}
+8) Bölüm başlığını metnin ilk satırında tekrar etme; doğrudan konu anlatımına gir.
+9) Kullanıcıya sohbet eder gibi hitap etme; meta açıklama, taslak notu ve asistan tonu kullanma.
+10) ${languageRule}
+11) ${audienceRule}
+${isLastChapter
+      ? `12) Bu son bölümdür. Mutlaka "## Önemli" başlığı altında anahtar noktaları kısa maddelerle özetle.
+13) Mutlaka "## Terimler Sözlüğü" başlığı altında kısa ve doğru tanımlar ver.
+${normalizedBrief.includeQuiz ? "14) En altta '## Quiz' bölümü ekle: tam 8 çoktan seçmeli soru (her biri 4 şıklı) ve tam 4 doğru/yanlış sorusu üret; ardından ayrı bir '### Cevap Anahtarı' ver." : "14) Quiz bölümü ekleme."}
+${normalizedBrief.includeRelatedBooks ? "15) En altta '## İlgili Kitaplar' başlığıyla konuya gerçekten uygun, varlığından emin olduğun en az 4 okuma önerisi ver. Emin olmadığın eser veya yazar uydurma." : "15) İlgili Kitaplar bölümü ekleme."}`
+      : `12) Bu ara bölümdür. "Önemli", "Terimler Sözlüğü", "Quiz", "Cevap Anahtarı" veya "İlgili Kitaplar" final bölümlerini henüz ekleme; sonraki bölüme doğal bir kavramsal köprü kur.`}
+
+Markdown formatında döndür.
+`
+    : isNarrative
     ? (isFairyTale
       ? (isSinglePartFairyTale
         ? `
@@ -9838,6 +10359,7 @@ Bu kitap bölümleme içermez; tek akışlı masal metni üret.
 
 Kitap brief:
 ${briefInstruction}
+${heroPortraitNarrativeInstruction}
 ${narrativeInstruction}
 
 ${contextInstruction}
@@ -9864,6 +10386,7 @@ Bu metin sadece masal türünde olmalı.
 
 Kitap brief:
 ${briefInstruction}
+${heroPortraitNarrativeInstruction}
 ${narrativeInstruction}
 
 ${contextInstruction}
@@ -9892,6 +10415,7 @@ Bu metin 5 bölümlük tek bir hikayenin parçasıdır; önceki bölümlerle ba�
 
 Kitap brief:
 ${briefInstruction}
+${heroPortraitNarrativeInstruction}
 ${narrativeInstruction}
 
 ${storyContextInstruction || contextInstruction}
@@ -9921,6 +10445,7 @@ Bu metin ${NOVEL_CHAPTER_COUNT} bölümlük tek bir romanın parçasıdır; önc
 
 Kitap brief:
 ${briefInstruction}
+${heroPortraitNarrativeInstruction}
 ${narrativeInstruction}
 
 ${novelContextInstruction || contextInstruction}
@@ -9948,6 +10473,7 @@ Bu bölüm romanın organik bir parçasıdır. Olay örgüsünü anlatı kuralla
 
 Kitap brief:
 ${briefInstruction}
+${heroPortraitNarrativeInstruction}
 ${narrativeInstruction}
 
 ${contextInstruction}
@@ -9998,7 +10524,9 @@ ${briefInstruction}
 Markdown formatında döndür.
 `;
 
-  const lectureMaxOutputTokens = isFairyTale
+  const lectureMaxOutputTokens = isWorkbook
+    ? 5200
+    : isFairyTale
     ? Math.max(
       audienceLevel === "7-9" ? 3400 : 3000,
       Math.ceil(((activeNarrativeCharacterTarget?.maxAccepted || 6000) / 3.2))
@@ -10007,14 +10535,18 @@ Markdown formatında döndür.
       ? Math.max(4200, Math.ceil(((activeNarrativeCharacterTarget?.maxAccepted || 28_000) / 3.4)))
       : Math.max(5200, Math.ceil(((activeNarrativeCharacterTarget?.maxAccepted || 38_000) / 3.5)));
   const lectureTemperature = 1;
-  const lectureMinAcceptanceRatio = isFairyTale
+  const lectureMinAcceptanceRatio = isWorkbook
+    ? 0.58
+    : isFairyTale
     ? (audienceLevel === "7-9" ? 0.64 : 0.62)
     : isStory
       ? 0.76
       : isNovel
         ? 0.78
         : 0.88;
-  const lectureRelaxedFallbackRatio = isFairyTale
+  const lectureRelaxedFallbackRatio = isWorkbook
+    ? 0.45
+    : isFairyTale
     ? (audienceLevel === "7-9" ? 0.54 : 0.52)
     : isStory
       ? 0.66
@@ -10049,9 +10581,9 @@ Markdown formatında döndür.
       minAcceptanceRatio: lectureMinAcceptanceRatio,
       relaxedFallbackRatio: lectureRelaxedFallbackRatio,
       bookType: normalizedBrief.bookType,
-      singlePass: isNarrative ? narrativeSinglePass : false,
-      skipQualityGate: isNarrative ? narrativeSkipQualityGate : false,
-      maxGenerationAttempts: isNarrative ? narrativeMaxGenerationAttempts : 2,
+      singlePass: isWorkbook ? true : (isNarrative ? narrativeSinglePass : false),
+      skipQualityGate: isWorkbook ? true : (isNarrative ? narrativeSkipQualityGate : false),
+      maxGenerationAttempts: isWorkbook ? 1 : (isNarrative ? narrativeMaxGenerationAttempts : 2),
       allowEmergencyGeneration: isNarrative ? narrativeAllowEmergencyGeneration : true
     }
   );
@@ -10063,7 +10595,9 @@ Markdown formatında döndür.
   if (deferImageGeneration) {
     return { content: lectureContent, usageEntries: lectureUsageEntries };
   }
-  const lectureImageCount = getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
+  const lectureImageCount = isWorkbook
+    ? ([2, Math.max(2, chapterCount - 1)].includes(chapterPosition) ? 1 : 0)
+    : getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
   if (lectureImageCount <= 0) {
     return { content: lectureContent, usageEntries: lectureUsageEntries };
   }
@@ -10073,11 +10607,13 @@ Markdown formatında döndür.
       nodeTitle,
       openAiApiKey,
       lectureContent,
-      normalizedBrief.bookType,
+      isWorkbook ? "academic" : normalizedBrief.bookType,
       normalizedBrief,
       audienceLevel,
       lectureImageCount,
-      narrativeContext
+      narrativeContext,
+      heroPortraitImage,
+      heroPortraitName
     );
     const content = isNarrative
       ? embedImagesIntoMarkdown(lectureContent, imageResult.images, { minParagraphsBeforeFirstImage: 2 })
@@ -10105,7 +10641,9 @@ async function generateLectureImages(
     outlinePositions: { current: number; total: number };
     previousChapterContent?: string;
     storySoFarContent?: string;
-  }
+  },
+  heroPortraitImage?: OpenAiImageReference,
+  heroPortraitName?: string
 ): Promise<{ content: string; usageEntries: UsageReportEntry[] }> {
   const cleanContent = String(sourceContent || "").trim();
   if (!cleanContent) return { content: cleanContent, usageEntries: [] };
@@ -10114,7 +10652,12 @@ async function generateLectureImages(
   }
 
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, creativeBrief?.bookType, creativeBrief?.subGenre, targetPageCountRaw);
-  const lectureImageCount = getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
+  const isWorkbook = normalizedBrief.bookType === "story";
+  const chapterPosition = Math.max(1, narrativeContext?.outlinePositions.current || 1);
+  const chapterCount = Math.max(1, narrativeContext?.outlinePositions.total || STORY_CHAPTER_COUNT);
+  const lectureImageCount = isWorkbook
+    ? ([2, Math.max(2, chapterCount - 1)].includes(chapterPosition) ? 1 : 0)
+    : getNarrativeLectureImageCount(normalizedBrief.bookType, audienceLevel, narrativeContext);
   if (lectureImageCount <= 0) {
     return { content: cleanContent, usageEntries: [] };
   }
@@ -10123,14 +10666,16 @@ async function generateLectureImages(
     nodeTitle,
     openAiApiKey,
     cleanContent,
-    normalizedBrief.bookType,
+    isWorkbook ? "academic" : normalizedBrief.bookType,
     normalizedBrief,
     audienceLevel,
     lectureImageCount,
-    narrativeContext
+    narrativeContext,
+    heroPortraitImage,
+    heroPortraitName
   );
   return {
-    content: normalizedBrief.bookType !== "academic"
+    content: normalizedBrief.bookType !== "academic" && !isWorkbook
       ? embedImagesIntoMarkdown(cleanContent, imageResult.images, { minParagraphsBeforeFirstImage: 2 })
       : embedImagesIntoMarkdown(cleanContent, imageResult.images),
     usageEntries: [imageResult.usageEntry]
@@ -10150,7 +10695,7 @@ async function generatePodcastScript(
   const languageRule = languageInstruction(preferredLanguage);
   const audienceRule = audiencePromptInstruction(audienceLevel, preferredLanguage);
   const useEnglishScaffold = usesEnglishPromptScaffold(preferredLanguage);
-  const isNarrative = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "story" || normalizedBrief.bookType === "novel";
+  const isNarrative = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "novel";
   const narrativeKind = normalizedBrief.bookType === "fairy_tale"
     ? (useEnglishScaffold ? "fairy tale" : "masal")
     : normalizedBrief.bookType === "novel"
@@ -10258,6 +10803,7 @@ ${extraInstruction || ""}`}
       contents: prompt,
       config: {
         systemInstruction: getSystemInstructionForBookType(normalizedBrief.bookType),
+        thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
         temperature: 0.7,
         maxOutputTokens: 3200
       }
@@ -10373,7 +10919,7 @@ function buildPodcastTtsStyleDirective(bookType: SmartBookBookType = "academic")
     return "Perform this as a warm, friendly, sincere female fairy-tale storyteller for children ages 1-6. Keep a slower-than-normal, clear, gentle pace; speak tane tane with soft pauses so every word is understandable. Respect punctuation for breath, emphasis, and small moments of wonder. Carry emotional shifts naturally: wonder, joy, fear, relief, excitement, tenderness. Stay vivid but controlled, not theatrical or sing-song. Do not sound stretched, robotic, or mechanically slowed down. After the opening line, do not announce chapter titles, page numbers, or section labels; keep one continuous fairy-tale narration.";
   }
   if (bookType === "story") {
-    return "Perform this as a literary story narrator. Keep a natural medium pace, neither too fast nor too slow. Respect punctuation to shape rhythm, pauses, and breath. Carry emotions in the scene without exaggeration: tension, fear, joy, curiosity, relief. Keep the voice intimate and clear, not theatrical. Do not announce chapter titles or section labels after the opening line.";
+    return "Speak as a clear scientific workbook narrator at a comfortable medium pace. Explain headings, concepts, comparisons, and key points in an instructive professional tone. Respect punctuation and do not sound theatrical.";
   }
   if (bookType === "novel") {
     return "Perform this as a novel narrator with cinematic yet intimate delivery. Keep a steady medium pace, not rushed and not dragged. Respect punctuation and sentence cadence to build suspense, emotional turns, and release. Let emotion be audible when present in the text: excitement, fear, joy, melancholy, relief. Do not announce chapter titles or section labels after the opening line.";
@@ -11435,6 +11981,13 @@ function normalizeBookMetadataForClient(
     coverNarrationAudioUrl: firstNonEmptyString(payload.coverNarrationAudioUrl),
     coverNarrationAudioStoragePath: firstNonEmptyString(payload.coverNarrationAudioStoragePath),
     status: firstNonEmptyString(payload.status) || "ready",
+    communityPublication: isRecord(payload.communityPublication)
+      ? {
+        id: firstNonEmptyString(payload.communityPublication.id),
+        status: firstNonEmptyString(payload.communityPublication.status),
+        updatedAt: toIsoStringIfPossible(payload.communityPublication.updatedAt)
+      }
+      : undefined,
     cover: {
       path: firstNonEmptyString(coverPayload.path),
       url: firstNonEmptyString(coverPayload.url, payload.coverImageUrl)
@@ -11566,6 +12119,8 @@ async function buildAndPublishBookBundle(params: {
   }
 
   let cover: BookCoverDescriptor | undefined;
+  let standaloneCoverAsset: BinaryAsset | undefined;
+  let standaloneCoverExtension: string | undefined;
   const coverSource = firstNonEmptyString(sourcePayload.coverImageUrl);
   if (coverSource) {
     try {
@@ -11574,6 +12129,8 @@ async function buildAndPublishBookBundle(params: {
       const coverPath = `assets/cover.${coverExt}`;
       zip.file(coverPath, coverAsset.buffer);
       cover = { path: coverPath };
+      standaloneCoverAsset = coverAsset;
+      standaloneCoverExtension = coverExt;
     } catch (error) {
       logger.warn("Book bundle cover could not be materialized.", {
         bookId,
@@ -11691,6 +12248,40 @@ async function buildAndPublishBookBundle(params: {
   );
   logger.info("[Bundle] Upload complete", { bookId, bundlePath });
   const contentPackageUrl = buildFirebaseStorageDownloadUrl(bucket.name, bundlePath, bundleDownloadToken);
+  let standaloneCoverUrl: string | undefined;
+  if (cover?.path && standaloneCoverAsset) {
+    const coverDownloadToken = randomUUID();
+    const coverStoragePath = `smartbooks/${safeUid}/${safeBookId}/v${nextVersion}/cover.${standaloneCoverExtension || "jpg"}`;
+    try {
+      await withTimeout(
+        bucket.file(coverStoragePath).save(standaloneCoverAsset.buffer, {
+          contentType: standaloneCoverAsset.contentType || "image/jpeg",
+          metadata: {
+            metadata: {
+              uid,
+              bookId,
+              version: String(nextVersion),
+              firebaseStorageDownloadTokens: coverDownloadToken
+            }
+          }
+        }),
+        120_000,
+        () => new HttpsError("deadline-exceeded", "Kapak Storage yükleme zaman aşımına uğradı.")
+      );
+      standaloneCoverUrl = buildFirebaseStorageDownloadUrl(bucket.name, coverStoragePath, coverDownloadToken);
+    } catch (error) {
+      logger.warn("Book bundle standalone cover could not be uploaded.", {
+        bookId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  const publishedCover = cover
+    ? {
+      ...cover,
+      url: firstNonEmptyString(standaloneCoverUrl, cover.url)
+    }
+    : undefined;
 
   const rawBookDocPayload: Record<string, unknown> = {
     id: bookId,
@@ -11717,7 +12308,7 @@ async function buildAndPublishBookBundle(params: {
     coverNarrationAudioUrl: coverNarrationAudioUrl || firstNonEmptyString(sourcePayload.coverNarrationAudioUrl),
     coverNarrationAudioStoragePath: firstNonEmptyString(sourcePayload.coverNarrationAudioStoragePath),
     status: "ready",
-    cover: cover || {
+    cover: publishedCover || {
       path: firstNonEmptyString((existingBookPayload && isRecord(existingBookPayload.cover)) ? existingBookPayload.cover.path : undefined),
       url: firstNonEmptyString((existingBookPayload && isRecord(existingBookPayload.cover)) ? existingBookPayload.cover.url : undefined)
     },
@@ -11727,7 +12318,7 @@ async function buildAndPublishBookBundle(params: {
     contentPackageUrl,
     contentPackageUpdatedAt: bundleDescriptor.generatedAt,
     coverImageUrl: firstNonEmptyString(
-      cover?.url,
+      publishedCover?.url,
       (existingBookPayload && isRecord(existingBookPayload.cover)) ? existingBookPayload.cover.url : undefined
     ),
     createdAt: toIsoStringIfPossible(existingBookPayload?.createdAt) || createdAtIso,
@@ -12200,24 +12791,11 @@ function buildGeneratedBookCoursePayload(params: {
   const detectedLanguage = detectContentLanguageCode(
     params.creativeBrief?.languageText,
     title,
-    description,
     params.nodes[0]?.content,
-    params.nodes[0]?.pageText
+    params.nodes[0]?.pageText,
+    description
   );
-  const language =
-    detectedLanguage === "pt-BR"
-      ? "pt"
-      : detectedLanguage === "tr" ||
-        detectedLanguage === "en" ||
-        detectedLanguage === "es" ||
-        detectedLanguage === "ja" ||
-        detectedLanguage === "ko" ||
-        detectedLanguage === "ar" ||
-        detectedLanguage === "fr" ||
-        detectedLanguage === "de" ||
-        detectedLanguage === "it"
-        ? detectedLanguage
-        : "unknown";
+  const language = detectedLanguage === "unknown" ? "unknown" : detectedLanguage;
 
   return {
     id: params.courseId,
@@ -12486,7 +13064,8 @@ function buildCompletedBookJobPatchFromPublishedBook(
     errorMessage: FieldValue.delete(),
     creditRefundPending: FieldValue.delete(),
     creditRefundError: FieldValue.delete(),
-    creditRefundErrorAt: FieldValue.delete()
+    creditRefundErrorAt: FieldValue.delete(),
+    visualHeroPortrait: FieldValue.delete()
   };
 }
 
@@ -12507,6 +13086,11 @@ async function failBookJob(
       await jobRef.set(
         buildCompletedBookJobPatchFromPublishedBook(publishedBook, latestJobData),
         { merge: true }
+      );
+      await cleanupVisualHeroPortraitReferenceForJob(
+        jobRef,
+        latestJobData,
+        "published-book-recovered"
       );
       logger.info("Book job failure ignored because book is already published", {
         jobId: jobRef.id,
@@ -12534,6 +13118,7 @@ async function failBookJob(
     },
     { merge: true }
   );
+  await cleanupVisualHeroPortraitReferenceForJob(jobRef, latestJobData, "failed");
 
   if (!shouldAttemptRefund) {
     return;
@@ -12655,7 +13240,7 @@ async function synthesizeGeminiPodcastAudioChunk(
     );
   }
 
-  const ttsPrompt = normalizeNarrationTextForTts(narrationText);
+  const ttsPrompt = buildPodcastTtsPrompt(narrationText, speakerHint, bookType, deliveryContext);
 
   logger.info("[PodcastAudio] Generating chunk audio.", {
     label,
@@ -13311,6 +13896,7 @@ ${serializedQuestions}
     contents: prompt,
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
+      thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
       temperature: 0.1,
       maxOutputTokens: 5200,
       responseMimeType: "application/json"
@@ -13422,6 +14008,7 @@ Ek açıklama, markdown, kod bloğu veya metin yazma.
         model: GEMINI_QUIZ_REVIEW_MODEL,
         contents: `${basePrompt}\nDeneme: ${attempt}.`,
         config: {
+          thinkingConfig: GEMINI_CONTENT_THINKING_CONFIG,
           temperature: 0.4,
           maxOutputTokens: 5600,
           responseMimeType: "application/json",
@@ -13580,7 +14167,8 @@ async function generateRemedialContent(
     audienceLevel,
     targetPageCount
   );
-  const isNarrative = normalizedBrief.bookType !== "academic";
+  const isWorkbook = normalizedBrief.bookType === "story";
+  const isNarrative = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "novel";
   const sourceExcerpt = (sourceContent || "").trim().slice(0, 22000);
   const remedialPrompt = isNarrative
     ? `
@@ -13660,7 +14248,7 @@ Metin zorunlulukları:
       remedialVisualTitle,
       openAiApiKey,
       remedialContent,
-      normalizedBrief.bookType,
+      isWorkbook ? "academic" : normalizedBrief.bookType,
       normalizedBrief,
       audienceLevel
     );
@@ -13703,7 +14291,7 @@ async function generateSummaryCard(
     audienceLevel,
     targetPageCount
   );
-  const isNarrative = normalizedBrief.bookType !== "academic";
+  const isNarrative = normalizedBrief.bookType === "fairy_tale" || normalizedBrief.bookType === "novel";
   const summaryPrompt = isNarrative
     ? `
 "${topic}" kitabı için "Sonuç" bölümünü yaz.
@@ -13877,9 +14465,9 @@ export const aiGateway = onCall(
           const sourceContent = asOptionalString(payload.sourceContent, "sourceContent", 30000);
           const ageGroup = normalizeSmartBookAudienceLevel(payload.ageGroup);
           const subGenre = asOptionalString(payload.subGenre, "subGenre", 120);
-          const allowAiBookTitleGeneration = payload.allowAiBookTitleGeneration === true;
           const targetPageCountRaw = Number(payload.targetPageCount);
           const bookType = resolveSmartBookBookTypeFromPayload(payload);
+          const allowAiBookTitleGeneration = bookType === "story" || payload.allowAiBookTitleGeneration === true;
           const creativeBrief = normalizeSmartBookCreativeBrief(
             payload.creativeBrief,
             bookType,
@@ -14436,6 +15024,54 @@ function normalizeVisualHeroPortraitReference(raw: unknown): VisualStoryHeroPort
   return { storagePath, contentType, fileName, sizeBytes };
 }
 
+async function cleanupVisualHeroPortraitReference(
+  jobRef: FirebaseFirestore.DocumentReference,
+  reference: VisualStoryHeroPortraitReference | undefined,
+  reason: string
+): Promise<boolean> {
+  if (!reference?.storagePath) return false;
+  try {
+    await getStorage().bucket().file(reference.storagePath).delete().catch((deleteError: unknown) => {
+      if (isRecord(deleteError) && Number(deleteError.code) === 404) return undefined;
+      throw deleteError;
+    });
+    await jobRef.set(
+      {
+        visualHeroPortrait: FieldValue.delete(),
+        visualHeroPortraitDeletedAt: FieldValue.serverTimestamp(),
+        visualHeroPortraitDeleteReason: reason
+      },
+      { merge: true }
+    );
+    logger.info("Visual hero portrait reference cleaned up", {
+      jobId: jobRef.id,
+      storagePath: reference.storagePath,
+      reason
+    });
+    return true;
+  } catch (cleanupError) {
+    logger.warn("Visual hero portrait reference cleanup failed", {
+      jobId: jobRef.id,
+      storagePath: reference.storagePath,
+      reason,
+      error: toErrorMessage(cleanupError)
+    });
+    return false;
+  }
+}
+
+async function cleanupVisualHeroPortraitReferenceForJob(
+  jobRef: FirebaseFirestore.DocumentReference,
+  jobData: Record<string, unknown> | undefined,
+  reason: string
+): Promise<boolean> {
+  return cleanupVisualHeroPortraitReference(
+    jobRef,
+    normalizeVisualHeroPortraitReference(jobData?.visualHeroPortrait),
+    reason
+  );
+}
+
 function normalizeHeroPortraitName(raw: unknown): string | undefined {
   const name = String(raw || "").replace(/\s+/g, " ").trim();
   if (!name) return undefined;
@@ -14498,17 +15134,20 @@ export const startBookGenerationJob = onCall(
     const creatorName = asOptionalString(payload.creatorName, "creatorName", 120);
     const ageGroup = normalizeSmartBookAudienceLevel(payload.ageGroup);
     const subGenre = asOptionalString(payload.subGenre, "subGenre", 120);
-    const allowAiBookTitleGeneration = payload.allowAiBookTitleGeneration === true;
     const targetPageCountRaw = Number(payload.targetPageCount);
     const bookType = resolveSmartBookBookTypeFromPayload(payload);
+    const allowAiBookTitleGeneration = bookType === "story" || payload.allowAiBookTitleGeneration === true;
     const creativeBrief = normalizeSmartBookCreativeBrief(
       payload.creativeBrief,
       bookType,
       subGenre,
       targetPageCountRaw
     );
+    const supportsHeroPortraitUpload =
+      bookType === "novel" ||
+      (bookType === "fairy_tale" && isVisualFairyTaleAudienceLevel(ageGroup));
     const heroPortraitUpload =
-      bookType === "fairy_tale" && isVisualFairyTaleAudienceLevel(ageGroup)
+      supportsHeroPortraitUpload
         ? normalizeHeroPortraitUpload(payload.heroPortraitImage)
         : null;
     const heroPortraitName = heroPortraitUpload ? normalizeHeroPortraitName(payload.heroPortraitName) : undefined;
@@ -14715,6 +15354,19 @@ export const getBookGenerationJob = onCall(
       }
     }
 
+    const terminalStatus = String(data?.status || "");
+    if (terminalStatus === "completed" || terminalStatus === "failed") {
+      const didCleanupPortrait = await cleanupVisualHeroPortraitReferenceForJob(
+        jobRef,
+        data,
+        `poll-${terminalStatus}`
+      );
+      if (didCleanupPortrait) {
+        const refreshedSnap = await jobRef.get();
+        data = refreshedSnap.data() as Record<string, unknown> | undefined;
+      }
+    }
+
     const wallet = await getOrCreateCreditWallet(uid);
     return await buildBookJobResponse(jobId, data, wallet);
   }
@@ -14910,7 +15562,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   );
 
   const generatedNodes: Array<TimelineNode | null> = new Array(plan.pages.length).fill(null);
-  const pageConcurrency = Math.min(2, Math.max(1, plan.pages.length));
+  const pageConcurrency = Math.min(4, Math.max(1, plan.pages.length));
   let nextPageIndex = 0;
   let completedPageCount = 0;
   let progressWriteChain: Promise<void> = Promise.resolve();
@@ -15071,10 +15723,12 @@ async function runVisualFairyTaleBookGenerationJob(params: {
       creditRefunded: false,
       updatedAt: FieldValue.serverTimestamp(),
       completedAt: FieldValue.serverTimestamp(),
-      errorMessage: FieldValue.delete()
+      errorMessage: FieldValue.delete(),
+      visualHeroPortrait: FieldValue.delete()
     },
     { merge: true }
   );
+  await cleanupVisualHeroPortraitReference(jobRef, heroPortraitReference, "completed");
 
   logger.info("Visual fairy tale book job completed", {
     jobId: jobRef.id,
@@ -15088,7 +15742,34 @@ async function runVisualFairyTaleBookGenerationJob(params: {
   });
 }
 
-async function sendBookReadyPushNotification(uid: string, bookTitle: string): Promise<void> {
+const BOOK_READY_PUSH_NOTIFICATION_COPY: Record<PreferredLanguage, (bookTitle: string) => { title: string; body: string }> = {
+  ar: (title) => ({ title: "📚 كتابك جاهز!", body: `تم إنشاء "${title}". يمكنك البدء بالقراءة الآن.` }),
+  da: (title) => ({ title: "📚 Din bog er klar!", body: `"${title}" er oprettet. Du kan begynde at læse nu.` }),
+  de: (title) => ({ title: "📚 Dein Buch ist fertig!", body: `"${title}" wurde erstellt. Du kannst jetzt mit dem Lesen beginnen.` }),
+  el: (title) => ({ title: "📚 Το βιβλίο σου είναι έτοιμο!", body: `Το "${title}" δημιουργήθηκε. Μπορείς να ξεκινήσεις την ανάγνωση.` }),
+  en: (title) => ({ title: "📚 Your book is ready!", body: `"${title}" has been created. You can start reading now.` }),
+  es: (title) => ({ title: "📚 Tu libro está listo!", body: `"${title}" se ha creado. Ya puedes empezar a leer.` }),
+  fi: (title) => ({ title: "📚 Kirjasi on valmis!", body: `"${title}" on luotu. Voit aloittaa lukemisen nyt.` }),
+  fr: (title) => ({ title: "📚 Ton livre est prêt !", body: `"${title}" a été créé. Tu peux commencer la lecture.` }),
+  hi: (title) => ({ title: "📚 आपकी किताब तैयार है!", body: `"${title}" बन गई है। अब आप पढ़ना शुरू कर सकते हैं।` }),
+  id: (title) => ({ title: "📚 Bukumu siap!", body: `"${title}" telah dibuat. Kamu bisa mulai membaca sekarang.` }),
+  it: (title) => ({ title: "📚 Il tuo libro è pronto!", body: `"${title}" è stato creato. Puoi iniziare a leggere ora.` }),
+  ja: (title) => ({ title: "📚 本が完成しました！", body: `「${title}」が作成されました。今すぐ読み始められます。` }),
+  ko: (title) => ({ title: "📚 책이 준비되었습니다!", body: `"${title}"이(가) 만들어졌습니다. 지금 읽기 시작할 수 있어요.` }),
+  nl: (title) => ({ title: "📚 Je boek is klaar!", body: `"${title}" is gemaakt. Je kunt nu beginnen met lezen.` }),
+  no: (title) => ({ title: "📚 Boken din er klar!", body: `"${title}" er laget. Du kan begynne å lese nå.` }),
+  pl: (title) => ({ title: "📚 Twoja książka jest gotowa!", body: `Utworzono "${title}". Możesz zacząć czytać.` }),
+  "pt-BR": (title) => ({ title: "📚 Seu livro está pronto!", body: `"${title}" foi criado. Você já pode começar a ler.` }),
+  sv: (title) => ({ title: "📚 Din bok är klar!", body: `"${title}" har skapats. Du kan börja läsa nu.` }),
+  th: (title) => ({ title: "📚 หนังสือของคุณพร้อมแล้ว!", body: `สร้าง "${title}" แล้ว คุณเริ่มอ่านได้เลย` }),
+  tr: (title) => ({ title: "📚 Kitabın hazır!", body: `"${title}" oluşturuldu. Okumaya başlayabilirsin.` })
+};
+
+function buildBookReadyPushNotificationCopy(bookTitle: string, language: PreferredLanguage): { title: string; body: string } {
+  return (BOOK_READY_PUSH_NOTIFICATION_COPY[language] || BOOK_READY_PUSH_NOTIFICATION_COPY.en)(bookTitle);
+}
+
+async function sendBookReadyPushNotification(uid: string, bookTitle: string, language: PreferredLanguage): Promise<void> {
   try {
     const tokenDoc = await firestore.collection("userFcmTokens").doc(uid).get();
     if (!tokenDoc.exists) return;
@@ -15100,11 +15781,12 @@ async function sendBookReadyPushNotification(uid: string, bookTitle: string): Pr
     if (tokens.length === 0) return;
 
     const messaging = getMessaging();
+    const notificationCopy = buildBookReadyPushNotificationCopy(bookTitle, language);
     const results = await messaging.sendEachForMulticast({
       tokens,
       notification: {
-        title: "📚 Kitabın hazır!",
-        body: `"${bookTitle}" oluşturuldu. Okumaya başlayabilirsin.`
+        title: notificationCopy.title,
+        body: notificationCopy.body
       },
       apns: {
         payload: { aps: { sound: "default", badge: 1 } }
@@ -15112,7 +15794,7 @@ async function sendBookReadyPushNotification(uid: string, bookTitle: string): Pr
       android: {
         notification: {
           sound: "default",
-          color: "#2a9d8f"
+          color: "#9BC7FF"
         }
       }
     });
@@ -15241,6 +15923,9 @@ async function runBookGenerationJobTask(
     return;
   }
 
+  const heroPortraitImage = heroPortraitReference
+    ? await loadOpenAiHeroPortraitReference(heroPortraitReference)
+    : undefined;
   const generationAgeGroup =
     bookType === "fairy_tale"
       ? resolveFairyTaleLegacyAudienceLevel(ageGroup)
@@ -15334,7 +16019,9 @@ async function runBookGenerationJobTask(
             previousChapterContent: previousChapterContent || undefined,
             storySoFarContent: storySoFarContent || undefined
           },
-          false
+          false,
+          heroPortraitImage,
+          heroPortraitName
         ),
         420_000,
         () => new HttpsError("deadline-exceeded", `Bölüm üretimi zaman aşımına uğradı: ${node.title}`)
@@ -15395,7 +16082,9 @@ async function runBookGenerationJobTask(
         imageApiKey,
         generationAgeGroup,
         creativeBrief,
-        buildBookJobCoverContext(generatedNodes)
+        buildBookJobCoverContext(generatedNodes),
+        heroPortraitImage,
+        heroPortraitName
       ),
       240_000,
       () => new HttpsError("deadline-exceeded", "Kapak üretimi zaman aşımına uğradı.")
@@ -15567,10 +16256,12 @@ async function runBookBundleJobTask(
       creditRefunded: false,
       updatedAt: FieldValue.serverTimestamp(),
       completedAt: FieldValue.serverTimestamp(),
-      errorMessage: FieldValue.delete()
+      errorMessage: FieldValue.delete(),
+      visualHeroPortrait: FieldValue.delete()
     },
     { merge: true }
   );
+  await cleanupVisualHeroPortraitReferenceForJob(jobRef, jobData, "completed");
 
   logger.info("Book bundle completed", {
     jobId: jobRef.id,
@@ -15582,7 +16273,22 @@ async function runBookBundleJobTask(
     estimatedCostUsd: usageTotals.estimatedCostUsd
   });
 
-  await sendBookReadyPushNotification(uid, bookTitle);
+  const jobCreativeBrief = typeof jobData?.creativeBrief === "object" && jobData.creativeBrief !== null
+    ? jobData.creativeBrief as Record<string, unknown>
+    : undefined;
+  const detectedNotificationLanguage = detectContentLanguageCode(
+    firstNonEmptyString(sourceCoursePayload.language, jobCreativeBrief?.languageText),
+    firstNonEmptyString(sourceCoursePayload.title, sourceCoursePayload.topic, bookTitle),
+    firstNonEmptyString(sourceCoursePayload.description)
+  );
+  const notificationLanguage: PreferredLanguage = detectedNotificationLanguage === "unknown"
+    ? "tr"
+    : detectedNotificationLanguage;
+  await sendBookReadyPushNotification(
+    uid,
+    bookTitle,
+    notificationLanguage
+  );
 }
 
 export const processBookGenerationJobTask = onDocumentCreated(
@@ -15592,7 +16298,8 @@ export const processBookGenerationJobTask = onDocumentCreated(
     timeoutSeconds: 540,
     memory: "2GiB",
     cpu: 2,
-    maxInstances: 2,
+    concurrency: 1,
+    maxInstances: 10,
     secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
   },
   async (event) => {
@@ -15794,19 +16501,22 @@ export const startPodcastAudioJob = onCall(
           pageSequence: page.pageSequence || index + 1
         }))
       ];
+      const totalPageCount = visualStoryPages.length;
+      const bookTypeLabel = bookType === "fairy_tale" ? "fairy tale" : bookType === "story" ? "illustrated story" : bookType === "novel" ? "illustrated novel" : "illustrated book";
       chunkContexts = orderedTexts.map((_, index) => {
         const previous = index > 0 ? orderedTexts[index - 1] : "";
         const next = index < orderedTexts.length - 1 ? orderedTexts[index + 1] : "";
         const meta = chunkMeta[index];
+        const pageSeq = meta?.kind === "cover" ? 0 : (meta?.pageSequence || (coverScript ? index : index + 1));
         const pageLabel = meta?.kind === "cover"
-          ? "cover opening"
-          : `page ${meta?.pageSequence || (coverScript ? index : index + 1)}`;
+          ? `cover opening (before page 1 of ${totalPageCount})`
+          : `page ${pageSeq} of ${totalPageCount}`;
         return [
-          `This audio chunk is the ${pageLabel} of one continuous illustrated fairy tale.`,
+          `This audio chunk is the ${pageLabel} of one continuous illustrated ${bookTypeLabel}.`,
+          `Maintain the exact same narrator voice, tone, pace, and emotional register as every other chunk in this ${bookTypeLabel}.`,
           meta?.title ? `Internal title for this chunk: ${meta.title}. Do not read the title aloud.` : "",
-          previous ? `Previous page ended with: ${previous.slice(-420)}` : "",
-          next ? `Next page will continue with: ${next.slice(0, 420)}` : "",
-          "Keep the same narrator identity, warmth, tempo, and emotional continuity across pages."
+          previous ? `Previous page ended with: "${previous.slice(-320)}"` : "",
+          next ? `Next page will begin with: "${next.slice(0, 320)}"` : "",
         ].filter(Boolean).join(" ");
       });
       visualStoryAudioTarget = {
@@ -16416,6 +17126,7 @@ export const processPodcastAudioJobTask = onDocumentCreated(
     region: "us-central1",
     timeoutSeconds: 540,
     memory: "1GiB",
+    concurrency: 1,
     maxInstances: 8,
     secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
   },
@@ -16553,7 +17264,28 @@ export const revenueCatWebhook = onRequest(
       const incomingAuthToken = resolveWebhookAuthHeaderToken(
         request.headers as unknown as Record<string, unknown>
       );
-      if (REVENUECAT_WEBHOOK_AUTH && incomingAuthToken !== REVENUECAT_WEBHOOK_AUTH) {
+      const incomingUrlToken = resolveWebhookUrlToken(
+        request.query as unknown as Record<string, unknown>
+      );
+      // Fail-closed: reject if auth secret is not configured OR token mismatch
+      if (
+        !REVENUECAT_WEBHOOK_AUTH ||
+        (
+          incomingAuthToken !== REVENUECAT_WEBHOOK_AUTH &&
+          incomingUrlToken !== REVENUECAT_WEBHOOK_AUTH
+        )
+      ) {
+        const authorizationHeader = request.headers.authorization;
+        logger.warn("RevenueCat webhook unauthorized", {
+          expectedAuthConfigured: Boolean(REVENUECAT_WEBHOOK_AUTH),
+          authorizationHeaderPresent: Boolean(authorizationHeader),
+          authorizationHeaderLength: Array.isArray(authorizationHeader)
+            ? String(authorizationHeader[0] || "").length
+            : String(authorizationHeader || "").length,
+          urlTokenPresent: Boolean(incomingUrlToken),
+          urlTokenLength: incomingUrlToken.length,
+          userAgent: String(request.headers["user-agent"] || "").slice(0, 80)
+        });
         response.status(401).json({ ok: false, error: "Unauthorized webhook request" });
         return;
       }
@@ -17649,6 +18381,121 @@ export const listMySmartBookCourses = onCall(
   }
 );
 
+export const repairSmartBookCover = onCall(
+  {
+    region: "us-central1",
+    cors: APP_CORS_ORIGINS,
+    timeoutSeconds: 120,
+    memory: "1GiB"
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Authentication is required.");
+    }
+
+    const payload = isRecord(request.data) ? request.data : {};
+    const bookId = firstNonEmptyString(payload.bookId);
+    if (!bookId || bookId.includes("/")) {
+      throw new HttpsError("invalid-argument", "A valid bookId is required.");
+    }
+
+    const bookRef = getUserBookRef(uid, bookId);
+    const bookSnap = await bookRef.get();
+    if (!bookSnap.exists) {
+      throw new HttpsError("not-found", "Book not found.");
+    }
+
+    const bookPayload = bookSnap.data() as Record<string, unknown>;
+    const currentCover = isRecord(bookPayload.cover) ? bookPayload.cover : {};
+    const existingCoverUrl = firstNonEmptyString(currentCover.url, bookPayload.coverImageUrl);
+    if (existingCoverUrl) {
+      return { success: true, coverImageUrl: existingCoverUrl };
+    }
+
+    const bundlePayload = isRecord(bookPayload.bundle) ? bookPayload.bundle : {};
+    const bundlePath = firstNonEmptyString(bundlePayload.path, bookPayload.contentPackagePath);
+    const safeUid = sanitizeBundlePathPart(uid, "user");
+    const safeBookId = sanitizeBundlePathPart(bookId, "book");
+    if (!bundlePath || !bundlePath.startsWith(`smartbooks/${safeUid}/${safeBookId}/`)) {
+      throw new HttpsError("failed-precondition", "Book package is unavailable.");
+    }
+
+    try {
+      const bucket = getStorage().bucket();
+      const [bundleExists] = await bucket.file(bundlePath).exists();
+      if (!bundleExists) {
+        throw new HttpsError("not-found", "Book package not found.");
+      }
+      const [bundleBuffer] = await bucket.file(bundlePath).download();
+      const zip = await JSZip.loadAsync(bundleBuffer);
+      const manifestFile = zip.file("manifest.json");
+      const manifest = manifestFile
+        ? JSON.parse(await manifestFile.async("string")) as Record<string, unknown>
+        : {};
+      const manifestCover = isRecord(manifest.cover) ? manifest.cover : {};
+      const declaredCoverPath = firstNonEmptyString(manifestCover.path, currentCover.path);
+      const coverPathCandidates = [
+        declaredCoverPath,
+        "assets/cover.jpg",
+        "assets/cover.jpeg",
+        "assets/cover.png",
+        "assets/cover.webp",
+        "assets/cover.gif"
+      ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+      const coverPath = coverPathCandidates.find((candidate) => Boolean(zip.file(candidate)));
+      if (!coverPath) {
+        throw new HttpsError("not-found", "Book cover is unavailable in the package.");
+      }
+
+      const coverBuffer = await zip.file(coverPath)!.async("nodebuffer");
+      if (coverBuffer.byteLength === 0) {
+        throw new HttpsError("data-loss", "Book cover is empty.");
+      }
+      const rawExtension = path.extname(coverPath).replace(".", "").toLowerCase();
+      const extension = ["jpg", "jpeg", "png", "webp", "gif"].includes(rawExtension)
+        ? (rawExtension === "jpeg" ? "jpg" : rawExtension)
+        : "jpg";
+      const contentType = inferContentTypeFromExtension(extension);
+      const coverStoragePath = `${path.posix.dirname(bundlePath)}/cover.${extension}`;
+      const downloadToken = randomUUID();
+      await bucket.file(coverStoragePath).save(coverBuffer, {
+        contentType,
+        metadata: {
+          metadata: {
+            uid,
+            bookId,
+            repairedFromBundle: bundlePath,
+            firebaseStorageDownloadTokens: downloadToken
+          }
+        }
+      });
+      const coverImageUrl = buildFirebaseStorageDownloadUrl(bucket.name, coverStoragePath, downloadToken);
+      await bookRef.set({
+        cover: {
+          ...currentCover,
+          path: coverPath,
+          url: coverImageUrl
+        },
+        coverImageUrl,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      logger.info("Legacy SmartBook cover repaired", { uid, bookId, bundlePath, coverStoragePath });
+      return { success: true, coverImageUrl };
+    } catch (error) {
+      logger.error("repairSmartBookCover failed", {
+        uid,
+        bookId,
+        bundlePath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError("internal", "Book cover could not be repaired.");
+    }
+  }
+);
+
 async function deleteDocRefsInBatches(
   refs: FirebaseFirestore.DocumentReference[],
   batchSize = 400
@@ -18153,5 +19000,1375 @@ export const contactUs = onCall(
     }
 
     return { ok: true };
+  }
+);
+
+const COMMUNITY_DOWNLOAD_COST = 0.5;
+const COMMUNITY_CREATOR_REWARD = 0.25;
+const COMMUNITY_TERMS_VERSION = "2026-07-03";
+const COMMUNITY_REPORT_HIDE_THRESHOLD = 3;
+const COMMUNITY_COMMENT_MAX_LENGTH = 500;
+const COMMUNITY_PREVIEW_NODE_COUNT = 2;
+const COMMUNITY_LIST_MAX_LIMIT = 40;
+const COMMUNITY_MODERATION_MODEL = "omni-moderation-latest";
+let communityEnabledCache: { value: boolean; expiresAt: number } | null = null;
+
+interface CommunityBookDoc {
+  userId: string;
+  bookId: string;
+  title: string;
+  description: string;
+  publisherAlias: string;
+  coverImageUrl: string;
+  coverStoragePath: string;
+  bookType: string;
+  subGenre: string;
+  category: string;
+  ageGroup: string;
+  language: string;
+  searchText: string;
+  searchKeywords: string[];
+  tags: string[];
+  pageCount: number;
+  outline: string[];
+  preview: Array<{ id: string; title: string; content: string }>;
+  previewImages?: Array<{ id: string; title: string; url: string; storagePath?: string; sourcePath?: string }>;
+  snapshotPath: string;
+  snapshotVersion: number;
+  status: "published" | "hidden" | "unpublished" | "removed";
+  moderationStatus: "approved" | "review_required" | "removed";
+  downloadCount: number;
+  likeCount: number;
+  commentCount: number;
+  reportCount: number;
+  hotScore: number;
+  isFeatured: boolean;
+  publishedAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+}
+
+interface CommunityProfileDoc {
+  userId: string;
+  alias: string;
+  aliasLower: string;
+  bio: string;
+  ageConfirmedAt: FirebaseFirestore.Timestamp;
+  termsAcceptedAt: FirebaseFirestore.Timestamp;
+  termsVersion: string;
+  followerCount: number;
+  followingCount: number;
+  publicationCount: number;
+  totalLikeCount: number;
+  totalDownloadCount: number;
+  isSuspended: boolean;
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+}
+
+function communityText(value: unknown, maxLength = 500): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
+}
+
+function normalizeCommunitySearch(value: unknown): string {
+  return communityText(value, 5_000)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildCommunityKeywords(...values: unknown[]): string[] {
+  const normalized = normalizeCommunitySearch(values.map((value) => communityText(value, 1_000)).join(" "));
+  const tokens = normalized.split(" ").filter((token) => token.length >= 2).slice(0, 80);
+  const keywords = new Set<string>();
+  for (const token of tokens) {
+    keywords.add(token);
+    for (let length = 2; length <= Math.min(token.length, 16); length += 1) {
+      keywords.add(token.slice(0, length));
+    }
+  }
+  return Array.from(keywords).slice(0, 400);
+}
+
+function communityBookIdFor(uid: string, bookId: string): string {
+  return createHash("sha256").update(`${uid}:${bookId}`).digest("hex").slice(0, 40);
+}
+
+function communityRelationId(first: string, second: string): string {
+  return createHash("sha256").update(`${first}:${second}`).digest("hex");
+}
+
+async function assertCommunityEnabled(): Promise<void> {
+  if (communityEnabledCache && communityEnabledCache.expiresAt > Date.now()) {
+    if (!communityEnabledCache.value) throw new HttpsError("unavailable", "Topluluk şu anda kullanıma kapalı.");
+    return;
+  }
+  const snap = await firestore.collection("appConfig").doc("community").get();
+  const enabled = !snap.exists || snap.data()?.communityEnabled !== false;
+  communityEnabledCache = { value: enabled, expiresAt: Date.now() + 60_000 };
+  if (!enabled) throw new HttpsError("unavailable", "Topluluk şu anda kullanıma kapalı.");
+}
+
+function communityDayKey(): string {
+  return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function timestampMillis(value: unknown): number {
+  if (value instanceof Timestamp) return value.toMillis();
+  if (isRecord(value) && typeof value.seconds === "number") return value.seconds * 1_000;
+  return 0;
+}
+
+function serializeCommunityBook(
+  id: string,
+  book: CommunityBookDoc,
+  viewer?: { liked?: boolean; owned?: boolean }
+): Record<string, unknown> {
+  return {
+    id,
+    userId: book.userId,
+    bookId: book.bookId,
+    title: book.title,
+    description: book.description,
+    publisherAlias: book.publisherAlias,
+    coverImageUrl: book.coverImageUrl,
+    bookType: book.bookType,
+    subGenre: book.subGenre,
+    category: book.category,
+    ageGroup: book.ageGroup,
+    language: book.language,
+    tags: book.tags,
+    pageCount: book.pageCount,
+    outline: book.outline,
+    preview: book.preview,
+    previewImages: Array.isArray(book.previewImages) ? book.previewImages.map((image) => ({
+      id: image.id,
+      title: image.title,
+      url: image.url
+    })).filter((image) => image.url) : [],
+    downloadCount: book.downloadCount,
+    likeCount: book.likeCount,
+    commentCount: book.commentCount,
+    isFeatured: book.isFeatured,
+    hotScore: book.hotScore,
+    publishedAt: timestampMillis(book.publishedAt),
+    updatedAt: timestampMillis(book.updatedAt),
+    isLiked: Boolean(viewer?.liked),
+    isOwned: Boolean(viewer?.owned)
+  };
+}
+
+function validateCommunityAlias(value: unknown): string {
+  const alias = communityText(value, 32);
+  if (alias.length < 2 || alias.length > 32 || !/^[\p{L}\p{N}][\p{L}\p{N}._ -]*$/u.test(alias)) {
+    throw new HttpsError("invalid-argument", "Topluluk rumuzu 2–32 karakter olmalı ve yalnızca harf, rakam, boşluk, nokta, tire veya alt çizgi içermelidir.");
+  }
+  return alias;
+}
+
+async function moderateCommunityContent(text: string, imageUrl?: string): Promise<void> {
+  const apiKey = resolveOpenAiApiKey();
+  if (!apiKey) throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+  const input: Array<Record<string, unknown>> = [];
+  if (text.trim()) input.push({ type: "text", text: text.slice(0, 90_000) });
+  if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+    input.push({ type: "image_url", image_url: { url: imageUrl } });
+  }
+  if (input.length === 0) return;
+  const response = await fetch("https://api.openai.com/v1/moderations", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: COMMUNITY_MODERATION_MODEL, input })
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    logger.error("Community moderation request failed", { status: response.status, detail: detail.slice(0, 500) });
+    throw new HttpsError("unavailable", "İçerik güvenlik kontrolü şu anda kullanılamıyor.");
+  }
+  const payload = await response.json() as { results?: Array<{ flagged?: boolean }> };
+  if (payload.results?.some((result) => result.flagged === true)) {
+    throw new HttpsError("failed-precondition", "İçerik topluluk güvenlik kurallarına uygun değil.");
+  }
+}
+
+async function upsertCommunityProfileForUser(params: {
+  uid: string;
+  alias: string;
+  bio?: string;
+  ageConfirmed: boolean;
+  termsAccepted: boolean;
+}): Promise<CommunityProfileDoc> {
+  if (!params.ageConfirmed || !params.termsAccepted) {
+    throw new HttpsError("failed-precondition", "Topluluk için 13+ onayı ve topluluk kuralları kabulü zorunludur.");
+  }
+  const alias = validateCommunityAlias(params.alias);
+  const aliasLower = normalizeCommunitySearch(alias);
+  const bio = communityText(params.bio, 160);
+  await moderateCommunityContent([alias, bio].filter(Boolean).join("\n"));
+  const profileRef = firestore.collection("communityProfiles").doc(params.uid);
+  const aliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(aliasLower).digest("hex"));
+  return firestore.runTransaction(async (tx) => {
+    const [profileSnap, aliasSnap] = await Promise.all([tx.get(profileRef), tx.get(aliasRef)]);
+    const existing = profileSnap.exists ? profileSnap.data() as CommunityProfileDoc : null;
+    const aliasOwnerId = aliasSnap.exists ? communityText(aliasSnap.data()?.userId, 128) : "";
+    if (aliasOwnerId && aliasOwnerId !== params.uid) {
+      throw new HttpsError("already-exists", "Bu topluluk rumuzu kullanılıyor.");
+    }
+    if (existing?.aliasLower && existing.aliasLower !== aliasLower) {
+      const oldAliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(existing.aliasLower).digest("hex"));
+      tx.delete(oldAliasRef);
+    }
+    const now = Timestamp.now();
+    const next: CommunityProfileDoc = {
+      userId: params.uid,
+      alias,
+      aliasLower,
+      bio,
+      ageConfirmedAt: existing?.ageConfirmedAt ?? now,
+      termsAcceptedAt: now,
+      termsVersion: COMMUNITY_TERMS_VERSION,
+      followerCount: existing?.followerCount ?? 0,
+      followingCount: existing?.followingCount ?? 0,
+      publicationCount: existing?.publicationCount ?? 0,
+      totalLikeCount: existing?.totalLikeCount ?? 0,
+      totalDownloadCount: existing?.totalDownloadCount ?? 0,
+      isSuspended: existing?.isSuspended ?? false,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    if (next.isSuspended) throw new HttpsError("permission-denied", "Topluluk erişiminiz kısıtlanmış.");
+    tx.set(profileRef, next);
+    tx.set(aliasRef, { userId: params.uid, alias, updatedAt: now });
+    return next;
+  });
+}
+
+async function requireCommunityProfile(uid: string): Promise<CommunityProfileDoc> {
+  const snap = await firestore.collection("communityProfiles").doc(uid).get();
+  if (!snap.exists) throw new HttpsError("failed-precondition", "Önce topluluk profilinizi oluşturun ve 13+ onayını tamamlayın.");
+  const profile = snap.data() as CommunityProfileDoc;
+  if (profile.isSuspended) throw new HttpsError("permission-denied", "Topluluk erişiminiz kısıtlanmış.");
+  if (profile.termsVersion !== COMMUNITY_TERMS_VERSION) {
+    throw new HttpsError("failed-precondition", "Güncel topluluk kurallarını kabul etmeniz gerekiyor.");
+  }
+  return profile;
+}
+
+function communityPreviewContent(value: unknown, maxLength = 18_000): string {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function readableCommunityNodes(manifest: BookBundleManifest): Array<{ id: string; title: string; content: string }> {
+  return (Array.isArray(manifest.nodes) ? manifest.nodes : [])
+    .map((node) => ({
+      id: communityText(node.id, 120),
+      title: communityText(node.title, 200),
+      content: communityPreviewContent(node.content || node.pageText || node.podcastScript, 18_000)
+    }))
+    .filter((node) => node.content.length > 0);
+}
+
+function communityImageContentTypeFromPath(path: string): string {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  return "image/png";
+}
+
+function communityImageExtensionFromPath(path: string): string {
+  const match = path.toLowerCase().match(/\.([a-z0-9]+)(?:\?|#)?$/);
+  const extension = match?.[1] || "png";
+  if (extension === "jpeg") return "jpg";
+  if (["png", "jpg", "webp", "gif", "svg"].includes(extension)) return extension;
+  return "png";
+}
+
+async function extractCommunityPreviewImages(params: {
+  bucket: ReturnType<typeof getStorage> extends { bucket: () => infer B } ? B : never;
+  zip: JSZip;
+  manifest: BookBundleManifest;
+  communityBookId: string;
+  snapshotVersion: number;
+}): Promise<Array<{ id: string; title: string; url: string; storagePath: string; sourcePath: string }>> {
+  const candidates: Array<{ sourcePath: string; title: string }> = [];
+  const nodes = Array.isArray(params.manifest.nodes) ? params.manifest.nodes : [];
+  for (const node of nodes) {
+    const rawNode = node as TimelineNode & Record<string, unknown>;
+    const sourcePath = firstNonEmptyString(
+      rawNode.pageImageUrl,
+      rawNode.imageUrl,
+      rawNode.illustrationUrl,
+      rawNode.coverImageUrl,
+      rawNode.imagePath,
+      rawNode.assetPath
+    );
+    if (sourcePath) candidates.push({ sourcePath, title: communityText(node.title, 120) || "İçerik görseli" });
+  }
+  for (const fileName of Object.keys(params.zip.files)) {
+    if (/^assets\/images\/.+\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
+      const relatedNode = nodes.find((node) => typeof node.id === "string" && fileName.includes(node.id));
+      candidates.push({ sourcePath: fileName, title: communityText(relatedNode?.title, 120) || "İçerik görseli" });
+    }
+  }
+
+  const seen = new Set<string>();
+  const result: Array<{ id: string; title: string; url: string; storagePath: string; sourcePath: string }> = [];
+  for (const candidate of candidates) {
+    if (result.length >= 2 || seen.has(candidate.sourcePath)) continue;
+    seen.add(candidate.sourcePath);
+    let buffer: Buffer | null = null;
+    let contentType = communityImageContentTypeFromPath(candidate.sourcePath);
+    let extension = communityImageExtensionFromPath(candidate.sourcePath);
+    const zipPath = candidate.sourcePath.replace(/^\/+/, "");
+    const zipFile = params.zip.file(zipPath);
+    if (zipFile) {
+      buffer = await zipFile.async("nodebuffer");
+    } else if (/^https?:\/\//i.test(candidate.sourcePath)) {
+      const asset = await loadBinaryAssetFromSource(candidate.sourcePath);
+      buffer = asset.buffer;
+      contentType = asset.contentType;
+      extension = asset.extension;
+    }
+    if (!buffer || buffer.length === 0) continue;
+    const token = randomUUID();
+    const storagePath = `communityImages/${params.communityBookId}/v${params.snapshotVersion}/${result.length + 1}.${extension}`;
+    await params.bucket.file(storagePath).save(buffer, {
+      resumable: false,
+      contentType,
+      metadata: { cacheControl: "public,max-age=86400", metadata: { firebaseStorageDownloadTokens: token } }
+    });
+    result.push({
+      id: `preview-image-${result.length + 1}`,
+      title: candidate.title,
+      url: buildFirebaseStorageDownloadUrl(params.bucket.name, storagePath, token),
+      storagePath,
+      sourcePath: candidate.sourcePath
+    });
+  }
+  return result;
+}
+
+async function addCommunityMetric(bookId: string, field: "downloads" | "likes" | "comments", amount: number): Promise<void> {
+  const dayKey = communityDayKey();
+  const ref = firestore.collection("communityMetrics").doc(bookId).collection("days").doc(dayKey);
+  await ref.set({ [field]: FieldValue.increment(amount), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+async function addCommunityAnalytics(fields: Record<string, number>): Promise<void> {
+  const increments = Object.fromEntries(
+    Object.entries(fields)
+      .filter(([, value]) => Number.isFinite(value) && value !== 0)
+      .map(([key, value]) => [key, FieldValue.increment(value)])
+  );
+  if (Object.keys(increments).length === 0) return;
+  await firestore.collection("communityAnalyticsDaily").doc(communityDayKey()).set({
+    ...increments,
+    updatedAt: Timestamp.now()
+  }, { merge: true });
+}
+
+async function createCommunityNotification(
+  recipientId: string,
+  type: "follow" | "comment" | "download_reward",
+  actorAlias: string,
+  communityBookId?: string
+): Promise<void> {
+  if (!recipientId) return;
+  await firestore.collection("users").doc(recipientId).collection("communityNotifications").add({
+    type,
+    actorAlias: communityText(actorAlias, 32),
+    communityBookId: communityText(communityBookId, 80),
+    isRead: false,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  const tokenSnap = await firestore.collection("userFcmTokens").doc(recipientId).get();
+  const tokenData = tokenSnap.data() as Record<string, unknown> | undefined;
+  const tokenCandidates = Object.values(tokenData || {})
+    .map((value) => isRecord(value) ? value.token : undefined)
+    .filter((value): value is string => typeof value === "string" && value.length > 20);
+  const tokens = Array.from(new Set(tokenCandidates)).slice(0, 20);
+  if (tokens.length === 0) return;
+  const rateRef = firestore.collection("communityPushRateLimits").doc(`${recipientId}_${communityDayKey()}`);
+  const canSend = await firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(rateRef);
+    const sent = Number(snap.data()?.sent || 0);
+    if (sent >= 5) return false;
+    tx.set(rateRef, { recipientId, dayKey: communityDayKey(), sent: sent + 1, updatedAt: Timestamp.now() }, { merge: true });
+    return true;
+  });
+  if (!canSend) return;
+  await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: {
+      title: "Fortale",
+      body: type === "follow"
+        ? `${actorAlias} seni takip etmeye başladı.`
+        : type === "comment"
+          ? `${actorAlias} kitabına yorum yaptı.`
+          : `Kitabın indirildi; 0.25 kredi kazandın.`
+    },
+    data: { type, communityBookId: communityText(communityBookId, 80) }
+  });
+}
+
+export const upsertCommunityProfile = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB", secrets: [OPENAI_API_KEY] },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const data = isRecord(request.data) ? request.data : {};
+    const profile = await upsertCommunityProfileForUser({
+      uid,
+      alias: communityText(data.alias, 32),
+      bio: communityText(data.bio, 160),
+      ageConfirmed: data.ageConfirmed === true,
+      termsAccepted: data.termsAccepted === true
+    });
+    return { alias: profile.alias, bio: profile.bio, termsVersion: profile.termsVersion };
+  }
+);
+
+export const publishToCommunity = onCall(
+  {
+    region: "us-central1",
+    cors: APP_CORS_ORIGINS,
+    invoker: "public",
+    timeoutSeconds: 120,
+    memory: "1GiB",
+    secrets: [OPENAI_API_KEY]
+  },
+  async (request): Promise<{ communityBookId: string }> => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+
+    const data = isRecord(request.data) ? request.data : {};
+    const bookId = typeof data.bookId === "string" ? data.bookId.trim() : "";
+    const isPublic = data.isPublic !== false;
+    if (!bookId) throw new HttpsError("invalid-argument", "bookId zorunludur.");
+
+    const communityBookId = communityBookIdFor(uid, bookId);
+    const communityRef = firestore.collection("communityBooks").doc(communityBookId);
+    if (!isPublic) {
+      const current = await communityRef.get();
+      if (current.exists && current.data()?.userId !== uid) throw new HttpsError("permission-denied", "Bu yayın size ait değil.");
+      if (current.exists && current.data()?.status === "published") {
+        await firestore.runTransaction(async (tx) => {
+          tx.update(communityRef, { status: "unpublished", updatedAt: Timestamp.now() });
+          tx.set(firestore.collection("users").doc(uid).collection("books").doc(bookId), {
+            communityPublication: { id: communityBookId, status: "unpublished", updatedAt: Timestamp.now() }
+          }, { merge: true });
+          tx.set(firestore.collection("communityProfiles").doc(uid), { publicationCount: FieldValue.increment(-1), updatedAt: Timestamp.now() }, { merge: true });
+        });
+      }
+      return { communityBookId };
+    }
+
+    if (data.rightsAccepted !== true) throw new HttpsError("failed-precondition", "İçerik hakları beyanı zorunludur.");
+    if (data.hasPersonalLikeness === true && data.likenessAccepted !== true) {
+      throw new HttpsError("failed-precondition", "Kişisel benzerliğin toplulukta yayınlanması için ayrıca onay gereklidir.");
+    }
+    const profile = await upsertCommunityProfileForUser({
+      uid,
+      alias: communityText(data.alias, 32),
+      bio: communityText(data.bio, 160),
+      ageConfirmed: data.ageConfirmed === true,
+      termsAccepted: data.termsAccepted === true
+    });
+
+    const bookRef = firestore.collection("users").doc(uid).collection("books").doc(bookId);
+    const bookSnap = await bookRef.get();
+    if (!bookSnap.exists) throw new HttpsError("not-found", "Kitap bulunamadı.");
+
+    const book = bookSnap.data() as Record<string, unknown>;
+    const communitySnap = await communityRef.get();
+    const existing = communitySnap.exists ? communitySnap.data() as CommunityBookDoc : null;
+    if (existing && existing.userId !== uid) throw new HttpsError("permission-denied", "Bu yayın size ait değil.");
+
+    const bundlePayload = isRecord(book.bundle) ? book.bundle : {};
+    const sourceBundlePath = firstNonEmptyString(bundlePayload.path, book.contentPackagePath);
+    if (!sourceBundlePath) throw new HttpsError("failed-precondition", "Kitabın yayınlanabilir içerik paketi bulunamadı.");
+    const bucket = getStorage().bucket();
+    const [bundleExists] = await bucket.file(sourceBundlePath).exists();
+    if (!bundleExists) throw new HttpsError("not-found", "Kitap içerik paketi bulunamadı.");
+    const [bundleBuffer] = await bucket.file(sourceBundlePath).download();
+    const zip = await JSZip.loadAsync(bundleBuffer);
+    const manifestFile = zip.file("manifest.json");
+    if (!manifestFile) throw new HttpsError("failed-precondition", "Kitap paketi geçersiz.");
+    const manifest = JSON.parse(await manifestFile.async("string")) as BookBundleManifest;
+    const readableNodes = readableCommunityNodes(manifest);
+    const title = communityText(manifest.title || book.topic, 180);
+    const description = communityText(manifest.description || book.description, 1_000);
+    const outline = readableNodes.map((node) => node.title).filter(Boolean).slice(0, 40);
+    const preview = readableNodes.slice(0, COMMUNITY_PREVIEW_NODE_COUNT);
+    const moderationText = [title, description, profile.alias, profile.bio, ...readableNodes.map((node) => `${node.title}\n${node.content}`)].join("\n").slice(0, 90_000);
+    const sourceCover = firstNonEmptyString(book.coverImageUrl, manifest.cover?.url);
+    await moderateCommunityContent(moderationText, sourceCover);
+
+    const nextVersion = Math.max(1, (existing?.snapshotVersion ?? 0) + 1);
+    const snapshotPath = `communityPackages/${communityBookId}/v${nextVersion}/book.zip`;
+    await bucket.file(snapshotPath).save(bundleBuffer, {
+      resumable: false,
+      contentType: "application/zip",
+      metadata: { cacheControl: "private,max-age=0", metadata: { ownerId: uid, communityBookId } }
+    });
+
+    let coverImageUrl = sourceCover || "";
+    let coverStoragePath = existing?.coverStoragePath || "";
+    if (sourceCover) {
+      try {
+        const coverAsset = await loadBinaryAssetFromSource(sourceCover);
+        coverStoragePath = `communityCovers/${communityBookId}/v${nextVersion}/cover.${coverAsset.extension}`;
+        const token = randomUUID();
+        await bucket.file(coverStoragePath).save(coverAsset.buffer, {
+          resumable: false,
+          contentType: coverAsset.contentType,
+          metadata: { cacheControl: "public,max-age=86400", metadata: { firebaseStorageDownloadTokens: token } }
+        });
+        coverImageUrl = buildFirebaseStorageDownloadUrl(bucket.name, coverStoragePath, token);
+      } catch (error) {
+        logger.warn("Community cover snapshot failed; source cover retained", { communityBookId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    const previewImages = await extractCommunityPreviewImages({
+      bucket,
+      zip,
+      manifest,
+      communityBookId,
+      snapshotVersion: nextVersion
+    }).catch((error) => {
+      logger.warn("Community preview images extraction failed", { communityBookId, error: error instanceof Error ? error.message : String(error) });
+      return existing?.previewImages ?? [];
+    });
+
+    const now = Timestamp.now();
+    const bookType = communityText(manifest.bookType || book.bookType, 40) || "story";
+    const bookCreativeBrief = isRecord(book.creativeBrief) ? book.creativeBrief : {};
+    const subGenre = communityText(manifest.subGenre || book.subGenre, 120);
+    const category = communityText(manifest.category || book.category, 120);
+    const language = communityText(manifest.language || book.language, 80);
+    const ageGroup = bookType === "story"
+      ? communityText(bookCreativeBrief.workbookLevel, 80)
+      : communityText(manifest.ageGroup || book.ageGroup, 80);
+    const tags = Array.isArray(manifest.searchTags) ? manifest.searchTags.map((tag) => communityText(tag, 60)).filter(Boolean).slice(0, 20) : [];
+    const searchText = normalizeCommunitySearch([title, profile.alias, category, subGenre, tags.join(" ")].join(" "));
+    const communityDoc: CommunityBookDoc = {
+      userId: uid,
+      bookId,
+      title,
+      description,
+      publisherAlias: profile.alias,
+      coverImageUrl,
+      coverStoragePath,
+      bookType,
+      subGenre,
+      category,
+      ageGroup,
+      language,
+      searchText,
+      searchKeywords: buildCommunityKeywords(title, profile.alias, category, subGenre, tags.join(" ")),
+      tags,
+      pageCount: Number(manifest.targetPageCount) || readableNodes.length,
+      outline,
+      preview,
+      previewImages,
+      snapshotPath,
+      snapshotVersion: nextVersion,
+      status: "published",
+      moderationStatus: "approved",
+      downloadCount: existing?.downloadCount ?? 0,
+      likeCount: existing?.likeCount ?? 0,
+      commentCount: existing?.commentCount ?? 0,
+      reportCount: existing?.reportCount ?? 0,
+      hotScore: existing?.hotScore ?? 0,
+      isFeatured: existing?.isFeatured ?? false,
+      publishedAt: existing?.publishedAt ?? now,
+      updatedAt: now
+    };
+    await firestore.runTransaction(async (tx) => {
+      tx.set(communityRef, communityDoc);
+      tx.set(bookRef, { communityPublication: { id: communityBookId, status: "published", updatedAt: now } }, { merge: true });
+      if (!existing || existing.status !== "published") {
+        tx.set(firestore.collection("communityProfiles").doc(uid), { publicationCount: FieldValue.increment(1), updatedAt: now }, { merge: true });
+      }
+    });
+    await addCommunityAnalytics({ publicationEvents: 1 }).catch(() => undefined);
+    return { communityBookId };
+  }
+);
+
+export const listCommunityBooks = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "512MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const data = isRecord(request.data) ? request.data : {};
+    const uid = request.auth?.uid || "";
+    const tab = communityText(data.tab, 20) || "discover";
+    const requestedLimit = Number(data.limit);
+    const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(COMMUNITY_LIST_MAX_LIMIT, Math.floor(requestedLimit))) : 24;
+    const bookType = communityText(data.bookType, 40);
+    const language = normalizeCommunitySearch(data.language);
+    const ageGroup = normalizeCommunitySearch(data.ageGroup);
+    const category = normalizeCommunitySearch(data.category);
+    const search = normalizeCommunitySearch(data.search);
+
+    let blockedUserIds = new Set<string>();
+    let followingUserIds = new Set<string>();
+    if (uid) {
+      const [blocksSnap, followsSnap] = await Promise.all([
+        firestore.collection("communityBlocks").where("blockerId", "==", uid).limit(500).get(),
+        tab === "following" ? firestore.collection("communityFollows").where("followerId", "==", uid).limit(500).get() : Promise.resolve(null)
+      ]);
+      blockedUserIds = new Set(blocksSnap.docs.map((doc) => communityText(doc.data().blockedId, 128)).filter(Boolean));
+      if (followsSnap) followingUserIds = new Set(followsSnap.docs.map((doc) => communityText(doc.data().followingId, 128)).filter(Boolean));
+    }
+
+    const sortField = tab === "popular" ? "hotScore" : "publishedAt";
+    const candidateSnap = await firestore.collection("communityBooks")
+      .where("status", "==", "published")
+      .orderBy(sortField, "desc")
+      .limit(Math.max(80, limit * 4))
+      .get();
+    const candidates = candidateSnap.docs
+      .map((doc) => ({ id: doc.id, book: doc.data() as CommunityBookDoc }))
+      .filter(({ book }) => !blockedUserIds.has(book.userId))
+      .filter(({ book }) => tab !== "following" || followingUserIds.has(book.userId))
+      .filter(({ book }) => !bookType || bookType === "all" || book.bookType === bookType)
+      .filter(({ book }) => !language || language === "all" || normalizeCommunitySearch(book.language) === language)
+      .filter(({ book }) => !ageGroup || ageGroup === "all" || normalizeCommunitySearch(book.ageGroup) === ageGroup)
+      .filter(({ book }) => !category || category === "all" || normalizeCommunitySearch(book.category || book.subGenre) === category)
+      .filter(({ book }) => !search || search.split(" ").every((token) => book.searchText.includes(token)))
+      .slice(0, limit);
+
+    let likedIds = new Set<string>();
+    let ownedIds = new Set<string>();
+    if (uid && candidates.length > 0) {
+      const relationSnaps = await Promise.all(candidates.flatMap(({ id }) => [
+        firestore.collection("communityBooks").doc(id).collection("likes").doc(uid).get(),
+        firestore.collection("communityBooks").doc(id).collection("downloads").doc(uid).get()
+      ]));
+      candidates.forEach(({ id }, index) => {
+        if (relationSnaps[index * 2]?.exists) likedIds.add(id);
+        if (relationSnaps[index * 2 + 1]?.exists) ownedIds.add(id);
+      });
+    }
+    const filters = {
+      languages: Array.from(new Set(candidateSnap.docs.map((doc) => communityText(doc.data().language, 80)).filter(Boolean))).sort(),
+      categories: Array.from(new Set(candidateSnap.docs.map((doc) => communityText(doc.data().category || doc.data().subGenre, 120)).filter(Boolean))).sort(),
+      ageGroups: Array.from(new Set(candidateSnap.docs.map((doc) => communityText(doc.data().ageGroup, 80)).filter(Boolean))).sort()
+    };
+    await addCommunityAnalytics({ catalogLoads: 1 }).catch(() => undefined);
+    return {
+      books: candidates.map(({ id, book }) => serializeCommunityBook(id, book, { liked: likedIds.has(id), owned: ownedIds.has(id) })),
+      filters
+    };
+  }
+);
+
+export const getCommunityBook = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid || "";
+    const data = isRecord(request.data) ? request.data : {};
+    const communityBookId = communityText(data.communityBookId, 80);
+    if (!communityBookId) throw new HttpsError("invalid-argument", "communityBookId zorunludur.");
+    const ref = firestore.collection("communityBooks").doc(communityBookId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+    const book = snap.data() as CommunityBookDoc;
+    if (book.status !== "published" && book.userId !== uid) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+    if (uid) {
+      const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(uid, book.userId)).get();
+      if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+    }
+    const [likedSnap, ownedSnap, followedSnap, viewerBlocksSnap] = uid ? await Promise.all([
+      ref.collection("likes").doc(uid).get(),
+      ref.collection("downloads").doc(uid).get(),
+      firestore.collection("communityFollows").doc(communityRelationId(uid, book.userId)).get(),
+      firestore.collection("communityBlocks").where("blockerId", "==", uid).limit(500).get()
+    ]) : [null, null, null, null];
+    const canAccessComments = Boolean(uid && (book.userId === uid || ownedSnap?.exists));
+    const commentsSnap = canAccessComments
+      ? await ref.collection("comments").where("status", "==", "visible").orderBy("createdAt", "desc").limit(50).get()
+      : null;
+    const blockedCommenterIds = new Set(viewerBlocksSnap?.docs.map((doc) => communityText(doc.data().blockedId, 128)) || []);
+    await addCommunityAnalytics({ detailViews: 1, previewViews: book.preview.length > 0 ? 1 : 0 }).catch(() => undefined);
+    return {
+      book: serializeCommunityBook(communityBookId, book, { liked: Boolean(likedSnap?.exists), owned: Boolean(ownedSnap?.exists || book.userId === uid) }),
+      isFollowing: Boolean(followedSnap?.exists),
+      comments: (commentsSnap?.docs || []).filter((doc) => !blockedCommenterIds.has(communityText(doc.data().userId, 128))).slice(0, 30).map((doc) => {
+        const comment = doc.data();
+        return {
+          id: doc.id,
+          userId: communityText(comment.userId, 128),
+          alias: communityText(comment.alias, 32),
+          text: communityText(comment.text, COMMUNITY_COMMENT_MAX_LENGTH),
+          createdAt: timestampMillis(comment.createdAt),
+          isMine: uid === comment.userId
+        };
+      })
+    };
+  }
+);
+
+export const toggleCommunityLike = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    await requireCommunityProfile(uid);
+    const communityBookId = communityText(isRecord(request.data) ? request.data.communityBookId : "", 80);
+    const bookRef = firestore.collection("communityBooks").doc(communityBookId);
+    const likeRef = bookRef.collection("likes").doc(uid);
+    const dayKey = communityDayKey();
+    const metricLikeRef = bookRef.collection("metricLikes").doc(`${dayKey}_${createHash("sha256").update(uid).digest("hex").slice(0, 24)}`);
+    const metricDayRef = firestore.collection("communityMetrics").doc(communityBookId).collection("days").doc(dayKey);
+    const result = await firestore.runTransaction(async (tx) => {
+      const [bookSnap, likeSnap, metricLikeSnap] = await Promise.all([tx.get(bookRef), tx.get(likeRef), tx.get(metricLikeRef)]);
+      if (!bookSnap.exists || bookSnap.data()?.status !== "published") throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+      const delta = likeSnap.exists ? -1 : 1;
+      if (likeSnap.exists) {
+        tx.delete(likeRef);
+      } else {
+        tx.set(likeRef, { userId: uid, createdAt: Timestamp.now() });
+        if (!metricLikeSnap.exists) {
+          tx.set(metricLikeRef, { userId: uid, dayKey, createdAt: Timestamp.now() });
+          tx.set(metricDayRef, { likes: FieldValue.increment(1), updatedAt: Timestamp.now() }, { merge: true });
+        }
+      }
+      tx.update(bookRef, { likeCount: FieldValue.increment(delta), updatedAt: Timestamp.now() });
+      tx.set(firestore.collection("communityProfiles").doc(bookSnap.data()?.userId), { totalLikeCount: FieldValue.increment(delta), updatedAt: Timestamp.now() }, { merge: true });
+      return { liked: !likeSnap.exists, likeCount: Math.max(0, Number(bookSnap.data()?.likeCount || 0) + delta) };
+    });
+    await addCommunityAnalytics({ likeAdds: result.liked ? 1 : 0, likeRemovals: result.liked ? 0 : 1 }).catch(() => undefined);
+    return { liked: result.liked, likeCount: result.likeCount };
+  }
+);
+
+export const toggleCommunityFollow = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const actorProfile = await requireCommunityProfile(uid);
+    const followingId = communityText(isRecord(request.data) ? request.data.userId : "", 128);
+    if (!followingId || followingId === uid) throw new HttpsError("invalid-argument", "Geçersiz kullanıcı.");
+    const followRef = firestore.collection("communityFollows").doc(communityRelationId(uid, followingId));
+    const result = await firestore.runTransaction(async (tx) => {
+      const [targetSnap, followSnap] = await Promise.all([tx.get(firestore.collection("communityProfiles").doc(followingId)), tx.get(followRef)]);
+      if (!targetSnap.exists || targetSnap.data()?.isSuspended === true) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
+      const delta = followSnap.exists ? -1 : 1;
+      if (followSnap.exists) tx.delete(followRef); else tx.set(followRef, { followerId: uid, followingId, createdAt: Timestamp.now() });
+      tx.set(firestore.collection("communityProfiles").doc(uid), { followingCount: FieldValue.increment(delta), updatedAt: Timestamp.now() }, { merge: true });
+      tx.set(firestore.collection("communityProfiles").doc(followingId), { followerCount: FieldValue.increment(delta), updatedAt: Timestamp.now() }, { merge: true });
+      return { following: !followSnap.exists, followerCount: Math.max(0, Number(targetSnap.data()?.followerCount || 0) + delta) };
+    });
+    if (result.following) await createCommunityNotification(followingId, "follow", actorProfile.alias).catch(() => undefined);
+    return result;
+  }
+);
+
+export const addCommunityComment = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB", secrets: [OPENAI_API_KEY] },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const profile = await requireCommunityProfile(uid);
+    const data = isRecord(request.data) ? request.data : {};
+    const communityBookId = communityText(data.communityBookId, 80);
+    const text = communityText(data.text, COMMUNITY_COMMENT_MAX_LENGTH);
+    if (!text || text.length > COMMUNITY_COMMENT_MAX_LENGTH) throw new HttpsError("invalid-argument", "Yorum 1–500 karakter olmalıdır.");
+    if (/(?:https?:\/\/|www\.|@[\p{L}\p{N}_]+)/iu.test(text)) throw new HttpsError("invalid-argument", "Yorumlarda bağlantı ve mention kullanılamaz.");
+    await moderateCommunityContent(text);
+    const bookRef = firestore.collection("communityBooks").doc(communityBookId);
+    const bookSnap = await bookRef.get();
+    if (!bookSnap.exists || bookSnap.data()?.status !== "published") throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+    const book = bookSnap.data() as CommunityBookDoc;
+    if (book.userId !== uid) {
+      const ownedSnap = await bookRef.collection("downloads").doc(uid).get();
+      if (!ownedSnap.exists) throw new HttpsError("failed-precondition", "Yorum yapmak için kitabı kitaplığınıza ekleyin.");
+    }
+    const commentRef = bookRef.collection("comments").doc();
+    const now = Timestamp.now();
+    await firestore.runTransaction(async (tx) => {
+      tx.set(commentRef, { userId: uid, alias: profile.alias, text, status: "visible", reportCount: 0, createdAt: now, updatedAt: now });
+      tx.update(bookRef, { commentCount: FieldValue.increment(1), updatedAt: now });
+    });
+    await Promise.all([
+      addCommunityMetric(communityBookId, "comments", 1).catch(() => undefined),
+      addCommunityAnalytics({ comments: 1 }).catch(() => undefined),
+      bookSnap.data()?.userId !== uid ? createCommunityNotification(bookSnap.data()?.userId, "comment", profile.alias, communityBookId).catch(() => undefined) : Promise.resolve()
+    ]);
+    return { comment: { id: commentRef.id, userId: uid, alias: profile.alias, text, createdAt: now.toMillis(), isMine: true } };
+  }
+);
+
+export const deleteCommunityComment = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const data = isRecord(request.data) ? request.data : {};
+    const communityBookId = communityText(data.communityBookId, 80);
+    const commentId = communityText(data.commentId, 120);
+    const bookRef = firestore.collection("communityBooks").doc(communityBookId);
+    const commentRef = bookRef.collection("comments").doc(commentId);
+    await firestore.runTransaction(async (tx) => {
+      const commentSnap = await tx.get(commentRef);
+      if (!commentSnap.exists || commentSnap.data()?.userId !== uid) throw new HttpsError("permission-denied", "Bu yorumu silemezsiniz.");
+      tx.update(commentRef, { status: "deleted", text: "", updatedAt: Timestamp.now() });
+      tx.update(bookRef, { commentCount: FieldValue.increment(-1), updatedAt: Timestamp.now() });
+    });
+    await addCommunityMetric(communityBookId, "comments", -1).catch(() => undefined);
+    await addCommunityAnalytics({ commentDeletes: 1 }).catch(() => undefined);
+    return { ok: true };
+  }
+);
+
+export const blockCommunityUser = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const blockedId = communityText(isRecord(request.data) ? request.data.userId : "", 128);
+    if (!blockedId || blockedId === uid) throw new HttpsError("invalid-argument", "Geçersiz kullanıcı.");
+    await firestore.collection("communityBlocks").doc(communityRelationId(uid, blockedId)).set({ blockerId: uid, blockedId, createdAt: Timestamp.now() });
+    return { ok: true };
+  }
+);
+
+export const reportCommunityContent = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    await requireCommunityProfile(uid);
+    const data = isRecord(request.data) ? request.data : {};
+    const entityType = communityText(data.entityType, 20);
+    const targetId = communityText(data.targetId, 160);
+    const communityBookId = communityText(data.communityBookId, 80);
+    const reason = communityText(data.reason, 300);
+    if (!new Set(["book", "comment", "profile"]).has(entityType) || !targetId || !reason) throw new HttpsError("invalid-argument", "Rapor bilgileri eksik.");
+    const reportRef = firestore.collection("communityReports").doc(communityRelationId(uid, `${entityType}:${targetId}`));
+    await firestore.runTransaction(async (tx) => {
+      const reportSnap = await tx.get(reportRef);
+      if (reportSnap.exists) return;
+      if (entityType === "book") {
+        const targetRef = firestore.collection("communityBooks").doc(targetId);
+        const targetSnap = await tx.get(targetRef);
+        if (!targetSnap.exists) throw new HttpsError("not-found", "İçerik bulunamadı.");
+        const nextCount = Number(targetSnap.data()?.reportCount || 0) + 1;
+        tx.set(reportRef, { reporterId: uid, entityType, targetId, communityBookId, reason, status: "pending", createdAt: Timestamp.now() });
+        tx.update(targetRef, {
+          reportCount: nextCount,
+          ...(nextCount >= COMMUNITY_REPORT_HIDE_THRESHOLD ? { status: "hidden", moderationStatus: "review_required" } : {}),
+          updatedAt: Timestamp.now()
+        });
+      } else if (entityType === "comment") {
+        const targetRef = firestore.collection("communityBooks").doc(communityBookId).collection("comments").doc(targetId);
+        const targetSnap = await tx.get(targetRef);
+        if (!targetSnap.exists) throw new HttpsError("not-found", "Yorum bulunamadı.");
+        const nextCount = Number(targetSnap.data()?.reportCount || 0) + 1;
+        tx.set(reportRef, { reporterId: uid, entityType, targetId, communityBookId, reason, status: "pending", createdAt: Timestamp.now() });
+        tx.update(targetRef, { reportCount: nextCount, ...(nextCount >= COMMUNITY_REPORT_HIDE_THRESHOLD ? { status: "hidden" } : {}), updatedAt: Timestamp.now() });
+      } else {
+        const targetRef = firestore.collection("communityProfiles").doc(targetId);
+        const targetSnap = await tx.get(targetRef);
+        if (!targetSnap.exists) throw new HttpsError("not-found", "Profil bulunamadı.");
+        tx.set(reportRef, { reporterId: uid, entityType, targetId, communityBookId, reason, status: "pending", createdAt: Timestamp.now() });
+      }
+    });
+    await addCommunityAnalytics({ reports: 1 }).catch(() => undefined);
+    return { ok: true };
+  }
+);
+
+export const getCommunityProfile = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const viewerId = request.auth?.uid || "";
+    const requestedId = communityText(isRecord(request.data) ? request.data.userId : "", 128) || viewerId;
+    if (!requestedId) throw new HttpsError("invalid-argument", "userId zorunludur.");
+    if (viewerId) {
+      const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(viewerId, requestedId)).get();
+      if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
+    }
+    const [profileSnap, booksSnap, followSnap] = await Promise.all([
+      firestore.collection("communityProfiles").doc(requestedId).get(),
+      firestore.collection("communityBooks").where("userId", "==", requestedId).where("status", "==", "published").orderBy("publishedAt", "desc").limit(30).get(),
+      viewerId ? firestore.collection("communityFollows").doc(communityRelationId(viewerId, requestedId)).get() : Promise.resolve(null)
+    ]);
+    if (!profileSnap.exists || profileSnap.data()?.isSuspended === true) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
+    const profile = profileSnap.data() as CommunityProfileDoc;
+    return {
+      profile: {
+        userId: requestedId,
+        alias: profile.alias,
+        bio: profile.bio,
+        followerCount: profile.followerCount,
+        followingCount: profile.followingCount,
+        publicationCount: profile.publicationCount,
+        totalLikeCount: profile.totalLikeCount,
+        totalDownloadCount: profile.totalDownloadCount,
+        isFollowing: Boolean(followSnap?.exists),
+        isMine: viewerId === requestedId
+      },
+      books: booksSnap.docs.map((doc) => serializeCommunityBook(doc.id, doc.data() as CommunityBookDoc))
+    };
+  }
+);
+
+export const listCommunityConnections = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const viewerId = request.auth?.uid;
+    if (!viewerId) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const data = isRecord(request.data) ? request.data : {};
+    const requestedId = communityText(data.userId, 128) || viewerId;
+    const type = communityText(data.type, 20) === "following" ? "following" : "followers";
+    if (requestedId !== viewerId) {
+      const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(viewerId, requestedId)).get();
+      if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
+    }
+    const relationSnap = type === "followers"
+      ? await firestore.collection("communityFollows").where("followingId", "==", requestedId).limit(100).get()
+      : await firestore.collection("communityFollows").where("followerId", "==", requestedId).limit(100).get();
+    const userIds = relationSnap.docs
+      .sort((a, b) => timestampMillis(b.data().createdAt) - timestampMillis(a.data().createdAt))
+      .map((doc) => communityText(type === "followers" ? doc.data().followerId : doc.data().followingId, 128))
+      .filter(Boolean);
+    const uniqueUserIds = Array.from(new Set(userIds)).slice(0, 100);
+    if (uniqueUserIds.length === 0) return { type, users: [] };
+    const profileRefs = uniqueUserIds.map((userId) => firestore.collection("communityProfiles").doc(userId));
+    const profileSnaps = await firestore.getAll(...profileRefs);
+    const users = profileSnaps
+      .filter((snap) => snap.exists && snap.data()?.isSuspended !== true)
+      .map((snap) => {
+        const profile = snap.data() as CommunityProfileDoc;
+        return {
+          userId: snap.id,
+          alias: profile.alias,
+          bio: profile.bio,
+          followerCount: profile.followerCount,
+          followingCount: profile.followingCount,
+          publicationCount: profile.publicationCount
+        };
+      });
+    return { type, users };
+  }
+);
+
+export const listCommunityNotifications = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const snap = await firestore.collection("users").doc(uid).collection("communityNotifications").orderBy("createdAt", "desc").limit(50).get();
+    return { notifications: snap.docs.map((doc) => ({ id: doc.id, ...doc.data(), createdAt: timestampMillis(doc.data().createdAt) })) };
+  }
+);
+
+export const markCommunityNotificationsRead = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const snapshot = await firestore.collection("users").doc(uid).collection("communityNotifications").where("isRead", "==", false).limit(100).get();
+    const batch = firestore.batch();
+    snapshot.docs.forEach((doc) => batch.update(doc.ref, { isRead: true, readAt: Timestamp.now() }));
+    if (!snapshot.empty) await batch.commit();
+    return { updated: snapshot.size };
+  }
+);
+
+export const deleteMyCommunityData = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 120, memory: "512MiB" },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const profileRef = firestore.collection("communityProfiles").doc(uid);
+    const [profileSnap, ownedBooks, comments, likes, followsOut, followsIn, blocksOut, blocksIn, reports, notifications] = await Promise.all([
+      profileRef.get(),
+      firestore.collection("communityBooks").where("userId", "==", uid).limit(500).get(),
+      firestore.collectionGroup("comments").where("userId", "==", uid).limit(500).get(),
+      firestore.collectionGroup("likes").where("userId", "==", uid).limit(500).get(),
+      firestore.collection("communityFollows").where("followerId", "==", uid).limit(500).get(),
+      firestore.collection("communityFollows").where("followingId", "==", uid).limit(500).get(),
+      firestore.collection("communityBlocks").where("blockerId", "==", uid).limit(500).get(),
+      firestore.collection("communityBlocks").where("blockedId", "==", uid).limit(500).get(),
+      firestore.collection("communityReports").where("reporterId", "==", uid).limit(500).get(),
+      firestore.collection("users").doc(uid).collection("communityNotifications").limit(500).get()
+    ]);
+    const writer = firestore.bulkWriter();
+    const now = Timestamp.now();
+    ownedBooks.docs.forEach((doc) => writer.update(doc.ref, { status: "removed", moderationStatus: "removed", updatedAt: now }));
+    comments.docs.forEach((doc) => {
+      writer.update(doc.ref, { status: "deleted", text: "", updatedAt: now });
+      const bookRef = doc.ref.parent.parent;
+      if (bookRef) writer.update(bookRef, { commentCount: FieldValue.increment(-1), updatedAt: now });
+    });
+    likes.docs.forEach((doc) => {
+      writer.delete(doc.ref);
+      const bookRef = doc.ref.parent.parent;
+      if (bookRef) writer.update(bookRef, { likeCount: FieldValue.increment(-1), updatedAt: now });
+    });
+    const relationRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+    [...followsOut.docs, ...followsIn.docs, ...blocksOut.docs, ...blocksIn.docs, ...reports.docs, ...notifications.docs]
+      .forEach((doc) => relationRefs.set(doc.ref.path, doc.ref));
+    relationRefs.forEach((ref) => writer.delete(ref));
+    if (profileSnap.exists) {
+      const aliasLower = communityText(profileSnap.data()?.aliasLower, 100);
+      if (aliasLower) writer.delete(firestore.collection("communityAliases").doc(createHash("sha256").update(aliasLower).digest("hex")));
+      writer.delete(profileRef);
+    }
+    await writer.close();
+    return { ok: true };
+  }
+);
+
+export const downloadCommunityBook = onCall(
+  {
+    region: "us-central1",
+    cors: APP_CORS_ORIGINS,
+    invoker: "public",
+    timeoutSeconds: 120,
+    memory: "1GiB"
+  },
+  async (request): Promise<{ wallet: CreditWalletSnapshot; communityBook: Record<string, unknown>; bookId: string; alreadyOwned: boolean }> => {
+    await assertCommunityEnabled();
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
+    const downloaderProfile = await requireCommunityProfile(uid);
+
+    const data = isRecord(request.data) ? request.data : {};
+    const communityBookId = typeof data.communityBookId === "string" ? data.communityBookId.trim() : "";
+    if (!communityBookId) throw new HttpsError("invalid-argument", "communityBookId zorunludur.");
+
+    const communityRef = firestore.collection("communityBooks").doc(communityBookId);
+    const communitySnap = await communityRef.get();
+    if (!communitySnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+
+    const communityBook = communitySnap.data() as CommunityBookDoc;
+    if (communityBook.status !== "published") throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+    if (communityBook.userId === uid) throw new HttpsError("failed-precondition", "Kendi kitabınızı indiremezsiniz.");
+
+    const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(uid, communityBook.userId)).get();
+    if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+
+    const downloadRef = communityRef.collection("downloads").doc(uid);
+    const previousDownload = await downloadRef.get();
+    if (previousDownload.exists) {
+      const currentWalletSnap = await getCreditWalletRef(uid).get();
+      return {
+        wallet: normalizeCreditWalletSnapshot(currentWalletSnap.data()) ?? buildStarterCreditWallet(),
+        communityBook: serializeCommunityBook(communityBookId, communityBook, { owned: true }),
+        bookId: communityText(previousDownload.data()?.privateBookId, 160),
+        alreadyOwned: true
+      };
+    }
+
+    const bucket = getStorage().bucket();
+    const sourceFile = bucket.file(communityBook.snapshotPath);
+    const [sourceExists] = await sourceFile.exists();
+    if (!sourceExists) throw new HttpsError("not-found", "Topluluk kitap paketi bulunamadı.");
+    const [sourceBuffer] = await sourceFile.download();
+    const privateBookId = `community_${communityBookId}`;
+    const privateBundlePath = `smartbooks/${sanitizeBundlePathPart(uid, "user")}/${privateBookId}/v1/book.zip`;
+    const zip = await JSZip.loadAsync(sourceBuffer);
+    const manifestFile = zip.file("manifest.json");
+    if (!manifestFile) throw new HttpsError("failed-precondition", "Topluluk kitap paketi geçersiz.");
+    const manifest = JSON.parse(await manifestFile.async("string")) as BookBundleManifest;
+    const nowIso = new Date().toISOString();
+    manifest.id = privateBookId;
+    manifest.userId = uid;
+    manifest.creatorName = communityBook.publisherAlias;
+    manifest.createdAt = nowIso;
+    manifest.lastActivity = nowIso;
+    manifest.generatedAt = nowIso;
+    zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+    const privateBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } });
+    const privateToken = randomUUID();
+    await bucket.file(privateBundlePath).save(privateBuffer, {
+      resumable: false,
+      contentType: "application/zip",
+      metadata: { cacheControl: "private,max-age=0", metadata: { firebaseStorageDownloadTokens: privateToken, ownerId: uid } }
+    });
+    const privateBundleUrl = buildFirebaseStorageDownloadUrl(bucket.name, privateBundlePath, privateToken);
+    const checksumSha256 = createHash("sha256").update(privateBuffer).digest("hex");
+
+    const walletRef = getCreditWalletRef(uid);
+    const creatorWalletRef = getCreditWalletRef(communityBook.userId);
+    const privateBookRef = firestore.collection("users").doc(uid).collection("books").doc(privateBookId);
+    const transactionResult = await firestore.runTransaction(async (tx) => {
+      const [walletSnap, creatorWalletSnap, downloadSnap] = await Promise.all([tx.get(walletRef), tx.get(creatorWalletRef), tx.get(downloadRef)]);
+      if (downloadSnap.exists) {
+        return {
+          wallet: normalizeCreditWalletSnapshot(walletSnap.data()) ?? buildStarterCreditWallet(),
+          alreadyOwned: true
+        };
+      }
+      const existing = normalizeCreditWalletSnapshot(walletSnap.data()) ?? buildStarterCreditWallet();
+      if (existing.createCredits < COMMUNITY_DOWNLOAD_COST) {
+        throw new HttpsError("resource-exhausted", "Yetersiz kredi. İndirme için 0.5 kredi gerekiyor.");
+      }
+      const updatedWallet: CreditWalletSnapshot = {
+        createCredits: Math.round((existing.createCredits - COMMUNITY_DOWNLOAD_COST) * 10) / 10
+      };
+      const creatorWallet = normalizeCreditWalletSnapshot(creatorWalletSnap.data()) ?? buildStarterCreditWallet();
+      const updatedCreatorWallet: CreditWalletSnapshot = {
+        createCredits: Math.round((creatorWallet.createCredits + COMMUNITY_CREATOR_REWARD) * 10) / 10
+      };
+      const now = Timestamp.now();
+      tx.set(walletRef, {
+        uid,
+        ...updatedWallet,
+        createdAt: walletSnap.exists
+          ? walletSnap.data()?.createdAt ?? FieldValue.serverTimestamp()
+          : FieldValue.serverTimestamp(),
+        updatedAt: now
+      }, { merge: true });
+      tx.set(creatorWalletRef, {
+        uid: communityBook.userId,
+        ...updatedCreatorWallet,
+        createdAt: creatorWalletSnap.exists ? creatorWalletSnap.data()?.createdAt ?? now : now,
+        updatedAt: now
+      }, { merge: true });
+      tx.set(privateBookRef, {
+        id: privateBookId,
+        userId: uid,
+        topic: communityBook.title,
+        description: communityBook.description,
+        creatorName: communityBook.publisherAlias,
+        language: communityBook.language || null,
+        ageGroup: communityBook.ageGroup || null,
+        bookType: communityBook.bookType || "story",
+        subGenre: communityBook.subGenre || null,
+        category: communityBook.category || null,
+        coverImageUrl: communityBook.coverImageUrl || null,
+        contentPackageUrl: privateBundleUrl,
+        contentPackagePath: privateBundlePath,
+        bundle: { path: privateBundlePath, version: 1, checksumSha256, sizeBytes: privateBuffer.byteLength, includesPodcast: Boolean(manifest.includesPodcast), generatedAt: now },
+        status: "ready",
+        nodes: [],
+        sourceType: "community",
+        sourceCommunityBookId: communityBookId,
+        communityLicense: "personal-use",
+        createdAt: now,
+        lastActivity: now
+      });
+      tx.set(downloadRef, { userId: uid, privateBookId, chargedCredits: COMMUNITY_DOWNLOAD_COST, creatorReward: COMMUNITY_CREATOR_REWARD, createdAt: now });
+      tx.update(communityRef, { downloadCount: FieldValue.increment(1), updatedAt: now });
+      tx.set(firestore.collection("communityProfiles").doc(communityBook.userId), { totalDownloadCount: FieldValue.increment(1), updatedAt: now }, { merge: true });
+      return { wallet: updatedWallet, alreadyOwned: false };
+    });
+    if (!transactionResult.alreadyOwned) {
+      await Promise.all([
+        addCommunityMetric(communityBookId, "downloads", 1).catch(() => undefined),
+        addCommunityAnalytics({ downloads: 1, creatorRewards: 1 }).catch(() => undefined),
+        createCommunityNotification(communityBook.userId, "download_reward", downloaderProfile.alias, communityBookId).catch(() => undefined)
+      ]);
+    }
+    return {
+      wallet: transactionResult.wallet,
+      communityBook: serializeCommunityBook(communityBookId, communityBook, { owned: true }),
+      bookId: privateBookId,
+      alreadyOwned: transactionResult.alreadyOwned
+    };
+  }
+);
+
+export const moderateCommunityItem = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    await assertOpsAdminAccess(request);
+    const data = isRecord(request.data) ? request.data : {};
+    const communityBookId = communityText(data.communityBookId, 80);
+    const entityType = communityText(data.entityType, 20) || "book";
+    const targetId = communityText(data.targetId, 160) || communityBookId;
+    const action = communityText(data.action, 30);
+    if (!new Set(["restore", "remove", "suspend_creator"]).has(action)) throw new HttpsError("invalid-argument", "Geçersiz moderasyon işlemi.");
+    let ownerId = "";
+    if (entityType === "book") {
+      const bookRef = firestore.collection("communityBooks").doc(targetId);
+      const bookSnap = await bookRef.get();
+      if (!bookSnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
+      ownerId = communityText(bookSnap.data()?.userId, 128);
+      if (action === "restore") await bookRef.update({ status: "published", moderationStatus: "approved", reportCount: 0, updatedAt: Timestamp.now() });
+      if (action === "remove") await bookRef.update({ status: "removed", moderationStatus: "removed", updatedAt: Timestamp.now() });
+    } else if (entityType === "comment") {
+      const commentRef = firestore.collection("communityBooks").doc(communityBookId).collection("comments").doc(targetId);
+      const commentSnap = await commentRef.get();
+      if (!commentSnap.exists) throw new HttpsError("not-found", "Yorum bulunamadı.");
+      ownerId = communityText(commentSnap.data()?.userId, 128);
+      if (action === "restore") await commentRef.update({ status: "visible", reportCount: 0, updatedAt: Timestamp.now() });
+      if (action === "remove") await commentRef.update({ status: "removed", updatedAt: Timestamp.now() });
+    } else if (entityType === "profile") {
+      ownerId = targetId;
+      if (action === "restore") await firestore.collection("communityProfiles").doc(ownerId).update({ isSuspended: false, updatedAt: Timestamp.now() });
+      if (action === "remove") await firestore.collection("communityProfiles").doc(ownerId).update({ isSuspended: true, updatedAt: Timestamp.now() });
+    }
+    if (action === "suspend_creator") {
+      if (!ownerId) throw new HttpsError("not-found", "Üretici profili bulunamadı.");
+      await firestore.collection("communityProfiles").doc(ownerId).set({ isSuspended: true, updatedAt: Timestamp.now() }, { merge: true });
+    }
+    const matchingReports = await firestore.collection("communityReports").where("entityType", "==", entityType).where("targetId", "==", targetId).where("status", "==", "pending").limit(100).get();
+    const batch = firestore.batch();
+    matchingReports.docs.forEach((report) => batch.update(report.ref, { status: "resolved", resolution: action, resolvedAt: Timestamp.now() }));
+    if (!matchingReports.empty) await batch.commit();
+    const responseMs = matchingReports.docs.reduce((sum, report) => sum + Math.max(0, Date.now() - timestampMillis(report.data().createdAt)), 0);
+    await addCommunityAnalytics({ moderationResolved: matchingReports.size, moderationResponseMsTotal: responseMs }).catch(() => undefined);
+    return { ok: true };
+  }
+);
+
+export const listCommunityModerationQueue = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 60, memory: "512MiB" },
+  async (request) => {
+    await assertOpsAdminAccess(request);
+    const reportsSnap = await firestore.collection("communityReports").where("status", "==", "pending").orderBy("createdAt", "desc").limit(100).get();
+    const items = await Promise.all(reportsSnap.docs.map(async (reportDoc) => {
+      const report = reportDoc.data();
+      const entityType = communityText(report.entityType, 20);
+      const targetId = communityText(report.targetId, 160);
+      const communityBookId = communityText(report.communityBookId, 80);
+      let preview: Record<string, unknown> = {};
+      if (entityType === "book") {
+        const snap = await firestore.collection("communityBooks").doc(targetId).get();
+        if (snap.exists) {
+          const book = snap.data() as CommunityBookDoc;
+          preview = { title: book.title, description: book.description, coverImageUrl: book.coverImageUrl, ownerId: book.userId, status: book.status };
+        }
+      } else if (entityType === "comment") {
+        const snap = await firestore.collection("communityBooks").doc(communityBookId).collection("comments").doc(targetId).get();
+        if (snap.exists) preview = { text: communityText(snap.data()?.text, COMMUNITY_COMMENT_MAX_LENGTH), alias: communityText(snap.data()?.alias, 32), ownerId: communityText(snap.data()?.userId, 128), status: communityText(snap.data()?.status, 20) };
+      } else if (entityType === "profile") {
+        const snap = await firestore.collection("communityProfiles").doc(targetId).get();
+        if (snap.exists) preview = { alias: communityText(snap.data()?.alias, 32), bio: communityText(snap.data()?.bio, 160), ownerId: targetId, status: snap.data()?.isSuspended === true ? "suspended" : "active" };
+      }
+      return {
+        id: reportDoc.id,
+        entityType,
+        targetId,
+        communityBookId,
+        reason: communityText(report.reason, 300),
+        createdAt: timestampMillis(report.createdAt),
+        preview
+      };
+    }));
+    return { items };
+  }
+);
+
+export const migrateLegacyCommunityBooks = onCall(
+  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 120, memory: "512MiB" },
+  async (request) => {
+    await assertOpsAdminAccess(request);
+    const snapshot = await firestore.collection("communityBooks").limit(500).get();
+    let migrated = 0;
+    let batch = firestore.batch();
+    let operations = 0;
+    for (const legacyDoc of snapshot.docs) {
+      const data = legacyDoc.data() as Record<string, unknown>;
+      if (typeof data.status === "string") continue;
+      const userId = communityText(data.userId, 128);
+      const bookId = communityText(data.bookId, 160) || legacyDoc.id;
+      if (!userId || !bookId) continue;
+      const nextId = communityBookIdFor(userId, bookId);
+      const now = Timestamp.now();
+      batch.set(firestore.collection("communityBooks").doc(nextId), {
+        userId,
+        bookId,
+        title: communityText(data.title, 180) || "İsimsiz Kitap",
+        description: "",
+        publisherAlias: "Fortale",
+        coverImageUrl: communityText(data.coverImageUrl, 2_000),
+        coverStoragePath: "",
+        bookType: communityText(data.bookType, 40) || "story",
+        subGenre: communityText(data.subGenre, 120),
+        category: communityText(data.category, 120),
+        ageGroup: communityText(data.ageGroup, 80),
+        language: communityText(data.language, 80),
+        searchText: normalizeCommunitySearch([data.title, data.subGenre, data.category].join(" ")),
+        searchKeywords: buildCommunityKeywords(data.title, data.subGenre, data.category),
+        tags: [],
+        pageCount: 0,
+        outline: [],
+        preview: [],
+        snapshotPath: "",
+        snapshotVersion: 0,
+        // Legacy records need an explicit republish to create a moderated,
+        // immutable snapshot and collect the current rights/13+ consent.
+        status: "unpublished",
+        moderationStatus: "review_required",
+        downloadCount: Number(data.downloadCount || 0),
+        likeCount: Number(data.likeCount || 0),
+        commentCount: 0,
+        reportCount: Number(data.reportCount || 0),
+        hotScore: 0,
+        isFeatured: data.isFeatured === true,
+        publishedAt: data.publishedAt instanceof Timestamp ? data.publishedAt : now,
+        updatedAt: now
+      }, { merge: true });
+      if (nextId !== legacyDoc.id) batch.delete(legacyDoc.ref);
+      migrated += 1;
+      operations += nextId === legacyDoc.id ? 1 : 2;
+      if (operations >= 400) {
+        await batch.commit();
+        batch = firestore.batch();
+        operations = 0;
+      }
+    }
+    if (operations > 0) await batch.commit();
+    return { migrated };
+  }
+);
+
+export const recomputeCommunityHotScores = onSchedule(
+  { region: "us-central1", schedule: "every 6 hours", timeZone: "UTC", timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    const booksSnap = await firestore.collection("communityBooks").where("status", "==", "published").limit(500).get();
+    const today = new Date();
+    const dayKeys = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setUTCDate(today.getUTCDate() - index);
+      return date.toISOString().slice(0, 10).replace(/-/g, "");
+    });
+    let batch = firestore.batch();
+    let writes = 0;
+    for (const bookDoc of booksSnap.docs) {
+      const metricSnaps = await Promise.all(dayKeys.map((dayKey) => firestore.collection("communityMetrics").doc(bookDoc.id).collection("days").doc(dayKey).get()));
+      const totals = metricSnaps.reduce((sum, snap) => ({
+        downloads: sum.downloads + Number(snap.data()?.downloads || 0),
+        likes: sum.likes + Number(snap.data()?.likes || 0),
+        comments: sum.comments + Number(snap.data()?.comments || 0)
+      }), { downloads: 0, likes: 0, comments: 0 });
+      const ageDays = Math.max(0, (Date.now() - timestampMillis(bookDoc.data().publishedAt)) / 86_400_000);
+      const hotScore = Math.max(0, (4 * totals.downloads + 2 * totals.likes + totals.comments) / Math.pow(1 + ageDays / 30, 0.35));
+      batch.update(bookDoc.ref, { hotScore, hotScoreUpdatedAt: Timestamp.now() });
+      writes += 1;
+      if (writes >= 400) {
+        await batch.commit();
+        batch = firestore.batch();
+        writes = 0;
+      }
+    }
+    if (writes > 0) await batch.commit();
+    logger.info("Community hot scores recomputed", { books: booksSnap.size });
   }
 );

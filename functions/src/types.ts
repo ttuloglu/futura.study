@@ -30,6 +30,11 @@ export interface SmartBookCreativeBrief {
   bookType: SmartBookBookType;
   subGenre?: string;
   languageText?: string;
+  workbookLevel?: string;
+  workbookCategory?: string;
+  includeExamples?: boolean;
+  includeQuiz?: boolean;
+  includeRelatedBooks?: boolean;
   characters?: string;
   settingPlace?: string;
   settingTime?: string;

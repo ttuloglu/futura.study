@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
 
+const ONBOARDING_BG_MUSIC_SRC = '/audio/fairy-tales/twilight-at-the-pass.mp3';
+const ONBOARDING_BG_MUSIC_VOLUME = 0.32;
+
 type OnboardingMediaType = 'video' | 'image';
 
 type OnboardingSlide = {
@@ -24,7 +27,7 @@ const SLIDES: OnboardingSlide[] = [
     src: '/onboarding/fortale-onboarding-intro.mp4',
     label: 'Fortale',
     title: 'Hayalini yaz, hikayen başlasın.',
-    description: 'Masal, hikaye ve roman kitaplarını saniyeler içinde üret.'
+    description: 'Masal, hikaye ve çalışma kitaplarını saniyeler içinde üret.'
   },
   {
     id: 'image-1',
@@ -38,7 +41,7 @@ const SLIDES: OnboardingSlide[] = [
     id: 'image-3',
     type: 'image',
     src: '/onboarding/fortale-3.webp',
-    label: 'Roman Modu',
+    label: 'Hikaye Modu',
     title: 'Hayal gücünü kullan.',
     description: 'Fortale karakter gelişimi ve tutarlı anlatımla kitabını büyütür.'
   },
@@ -75,6 +78,48 @@ export default function OnboardingView({ onFinish }: OnboardingViewProps) {
   const [failedMediaById, setFailedMediaById] = useState<Record<string, true>>({});
   const touchStartXRef = useRef<number | null>(null);
   const touchEndXRef = useRef<number | null>(null);
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+
+  // Background music — play on mount, clean up on unmount
+  useEffect(() => {
+    const audio = new Audio(ONBOARDING_BG_MUSIC_SRC);
+    audio.loop = true;
+    audio.volume = ONBOARDING_BG_MUSIC_VOLUME;
+    bgMusicRef.current = audio;
+
+    const tryPlay = () => audio.play().catch(() => undefined);
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch(() => {
+        // Autoplay blocked — retry on first touch/click
+        document.addEventListener('touchstart', tryPlay, { once: true });
+        document.addEventListener('click', tryPlay, { once: true });
+      });
+    }
+
+    return () => {
+      document.removeEventListener('touchstart', tryPlay);
+      document.removeEventListener('click', tryPlay);
+      audio.pause();
+      audio.src = '';
+      bgMusicRef.current = null;
+    };
+  }, []);
+
+  // Pause when app is backgrounded, resume when foregrounded
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const audio = bgMusicRef.current;
+      if (!audio) return;
+      if (document.visibilityState === 'hidden') {
+        audio.pause();
+      } else {
+        audio.play().catch(() => undefined);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   const activeSlide = SLIDES[activeIndex];
   const isLastSlide = activeIndex === SLIDES.length - 1;

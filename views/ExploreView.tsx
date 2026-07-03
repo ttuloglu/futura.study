@@ -51,14 +51,14 @@ function formatCreatedDateLabel(date: Date, locale: string): string {
 
 function bookTypeLabel(bookType?: CourseData['bookType']): string {
   if (bookType === 'fairy_tale') return 'Masal';
-  if (bookType === 'story') return 'Hikaye';
-  if (bookType === 'novel') return 'Roman';
+  if (bookType === 'story') return 'Çalışma Kitabı';
+  if (bookType === 'novel') return 'Hikaye';
   return 'Akademik';
 }
 
 function minimumPageCountForBookType(bookType?: CourseData['bookType']): number {
   if (bookType === 'fairy_tale') return 10;
-  if (bookType === 'story') return 20;
+  if (bookType === 'story') return 12;
   if (bookType === 'novel') return 30;
   return 10;
 }
@@ -432,7 +432,7 @@ export default function ExploreView({
 
   const searchLanguageOptions = useMemo(
     () => [{ code: 'all' as const, label: t('Tüm Diller') }, ...languageOptions],
-    [languageOptions]
+    [languageOptions, t]
   );
 
   const canRunSearch = Boolean(searchText.trim());
@@ -466,8 +466,8 @@ export default function ExploreView({
   const bookTypeFilterOptions = useMemo(
     () => [
       { value: 'all' as const, label: 'Tüm Türler' },
-      { value: 'novel' as const, label: 'Roman' },
-      { value: 'story' as const, label: 'Hikaye' },
+      { value: 'novel' as const, label: 'Hikaye' },
+      { value: 'story' as const, label: 'Çalışma Kitabı' },
       { value: 'fairy_tale' as const, label: 'Masal' }
     ],
     []
@@ -602,7 +602,7 @@ export default function ExploreView({
       className="view-container"
       style={{
         background:
-          'radial-gradient(circle at 12% 7%, rgba(255, 182, 212, 0.2), transparent 44%), radial-gradient(circle at 88% 11%, rgba(255, 133, 188, 0.18), transparent 42%), linear-gradient(180deg, #3a2030 0%, #2a1723 100%)'
+          'radial-gradient(circle at 17% 0%, rgba(80, 118, 172, 0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74, 112, 168, 0.18), transparent 34%), linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
       }}
     >
       <div className="app-content-width space-y-6 pb-24">
@@ -617,7 +617,7 @@ export default function ExploreView({
                 type="text"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Kitap ara"
+                placeholder={t('Kitap ara')}
                 className={`explore-library-search-input w-full h-11 pl-9 ${hasSearchState ? 'pr-[134px]' : 'pr-[96px]'} rounded-2xl text-[12px] font-medium text-white placeholder:text-zinc-500 focus:outline-none`}
                 style={{
                   background: 'rgba(17, 22, 29, 0.9)',
@@ -642,13 +642,13 @@ export default function ExploreView({
                     background: 'rgba(17, 22, 29, 0.92)',
                     borderColor: 'rgba(86,133,190,0.24)'
                   }}
-                  aria-label="Dil seç"
+                  aria-label={t('Dil seç')}
                   aria-haspopup="listbox"
                   aria-expanded={isLanguageMenuOpen}
                   disabled={searchLanguageOptions.length === 0}
                 >
                   <span className="truncate">
-                    {selectedLanguageLabel || (searchLanguageOptions.length > 0 ? 'Dil' : 'Dil yok')}
+                    {selectedLanguageLabel || (searchLanguageOptions.length > 0 ? t('Dil') : t('Dil yok'))}
                   </span>
                   <ChevronDown
                     size={11}
@@ -659,7 +659,7 @@ export default function ExploreView({
                 {isLanguageMenuOpen && searchLanguageOptions.length > 0 && (
                   <div
                     role="listbox"
-                    aria-label="Dil seçenekleri"
+                    aria-label={t('Dil seçenekleri')}
                     className="absolute top-full right-0 mt-2 z-20 min-w-[120px] rounded-2xl border border-dashed p-1 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.75)]"
                     style={{
                       background: 'rgba(17, 22, 29, 0.9)',
@@ -696,8 +696,8 @@ export default function ExploreView({
                   type="button"
                   onClick={clearSearchResults}
                   className="absolute inset-y-0 right-[90px] my-auto h-8 w-8 rounded-lg inline-flex items-center justify-center text-[#9fb8d8] hover:bg-[rgba(23,38,58,0.45)] active:scale-95 transition-all z-10"
-                  aria-label="Sonuçları temizle"
-                  title="Sonuçları temizle"
+                  aria-label={t('Sonuçları temizle')}
+                  title={t('Sonuçları temizle')}
                 >
                   <X size={14} />
                 </button>
@@ -716,7 +716,7 @@ export default function ExploreView({
                 borderColor: canRunSearch ? 'rgba(86,133,190,0.24)' : 'rgba(86,133,190,0.14)'
               }}
             >
-              Ara
+              {t('Ara')}
             </button>
 
             <button
@@ -727,8 +727,8 @@ export default function ExploreView({
                 background: 'rgba(17, 22, 29, 0.9)',
                 borderColor: 'rgba(86,133,190,0.24)'
               }}
-              aria-label={libraryViewMode === 'shelf' ? 'Liste görünümüne geç' : 'Raf görünümüne geç'}
-              title={libraryViewMode === 'shelf' ? 'Liste görünümü' : 'Raf görünümü'}
+              aria-label={libraryViewMode === 'shelf' ? t('Liste görünümüne geç') : t('Raf görünümüne geç')}
+              title={libraryViewMode === 'shelf' ? t('Liste görünümü') : t('Raf görünümü')}
             >
               {libraryViewMode === 'shelf' ? <List size={14} /> : <LayoutGrid size={14} />}
             </button>
@@ -753,8 +753,8 @@ export default function ExploreView({
                   background: 'rgba(17, 22, 29, 0.9)',
                   borderColor: 'rgba(86,133,190,0.24)'
                 }}
-                aria-label="Sıralama filtreleri"
-                title="Sıralama"
+                aria-label={t('Sıralama filtreleri')}
+                title={t('Sıralama')}
                 aria-haspopup="menu"
                 aria-expanded={isSortMenuOpen}
               >
@@ -764,7 +764,7 @@ export default function ExploreView({
               {isSortMenuOpen && (
                 <div
                   role="menu"
-                  aria-label="Kütüphane sıralama"
+                  aria-label={t('Kütüphane sıralama')}
                   className="absolute top-full left-0 mt-2 z-20 w-[170px] rounded-2xl border border-dashed p-1 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.75)]"
                   style={{
                     background: 'rgba(17, 22, 29, 0.94)',
@@ -793,7 +793,7 @@ export default function ExploreView({
                           }`}
                         style={{ borderColor: selected ? 'rgba(86,133,190,0.24)' : undefined }}
                       >
-                        <span>{option.label}</span>
+                        <span>{t(option.label)}</span>
                         {selected ? <Check size={12} className="text-[#8fb6e6]" /> : <span className="w-3" />}
                       </button>
                     );
@@ -813,18 +813,18 @@ export default function ExploreView({
                   setIsSortMenuOpen(false);
                 }}
                 className="h-10 w-full px-2 rounded-2xl border border-dashed border-[#58769c]/45 bg-[#131b27] text-[10px] font-semibold text-[#dcecff] focus:outline-none inline-flex items-center justify-between gap-1.5"
-                aria-label="Yaş grubu filtresi"
+                aria-label={t('Yaş grubu filtresi')}
                 aria-haspopup="listbox"
                 aria-expanded={isAgeFilterMenuOpen}
               >
-                <span className="truncate">{selectedAgeFilterLabel}</span>
+                <span className="truncate">{t(selectedAgeFilterLabel)}</span>
                 <ChevronDown size={11} className={`shrink-0 transition-transform ${isAgeFilterMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isAgeFilterMenuOpen && (
                 <div
                   role="listbox"
-                  aria-label="Yaş grubu seçenekleri"
+                  aria-label={t('Yaş grubu seçenekleri')}
                   className="absolute top-full left-0 mt-2 z-20 min-w-[120px] rounded-2xl border border-dashed p-1 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.75)]"
                   style={{
                     background: 'rgba(17, 22, 29, 0.94)',
@@ -848,7 +848,7 @@ export default function ExploreView({
                             : 'border-transparent text-[#d3e4f8] hover:bg-[rgba(23,38,58,0.5)]'
                           }`}
                       >
-                        {option.label}
+                        {t(option.label)}
                       </button>
                     );
                   })}
@@ -867,18 +867,18 @@ export default function ExploreView({
                   setIsSortMenuOpen(false);
                 }}
                 className="h-10 w-full px-2 rounded-2xl border border-dashed border-[#58769c]/45 bg-[#131b27] text-[10px] font-semibold text-[#dcecff] focus:outline-none inline-flex items-center justify-between gap-1.5"
-                aria-label="Tür filtresi"
+                aria-label={t('Tür filtresi')}
                 aria-haspopup="listbox"
                 aria-expanded={isBookTypeFilterMenuOpen}
               >
-                <span className="truncate">{selectedBookTypeFilterLabel}</span>
+                <span className="truncate">{t(selectedBookTypeFilterLabel)}</span>
                 <ChevronDown size={11} className={`shrink-0 transition-transform ${isBookTypeFilterMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isBookTypeFilterMenuOpen && (
                 <div
                   role="listbox"
-                  aria-label="Tür seçenekleri"
+                  aria-label={t('Tür seçenekleri')}
                   className="absolute top-full left-0 mt-2 z-20 min-w-[120px] rounded-2xl border border-dashed p-1 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.75)]"
                   style={{
                     background: 'rgba(17, 22, 29, 0.94)',
@@ -902,7 +902,7 @@ export default function ExploreView({
                             : 'border-transparent text-[#d3e4f8] hover:bg-[rgba(23,38,58,0.5)]'
                           }`}
                       >
-                        {option.label}
+                        {t(option.label)}
                       </button>
                     );
                   })}
@@ -921,18 +921,18 @@ export default function ExploreView({
                   setIsSortMenuOpen(false);
                 }}
                 className="h-10 w-full px-2 rounded-2xl border border-dashed border-[#58769c]/45 bg-[#131b27] text-[10px] font-semibold text-[#dcecff] focus:outline-none inline-flex items-center justify-between gap-1.5"
-                aria-label="Alt tür filtresi"
+                aria-label={t('Alt tür filtresi')}
                 aria-haspopup="listbox"
                 aria-expanded={isSubGenreFilterMenuOpen}
               >
-                <span className="truncate">{selectedSubGenreFilterLabel}</span>
+                <span className="truncate">{t(selectedSubGenreFilterLabel)}</span>
                 <ChevronDown size={11} className={`shrink-0 transition-transform ${isSubGenreFilterMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isSubGenreFilterMenuOpen && (
                 <div
                   role="listbox"
-                  aria-label="Alt tür seçenekleri"
+                  aria-label={t('Alt tür seçenekleri')}
                   className="absolute top-full left-0 mt-2 z-20 min-w-[120px] max-h-[240px] overflow-y-auto overscroll-contain rounded-2xl border border-dashed p-1 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.75)]"
                   style={{
                     background: 'rgba(17, 22, 29, 0.94)',
@@ -957,7 +957,7 @@ export default function ExploreView({
                             : 'border-transparent text-[#d3e4f8] hover:bg-[rgba(23,38,58,0.5)]'
                           }`}
                       >
-                        {option === 'all' ? 'Tüm Alt Türler' : option}
+                        {option === 'all' ? t('Tüm Alt Türler') : t(option)}
                       </button>
                     );
                   })}
@@ -984,8 +984,8 @@ export default function ExploreView({
                 background: 'rgba(17, 22, 29, 0.74)',
                 borderColor: hasCascadeFilterSelection ? 'rgba(86,133,190,0.24)' : 'rgba(86,133,190,0.14)'
               }}
-              aria-label="Filtre seçimlerini temizle"
-              title="Filtre seçimlerini temizle"
+              aria-label={t('Filtre seçimlerini temizle')}
+              title={t('Filtre seçimlerini temizle')}
             >
               <X size={14} />
             </button>
@@ -1000,8 +1000,8 @@ export default function ExploreView({
             <p className="text-sm font-bold text-white/40">{t('Kütüphanede SmartBook bulunamadı')}</p>
             <p className="text-[11px] text-white/25 mt-1">
               {appliedSearchText && appliedSearchLanguage
-                ? 'Arama kriterlerini değiştirip tekrar dene.'
-                : 'Ana sayfadan yeni bir SmartBook oluşturarak başla.'}
+                ? t('Arama kriterlerini değiştirip tekrar dene.')
+                : t('Ana sayfadan yeni bir SmartBook oluşturarak başla.')}
             </p>
           </div>
         ) : (
@@ -1047,7 +1047,7 @@ export default function ExploreView({
                                   {course.coverImageUrl ? (
                                     <img
                                       src={course.coverImageUrl}
-                                      alt={`${course.topic} SmartBook kapağı`}
+                                      alt={`${course.topic} ${t('SmartBook kapağı')}`}
                                       className="w-full h-full object-contain object-center border-0"
                                     />
                                   ) : (
@@ -1060,7 +1060,7 @@ export default function ExploreView({
                                   {course.topic}
                                 </p>
                                 <p className="px-1 mt-0.5 text-[10px] leading-tight text-white/70 truncate min-h-[12px]">
-                                  {course.creatorName?.trim() ? course.creatorName : 'Anonim'}
+                                  {course.creatorName?.trim() ? course.creatorName : t('Anonim')}
                                 </p>
                               </button>
                               {(() => {
@@ -1080,8 +1080,8 @@ export default function ExploreView({
                                         border: '1px dashed rgba(86, 133, 190, 0.16)',
                                         boxShadow: 'none'
                                       }}
-                                      aria-label="SmartBook paylaş"
-                                      title="Paylaş"
+                                      aria-label={t('SmartBook paylaş')}
+                                      title={t('Paylaş')}
                                     >
                                       <Share2 size={10} className="text-white/80" />
                                     </button>
@@ -1098,8 +1098,8 @@ export default function ExploreView({
                                         border: '1px dashed rgba(86, 133, 190, 0.16)',
                                         boxShadow: 'none'
                                       }}
-                                      aria-label={isLiked ? 'Beğeniden çıkar' : 'Beğen'}
-                                      title={isLiked ? 'Beğeniden çıkar' : 'Beğen'}
+                                      aria-label={isLiked ? t('Beğeniden çıkar') : t('Beğen')}
+                                      title={isLiked ? t('Beğeniden çıkar') : t('Beğen')}
                                     >
                                       <Heart
                                         size={10}
@@ -1128,7 +1128,7 @@ export default function ExploreView({
                     const hue = topicHue(course.topic);
                     const description = getCourseDescription(course);
                     const category = deriveRealCategoryFromCourse(course);
-                    const estimatedDuration = getEstimatedStudyDuration(course);
+                    const pageCount = estimatePageCount(course);
                     const createdDateLabel = formatCreatedDateLabel(course.createdAt, locale);
                     const isLiked = likedCourseIdSet.has(course.id);
                     const likeCount = getLibraryLikeCount(course, isLiked);
@@ -1147,7 +1147,7 @@ export default function ExploreView({
                             {course.coverImageUrl ? (
                               <img
                                 src={course.coverImageUrl}
-                                alt={`${course.topic} SmartBook kapağı`}
+                                alt={`${course.topic} ${t('SmartBook kapağı')}`}
                                 className="w-full h-full object-contain object-center border-0"
                               />
                             ) : (
@@ -1179,8 +1179,8 @@ export default function ExploreView({
                                   background: 'rgba(17, 22, 29, 0.62)',
                                   boxShadow: 'inset 0 0 0 1px rgba(86, 133, 190, 0.22)'
                                 }}
-                                aria-label="SmartBook paylaş"
-                                title="Paylaş"
+                                aria-label={t('SmartBook paylaş')}
+                                title={t('Paylaş')}
                               >
                                 <Share2 size={11} className="text-white/80" />
                               </button>
@@ -1206,17 +1206,19 @@ export default function ExploreView({
                                   <Tag size={8} className="text-[#8fb6e6] shrink-0" />
                                   <span className="truncate">{category}</span>
                                 </span>
-                                <span
-                                  className="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5"
-                                  style={{
-                                    background: 'rgba(23, 38, 58, 0.64)',
-                                    boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)'
-                                  }}
-                                  title="Yaş grubu / seviye"
-                                >
-                                  {getSmartBookAgeGroupLabel(course.ageGroup)}
-                                </span>
-                                <span className="shrink-0 text-[#7fa2cb]">{estimatedDuration}</span>
+                                {course.bookType !== 'story' && (
+                                  <span
+                                    className="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5"
+                                    style={{
+                                      background: 'rgba(23, 38, 58, 0.64)',
+                                      boxShadow: 'inset 0 0 0 1px rgba(55,80,111,0.22)'
+                                    }}
+                                    title={t('Yaş grubu / seviye')}
+                                  >
+                                    {t(getSmartBookAgeGroupLabel(course.ageGroup))}
+                                  </span>
+                                )}
+                                <span className="shrink-0 text-[#7fa2cb]">{pageCount} {t('sf')}</span>
                                 <span className="shrink-0 text-white/20">•</span>
                                 <span className="min-w-0 truncate inline-flex items-center gap-1 text-[#a8bfdc]">
                                   <CalendarDays size={8} className="text-[#8fb6e6] shrink-0" />
@@ -1235,8 +1237,8 @@ export default function ExploreView({
                                   background: 'rgba(17, 22, 29, 0.62)',
                                   boxShadow: 'inset 0 0 0 1px rgba(86, 133, 190, 0.22)'
                                 }}
-                                aria-label={isLiked ? 'Beğeniden çıkar' : 'Beğen'}
-                                title={isLiked ? 'Beğeniden çıkar' : 'Beğen'}
+                                aria-label={isLiked ? t('Beğeniden çıkar') : t('Beğen')}
+                                title={isLiked ? t('Beğeniden çıkar') : t('Beğen')}
                               >
                                 <Heart
                                   size={10}
@@ -1266,7 +1268,7 @@ export default function ExploreView({
             type="button"
             className="absolute inset-0 bg-black/22 backdrop-blur-sm"
             onClick={() => setSelectedCourse(null)}
-            aria-label="Kapat"
+            aria-label={t('Kapat')}
           />
 
           <div className="absolute inset-0 px-3 sm:px-4 flex items-center justify-center">
@@ -1281,7 +1283,7 @@ export default function ExploreView({
                   onClick={() => setSelectedCourse(null)}
                   className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full border border-dashed text-white leading-none transition-colors hover:bg-[rgba(23,28,36,0.52)]"
                   style={{ backgroundColor: 'rgba(17, 22, 29, 0.3)', borderColor: 'rgba(173, 149, 124, 0.09)' }}
-                  aria-label="Kapat"
+                  aria-label={t('Kapat')}
                 >
                   <X size={13} />
                 </button>
@@ -1312,9 +1314,9 @@ export default function ExploreView({
                   </p>
                   <div className="pt-1 text-[10px] text-[#bfd4ee] space-y-0.5">
                     <p>{t('Kategori:')} {t(deriveRealCategoryFromCourse(selectedCourse))}</p>
-                    <p>{t('Yaş Grubu:')} {t(getSmartBookAgeGroupLabel(selectedCourse.ageGroup))}</p>
+                    {selectedCourse.bookType !== 'story' && <p>{t('Yaş Grubu:')} {t(getSmartBookAgeGroupLabel(selectedCourse.ageGroup))}</p>}
                     <p>{t('Kurgulayan:')} {selectedCourse.creatorName?.trim() || t('Anonim')}</p>
-                    <p>{t('Sayfa:')} {estimatePageCount(selectedCourse)} sf</p>
+                    <p>{t('Sayfa:')} {estimatePageCount(selectedCourse)} {t('sf')}</p>
                     <p>{t('Tür:')} {t(bookTypeLabel(selectedCourse.bookType))}</p>
                     <p>{t('Alt Tür:')} {selectedCourse.subGenre ? t(selectedCourse.subGenre) : t('Belirtilmedi')}</p>
                   </div>

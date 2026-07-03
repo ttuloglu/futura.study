@@ -21,7 +21,7 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 [bundle exec] fastlane ios appstore_metadata_prepare
 ```
 
-Prepare App Store metadata for 1.0.1
+Prepare App Store metadata and iPhone screenshots for 1.0.4
 
 ### ios appstore_metadata_verify
 
@@ -29,7 +29,7 @@ Prepare App Store metadata for 1.0.1
 [bundle exec] fastlane ios appstore_metadata_verify
 ```
 
-Validate App Store metadata for 1.0.1
+Validate App Store metadata and iPhone screenshots for 1.0.4
 
 ### ios appstore_metadata_upload
 
@@ -37,7 +37,7 @@ Validate App Store metadata for 1.0.1
 [bundle exec] fastlane ios appstore_metadata_upload
 ```
 
-Upload App Store metadata for 1.0.1 (metadata only)
+Upload App Store metadata and iPhone screenshots for 1.0.4
 
 ----
 

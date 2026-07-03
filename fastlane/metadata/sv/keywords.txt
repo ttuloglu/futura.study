@@ -1,1 +1,1 @@
-saga,berättelse,roman,barnbok,bokskapare,ai,ljudbok,podcast,epub,pdf,omslag,fiktion,skriva,verktyg
+sagor,berättelse,roman,porträtt,karaktär,ai,bok,skapa,omslag,bild,podcast,epub,pdf,författare,skriva

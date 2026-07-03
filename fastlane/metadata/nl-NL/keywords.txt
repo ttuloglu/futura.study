@@ -1,1 +1,1 @@
-verhaal,roman,boek,kinderboek,schrijven,ai,podcast,luisterboek,epub,pdf,cover,fictie,creatief,tekst
+verhaal,sprookje,roman,boek,portret,karakter,ai,schrijven,cover,afbeelding,podcast,epub,pdf,creatie

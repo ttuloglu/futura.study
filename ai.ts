@@ -912,6 +912,19 @@ function hydrateCourseData(raw: unknown): CourseData | null {
       data.status === 'processing' || data.status === 'ready' || data.status === 'failed'
         ? data.status
         : undefined,
+    communityPublication: data.communityPublication && typeof data.communityPublication === 'object'
+      ? {
+        id: typeof (data.communityPublication as Record<string, unknown>).id === 'string'
+          ? String((data.communityPublication as Record<string, unknown>).id)
+          : '',
+        status: ['published', 'unpublished', 'hidden', 'removed'].includes(String((data.communityPublication as Record<string, unknown>).status))
+          ? String((data.communityPublication as Record<string, unknown>).status) as 'published' | 'unpublished' | 'hidden' | 'removed'
+          : 'unpublished',
+        updatedAt: typeof (data.communityPublication as Record<string, unknown>).updatedAt === 'string'
+          ? new Date(String((data.communityPublication as Record<string, unknown>).updatedAt))
+          : undefined
+      }
+      : undefined,
     userId: typeof data.userId === 'string' ? data.userId : undefined,
     nodes: Array.isArray(data.nodes) ? data.nodes.map(hydrateCourseNode) : [],
     createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,

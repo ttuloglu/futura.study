@@ -488,13 +488,13 @@ const getSectionTransitionSeparator = () => ({
     margin: [0, 0, 0, 7]
 });
 
-const PDF_FOOTER_LEFT_TEXT = 'Fortale | Build Your Epic';
+const PDF_FOOTER_LEFT_TEXT = 'Fortale | Create, Discover and Share';
 const PDF_FOOTER_RIGHT_TEXT = 'Bu içerik yapay zeka tarafından üretilmiştir, hatalı olabilir, kontrol ediniz.';
 
 const bookTypeLabelForExport = (bookType?: CourseData['bookType']): string => {
     if (bookType === 'fairy_tale') return 'Masal';
-    if (bookType === 'story') return 'Hikaye';
-    if (bookType === 'novel') return 'Roman';
+    if (bookType === 'story') return 'Çalışma Kitabı';
+    if (bookType === 'novel') return 'Hikaye';
     return 'Akademik';
 };
 
@@ -900,12 +900,18 @@ export const exportCourseToPdf = async (
     const pdfQuoteAccentColor = isDarkPdfTheme ? '#E5EEF9' : '#334155';
     const pdfImportantColor = isDarkPdfTheme ? '#BFDBFE' : '#0F3C72';
     const pdfWarningColor = isDarkPdfTheme ? '#BBF7D0' : '#14532D';
-    const PDF_FONT_BUMP = preparedCourse.bookType === 'fairy_tale' ? 1 : 1;
-    const PDF_FONT_BUMP_MAX = preparedCourse.bookType === 'fairy_tale' ? 64 : 14;
+    const isFairyTaleBook = preparedCourse.bookType === 'fairy_tale';
+    const isStoryOrNovelBook = preparedCourse.bookType === 'story' || preparedCourse.bookType === 'novel';
+    const narrativeBodyFontSize = isFairyTaleBook ? 15 : isStoryOrNovelBook ? 12 : 11;
+    const narrativeBodyLineHeight = isFairyTaleBook ? 1.48 : 1.42;
+    const pdfBodyFontSize = isNarrativeBook ? narrativeBodyFontSize : 11;
+    const pdfBodyLineHeight = isNarrativeBook ? narrativeBodyLineHeight : 1.4;
+    const PDF_FONT_BUMP = isNarrativeBook ? 0 : 1;
+    const PDF_FONT_BUMP_MAX = isNarrativeBook ? 0 : 14;
     const buildPdfParagraphBlock = (text: string, margin: [number, number, number, number] = [0, 2, 0, 6]) => ({
         text: cleanMarkdownToSpans(text),
-        fontSize: 11,
-        lineHeight: 1.4,
+        fontSize: pdfBodyFontSize,
+        lineHeight: pdfBodyLineHeight,
         margin,
         alignment: 'justify' as const,
         color: pdfBodyTextColor
@@ -960,11 +966,16 @@ export const exportCourseToPdf = async (
         month: 'short',
         year: 'numeric'
     });
-    const ageLabel = getSmartBookAgeGroupLabel(preparedCourse.ageGroup);
     const typeLabel = bookTypeLabelForExport(preparedCourse.bookType);
     const subGenreLabel = (preparedCourse.subGenre || '').trim() || 'Belirtilmedi';
     const categoryLabel = (preparedCourse.category || 'Belirtilmedi').trim();
     const creatorLabel = (preparedCourse.creatorName || 'Anonim').trim();
+    const coverMetaParts = [
+        `Tür: ${typeLabel}`,
+        `Alt Tür: ${subGenreLabel}`,
+        ...(preparedCourse.bookType === 'story' ? [] : [getSmartBookAgeGroupLabel(preparedCourse.ageGroup)]),
+        `Kategori: ${categoryLabel}`
+    ];
 
     const fallbackHue = Math.abs((preparedCourse.topic || '').split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 0)) % 360;
     const fallbackCoverColor = `hsl(${fallbackHue}, 42%, 28%)`;
@@ -992,7 +1003,7 @@ export const exportCourseToPdf = async (
                 width: '*',
                 stack: [
                     { text: preparedCourse.topic, fontSize: 18, bold: true, color: pdfTitleColor, margin: [0, 2, 0, 8] },
-                    { text: `Tür: ${typeLabel} • Alt Tür: ${subGenreLabel} • ${ageLabel} • Kategori: ${categoryLabel}`, fontSize: 10.5, color: pdfSecondaryTextColor, margin: [0, 0, 0, 6] },
+                    { text: coverMetaParts.join(' • '), fontSize: 10.5, color: pdfSecondaryTextColor, margin: [0, 0, 0, 6] },
                     {
                         columns: [
                             {
@@ -1006,7 +1017,7 @@ export const exportCourseToPdf = async (
                                 svg: FORTALE_PDF_LOGO_SVG,
                                 margin: [0, 0.6, 0, 0]
                             },
-                            { width: 'auto', text: 'Fortale I Build Your Epic', fontSize: 10.2, bold: true, color: pdfBrandTextColor }
+                            { width: 'auto', text: 'Fortale I Create, Discover and Share', fontSize: 10.2, bold: true, color: pdfBrandTextColor }
                         ],
                         columnGap: 2
                     }
@@ -1140,7 +1151,7 @@ export const exportCourseToPdf = async (
         // Push accumulated list before switching context.
         const flushList = () => {
             if (inList) {
-                pdfContent.push({ ul: listItems, margin: [0, 2, 0, 6], fontSize: 11 });
+                pdfContent.push({ ul: listItems, margin: [0, 2, 0, 6], fontSize: pdfBodyFontSize });
                 listItems = [];
                 inList = false;
                 registerParagraphBlock();
@@ -1362,7 +1373,7 @@ export const exportCourseToPdf = async (
                 }
                 inList = true;
                 lastRenderedNoticeQuote = false;
-                listItems.push({ text: cleanMarkdownToSpans(listBody), lineHeight: 1.4 });
+                listItems.push({ text: cleanMarkdownToSpans(listBody), lineHeight: pdfBodyLineHeight });
                 continue;
             } else if (trimmed.match(/^\d+\.\s/)) {
                 const orderedBody = trimmed.replace(/^\d+\.\s+/, '').trim();
@@ -1383,7 +1394,7 @@ export const exportCourseToPdf = async (
                 // Ordered Lists parsed as plain text spans for simplicity
                 flushList();
                 lastRenderedNoticeQuote = false;
-                pdfContent.push({ text: cleanMarkdownToSpans(trimmed), margin: [15, 2, 0, 6], fontSize: 11, lineHeight: 1.4 });
+                pdfContent.push({ text: cleanMarkdownToSpans(trimmed), margin: [15, 2, 0, 6], fontSize: pdfBodyFontSize, lineHeight: pdfBodyLineHeight });
                 registerParagraphBlock();
                 continue;
             }
@@ -1412,8 +1423,8 @@ export const exportCourseToPdf = async (
                     }));
                     pdfContent.push({
                         text: [{ text: '“', italics: true }, ...quoteSpans, { text: '”', italics: true }],
-                        fontSize: 11.2,
-                        lineHeight: 1.48,
+                        fontSize: isNarrativeBook ? narrativeBodyFontSize : 11.2,
+                        lineHeight: isNarrativeBook ? narrativeBodyLineHeight : 1.48,
                         alignment: 'center',
                         color: isImportant ? pdfImportantColor : pdfWarningColor,
                         margin: [12, lastRenderedNoticeQuote ? 14 : 8, 12, 10]
@@ -1429,6 +1440,8 @@ export const exportCourseToPdf = async (
                         body: [[{
                             text: cleanMarkdownToSpans(stripLatex(stripStrayMarkdown(quoteText))),
                             color: pdfQuoteAccentColor,
+                            fontSize: pdfBodyFontSize,
+                            lineHeight: pdfBodyLineHeight,
                             margin: [8, 7, 8, 7]
                         }]]
                     },
@@ -1629,8 +1642,15 @@ export const exportVisualStoryToPdf = async (
     const contentHeight = PDF_PAGE_HEIGHT_PT - pageMarginTop - pageMarginBottom;
     const imageSlotHeight = Math.floor(contentHeight * (isYoungVisualStory ? 0.57 : 0.62));
     const textSlotHeight = contentHeight - imageSlotHeight;
-    const visualStoryTextFontSize = isYoungVisualStory ? 16 : 13;
-    const visualStoryTextLineHeight = isYoungVisualStory ? 1.62 : 1.55;
+    const visualStoryTextFontSize =
+        preparedCourse.bookType === 'fairy_tale'
+            ? 15
+            : preparedCourse.bookType === 'story' || preparedCourse.bookType === 'novel'
+                ? 12
+                : isYoungVisualStory
+                    ? 16
+                    : 13;
+    const visualStoryTextLineHeight = preparedCourse.bookType === 'fairy_tale' ? 1.58 : isYoungVisualStory ? 1.62 : 1.55;
     const visualStoryTextMargin: [number, number, number, number] = isYoungVisualStory ? [18, 0, 18, 0] : [14, 0, 14, 0];
 
     const pdfContent: any[] = [];
@@ -3228,11 +3248,16 @@ const buildCoverSectionHtml = async (course: CourseData, collector: EpubAssetCol
         month: 'short',
         year: 'numeric'
     });
-    const ageLabel = getSmartBookAgeGroupLabel(course.ageGroup);
     const typeLabel = bookTypeLabelForExport(course.bookType);
     const subGenreLabel = (course.subGenre || '').trim() || 'Belirtilmedi';
     const categoryLabel = (course.category || 'Belirtilmedi').trim();
     const creatorLabel = (course.creatorName || 'Anonim').trim();
+    const coverMetaParts = [
+        `Tür: ${typeLabel}`,
+        `Alt Tür: ${subGenreLabel}`,
+        ...(course.bookType === 'story' ? [] : [getSmartBookAgeGroupLabel(course.ageGroup)]),
+        `Kategori: ${categoryLabel}`
+    ];
 
     const coverImageHtml = coverImageRef
         ? `<img src="${escapeXml(toTextSectionRelativeHref(coverImageRef.href))}" alt="${escapeXml(`${course.topic} Fortale kapağı`)}" />`
@@ -3244,8 +3269,8 @@ const buildCoverSectionHtml = async (course: CourseData, collector: EpubAssetCol
           <div class="cover-image-wrap">${coverImageHtml}</div>
           <div class="cover-meta">
             <h1>${escapeHtml(course.topic)}</h1>
-            <div class="meta-line">Tür: ${escapeHtml(typeLabel)} • Alt Tür: ${escapeHtml(subGenreLabel)} • ${escapeHtml(ageLabel)} • Kategori: ${escapeHtml(categoryLabel)}</div>
-            <div class="brand-line">Kurgulayan: ${escapeHtml(creatorLabel)} | ${escapeHtml(headerDate)} | Fortale I Build Your Epic</div>
+            <div class="meta-line">${escapeHtml(coverMetaParts.join(' • '))}</div>
+            <div class="brand-line">Kurgulayan: ${escapeHtml(creatorLabel)} | ${escapeHtml(headerDate)} | Fortale I Create, Discover and Share</div>
           </div>
         </div>
         <hr class="cover-divider" />

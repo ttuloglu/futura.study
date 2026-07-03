@@ -1,1 +1,1 @@
-cuento,relato,novela,libro,infantil,crear,ia,podcast,audiolibro,epub,pdf,portada,ficcion,escritura
+cuento,historia,novela,relato,retrato,personaje,ia,libro,crear,portada,imagen,podcast,epub,pdf,autor

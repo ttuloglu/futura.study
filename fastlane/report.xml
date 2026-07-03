@@ -5,32 +5,32 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000133">
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000136">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="1: Switch to ios appstore_metadata_verify lane" time="0.000184">
+      <testcase classname="fastlane.lanes" name="1: Switch to ios appstore_metadata_verify lane" time="6.4e-05">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="2: cd .. &amp;&amp; node scripts/validate-asc-metadata.mjs" time="0.048957">
+      <testcase classname="fastlane.lanes" name="2: cd .. &amp;&amp; node scripts/validate-asc-metadata.mjs" time="0.228743">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="3: Switch to ios auth_options lane" time="6.6e-05">
+      <testcase classname="fastlane.lanes" name="3: Switch to ios auth_options lane" time="6.1e-05">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="4: Switch to ios deliver_options lane" time="5.4e-05">
+      <testcase classname="fastlane.lanes" name="4: Switch to ios deliver_options lane" time="3.8e-05">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="5: deliver" time="13.150432">
+      <testcase classname="fastlane.lanes" name="5: deliver" time="560.122228">
         
       </testcase>
     

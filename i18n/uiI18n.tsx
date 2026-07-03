@@ -3,6 +3,9 @@ import type { AppLanguageCode } from '../data/appLanguages';
 import { getAppLanguageLocale } from '../data/appLanguages';
 import { UI_TRANSLATION_LOADERS } from '../data/uiTranslationLoaders';
 import { UI_TRANSLATION_SAFE_KEYS } from '../data/uiTranslationSafeKeys.generated';
+import { UI_TRANSLATION_SUPPLEMENTS } from '../data/uiTranslationSupplements';
+import { COMMUNITY_UI_TRANSLATIONS } from '../data/communityUiTranslations.generated';
+import { LIBRARY_DASHBOARD_UI_TRANSLATIONS } from '../data/libraryDashboardUiTranslations';
 
 const translationMaps = new Map<AppLanguageCode, Map<string, string>>();
 const translationLoadPromises = new Map<AppLanguageCode, Promise<Map<string, string>>>();
@@ -274,7 +277,7 @@ const UI_FALLBACK_TRANSLATIONS: Partial<Record<AppLanguageCode, Record<string, s
     'Gerilim': 'Thriller',
     'Tarihsel': 'Historisch',
     'Polisiye': 'Krimi',
-    'Fantastik': 'Fantastik',
+    'Fantastik': 'Fantasy',
     'Mizah': 'Humor',
     'Klasik Masal': 'Klassisches Maerchen',
     'Modern Masal': 'Modernes Maerchen',
@@ -287,6 +290,7 @@ const UI_FALLBACK_TRANSLATIONS: Partial<Record<AppLanguageCode, Record<string, s
 const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
   ar: {
     'Arka Plan Rengi Seçin': 'اختر لون الخلفية',
+    'Süt beyaz': 'أبيض حليبي',
     'Şeker mavi': 'أزرق سكري',
     'Şeker pembe': 'وردي سكري',
     'Şeker yeşil': 'أخضر سكري',
@@ -298,6 +302,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   da: {
     'Arka Plan Rengi Seçin': 'Vælg baggrundsfarve',
+    'Süt beyaz': 'Mælkehvid',
     'Şeker mavi': 'Slikblå',
     'Şeker pembe': 'Slikpink',
     'Şeker yeşil': 'Slikgrøn',
@@ -309,6 +314,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   de: {
     'Arka Plan Rengi Seçin': 'Hintergrundfarbe wählen',
+    'Süt beyaz': 'Milchweiß',
     'Şeker mavi': 'Zuckerblau',
     'Şeker pembe': 'Zuckerrosa',
     'Şeker yeşil': 'Zuckergrün',
@@ -320,6 +326,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   el: {
     'Arka Plan Rengi Seçin': 'Επιλέξτε χρώμα φόντου',
+    'Süt beyaz': 'Γαλακτερό λευκό',
     'Şeker mavi': 'Γαλάζιο ζαχαρωτό',
     'Şeker pembe': 'Ροζ ζαχαρωτό',
     'Şeker yeşil': 'Πράσινο ζαχαρωτό',
@@ -331,6 +338,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   en: {
     'Arka Plan Rengi Seçin': 'Choose Background Color',
+    'Süt beyaz': 'Milk white',
     'Şeker mavi': 'Candy Blue',
     'Şeker pembe': 'Candy Pink',
     'Şeker yeşil': 'Candy Green',
@@ -342,6 +350,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   es: {
     'Arka Plan Rengi Seçin': 'Elige el color de fondo',
+    'Süt beyaz': 'Blanco leche',
     'Şeker mavi': 'Azul caramelo',
     'Şeker pembe': 'Rosa caramelo',
     'Şeker yeşil': 'Verde caramelo',
@@ -353,6 +362,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   fi: {
     'Arka Plan Rengi Seçin': 'Valitse taustaväri',
+    'Süt beyaz': 'Maidonvalkoinen',
     'Şeker mavi': 'Karkinsininen',
     'Şeker pembe': 'Karkinvaaleanpunainen',
     'Şeker yeşil': 'Karkinvihreä',
@@ -364,6 +374,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   fr: {
     'Arka Plan Rengi Seçin': 'Choisissez la couleur de fond',
+    'Süt beyaz': 'Blanc lait',
     'Şeker mavi': 'Bleu bonbon',
     'Şeker pembe': 'Rose bonbon',
     'Şeker yeşil': 'Vert bonbon',
@@ -375,6 +386,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   hi: {
     'Arka Plan Rengi Seçin': 'पृष्ठभूमि का रंग चुनें',
+    'Süt beyaz': 'दूधिया सफेद',
     'Şeker mavi': 'कैंडी नीला',
     'Şeker pembe': 'कैंडी गुलाबी',
     'Şeker yeşil': 'कैंडी हरा',
@@ -386,6 +398,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   id: {
     'Arka Plan Rengi Seçin': 'Pilih warna latar',
+    'Süt beyaz': 'Putih susu',
     'Şeker mavi': 'Biru permen',
     'Şeker pembe': 'Merah muda permen',
     'Şeker yeşil': 'Hijau permen',
@@ -397,6 +410,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   it: {
     'Arka Plan Rengi Seçin': 'Scegli il colore di sfondo',
+    'Süt beyaz': 'Bianco latte',
     'Şeker mavi': 'Blu confetto',
     'Şeker pembe': 'Rosa confetto',
     'Şeker yeşil': 'Verde confetto',
@@ -408,6 +422,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   ja: {
     'Arka Plan Rengi Seçin': '背景色を選択',
+    'Süt beyaz': 'ミルクホワイト',
     'Şeker mavi': 'キャンディブルー',
     'Şeker pembe': 'キャンディピンク',
     'Şeker yeşil': 'キャンディグリーン',
@@ -419,6 +434,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   ko: {
     'Arka Plan Rengi Seçin': '배경 색상을 선택하세요',
+    'Süt beyaz': '밀크 화이트',
     'Şeker mavi': '캔디 블루',
     'Şeker pembe': '캔디 핑크',
     'Şeker yeşil': '캔디 그린',
@@ -430,6 +446,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   nl: {
     'Arka Plan Rengi Seçin': 'Kies achtergrondkleur',
+    'Süt beyaz': 'Melkwit',
     'Şeker mavi': 'Snoepblauw',
     'Şeker pembe': 'Snoeproze',
     'Şeker yeşil': 'Snoepgroen',
@@ -441,6 +458,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   no: {
     'Arka Plan Rengi Seçin': 'Velg bakgrunnsfarge',
+    'Süt beyaz': 'Melkehvit',
     'Şeker mavi': 'Godteblå',
     'Şeker pembe': 'Godterosa',
     'Şeker yeşil': 'Godtegrønn',
@@ -452,6 +470,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   pl: {
     'Arka Plan Rengi Seçin': 'Wybierz kolor tła',
+    'Süt beyaz': 'Mleczna biel',
     'Şeker mavi': 'Cukierkowy niebieski',
     'Şeker pembe': 'Cukierkowy róż',
     'Şeker yeşil': 'Cukierkowa zieleń',
@@ -463,6 +482,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   'pt-BR': {
     'Arka Plan Rengi Seçin': 'Escolha a cor de fundo',
+    'Süt beyaz': 'Branco leite',
     'Şeker mavi': 'Azul doce',
     'Şeker pembe': 'Rosa doce',
     'Şeker yeşil': 'Verde doce',
@@ -474,6 +494,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   sv: {
     'Arka Plan Rengi Seçin': 'Välj bakgrundsfärg',
+    'Süt beyaz': 'Mjölkvit',
     'Şeker mavi': 'Godisblå',
     'Şeker pembe': 'Godisrosa',
     'Şeker yeşil': 'Godisgrön',
@@ -485,6 +506,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   th: {
     'Arka Plan Rengi Seçin': 'เลือกสีพื้นหลัง',
+    'Süt beyaz': 'ขาวน้ำนม',
     'Şeker mavi': 'ฟ้าลูกกวาด',
     'Şeker pembe': 'ชมพูลูกกวาด',
     'Şeker yeşil': 'เขียวลูกกวาด',
@@ -496,6 +518,7 @@ const PDF_PALETTE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<strin
   },
   tr: {
     'Arka Plan Rengi Seçin': 'Arka Plan Rengi Seçin',
+    'Süt beyaz': 'Süt beyaz',
     'Şeker mavi': 'Şeker mavi',
     'Şeker pembe': 'Şeker pembe',
     'Şeker yeşil': 'Şeker yeşil',
@@ -1194,6 +1217,896 @@ for (const [language, translations] of Object.entries(PORTRAIT_UI_FALLBACK_TRANS
   };
 }
 
+const ACTION_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
+  ar: {
+    'Ekle': 'إضافة',
+    'Değiştir': 'تغيير',
+    'Oluştur': 'إنشاء',
+    'Satın Al': 'شراء',
+    'PDF İndir': 'تنزيل PDF',
+    'EPUB İndir': 'تنزيل EPUB',
+    'PDF arka planı': 'خلفية PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'إذا أضفت صورة شخصية، فسيصبح هذا الشخص الشخصية الرئيسية في الكتاب. سيتم تكييف الصور الناتجة مع النمط نفسه وسيتم استخدام +1 رصيد.'
+  },
+  da: {
+    'Ekle': 'Tilføj',
+    'Değiştir': 'Skift',
+    'Oluştur': 'Opret',
+    'Satın Al': 'Køb',
+    'PDF İndir': 'Download PDF',
+    'EPUB İndir': 'Download EPUB',
+    'PDF arka planı': 'PDF-baggrund',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Hvis du tilføjer et portræt, bliver personen bogens hovedperson. De genererede billeder tilpasses samme stil og bruger +1 kredit.'
+  },
+  de: {
+    'Ekle': 'Hinzufügen',
+    'Değiştir': 'Ändern',
+    'Oluştur': 'Erstellen',
+    'Satın Al': 'Kaufen',
+    'PDF İndir': 'PDF herunterladen',
+    'EPUB İndir': 'EPUB herunterladen',
+    'PDF arka planı': 'PDF-Hintergrund',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Wenn du ein Porträt hinzufügst, wird diese Person zur Hauptfigur des Buches. Die erzeugten Bilder werden im selben Stil angepasst und verbrauchen +1 Guthaben.'
+  },
+  el: {
+    'Ekle': 'Προσθήκη',
+    'Değiştir': 'Αλλαγή',
+    'Oluştur': 'Δημιουργία',
+    'Satın Al': 'Αγορά',
+    'PDF İndir': 'Λήψη PDF',
+    'EPUB İndir': 'Λήψη EPUB',
+    'PDF arka planı': 'Φόντο PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Αν προσθέσετε πορτρέτο, αυτό το άτομο γίνεται ο κύριος χαρακτήρας του βιβλίου. Οι παραγόμενες εικόνες προσαρμόζονται στο ίδιο στυλ και χρησιμοποιούν +1 πίστωση.'
+  },
+  en: {
+    'Ekle': 'Add',
+    'Değiştir': 'Change',
+    'Oluştur': 'Create',
+    'Satın Al': 'Buy',
+    'PDF İndir': 'Download PDF',
+    'EPUB İndir': 'Download EPUB',
+    'PDF arka planı': 'PDF background',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'If you add a portrait, this person becomes the book main character. Generated images will match the same style and use +1 credit.'
+  },
+  es: {
+    'Ekle': 'Añadir',
+    'Değiştir': 'Cambiar',
+    'Oluştur': 'Crear',
+    'Satın Al': 'Comprar',
+    'PDF İndir': 'Descargar PDF',
+    'EPUB İndir': 'Descargar EPUB',
+    'PDF arka planı': 'Fondo del PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Si añades un retrato, esta persona será el personaje principal del libro. Las imágenes generadas se adaptarán al mismo estilo y usarán +1 crédito.'
+  },
+  fi: {
+    'Ekle': 'Lisää',
+    'Değiştir': 'Vaihda',
+    'Oluştur': 'Luo',
+    'Satın Al': 'Osta',
+    'PDF İndir': 'Lataa PDF',
+    'EPUB İndir': 'Lataa EPUB',
+    'PDF arka planı': 'PDF-tausta',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Jos lisäät muotokuvan, tästä henkilöstä tulee kirjan päähenkilö. Luodut kuvat sovitetaan samaan tyyliin ja käyttävät +1 krediitin.'
+  },
+  fr: {
+    'Ekle': 'Ajouter',
+    'Değiştir': 'Changer',
+    'Oluştur': 'Créer',
+    'Satın Al': 'Acheter',
+    'PDF İndir': 'Télécharger le PDF',
+    'EPUB İndir': "Télécharger l'EPUB",
+    'PDF arka planı': 'Fond du PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Si vous ajoutez un portrait, cette personne devient le personnage principal du livre. Les images générées seront adaptées au même style et utiliseront +1 crédit.'
+  },
+  hi: {
+    'Ekle': 'जोड़ें',
+    'Değiştir': 'बदलें',
+    'Oluştur': 'बनाएँ',
+    'Satın Al': 'खरीदें',
+    'PDF İndir': 'PDF डाउनलोड करें',
+    'EPUB İndir': 'EPUB डाउनलोड करें',
+    'PDF arka planı': 'PDF पृष्ठभूमि',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'यदि आप पोर्ट्रेट जोड़ते हैं, तो यह व्यक्ति पुस्तक का मुख्य पात्र बन जाएगा। बनाई गई छवियां उसी शैली में ढाली जाएंगी और +1 क्रेडिट इस्तेमाल करेंगी।'
+  },
+  id: {
+    'Ekle': 'Tambah',
+    'Değiştir': 'Ubah',
+    'Oluştur': 'Buat',
+    'Satın Al': 'Beli',
+    'PDF İndir': 'Unduh PDF',
+    'EPUB İndir': 'Unduh EPUB',
+    'PDF arka planı': 'Latar PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Jika Anda menambahkan potret, orang ini akan menjadi karakter utama buku. Gambar yang dibuat akan disesuaikan dengan gaya yang sama dan memakai +1 kredit.'
+  },
+  it: {
+    'Ekle': 'Aggiungi',
+    'Değiştir': 'Cambia',
+    'Oluştur': 'Crea',
+    'Satın Al': 'Acquista',
+    'PDF İndir': 'Scarica PDF',
+    'EPUB İndir': 'Scarica EPUB',
+    'PDF arka planı': 'Sfondo PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Se aggiungi un ritratto, questa persona diventa il personaggio principale del libro. Le immagini generate saranno adattate allo stesso stile e useranno +1 credito.'
+  },
+  ja: {
+    'Ekle': '追加',
+    'Değiştir': '変更',
+    'Oluştur': '作成',
+    'Satın Al': '購入',
+    'PDF İndir': 'PDFをダウンロード',
+    'EPUB İndir': 'EPUBをダウンロード',
+    'PDF arka planı': 'PDFの背景',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'ポートレートを追加すると、この人物が本のメインキャラクターになります。生成される画像は同じスタイルに調整され、+1クレジットを使用します。'
+  },
+  ko: {
+    'Ekle': '추가',
+    'Değiştir': '변경',
+    'Oluştur': '만들기',
+    'Satın Al': '구매',
+    'PDF İndir': 'PDF 다운로드',
+    'EPUB İndir': 'EPUB 다운로드',
+    'PDF arka planı': 'PDF 배경',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': '초상화를 추가하면 이 사람이 책의 주인공이 됩니다. 생성된 이미지는 같은 스타일로 맞춰지며 +1 크레딧이 사용됩니다.'
+  },
+  nl: {
+    'Ekle': 'Toevoegen',
+    'Değiştir': 'Wijzigen',
+    'Oluştur': 'Maken',
+    'Satın Al': 'Kopen',
+    'PDF İndir': 'PDF downloaden',
+    'EPUB İndir': 'EPUB downloaden',
+    'PDF arka planı': 'PDF-achtergrond',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Als je een portret toevoegt, wordt deze persoon de hoofdpersoon van het boek. Gegenereerde afbeeldingen worden in dezelfde stijl aangepast en gebruiken +1 credit.'
+  },
+  no: {
+    'Ekle': 'Legg til',
+    'Değiştir': 'Endre',
+    'Oluştur': 'Opprett',
+    'Satın Al': 'Kjøp',
+    'PDF İndir': 'Last ned PDF',
+    'EPUB İndir': 'Last ned EPUB',
+    'PDF arka planı': 'PDF-bakgrunn',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Hvis du legger til et portrett, blir denne personen hovedpersonen i boken. Genererte bilder tilpasses samme stil og bruker +1 kreditt.'
+  },
+  pl: {
+    'Ekle': 'Dodaj',
+    'Değiştir': 'Zmień',
+    'Oluştur': 'Utwórz',
+    'Satın Al': 'Kup',
+    'PDF İndir': 'Pobierz PDF',
+    'EPUB İndir': 'Pobierz EPUB',
+    'PDF arka planı': 'Tło PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Jeśli dodasz portret, ta osoba stanie się główną postacią książki. Wygenerowane obrazy zostaną dopasowane do tego samego stylu i zużyją +1 kredyt.'
+  },
+  'pt-BR': {
+    'Ekle': 'Adicionar',
+    'Değiştir': 'Alterar',
+    'Oluştur': 'Criar',
+    'Satın Al': 'Comprar',
+    'PDF İndir': 'Baixar PDF',
+    'EPUB İndir': 'Baixar EPUB',
+    'PDF arka planı': 'Fundo do PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Se você adicionar um retrato, essa pessoa será o personagem principal do livro. As imagens geradas serão adaptadas ao mesmo estilo e usarão +1 crédito.'
+  },
+  sv: {
+    'Ekle': 'Lägg till',
+    'Değiştir': 'Ändra',
+    'Oluştur': 'Skapa',
+    'Satın Al': 'Köp',
+    'PDF İndir': 'Ladda ner PDF',
+    'EPUB İndir': 'Ladda ner EPUB',
+    'PDF arka planı': 'PDF-bakgrund',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Om du lägger till ett porträtt blir personen bokens huvudperson. Genererade bilder anpassas till samma stil och använder +1 kredit.'
+  },
+  th: {
+    'Ekle': 'เพิ่ม',
+    'Değiştir': 'เปลี่ยน',
+    'Oluştur': 'สร้าง',
+    'Satın Al': 'ซื้อ',
+    'PDF İndir': 'ดาวน์โหลด PDF',
+    'EPUB İndir': 'ดาวน์โหลด EPUB',
+    'PDF arka planı': 'พื้นหลัง PDF',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'หากคุณเพิ่มภาพบุคคล คนนี้จะเป็นตัวละครหลักของหนังสือ ภาพที่สร้างจะปรับให้เข้ากับสไตล์เดียวกันและใช้ +1 เครดิต'
+  },
+  tr: {
+    'Ekle': 'Ekle',
+    'Değiştir': 'Değiştir',
+    'Oluştur': 'Oluştur',
+    'Satın Al': 'Satın Al',
+    'PDF İndir': 'PDF İndir',
+    'EPUB İndir': 'EPUB İndir',
+    'PDF arka planı': 'PDF arka planı',
+    'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.': 'Portre eklerseniz bu kişi kitabın ana karakteri olur. Üretilen görsellerde aynı stile uyarlanır ve +1 kredi kullanır.'
+  }
+};
+
+for (const [language, translations] of Object.entries(ACTION_UI_FALLBACK_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_FALLBACK_TRANSLATIONS[language] = {
+    ...(UI_FALLBACK_TRANSLATIONS[language] || {}),
+    ...translations
+  };
+}
+
+const FAIRY_TALE_AGE_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
+  ar: {
+    '1-6 Yaş': '1-6 سنوات',
+    '7+ Yaş': '7 سنوات فأكثر'
+  },
+  da: {
+    '1-6 Yaş': '1-6 år',
+    '7+ Yaş': '7+ år'
+  },
+  de: {
+    '1-6 Yaş': '1-6 Jahre',
+    '7+ Yaş': '7+ Jahre'
+  },
+  el: {
+    '1-6 Yaş': '1-6 ετών',
+    '7+ Yaş': '7+ ετών'
+  },
+  en: {
+    '1-6 Yaş': 'Ages 1-6',
+    '7+ Yaş': 'Ages 7+'
+  },
+  es: {
+    '1-6 Yaş': '1-6 años',
+    '7+ Yaş': '7+ años'
+  },
+  fi: {
+    '1-6 Yaş': '1-6 vuotta',
+    '7+ Yaş': '7+ vuotta'
+  },
+  fr: {
+    '1-6 Yaş': '1-6 ans',
+    '7+ Yaş': '7 ans et plus'
+  },
+  hi: {
+    '1-6 Yaş': '1-6 वर्ष',
+    '7+ Yaş': '7+ वर्ष'
+  },
+  id: {
+    '1-6 Yaş': '1-6 tahun',
+    '7+ Yaş': '7+ tahun'
+  },
+  it: {
+    '1-6 Yaş': '1-6 anni',
+    '7+ Yaş': '7+ anni'
+  },
+  ja: {
+    '1-6 Yaş': '1～6歳',
+    '7+ Yaş': '7歳以上'
+  },
+  ko: {
+    '1-6 Yaş': '1-6세',
+    '7+ Yaş': '7세 이상'
+  },
+  nl: {
+    '1-6 Yaş': '1-6 jaar',
+    '7+ Yaş': '7+ jaar'
+  },
+  no: {
+    '1-6 Yaş': '1-6 år',
+    '7+ Yaş': '7+ år'
+  },
+  pl: {
+    '1-6 Yaş': '1-6 lat',
+    '7+ Yaş': '7+ lat'
+  },
+  'pt-BR': {
+    '1-6 Yaş': '1-6 anos',
+    '7+ Yaş': '7+ anos'
+  },
+  sv: {
+    '1-6 Yaş': '1-6 år',
+    '7+ Yaş': '7+ år'
+  },
+  th: {
+    '1-6 Yaş': '1-6 ปี',
+    '7+ Yaş': '7+ ปี'
+  },
+  tr: {
+    '1-6 Yaş': '1-6 Yaş',
+    '7+ Yaş': '7+ Yaş'
+  }
+};
+
+for (const [language, translations] of Object.entries(FAIRY_TALE_AGE_UI_FALLBACK_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_FALLBACK_TRANSLATIONS[language] = {
+    ...(UI_FALLBACK_TRANSLATIONS[language] || {}),
+    ...translations
+  };
+}
+
+const CREATE_CONFIRM_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
+  ar: {
+    'Fortale oluşturulsun mu?': 'هل تريد إنشاء Fortale؟',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'سيتم إعداد Fortale جديد بناءً على اختياراتك. راجع الملخص قبل البدء.',
+    'Kitap Türü': 'نوع الكتاب',
+    'Alt Tür': 'النوع الفرعي',
+    'Final': 'النهاية',
+    'Yaş Grubu': 'الفئة العمرية',
+    'Kitap Dili': 'لغة الكتاب',
+    'Kurgu Modu': 'وضع الحبكة',
+    'Kitabın Adı': 'اسم الكتاب',
+    'Hikayenin Zamanı': 'زمن القصة',
+    'Hikayenin Mekanı': 'مكان القصة',
+    'Otomatik kurgu': 'حبكة تلقائية',
+    'Detaylı kurgu': 'حبكة مفصلة',
+    'Portre': 'صورة شخصية',
+    'Portre eklendi': 'تمت إضافة صورة شخصية',
+    'Portre eklenmedi': 'لم تتم إضافة صورة شخصية',
+    'Belirtilmedi': 'غير محدد',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'سيستخدم هذا الإجراء {{creditCount}} رصيدًا.'
+  },
+  da: {
+    'Fortale oluşturulsun mu?': 'Skal Fortale oprettes?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'En ny Fortale forberedes ud fra dine valg. Gennemgå oversigten, før du starter.',
+    'Kitap Türü': 'Bogtype',
+    'Alt Tür': 'Undergenre',
+    'Final': 'Slutning',
+    'Yaş Grubu': 'Aldersgruppe',
+    'Kitap Dili': 'Bogens sprog',
+    'Kurgu Modu': 'Plottilstand',
+    'Kitabın Adı': 'Bogens titel',
+    'Hikayenin Zamanı': 'Historiens tid',
+    'Hikayenin Mekanı': 'Historiens sted',
+    'Otomatik kurgu': 'Automatisk plot',
+    'Detaylı kurgu': 'Detaljeret plot',
+    'Portre': 'Portræt',
+    'Portre eklendi': 'Portræt tilføjet',
+    'Portre eklenmedi': 'Intet portræt tilføjet',
+    'Belirtilmedi': 'Ikke angivet',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Denne handling bruger {{creditCount}} kreditter.'
+  },
+  de: {
+    'Fortale oluşturulsun mu?': 'Fortale erstellen?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Auf Basis deiner Auswahl wird ein neues Fortale vorbereitet. Prüfe vor dem Start die Zusammenfassung.',
+    'Kitap Türü': 'Buchtyp',
+    'Alt Tür': 'Untergenre',
+    'Final': 'Ende',
+    'Yaş Grubu': 'Altersgruppe',
+    'Kitap Dili': 'Buchsprache',
+    'Kurgu Modu': 'Handlungsmodus',
+    'Kitabın Adı': 'Buchtitel',
+    'Hikayenin Zamanı': 'Zeit der Geschichte',
+    'Hikayenin Mekanı': 'Ort der Geschichte',
+    'Otomatik kurgu': 'Automatische Handlung',
+    'Detaylı kurgu': 'Detaillierte Handlung',
+    'Portre': 'Porträt',
+    'Portre eklendi': 'Porträt hinzugefügt',
+    'Portre eklenmedi': 'Kein Porträt hinzugefügt',
+    'Belirtilmedi': 'Nicht angegeben',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Für diesen Vorgang werden {{creditCount}} Credits verwendet.'
+  },
+  el: {
+    'Fortale oluşturulsun mu?': 'Να δημιουργηθεί το Fortale;',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Θα ετοιμαστεί ένα νέο Fortale με βάση τις επιλογές σας. Ελέγξτε τη σύνοψη πριν ξεκινήσετε.',
+    'Kitap Türü': 'Τύπος βιβλίου',
+    'Alt Tür': 'Υποείδος',
+    'Final': 'Τελικό',
+    'Yaş Grubu': 'Ηλικιακή ομάδα',
+    'Kitap Dili': 'Γλώσσα βιβλίου',
+    'Kurgu Modu': 'Λειτουργία πλοκής',
+    'Kitabın Adı': 'Τίτλος βιβλίου',
+    'Hikayenin Zamanı': 'Χρόνος ιστορίας',
+    'Hikayenin Mekanı': 'Τόπος ιστορίας',
+    'Otomatik kurgu': 'Αυτόματη πλοκή',
+    'Detaylı kurgu': 'Λεπτομερής πλοκή',
+    'Portre': 'Πορτρέτο',
+    'Portre eklendi': 'Προστέθηκε πορτρέτο',
+    'Portre eklenmedi': 'Δεν προστέθηκε πορτρέτο',
+    'Belirtilmedi': 'Δεν ορίστηκε',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Αυτή η ενέργεια θα χρησιμοποιήσει {{creditCount}} πιστώσεις.'
+  },
+  en: {
+    'Fortale oluşturulsun mu?': 'Create this Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'A new Fortale will be prepared from your selections. Review the summary before starting.',
+    'Kitap Türü': 'Book type',
+    'Alt Tür': 'Subgenre',
+    'Final': 'Ending',
+    'Yaş Grubu': 'Age group',
+    'Kitap Dili': 'Book language',
+    'Kurgu Modu': 'Story mode',
+    'Kitabın Adı': 'Book title',
+    'Hikayenin Zamanı': 'Story time',
+    'Hikayenin Mekanı': 'Story setting',
+    'Otomatik kurgu': 'Automatic story',
+    'Detaylı kurgu': 'Detailed story',
+    'Portre': 'Portrait',
+    'Portre eklendi': 'Portrait added',
+    'Portre eklenmedi': 'No portrait added',
+    'Belirtilmedi': 'Not specified',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'This action will use {{creditCount}} credits.'
+  },
+  es: {
+    'Fortale oluşturulsun mu?': '¿Crear este Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Se preparará un nuevo Fortale según tus selecciones. Revisa el resumen antes de empezar.',
+    'Kitap Türü': 'Tipo de libro',
+    'Alt Tür': 'Subgénero',
+    'Final': 'Final',
+    'Yaş Grubu': 'Grupo de edad',
+    'Kitap Dili': 'Idioma del libro',
+    'Kurgu Modu': 'Modo de trama',
+    'Kitabın Adı': 'Título del libro',
+    'Hikayenin Zamanı': 'Tiempo de la historia',
+    'Hikayenin Mekanı': 'Lugar de la historia',
+    'Otomatik kurgu': 'Trama automática',
+    'Detaylı kurgu': 'Trama detallada',
+    'Portre': 'Retrato',
+    'Portre eklendi': 'Retrato añadido',
+    'Portre eklenmedi': 'Sin retrato añadido',
+    'Belirtilmedi': 'No especificado',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Esta acción usará {{creditCount}} créditos.'
+  },
+  fi: {
+    'Fortale oluşturulsun mu?': 'Luodaanko tämä Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Uusi Fortale valmistellaan valintojesi perusteella. Tarkista yhteenveto ennen aloittamista.',
+    'Kitap Türü': 'Kirjatyyppi',
+    'Alt Tür': 'Alalaji',
+    'Final': 'Loppu',
+    'Yaş Grubu': 'Ikäryhmä',
+    'Kitap Dili': 'Kirjan kieli',
+    'Kurgu Modu': 'Juonitila',
+    'Kitabın Adı': 'Kirjan nimi',
+    'Hikayenin Zamanı': 'Tarinan aika',
+    'Hikayenin Mekanı': 'Tarinan paikka',
+    'Otomatik kurgu': 'Automaattinen juoni',
+    'Detaylı kurgu': 'Yksityiskohtainen juoni',
+    'Portre': 'Muotokuva',
+    'Portre eklendi': 'Muotokuva lisätty',
+    'Portre eklenmedi': 'Muotokuvaa ei lisätty',
+    'Belirtilmedi': 'Ei määritetty',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Tämä toiminto käyttää {{creditCount}} krediittiä.'
+  },
+  fr: {
+    'Fortale oluşturulsun mu?': 'Créer ce Fortale ?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Un nouveau Fortale sera préparé selon vos choix. Vérifiez le résumé avant de commencer.',
+    'Kitap Türü': 'Type de livre',
+    'Alt Tür': 'Sous-genre',
+    'Final': 'Fin',
+    'Yaş Grubu': 'Tranche d’âge',
+    'Kitap Dili': 'Langue du livre',
+    'Kurgu Modu': 'Mode d’intrigue',
+    'Kitabın Adı': 'Titre du livre',
+    'Hikayenin Zamanı': 'Époque de l’histoire',
+    'Hikayenin Mekanı': 'Lieu de l’histoire',
+    'Otomatik kurgu': 'Intrigue automatique',
+    'Detaylı kurgu': 'Intrigue détaillée',
+    'Portre': 'Portrait',
+    'Portre eklendi': 'Portrait ajouté',
+    'Portre eklenmedi': 'Aucun portrait ajouté',
+    'Belirtilmedi': 'Non indiqué',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Cette action utilisera {{creditCount}} crédits.'
+  },
+  hi: {
+    'Fortale oluşturulsun mu?': 'क्या यह Fortale बनाया जाए?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'आपके चुनावों के आधार पर नया Fortale तैयार किया जाएगा। शुरू करने से पहले सारांश देख लें।',
+    'Kitap Türü': 'पुस्तक प्रकार',
+    'Alt Tür': 'उप-शैली',
+    'Final': 'अंत',
+    'Yaş Grubu': 'आयु समूह',
+    'Kitap Dili': 'पुस्तक की भाषा',
+    'Kurgu Modu': 'कथानक मोड',
+    'Kitabın Adı': 'पुस्तक का नाम',
+    'Hikayenin Zamanı': 'कहानी का समय',
+    'Hikayenin Mekanı': 'कहानी का स्थान',
+    'Otomatik kurgu': 'स्वचालित कथानक',
+    'Detaylı kurgu': 'विस्तृत कथानक',
+    'Portre': 'पोर्ट्रेट',
+    'Portre eklendi': 'पोर्ट्रेट जोड़ा गया',
+    'Portre eklenmedi': 'पोर्ट्रेट नहीं जोड़ा गया',
+    'Belirtilmedi': 'निर्दिष्ट नहीं',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'इस प्रक्रिया में {{creditCount}} क्रेडिट उपयोग होंगे.'
+  },
+  id: {
+    'Fortale oluşturulsun mu?': 'Buat Fortale ini?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Fortale baru akan disiapkan berdasarkan pilihan Anda. Tinjau ringkasannya sebelum memulai.',
+    'Kitap Türü': 'Jenis buku',
+    'Alt Tür': 'Subgenre',
+    'Final': 'Akhir',
+    'Yaş Grubu': 'Kelompok usia',
+    'Kitap Dili': 'Bahasa buku',
+    'Kurgu Modu': 'Mode alur',
+    'Kitabın Adı': 'Judul buku',
+    'Hikayenin Zamanı': 'Waktu cerita',
+    'Hikayenin Mekanı': 'Lokasi cerita',
+    'Otomatik kurgu': 'Alur otomatis',
+    'Detaylı kurgu': 'Alur terperinci',
+    'Portre': 'Potret',
+    'Portre eklendi': 'Potret ditambahkan',
+    'Portre eklenmedi': 'Tidak ada potret',
+    'Belirtilmedi': 'Tidak ditentukan',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Tindakan ini akan memakai {{creditCount}} kredit.'
+  },
+  it: {
+    'Fortale oluşturulsun mu?': 'Creare questo Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Verrà preparato un nuovo Fortale in base alle tue scelte. Controlla il riepilogo prima di iniziare.',
+    'Kitap Türü': 'Tipo di libro',
+    'Alt Tür': 'Sottogenere',
+    'Final': 'Finale',
+    'Yaş Grubu': 'Fascia d’età',
+    'Kitap Dili': 'Lingua del libro',
+    'Kurgu Modu': 'Modalità trama',
+    'Kitabın Adı': 'Titolo del libro',
+    'Hikayenin Zamanı': 'Tempo della storia',
+    'Hikayenin Mekanı': 'Ambientazione',
+    'Otomatik kurgu': 'Trama automatica',
+    'Detaylı kurgu': 'Trama dettagliata',
+    'Portre': 'Ritratto',
+    'Portre eklendi': 'Ritratto aggiunto',
+    'Portre eklenmedi': 'Nessun ritratto aggiunto',
+    'Belirtilmedi': 'Non specificato',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Questa azione userà {{creditCount}} crediti.'
+  },
+  ja: {
+    'Fortale oluşturulsun mu?': 'このFortaleを作成しますか？',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': '選択内容に基づいて新しいFortaleが準備されます。開始前に概要を確認してください。',
+    'Kitap Türü': '本の種類',
+    'Alt Tür': 'サブジャンル',
+    'Final': '結末',
+    'Yaş Grubu': '年齢層',
+    'Kitap Dili': '本の言語',
+    'Kurgu Modu': 'ストーリーモード',
+    'Kitabın Adı': '本のタイトル',
+    'Hikayenin Zamanı': '物語の時代',
+    'Hikayenin Mekanı': '物語の舞台',
+    'Otomatik kurgu': '自動ストーリー',
+    'Detaylı kurgu': '詳細ストーリー',
+    'Portre': 'ポートレート',
+    'Portre eklendi': 'ポートレート追加済み',
+    'Portre eklenmedi': 'ポートレートなし',
+    'Belirtilmedi': '未指定',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'この操作には{{creditCount}}クレジットが使用されます。'
+  },
+  ko: {
+    'Fortale oluşturulsun mu?': '이 Fortale을 만들까요?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': '선택한 내용으로 새 Fortale이 준비됩니다. 시작하기 전에 요약을 확인하세요.',
+    'Kitap Türü': '책 유형',
+    'Alt Tür': '하위 장르',
+    'Final': '결말',
+    'Yaş Grubu': '연령대',
+    'Kitap Dili': '책 언어',
+    'Kurgu Modu': '줄거리 모드',
+    'Kitabın Adı': '책 제목',
+    'Hikayenin Zamanı': '이야기 시간',
+    'Hikayenin Mekanı': '이야기 배경',
+    'Otomatik kurgu': '자동 줄거리',
+    'Detaylı kurgu': '상세 줄거리',
+    'Portre': '초상화',
+    'Portre eklendi': '초상화 추가됨',
+    'Portre eklenmedi': '초상화 없음',
+    'Belirtilmedi': '지정되지 않음',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': '이 작업에는 {{creditCount}} 크레딧이 사용됩니다.'
+  },
+  nl: {
+    'Fortale oluşturulsun mu?': 'Deze Fortale maken?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Er wordt een nieuwe Fortale voorbereid op basis van je keuzes. Controleer de samenvatting voordat je start.',
+    'Kitap Türü': 'Boektype',
+    'Alt Tür': 'Subgenre',
+    'Final': 'Einde',
+    'Yaş Grubu': 'Leeftijdsgroep',
+    'Kitap Dili': 'Boektaal',
+    'Kurgu Modu': 'Verhaalmodus',
+    'Kitabın Adı': 'Boektitel',
+    'Hikayenin Zamanı': 'Tijd van het verhaal',
+    'Hikayenin Mekanı': 'Locatie van het verhaal',
+    'Otomatik kurgu': 'Automatisch verhaal',
+    'Detaylı kurgu': 'Gedetailleerd verhaal',
+    'Portre': 'Portret',
+    'Portre eklendi': 'Portret toegevoegd',
+    'Portre eklenmedi': 'Geen portret toegevoegd',
+    'Belirtilmedi': 'Niet opgegeven',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Deze actie gebruikt {{creditCount}} credits.'
+  },
+  no: {
+    'Fortale oluşturulsun mu?': 'Opprette denne Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'En ny Fortale forberedes basert på valgene dine. Se gjennom sammendraget før du starter.',
+    'Kitap Türü': 'Boktype',
+    'Alt Tür': 'Undersjanger',
+    'Final': 'Avslutning',
+    'Yaş Grubu': 'Aldersgruppe',
+    'Kitap Dili': 'Bokspråk',
+    'Kurgu Modu': 'Handlingsmodus',
+    'Kitabın Adı': 'Boktittel',
+    'Hikayenin Zamanı': 'Historiens tid',
+    'Hikayenin Mekanı': 'Historiens sted',
+    'Otomatik kurgu': 'Automatisk handling',
+    'Detaylı kurgu': 'Detaljert handling',
+    'Portre': 'Portrett',
+    'Portre eklendi': 'Portrett lagt til',
+    'Portre eklenmedi': 'Ingen portrett lagt til',
+    'Belirtilmedi': 'Ikke angitt',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Denne handlingen bruker {{creditCount}} kreditter.'
+  },
+  pl: {
+    'Fortale oluşturulsun mu?': 'Utworzyć ten Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Nowy Fortale zostanie przygotowany na podstawie Twoich wyborów. Sprawdź podsumowanie przed rozpoczęciem.',
+    'Kitap Türü': 'Typ książki',
+    'Alt Tür': 'Podgatunek',
+    'Final': 'Zakończenie',
+    'Yaş Grubu': 'Grupa wiekowa',
+    'Kitap Dili': 'Język książki',
+    'Kurgu Modu': 'Tryb fabuły',
+    'Kitabın Adı': 'Tytuł książki',
+    'Hikayenin Zamanı': 'Czas historii',
+    'Hikayenin Mekanı': 'Miejsce historii',
+    'Otomatik kurgu': 'Automatyczna fabuła',
+    'Detaylı kurgu': 'Szczegółowa fabuła',
+    'Portre': 'Portret',
+    'Portre eklendi': 'Portret dodany',
+    'Portre eklenmedi': 'Nie dodano portretu',
+    'Belirtilmedi': 'Nie określono',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Ta czynność użyje {{creditCount}} kredytów.'
+  },
+  'pt-BR': {
+    'Fortale oluşturulsun mu?': 'Criar este Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Um novo Fortale será preparado com base nas suas escolhas. Revise o resumo antes de começar.',
+    'Kitap Türü': 'Tipo de livro',
+    'Alt Tür': 'Subgênero',
+    'Final': 'Final',
+    'Yaş Grubu': 'Faixa etária',
+    'Kitap Dili': 'Idioma do livro',
+    'Kurgu Modu': 'Modo de enredo',
+    'Kitabın Adı': 'Título do livro',
+    'Hikayenin Zamanı': 'Tempo da história',
+    'Hikayenin Mekanı': 'Local da história',
+    'Otomatik kurgu': 'Enredo automático',
+    'Detaylı kurgu': 'Enredo detalhado',
+    'Portre': 'Retrato',
+    'Portre eklendi': 'Retrato adicionado',
+    'Portre eklenmedi': 'Nenhum retrato adicionado',
+    'Belirtilmedi': 'Não especificado',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Esta ação usará {{creditCount}} créditos.'
+  },
+  sv: {
+    'Fortale oluşturulsun mu?': 'Skapa denna Fortale?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'En ny Fortale förbereds utifrån dina val. Kontrollera sammanfattningen innan du startar.',
+    'Kitap Türü': 'Boktyp',
+    'Alt Tür': 'Undergenre',
+    'Final': 'Slut',
+    'Yaş Grubu': 'Åldersgrupp',
+    'Kitap Dili': 'Bokens språk',
+    'Kurgu Modu': 'Handlingsläge',
+    'Kitabın Adı': 'Boktitel',
+    'Hikayenin Zamanı': 'Berättelsens tid',
+    'Hikayenin Mekanı': 'Berättelsens plats',
+    'Otomatik kurgu': 'Automatisk handling',
+    'Detaylı kurgu': 'Detaljerad handling',
+    'Portre': 'Porträtt',
+    'Portre eklendi': 'Porträtt tillagt',
+    'Portre eklenmedi': 'Inget porträtt tillagt',
+    'Belirtilmedi': 'Inte angivet',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Den här åtgärden använder {{creditCount}} krediter.'
+  },
+  th: {
+    'Fortale oluşturulsun mu?': 'สร้าง Fortale นี้หรือไม่?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Fortale ใหม่จะถูกเตรียมตามตัวเลือกของคุณ โปรดตรวจสอบสรุปก่อนเริ่มต้น',
+    'Kitap Türü': 'ประเภทหนังสือ',
+    'Alt Tür': 'ประเภทย่อย',
+    'Final': 'ตอนจบ',
+    'Yaş Grubu': 'กลุ่มอายุ',
+    'Kitap Dili': 'ภาษาของหนังสือ',
+    'Kurgu Modu': 'โหมดโครงเรื่อง',
+    'Kitabın Adı': 'ชื่อหนังสือ',
+    'Hikayenin Zamanı': 'เวลาของเรื่อง',
+    'Hikayenin Mekanı': 'สถานที่ของเรื่อง',
+    'Otomatik kurgu': 'โครงเรื่องอัตโนมัติ',
+    'Detaylı kurgu': 'โครงเรื่องแบบละเอียด',
+    'Portre': 'ภาพบุคคล',
+    'Portre eklendi': 'เพิ่มภาพบุคคลแล้ว',
+    'Portre eklenmedi': 'ไม่ได้เพิ่มภาพบุคคล',
+    'Belirtilmedi': 'ไม่ได้ระบุ',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'การดำเนินการนี้จะใช้ {{creditCount}} เครดิต'
+  },
+  tr: {
+    'Fortale oluşturulsun mu?': 'Fortale oluşturulsun mu?',
+    'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.': 'Seçimlerinize göre yeni bir Fortale hazırlanacak. Başlamadan önce özeti kontrol edin.',
+    'Kitap Türü': 'Kitap Türü',
+    'Alt Tür': 'Alt Tür',
+    'Final': 'Final',
+    'Yaş Grubu': 'Yaş Grubu',
+    'Kitap Dili': 'Kitap Dili',
+    'Kurgu Modu': 'Kurgu Modu',
+    'Kitabın Adı': 'Kitabın Adı',
+    'Hikayenin Zamanı': 'Hikayenin Zamanı',
+    'Hikayenin Mekanı': 'Hikayenin Mekanı',
+    'Otomatik kurgu': 'Otomatik kurgu',
+    'Detaylı kurgu': 'Detaylı kurgu',
+    'Portre': 'Portre',
+    'Portre eklendi': 'Portre eklendi',
+    'Portre eklenmedi': 'Portre eklenmedi',
+    'Belirtilmedi': 'Belirtilmedi',
+    'Bu işlem için {{creditCount}} kredi kullanılacaktır.': 'Bu işlem için {{creditCount}} kredi kullanılacaktır.'
+  }
+};
+
+for (const [language, translations] of Object.entries(CREATE_CONFIRM_UI_FALLBACK_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_FALLBACK_TRANSLATIONS[language] = {
+    ...(UI_FALLBACK_TRANSLATIONS[language] || {}),
+    ...translations
+  };
+}
+
+const CANCEL_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
+  ar: { 'İptal': 'إلغاء' },
+  da: { 'İptal': 'Annuller' },
+  de: { 'İptal': 'Abbrechen' },
+  el: { 'İptal': 'Ακύρωση' },
+  en: { 'İptal': 'Cancel' },
+  es: { 'İptal': 'Cancelar' },
+  fi: { 'İptal': 'Peruuta' },
+  fr: { 'İptal': 'Annuler' },
+  hi: { 'İptal': 'रद्द करें' },
+  id: { 'İptal': 'Batal' },
+  it: { 'İptal': 'Annulla' },
+  ja: { 'İptal': 'キャンセル' },
+  ko: { 'İptal': '취소' },
+  nl: { 'İptal': 'Annuleren' },
+  no: { 'İptal': 'Avbryt' },
+  pl: { 'İptal': 'Anuluj' },
+  'pt-BR': { 'İptal': 'Cancelar' },
+  sv: { 'İptal': 'Avbryt' },
+  th: { 'İptal': 'ยกเลิก' },
+  tr: { 'İptal': 'İptal' }
+};
+
+for (const [language, translations] of Object.entries(CANCEL_UI_FALLBACK_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_FALLBACK_TRANSLATIONS[language] = {
+    ...(UI_FALLBACK_TRANSLATIONS[language] || {}),
+    ...translations
+  };
+}
+
+const OPTIONAL_BOOK_DETAILS_UI_FALLBACK_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
+  ar: {
+    'Kitap Detayları': 'تفاصيل الكتاب',
+    'Hikayenin Yeri': 'مكان القصة',
+    'Opsiyonel': 'اختياري',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'في الوضع التلقائي، ينشئ النموذج تفاصيل الحبكة بنفسه.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'إذا تركت هذه الحقول فارغة، سيحدد Fortale وقت الكتاب ومكانه واسمه بنفسه.'
+  },
+  da: {
+    'Kitap Detayları': 'Bogdetaljer',
+    'Hikayenin Yeri': 'Historiens sted',
+    'Opsiyonel': 'Valgfrit',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'I automatisk tilstand opretter modellen selv plotdetaljerne.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Hvis du lader felterne stå tomme, vælger Fortale selv bogens tid, sted og titel.'
+  },
+  de: {
+    'Kitap Detayları': 'Buchdetails',
+    'Hikayenin Yeri': 'Ort der Geschichte',
+    'Opsiyonel': 'Optional',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'Im automatischen Modus erstellt das Modell die Handlungsdetails selbst.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Wenn du diese Felder leer lässt, bestimmt Fortale Zeit, Ort und Titel des Buches selbst.'
+  },
+  el: {
+    'Kitap Detayları': 'Λεπτομέρειες βιβλίου',
+    'Hikayenin Yeri': 'Τόπος ιστορίας',
+    'Opsiyonel': 'Προαιρετικό',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'Στην αυτόματη λειτουργία, το μοντέλο δημιουργεί μόνο του τις λεπτομέρειες της πλοκής.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Αν αφήσετε αυτά τα πεδία κενά, το Fortale θα ορίσει μόνο του τον χρόνο, τον τόπο και τον τίτλο του βιβλίου.'
+  },
+  en: {
+    'Kitap Detayları': 'Book details',
+    'Hikayenin Yeri': 'Story location',
+    'Opsiyonel': 'Optional',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'In automatic mode, the model creates the story details itself.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'If you leave these fields empty, Fortale will choose the book time, location, and title.'
+  },
+  es: {
+    'Kitap Detayları': 'Detalles del libro',
+    'Hikayenin Yeri': 'Lugar de la historia',
+    'Opsiyonel': 'Opcional',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'En modo automático, el modelo crea los detalles de la trama por sí mismo.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Si dejas estos campos vacíos, Fortale elegirá el tiempo, el lugar y el título del libro.'
+  },
+  fi: {
+    'Kitap Detayları': 'Kirjan tiedot',
+    'Hikayenin Yeri': 'Tarinan paikka',
+    'Opsiyonel': 'Valinnainen',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'Automaattisessa tilassa malli luo juonen yksityiskohdat itse.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Jos jätät kentät tyhjiksi, Fortale valitsee kirjan ajan, paikan ja nimen itse.'
+  },
+  fr: {
+    'Kitap Detayları': 'Détails du livre',
+    'Hikayenin Yeri': 'Lieu de l’histoire',
+    'Opsiyonel': 'Facultatif',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'En mode automatique, le modèle crée lui-même les détails de l’intrigue.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Si vous laissez ces champs vides, Fortale choisira le moment, le lieu et le titre du livre.'
+  },
+  hi: {
+    'Kitap Detayları': 'पुस्तक विवरण',
+    'Hikayenin Yeri': 'कहानी का स्थान',
+    'Opsiyonel': 'वैकल्पिक',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'स्वचालित मोड में मॉडल कहानी के विवरण स्वयं बनाता है।',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'यदि आप ये फ़ील्ड खाली छोड़ते हैं, तो Fortale पुस्तक का समय, स्थान और नाम स्वयं चुनेगा।'
+  },
+  id: {
+    'Kitap Detayları': 'Detail buku',
+    'Hikayenin Yeri': 'Lokasi cerita',
+    'Opsiyonel': 'Opsional',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'Dalam mode otomatis, model membuat detail alur sendiri.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Jika kolom ini dibiarkan kosong, Fortale akan memilih waktu, lokasi, dan judul buku.'
+  },
+  it: {
+    'Kitap Detayları': 'Dettagli del libro',
+    'Hikayenin Yeri': 'Luogo della storia',
+    'Opsiyonel': 'Facoltativo',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'In modalità automatica, il modello crea da solo i dettagli della trama.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Se lasci vuoti questi campi, Fortale sceglierà tempo, luogo e titolo del libro.'
+  },
+  ja: {
+    'Kitap Detayları': '本の詳細',
+    'Hikayenin Yeri': '物語の場所',
+    'Opsiyonel': '任意',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': '自動モードでは、モデルがストーリーの詳細を自分で作成します。',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'これらを空欄にすると、Fortaleが本の時代、場所、タイトルを自動で決めます。'
+  },
+  ko: {
+    'Kitap Detayları': '책 세부 정보',
+    'Hikayenin Yeri': '이야기 장소',
+    'Opsiyonel': '선택 사항',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': '자동 모드에서는 모델이 줄거리 세부 내용을 직접 만듭니다.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': '이 항목을 비워 두면 Fortale이 책의 시간, 장소, 제목을 직접 정합니다.'
+  },
+  nl: {
+    'Kitap Detayları': 'Boekdetails',
+    'Hikayenin Yeri': 'Locatie van het verhaal',
+    'Opsiyonel': 'Optioneel',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'In automatische modus maakt het model zelf de verhaaldetails.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Als je deze velden leeg laat, kiest Fortale zelf de tijd, locatie en titel van het boek.'
+  },
+  no: {
+    'Kitap Detayları': 'Bokdetaljer',
+    'Hikayenin Yeri': 'Historiens sted',
+    'Opsiyonel': 'Valgfritt',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'I automatisk modus lager modellen handlingsdetaljene selv.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Hvis du lar feltene stå tomme, velger Fortale bokas tid, sted og tittel selv.'
+  },
+  pl: {
+    'Kitap Detayları': 'Szczegóły książki',
+    'Hikayenin Yeri': 'Miejsce historii',
+    'Opsiyonel': 'Opcjonalne',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'W trybie automatycznym model sam tworzy szczegóły fabuły.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Jeśli zostawisz te pola puste, Fortale sam wybierze czas, miejsce i tytuł książki.'
+  },
+  'pt-BR': {
+    'Kitap Detayları': 'Detalhes do livro',
+    'Hikayenin Yeri': 'Local da história',
+    'Opsiyonel': 'Opcional',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'No modo automático, o modelo cria os detalhes do enredo por conta própria.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Se você deixar esses campos vazios, o Fortale escolherá o tempo, o local e o título do livro.'
+  },
+  sv: {
+    'Kitap Detayları': 'Bokdetaljer',
+    'Hikayenin Yeri': 'Berättelsens plats',
+    'Opsiyonel': 'Valfritt',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'I automatiskt läge skapar modellen själv berättelsedetaljerna.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Om du lämnar fälten tomma väljer Fortale själv bokens tid, plats och titel.'
+  },
+  th: {
+    'Kitap Detayları': 'รายละเอียดหนังสือ',
+    'Hikayenin Yeri': 'สถานที่ของเรื่อง',
+    'Opsiyonel': 'ไม่บังคับ',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'ในโหมดอัตโนมัติ โมเดลจะสร้างรายละเอียดโครงเรื่องเอง',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'หากเว้นช่องเหล่านี้ไว้ Fortale จะเลือกเวลา สถานที่ และชื่อหนังสือให้เอง'
+  },
+  tr: {
+    'Kitap Detayları': 'Kitap Detayları',
+    'Hikayenin Yeri': 'Hikayenin Yeri',
+    'Opsiyonel': 'Opsiyonel',
+    'Otomatik modda model kurgu detaylarını kendisi oluşturur.': 'Otomatik modda model kurgu detaylarını kendisi oluşturur.',
+    'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.': 'Bu alanları boş bırakırsanız Fortale kitabın zamanını, yerini ve adını kendisi belirler.'
+  }
+};
+
+for (const [language, translations] of Object.entries(OPTIONAL_BOOK_DETAILS_UI_FALLBACK_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_FALLBACK_TRANSLATIONS[language] = {
+    ...(UI_FALLBACK_TRANSLATIONS[language] || {}),
+    ...translations
+  };
+}
+
 function isSuspiciousTranslation(value: string): boolean {
   const normalized = String(value || '').trim();
   if (!normalized) return false;
@@ -1867,22 +2780,116 @@ const COMMON_UI_FALLBACK_TRANSLATIONS: Partial<Record<AppLanguageCode, Record<st
   tr: {}
 };
 
+const WIZARD_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, Record<string, string>>> = {
+  ar: { 'Evren': 'العالم', 'Konu': 'الموضوع', 'Diğer': 'آخر', 'Kendi alt türünü yaz': 'اكتب النوع الفرعي الخاص بك', 'Kendi temanı yaz': 'اكتب موضوعك الخاص', 'Örn: gerçekçi, büyülü, alternatif evren': 'مثال: واقعي، سحري، عالم بديل' },
+  da: { 'Evren': 'Univers', 'Konu': 'Emne', 'Diğer': 'Andet', 'Kendi alt türünü yaz': 'Skriv din egen undergenre', 'Kendi temanı yaz': 'Skriv dit eget tema', 'Örn: gerçekçi, büyülü, alternatif evren': 'Fx realistisk, magisk, alternativt univers' },
+  de: { 'Evren': 'Universum', 'Konu': 'Thema', 'Diğer': 'Andere', 'Kendi alt türünü yaz': 'Eigene Untergattung eingeben', 'Kendi temanı yaz': 'Eigenes Thema eingeben', 'Örn: gerçekçi, büyülü, alternatif evren': 'Z. B. realistisch, magisch, alternatives Universum' },
+  el: { 'Evren': 'Σύμπαν', 'Konu': 'Θέμα', 'Diğer': 'Άλλο', 'Kendi alt türünü yaz': 'Γράψτε το δικό σας υποείδος', 'Kendi temanı yaz': 'Γράψτε το δικό σας θέμα', 'Örn: gerçekçi, büyülü, alternatif evren': 'Π.χ. ρεαλιστικό, μαγικό, εναλλακτικό σύμπαν' },
+  en: { 'Evren': 'Universe', 'Konu': 'Topic', 'Diğer': 'Other', 'Kendi alt türünü yaz': 'Write your own subgenre', 'Kendi temanı yaz': 'Write your own theme', 'Örn: gerçekçi, büyülü, alternatif evren': 'E.g. realistic, magical, alternate universe' },
+  es: { 'Evren': 'Universo', 'Konu': 'Tema', 'Diğer': 'Otro', 'Kendi alt türünü yaz': 'Escribe tu propio subgénero', 'Kendi temanı yaz': 'Escribe tu propio tema', 'Örn: gerçekçi, büyülü, alternatif evren': 'Ej.: realista, mágico, universo alternativo' },
+  fi: { 'Evren': 'Universumi', 'Konu': 'Aihe', 'Diğer': 'Muu', 'Kendi alt türünü yaz': 'Kirjoita oma alalajisi', 'Kendi temanı yaz': 'Kirjoita oma teemasi', 'Örn: gerçekçi, büyülü, alternatif evren': 'Esim. realistinen, maaginen, vaihtoehtoinen universumi' },
+  fr: { 'Evren': 'Univers', 'Konu': 'Sujet', 'Diğer': 'Autre', 'Kendi alt türünü yaz': 'Écris ton propre sous-genre', 'Kendi temanı yaz': 'Écris ton propre thème', 'Örn: gerçekçi, büyülü, alternatif evren': 'Ex. réaliste, magique, univers alternatif' },
+  hi: { 'Evren': 'ब्रह्मांड', 'Konu': 'विषय', 'Diğer': 'अन्य', 'Kendi alt türünü yaz': 'अपनी उप-शैली लिखें', 'Kendi temanı yaz': 'अपनी थीम लिखें', 'Örn: gerçekçi, büyülü, alternatif evren': 'उदा. यथार्थवादी, जादुई, वैकल्पिक ब्रह्मांड' },
+  id: { 'Evren': 'Semesta', 'Konu': 'Topik', 'Diğer': 'Lainnya', 'Kendi alt türünü yaz': 'Tulis subgenre sendiri', 'Kendi temanı yaz': 'Tulis tema sendiri', 'Örn: gerçekçi, büyülü, alternatif evren': 'Mis. realistis, magis, semesta alternatif' },
+  it: { 'Evren': 'Universo', 'Konu': 'Argomento', 'Diğer': 'Altro', 'Kendi alt türünü yaz': 'Scrivi il tuo sottogenere', 'Kendi temanı yaz': 'Scrivi il tuo tema', 'Örn: gerçekçi, büyülü, alternatif evren': 'Es. realistico, magico, universo alternativo' },
+  ja: { 'Evren': '世界観', 'Konu': 'トピック', 'Diğer': 'その他', 'Kendi alt türünü yaz': '独自のサブジャンルを書く', 'Kendi temanı yaz': '独自のテーマを書く', 'Örn: gerçekçi, büyülü, alternatif evren': '例: 現実的、魔法的、別世界' },
+  ko: { 'Evren': '세계관', 'Konu': '주제', 'Diğer': '기타', 'Kendi alt türünü yaz': '직접 하위 장르 쓰기', 'Kendi temanı yaz': '직접 테마 쓰기', 'Örn: gerçekçi, büyülü, alternatif evren': '예: 현실적, 마법적, 대체 우주' },
+  nl: { 'Evren': 'Universum', 'Konu': 'Onderwerp', 'Diğer': 'Anders', 'Kendi alt türünü yaz': 'Schrijf je eigen subgenre', 'Kendi temanı yaz': 'Schrijf je eigen thema', 'Örn: gerçekçi, büyülü, alternatif evren': 'Bijv. realistisch, magisch, alternatief universum' },
+  no: { 'Evren': 'Univers', 'Konu': 'Tema', 'Diğer': 'Annet', 'Kendi alt türünü yaz': 'Skriv din egen undersjanger', 'Kendi temanı yaz': 'Skriv ditt eget tema', 'Örn: gerçekçi, büyülü, alternatif evren': 'F.eks. realistisk, magisk, alternativt univers' },
+  pl: { 'Evren': 'Uniwersum', 'Konu': 'Temat', 'Diğer': 'Inne', 'Kendi alt türünü yaz': 'Wpisz własny podgatunek', 'Kendi temanı yaz': 'Wpisz własny motyw', 'Örn: gerçekçi, büyülü, alternatif evren': 'Np. realistyczny, magiczny, alternatywny wszechświat' },
+  'pt-BR': { 'Evren': 'Universo', 'Konu': 'Tema', 'Diğer': 'Outro', 'Kendi alt türünü yaz': 'Escreva seu próprio subgênero', 'Kendi temanı yaz': 'Escreva seu próprio tema', 'Örn: gerçekçi, büyülü, alternatif evren': 'Ex.: realista, mágico, universo alternativo' },
+  sv: { 'Evren': 'Universum', 'Konu': 'Ämne', 'Diğer': 'Annat', 'Kendi alt türünü yaz': 'Skriv din egen undergenre', 'Kendi temanı yaz': 'Skriv ditt eget tema', 'Örn: gerçekçi, büyülü, alternatif evren': 'T.ex. realistiskt, magiskt, alternativt universum' },
+  th: { 'Evren': 'จักรวาล', 'Konu': 'หัวข้อ', 'Diğer': 'อื่น ๆ', 'Kendi alt türünü yaz': 'เขียนประเภทย่อยของคุณเอง', 'Kendi temanı yaz': 'เขียนธีมของคุณเอง', 'Örn: gerçekçi, büyülü, alternatif evren': 'เช่น สมจริง เวทมนตร์ จักรวาลทางเลือก' }
+};
+
+const WORKBOOK_WIZARD_KEYS = [
+  'Çalışma Kitabı Türü',
+  'Ek İçerikler',
+  'Seviye',
+  'İlkokul',
+  'Somut, sade ve bol açıklamalı anlatım',
+  'Ortaokul',
+  'Kavram, örnek ve temel akademik yapı dengesi',
+  'Üniversite',
+  'Daha teknik, kavramsal ve analitik anlatım',
+  'Bilimsel',
+  'Genel Kültür',
+  'Ders Kitabı',
+  'Araştırma',
+  'Örnekler',
+  'Gerçek yaşam bağlantıları anlatıma yedirilir',
+  'Quiz',
+  '8 çoktan seçmeli + 4 doğru/yanlış soru eklenir',
+  'İlgili Kitaplar',
+  'En az 4 okuma önerisi eklenir',
+  'Örn: Paralel evrenler, fotosentez veya kuantum bilgisayarlar',
+  'Seçilmedi',
+  'Bilimsel konu anlatımı, poster, quiz ve kaynak önerileri'
+] as const;
+
+const WORKBOOK_WIZARD_TRANSLATION_ROWS: Partial<Record<AppLanguageCode, readonly string[]>> = {
+  ar: ['نوع كتاب التمارين', 'محتوى إضافي', 'المستوى', 'المرحلة الابتدائية', 'شرح ملموس وبسيط ومفصل', 'المرحلة المتوسطة', 'توازن بين المفاهيم والأمثلة والبنية الأكاديمية الأساسية', 'الجامعة', 'شرح أكثر تقنية ومفاهيمية وتحليلية', 'علمي', 'ثقافة عامة', 'كتاب دراسي', 'بحث', 'أمثلة', 'تُدمج الروابط بالحياة الواقعية في الشرح', 'اختبار', 'يُضاف 8 أسئلة اختيار من متعدد و4 أسئلة صح أو خطأ', 'كتب ذات صلة', 'تُضاف 4 توصيات قراءة على الأقل', 'مثال: الأكوان المتوازية أو البناء الضوئي أو الحواسيب الكمومية', 'غير محدد', 'شرح علمي وملصقات واختبار وتوصيات للقراءة'],
+  da: ['Arbejdsbogstype', 'Ekstra indhold', 'Niveau', 'Grundskole', 'Konkret, enkel og grundigt forklaret formidling', 'Mellemskole', 'Balance mellem begreber, eksempler og grundlæggende akademisk struktur', 'Universitet', 'Mere teknisk, begrebslig og analytisk formidling', 'Videnskabelig', 'Almen viden', 'Lærebog', 'Forskning', 'Eksempler', 'Virkelige forbindelser flettes ind i forklaringen', 'Quiz', 'Tilføjer 8 multiple choice- og 4 sandt/falsk-spørgsmål', 'Relaterede bøger', 'Tilføjer mindst 4 læseanbefalinger', 'Fx parallelle universer, fotosyntese eller kvantecomputere', 'Ikke valgt', 'Videnskabelig forklaring, plakater, quiz og læseforslag'],
+  de: ['Arbeitsbuchtyp', 'Zusatzinhalte', 'Niveau', 'Grundschule', 'Konkrete, einfache und ausführlich erklärte Darstellung', 'Sekundarstufe I', 'Ausgewogenheit von Begriffen, Beispielen und akademischen Grundlagen', 'Universität', 'Technischere, begriffliche und analytische Darstellung', 'Wissenschaftlich', 'Allgemeinwissen', 'Lehrbuch', 'Forschung', 'Beispiele', 'Bezüge zum wirklichen Leben werden in die Erklärung eingebunden', 'Quiz', 'Fügt 8 Multiple-Choice- und 4 Richtig/Falsch-Fragen hinzu', 'Weiterführende Bücher', 'Fügt mindestens 4 Leseempfehlungen hinzu', 'Z. B. Paralleluniversen, Photosynthese oder Quantencomputer', 'Nicht ausgewählt', 'Wissenschaftliche Erklärung, Poster, Quiz und Leseempfehlungen'],
+  el: ['Τύπος βιβλίου εργασίας', 'Πρόσθετο περιεχόμενο', 'Επίπεδο', 'Δημοτικό', 'Συγκεκριμένη, απλή και αναλυτική εξήγηση', 'Γυμνάσιο', 'Ισορροπία εννοιών, παραδειγμάτων και βασικής ακαδημαϊκής δομής', 'Πανεπιστήμιο', 'Πιο τεχνική, εννοιολογική και αναλυτική παρουσίαση', 'Επιστημονικό', 'Γενικές γνώσεις', 'Σχολικό βιβλίο', 'Έρευνα', 'Παραδείγματα', 'Οι συνδέσεις με την πραγματική ζωή ενσωματώνονται στην εξήγηση', 'Κουίζ', 'Προστίθενται 8 ερωτήσεις πολλαπλής επιλογής και 4 σωστό/λάθος', 'Σχετικά βιβλία', 'Προστίθενται τουλάχιστον 4 προτάσεις ανάγνωσης', 'Π.χ. παράλληλα σύμπαντα, φωτοσύνθεση ή κβαντικοί υπολογιστές', 'Δεν επιλέχθηκε', 'Επιστημονική εξήγηση, αφίσες, κουίζ και προτάσεις ανάγνωσης'],
+  en: ['Workbook Type', 'Additional Content', 'Level', 'Primary School', 'Concrete, simple, and thoroughly explained', 'Middle School', 'A balance of concepts, examples, and basic academic structure', 'University', 'More technical, conceptual, and analytical', 'Scientific', 'General Knowledge', 'Textbook', 'Research', 'Examples', 'Real-life connections are woven into the explanation', 'Quiz', 'Adds 8 multiple-choice and 4 true/false questions', 'Related Books', 'Adds at least 4 reading recommendations', 'E.g. parallel universes, photosynthesis, or quantum computers', 'Not selected', 'Scientific explanation, posters, quiz, and reading recommendations'],
+  es: ['Tipo de cuaderno de estudio', 'Contenido adicional', 'Nivel', 'Primaria', 'Explicación concreta, sencilla y detallada', 'Secundaria', 'Equilibrio entre conceptos, ejemplos y estructura académica básica', 'Universidad', 'Explicación más técnica, conceptual y analítica', 'Científico', 'Cultura general', 'Libro de texto', 'Investigación', 'Ejemplos', 'Las conexiones con la vida real se integran en la explicación', 'Cuestionario', 'Añade 8 preguntas de opción múltiple y 4 de verdadero/falso', 'Libros relacionados', 'Añade al menos 4 recomendaciones de lectura', 'Ej.: universos paralelos, fotosíntesis u ordenadores cuánticos', 'Sin seleccionar', 'Explicación científica, pósteres, cuestionario y recomendaciones de lectura'],
+  fi: ['Työkirjan tyyppi', 'Lisäsisällöt', 'Taso', 'Alakoulu', 'Konkreettinen, selkeä ja perusteellisesti selitetty esitys', 'Yläkoulu', 'Tasapaino käsitteiden, esimerkkien ja akateemisten perusteiden välillä', 'Yliopisto', 'Teknisempi, käsitteellisempi ja analyyttisempi esitys', 'Tieteellinen', 'Yleistieto', 'Oppikirja', 'Tutkimus', 'Esimerkit', 'Yhteydet tosielämään punotaan osaksi selitystä', 'Tietovisa', 'Lisää 8 monivalinta- ja 4 oikein/väärin-kysymystä', 'Aiheeseen liittyvät kirjat', 'Lisää vähintään 4 lukusuositusta', 'Esim. rinnakkaisuniversumit, fotosynteesi tai kvanttitietokoneet', 'Ei valittu', 'Tieteellinen selitys, julisteet, tietovisa ja lukusuositukset'],
+  fr: ['Type de cahier d’étude', 'Contenu supplémentaire', 'Niveau', 'École primaire', 'Explication concrète, simple et détaillée', 'Collège', 'Équilibre entre concepts, exemples et structure académique de base', 'Université', 'Présentation plus technique, conceptuelle et analytique', 'Scientifique', 'Culture générale', 'Manuel scolaire', 'Recherche', 'Exemples', 'Les liens avec la vie réelle sont intégrés à l’explication', 'Quiz', 'Ajoute 8 QCM et 4 questions vrai/faux', 'Livres associés', 'Ajoute au moins 4 recommandations de lecture', 'Ex. : univers parallèles, photosynthèse ou ordinateurs quantiques', 'Non sélectionné', 'Explication scientifique, posters, quiz et recommandations de lecture'],
+  hi: ['कार्यपुस्तिका का प्रकार', 'अतिरिक्त सामग्री', 'स्तर', 'प्राथमिक विद्यालय', 'ठोस, सरल और विस्तार से समझाया गया वर्णन', 'मिडिल स्कूल', 'अवधारणाओं, उदाहरणों और बुनियादी अकादमिक संरचना का संतुलन', 'विश्वविद्यालय', 'अधिक तकनीकी, वैचारिक और विश्लेषणात्मक वर्णन', 'वैज्ञानिक', 'सामान्य ज्ञान', 'पाठ्यपुस्तक', 'शोध', 'उदाहरण', 'वास्तविक जीवन के संबंधों को व्याख्या में पिरोया जाता है', 'क्विज़', '8 बहुविकल्पीय और 4 सही/गलत प्रश्न जोड़ता है', 'संबंधित पुस्तकें', 'कम से कम 4 पठन सुझाव जोड़ता है', 'जैसे: समानांतर ब्रह्मांड, प्रकाश संश्लेषण या क्वांटम कंप्यूटर', 'चयनित नहीं', 'वैज्ञानिक व्याख्या, पोस्टर, क्विज़ और पठन सुझाव'],
+  id: ['Jenis Buku Kerja', 'Konten Tambahan', 'Tingkat', 'Sekolah Dasar', 'Penjelasan konkret, sederhana, dan terperinci', 'Sekolah Menengah', 'Keseimbangan konsep, contoh, dan struktur akademik dasar', 'Universitas', 'Penyajian yang lebih teknis, konseptual, dan analitis', 'Ilmiah', 'Pengetahuan Umum', 'Buku Pelajaran', 'Penelitian', 'Contoh', 'Kaitan dengan kehidupan nyata dipadukan ke dalam penjelasan', 'Kuis', 'Menambahkan 8 soal pilihan ganda dan 4 soal benar/salah', 'Buku Terkait', 'Menambahkan setidaknya 4 rekomendasi bacaan', 'Mis. alam semesta paralel, fotosintesis, atau komputer kuantum', 'Tidak dipilih', 'Penjelasan ilmiah, poster, kuis, dan rekomendasi bacaan'],
+  it: ['Tipo di quaderno di studio', 'Contenuti aggiuntivi', 'Livello', 'Scuola primaria', 'Spiegazione concreta, semplice e dettagliata', 'Scuola media', 'Equilibrio tra concetti, esempi e struttura accademica di base', 'Università', 'Presentazione più tecnica, concettuale e analitica', 'Scientifico', 'Cultura generale', 'Libro di testo', 'Ricerca', 'Esempi', 'I collegamenti con la vita reale sono integrati nella spiegazione', 'Quiz', 'Aggiunge 8 domande a scelta multipla e 4 vero/falso', 'Libri correlati', 'Aggiunge almeno 4 consigli di lettura', 'Es. universi paralleli, fotosintesi o computer quantistici', 'Non selezionato', 'Spiegazione scientifica, poster, quiz e consigli di lettura'],
+  ja: ['学習ワークブックの種類', '追加コンテンツ', 'レベル', '小学校', '具体的でわかりやすく、丁寧な説明', '中学校', '概念・例・基本的な学術構成のバランス', '大学', 'より専門的・概念的・分析的な説明', '科学', '一般教養', '教科書', '研究', '例', '実生活とのつながりを説明に自然に織り込みます', 'クイズ', '選択式8問と正誤式4問を追加します', '関連書籍', '少なくとも4冊の推薦図書を追加します', '例：並行宇宙、光合成、量子コンピューター', '未選択', '科学的な解説、ポスター、クイズ、推薦図書'],
+  ko: ['학습 워크북 유형', '추가 콘텐츠', '수준', '초등학교', '구체적이고 쉽고 자세한 설명', '중학교', '개념, 예시, 기본 학술 구조의 균형', '대학교', '더 기술적이고 개념적이며 분석적인 설명', '과학', '일반 상식', '교과서', '연구', '예시', '실생활 연관성을 설명에 자연스럽게 녹입니다', '퀴즈', '객관식 8문항과 참/거짓 4문항을 추가합니다', '관련 도서', '최소 4권의 추천 도서를 추가합니다', '예: 평행 우주, 광합성 또는 양자 컴퓨터', '선택 안 함', '과학적 설명, 포스터, 퀴즈 및 추천 도서'],
+  nl: ['Type werkboek', 'Extra inhoud', 'Niveau', 'Basisschool', 'Concrete, eenvoudige en uitvoerig uitgelegde presentatie', 'Middelbare school', 'Balans tussen begrippen, voorbeelden en academische basisstructuur', 'Universiteit', 'Technischere, conceptuele en analytische presentatie', 'Wetenschappelijk', 'Algemene kennis', 'Leerboek', 'Onderzoek', 'Voorbeelden', 'Verbanden met het echte leven worden in de uitleg verweven', 'Quiz', 'Voegt 8 meerkeuze- en 4 waar/onwaar-vragen toe', 'Gerelateerde boeken', 'Voegt minstens 4 leesaanbevelingen toe', 'Bijv. parallelle universums, fotosynthese of kwantumcomputers', 'Niet geselecteerd', 'Wetenschappelijke uitleg, posters, quiz en leesaanbevelingen'],
+  no: ['Arbeidsboktype', 'Ekstra innhold', 'Nivå', 'Barneskole', 'Konkret, enkel og grundig forklart fremstilling', 'Ungdomsskole', 'Balanse mellom begreper, eksempler og grunnleggende akademisk struktur', 'Universitet', 'Mer teknisk, konseptuell og analytisk fremstilling', 'Vitenskapelig', 'Allmennkunnskap', 'Lærebok', 'Forskning', 'Eksempler', 'Koblinger til virkeligheten flettes inn i forklaringen', 'Quiz', 'Legger til 8 flervalgs- og 4 sant/usant-spørsmål', 'Relaterte bøker', 'Legger til minst 4 leseanbefalinger', 'F.eks. parallelle universer, fotosyntese eller kvantedatamaskiner', 'Ikke valgt', 'Vitenskapelig forklaring, plakater, quiz og leseanbefalinger'],
+  pl: ['Typ zeszytu ćwiczeń', 'Dodatkowa zawartość', 'Poziom', 'Szkoła podstawowa', 'Konkretne, proste i szczegółowe wyjaśnienie', 'Szkoła średnia', 'Równowaga pojęć, przykładów i podstawowej struktury akademickiej', 'Uniwersytet', 'Bardziej techniczne, pojęciowe i analityczne ujęcie', 'Naukowy', 'Wiedza ogólna', 'Podręcznik', 'Badania', 'Przykłady', 'Powiązania z rzeczywistym życiem są wplecione w wyjaśnienie', 'Quiz', 'Dodaje 8 pytań wielokrotnego wyboru i 4 prawda/fałsz', 'Powiązane książki', 'Dodaje co najmniej 4 rekomendacje lektur', 'Np. wszechświaty równoległe, fotosynteza lub komputery kwantowe', 'Nie wybrano', 'Wyjaśnienie naukowe, plakaty, quiz i rekomendacje lektur'],
+  'pt-BR': ['Tipo de livro de estudo', 'Conteúdo adicional', 'Nível', 'Ensino fundamental I', 'Explicação concreta, simples e detalhada', 'Ensino fundamental II', 'Equilíbrio entre conceitos, exemplos e estrutura acadêmica básica', 'Universidade', 'Apresentação mais técnica, conceitual e analítica', 'Científico', 'Conhecimentos gerais', 'Livro didático', 'Pesquisa', 'Exemplos', 'Conexões com a vida real são integradas à explicação', 'Quiz', 'Adiciona 8 questões de múltipla escolha e 4 de verdadeiro/falso', 'Livros relacionados', 'Adiciona pelo menos 4 recomendações de leitura', 'Ex.: universos paralelos, fotossíntese ou computadores quânticos', 'Não selecionado', 'Explicação científica, pôsteres, quiz e recomendações de leitura'],
+  sv: ['Typ av arbetsbok', 'Extra innehåll', 'Nivå', 'Grundskola', 'Konkret, enkel och utförligt förklarad framställning', 'Högstadium', 'Balans mellan begrepp, exempel och grundläggande akademisk struktur', 'Universitet', 'Mer teknisk, begreppslig och analytisk framställning', 'Vetenskaplig', 'Allmänbildning', 'Lärobok', 'Forskning', 'Exempel', 'Kopplingar till verkliga livet vävs in i förklaringen', 'Quiz', 'Lägger till 8 flervals- och 4 sant/falskt-frågor', 'Relaterade böcker', 'Lägger till minst 4 läsrekommendationer', 'T.ex. parallella universum, fotosyntes eller kvantdatorer', 'Inte valt', 'Vetenskaplig förklaring, affischer, quiz och läsrekommendationer'],
+  th: ['ประเภทแบบฝึกหัด', 'เนื้อหาเพิ่มเติม', 'ระดับ', 'ประถมศึกษา', 'คำอธิบายที่เป็นรูปธรรม เรียบง่าย และละเอียด', 'มัธยมศึกษา', 'สมดุลระหว่างแนวคิด ตัวอย่าง และโครงสร้างวิชาการพื้นฐาน', 'มหาวิทยาลัย', 'คำอธิบายที่เป็นเชิงเทคนิค แนวคิด และวิเคราะห์มากขึ้น', 'วิทยาศาสตร์', 'ความรู้ทั่วไป', 'ตำราเรียน', 'การวิจัย', 'ตัวอย่าง', 'เชื่อมโยงชีวิตจริงเข้ากับคำอธิบายอย่างเป็นธรรมชาติ', 'แบบทดสอบ', 'เพิ่มคำถามปรนัย 8 ข้อและถูก/ผิด 4 ข้อ', 'หนังสือที่เกี่ยวข้อง', 'เพิ่มคำแนะนำการอ่านอย่างน้อย 4 รายการ', 'เช่น จักรวาลคู่ขนาน การสังเคราะห์ด้วยแสง หรือคอมพิวเตอร์ควอนตัม', 'ไม่ได้เลือก', 'คำอธิบายเชิงวิทยาศาสตร์ โปสเตอร์ แบบทดสอบ และคำแนะนำการอ่าน']
+};
+
+function translateWorkbookWizardText(language: AppLanguageCode, value: string): string | undefined {
+  const keyIndex = WORKBOOK_WIZARD_KEYS.indexOf(value as (typeof WORKBOOK_WIZARD_KEYS)[number]);
+  if (keyIndex < 0) return undefined;
+  return WORKBOOK_WIZARD_TRANSLATION_ROWS[language]?.[keyIndex];
+}
+
 function translateText(language: AppLanguageCode, value: string): string {
   if (!value || language === 'tr') return value;
 
-  // Primary: generated translations from UI_TRANSLATIONS
-  const map = getTranslationMap(language);
-  const primary = map.get(value);
-  if (primary && primary !== value) return primary;
+  const supplement = UI_TRANSLATION_SUPPLEMENTS[language]?.[value];
+  if (supplement) return supplement;
+
+  const libraryDashboardTranslation = LIBRARY_DASHBOARD_UI_TRANSLATIONS[language]?.[value];
+  if (libraryDashboardTranslation) return libraryDashboardTranslation;
+
+  const communityTranslation = COMMUNITY_UI_TRANSLATIONS[language]?.[value];
+  if (communityTranslation) return communityTranslation;
+
+  const wizardTranslation = WIZARD_UI_TRANSLATIONS[language]?.[value];
+  if (wizardTranslation) return wizardTranslation;
+
+  const workbookWizardTranslation = translateWorkbookWizardText(language, value);
+  if (workbookWizardTranslation) return workbookWizardTranslation;
 
   const commonFallback = COMMON_UI_FALLBACK_TRANSLATIONS[language]?.[value];
   if (commonFallback) return commonFallback;
 
-  // Secondary: hand-curated fallback entries
+  // Hand-curated fallback entries are intentionally preferred over generated translations.
   const fallback = UI_FALLBACK_TRANSLATIONS[language]?.[value];
   if (fallback) return fallback;
 
+  const map = getTranslationMap(language);
+  const primary = map.get(value);
+  if (primary && primary !== value) return primary;
+
   return value;
+}
+
+export async function translateUiTextForCoverageCheck(language: AppLanguageCode, value: string): Promise<string> {
+  await ensureTranslationMap(language);
+  return translateText(language, value);
 }
 
 export function UiI18nProvider({
@@ -1959,11 +2966,19 @@ export function UiI18nProvider({
     });
 
     return () => observer.disconnect();
-  }, [language]);
+  }, [language, translationVersion]);
+
+  const isTranslationReady = translationMaps.has(language);
 
   return (
     <UiI18nContext.Provider value={value}>
-      {children}
+      {isTranslationReady ? children : (
+        <div
+          className="fixed inset-0 bg-[#061224]"
+          aria-hidden="true"
+          data-no-ui-translate="true"
+        />
+      )}
     </UiI18nContext.Provider>
   );
 }

@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Bell, LogOut, Save, ShieldCheck, Trash2, User, UserRoundPen } from 'lucide-react';
+import { Activity, AlertTriangle, Bell, Download, LogOut, Save, ShieldCheck, Trash2, User, UserRoundPen } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
 import { useUiI18n } from '../i18n/uiI18n';
+import { functions } from '../firebaseConfig';
+import FaviconSpinner from '../components/FaviconSpinner';
 
 interface ProfileViewProps {
   userName: string;
   userEmail?: string;
   isGuestSession?: boolean;
+  savedBookCount?: number;
   onLogout: () => void | Promise<void>;
   onUpdateProfileName?: (nextName: string) => void | Promise<void>;
   onDeleteMyData?: () => void | Promise<void>;
@@ -14,10 +18,25 @@ interface ProfileViewProps {
 
 type ProfileDangerAction = 'delete-data' | 'delete-account' | null;
 
+type CommunityProfileResult = {
+  profile: {
+    userId: string;
+    alias?: string;
+    followerCount: number;
+    followingCount: number;
+    publicationCount: number;
+    totalLikeCount: number;
+    totalDownloadCount: number;
+  };
+};
+
+const getCommunityProfileFn = httpsCallable<Record<string, unknown>, CommunityProfileResult>(functions, 'getCommunityProfile');
+
 export default function ProfileView({
   userName,
   userEmail,
   isGuestSession = false,
+  savedBookCount = 0,
   onLogout,
   onUpdateProfileName,
   onDeleteMyData,
@@ -31,6 +50,8 @@ export default function ProfileView({
   const [isDangerActionBusy, setDangerActionBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [communityDashboard, setCommunityDashboard] = useState<CommunityProfileResult | null>(null);
+  const [isCommunityDashboardLoading, setIsCommunityDashboardLoading] = useState(false);
   const statusToastTimerRef = useRef<number | null>(null);
   const canManageAccount = !isGuestSession;
 
@@ -47,28 +68,35 @@ export default function ProfileView({
     ) {
       return t('Oturum doğrulanamadı. Lütfen tekrar giriş yapın.');
     }
-    if (
-      normalized.includes('resource_exhausted') ||
-      normalized.includes('resource exhausted') ||
-      normalized.includes('quota') ||
-      normalized.includes('rate limit') ||
-      normalized.includes('"code":429') ||
-      normalized.includes('http 4') ||
-      normalized.includes('http 5') ||
-      normalized.includes('functions/') ||
-      normalized.includes('internal') ||
-      normalized.includes('unavailable') ||
-      normalized.includes('failed-precondition') ||
-      normalized.includes('deadline-exceeded')
-    ) {
-      return fallback;
-    }
     return fallback;
   };
 
   useEffect(() => {
     setNameInput(userName);
   }, [userName]);
+
+  useEffect(() => {
+    if (isGuestSession) {
+      setCommunityDashboard(null);
+      setIsCommunityDashboardLoading(false);
+      return;
+    }
+    let isCancelled = false;
+    setIsCommunityDashboardLoading(true);
+    getCommunityProfileFn({})
+      .then((result) => {
+        if (!isCancelled) setCommunityDashboard(result.data);
+      })
+      .catch(() => {
+        if (!isCancelled) setCommunityDashboard(null);
+      })
+      .finally(() => {
+        if (!isCancelled) setIsCommunityDashboardLoading(false);
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [isGuestSession]);
 
   const dangerModalMeta = useMemo(() => {
     if (pendingDangerAction === 'delete-data') {
@@ -155,12 +183,14 @@ export default function ProfileView({
     };
   }, []);
 
+  const dashboardProfile = communityDashboard?.profile;
+
   return (
     <div className="view-container">
       {pendingDangerAction && dangerModalMeta && (
         <div className="fixed inset-0 z-[980] flex items-center justify-center px-4">
           <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setPendingDangerAction(null)} />
-          <div className="relative w-full max-w-sm rounded-2xl border border-dashed p-4" style={{ background: 'rgba(15,23,34,0.96)', borderColor: 'rgba(228,120,120,0.38)' }}>
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f1722]/95 p-4 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.9)]">
             <div className="flex items-center gap-2">
               <AlertTriangle size={16} className="text-[#ffb3a8]" />
               <p className="text-[14px] font-bold text-white">{dangerModalMeta.title}</p>
@@ -172,8 +202,7 @@ export default function ProfileView({
               <button
                 type="button"
                 onClick={() => setPendingDangerAction(null)}
-                className="h-9 rounded-xl border border-dashed px-3 text-[12px] font-semibold text-[#c9ddf4]"
-                style={{ borderColor: 'rgba(126,158,194,0.42)', background: 'rgba(20,34,52,0.72)' }}
+                className="h-9 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-[12px] font-semibold text-[#d8e8f8]"
               >
                 {t('Vazgeç')}
               </button>
@@ -181,8 +210,7 @@ export default function ProfileView({
                 type="button"
                 onClick={handleConfirmDangerAction}
                 disabled={isDangerActionBusy}
-                className="h-9 rounded-xl border border-dashed px-3 text-[12px] font-bold text-white disabled:opacity-70"
-                style={{ borderColor: 'rgba(255,164,145,0.62)', background: 'linear-gradient(135deg, #a33f45 0%, #7d2d31 100%)' }}
+                className="h-9 rounded-xl bg-[#9b3840] px-3 text-[12px] font-bold text-white disabled:opacity-70"
               >
                 {isDangerActionBusy ? t('İşleniyor...') : dangerModalMeta.confirmLabel}
               </button>
@@ -199,140 +227,163 @@ export default function ProfileView({
         </div>
       )}
 
-      <div className="app-content-width space-y-8 pt-4">
-        <section>
-          <div className="glass-panel bg-white/5 border border-white/10 rounded-2xl p-4">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full glass-icon border-white/10 mb-3">
-                <User size={24} className="text-text-secondary opacity-40" />
-              </div>
-              <h1 className="text-xl font-bold text-white tracking-tight leading-[1.2] mb-1.5">{userName}</h1>
+      <div className="app-content-width space-y-4 pb-24 pt-4">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#17375a] text-[#d9ecff] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
+              <User size={25} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#9cbad7]">{t('Profil')}</p>
+              <h1 className="mt-1 truncate text-[23px] font-black leading-tight text-white">{userName}</h1>
               {userEmail && (
-                <p className="text-[10px] text-text-secondary opacity-60 mb-2">{userEmail}</p>
+                <p className="mt-1 truncate text-[11px] font-semibold text-[#a9bfd6]">{userEmail}</p>
               )}
             </div>
           </div>
         </section>
 
-        <section className="space-y-4">
-          <div className="mb-3 px-1 flex items-center gap-2">
-            <Activity size={10} className="text-accent-green" />
-            <h2 className="text-[10px] font-bold text-text-secondary opacity-60">{t('Profil Bilgileri')}</h2>
+        <section className="rounded-3xl border border-white/10 bg-[#071d34]/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#9cbad7]">{t('Topluluk Profili')}</p>
+              <h2 className="mt-1 truncate text-[18px] font-black text-white">
+                {dashboardProfile?.alias || t('Fortale')}
+              </h2>
+              <p className="mt-1 text-[11px] font-semibold text-[#91a9c2]">
+                {isCommunityDashboardLoading
+                  ? t('Topluluk istatistikleri yükleniyor...')
+                  : `${dashboardProfile?.publicationCount ?? 0} ${t('yayında')}`}
+              </p>
+            </div>
+            {isCommunityDashboardLoading && <FaviconSpinner size={18} />}
           </div>
-          <div className="rounded-2xl glass-panel bg-white/[0.03] border border-white/5 overflow-hidden px-4">
-            <div className="py-4 border-b border-white/5">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-8 w-8 glass-icon border-white/10 text-text-secondary opacity-60">
-                  <UserRoundPen size={14} />
-                </div>
-                <span className="text-xs font-bold text-white">{t('İsim Soyisim')}</span>
+
+          <div className="mt-4 space-y-2 text-[12px] font-bold text-[#c8daeb]">
+            <div className="grid grid-cols-2 gap-x-4">
+              <p>{t('Takipçi')}: <span className="text-white">{dashboardProfile?.followerCount ?? 0}</span></p>
+              <p>{t('Takip')}: <span className="text-white">{dashboardProfile?.followingCount ?? 0}</span></p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4">
+              <p>{t('Üretilen')}: <span className="text-white">{savedBookCount}</span></p>
+              <p>{t('İndirilen')}: <span className="text-white">{dashboardProfile?.totalDownloadCount ?? 0}</span></p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-white/[0.06] px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[#ff8aa8]">
+                <Activity size={13} />
+                <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('Kalp')}</span>
               </div>
+              <p className="mt-1 text-[18px] font-black text-white">{dashboardProfile?.totalLikeCount ?? 0}</p>
+            </div>
+            <div className="rounded-2xl bg-white/[0.06] px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[#8fd0ff]">
+                <Download size={13} />
+                <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('İndirilme')}</span>
+              </div>
+              <p className="mt-1 text-[18px] font-black text-white">{dashboardProfile?.totalDownloadCount ?? 0}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <Activity size={13} className="text-[#8fd0ff]" />
+            <h2 className="text-[12px] font-black uppercase tracking-[0.14em] text-[#b9d0e8]">{t('Profil Bilgileri')}</h2>
+          </div>
+
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-[12px] font-bold text-white">
+                <UserRoundPen size={14} className="text-[#9fc7e9]" />
+                {t('İsim Soyisim')}
+              </span>
               <input
                 value={nameInput}
                 onChange={(event) => setNameInput(event.target.value)}
                 maxLength={80}
                 disabled={!canManageAccount || isSavingName}
-                className="h-10 w-full rounded-xl border border-dashed px-3 text-[13px] text-white placeholder:text-[#8ea8c8] disabled:opacity-70"
-                style={{
-                  borderColor: 'rgba(118,170,226,0.48)',
-                  background: 'linear-gradient(180deg, rgba(21,35,54,0.92) 0%, rgba(17,27,40,0.95) 100%)'
-                }}
+                className="h-11 w-full rounded-2xl border border-white/10 bg-[#0e2238] px-3 text-[13px] font-semibold text-white outline-none placeholder:text-[#8ea8c8] disabled:opacity-70"
                 placeholder={t('Adınız ve soyadınız')}
               />
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveProfileName}
-                  disabled={!canManageAccount || isSavingName}
-                  className="h-9 rounded-xl border border-dashed px-3 text-[12px] font-bold inline-flex items-center gap-1.5 text-white disabled:opacity-70"
-                  style={{
-                    borderColor: 'rgba(255,217,122,0.82)',
-                    background: 'linear-gradient(90deg, #1f5c97 0%, #2f70b4 52%, #3a87ca 100%)'
-                  }}
-                >
-                  <Save size={13} />
-                  {isSavingName ? t('Kaydediliyor...') : t('Kaydet')}
-                </button>
-              </div>
-            </div>
-
+            </label>
             <button
-              onClick={() => setNotifications(!notifications)}
-              className="w-full py-4 flex items-center justify-between border-b border-white/5 active:opacity-60 transition-all"
+              type="button"
+              onClick={handleSaveProfileName}
+              disabled={!canManageAccount || isSavingName}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[#2f70b4] px-3 text-[13px] font-black text-white disabled:opacity-70"
             >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 glass-icon border-white/10 text-text-secondary opacity-60">
-                  <Bell size={14} />
-                </div>
-                <span className="text-xs font-bold text-white">{t('Bildirimler')}</span>
-              </div>
-              <div className={`h-4 w-8 rounded-full p-[2px] transition-all duration-300 ${notifications ? 'bg-accent-green shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-white/5'}`}>
-                <div className={`h-3 w-3 rounded-full bg-white transition-all duration-300 ${notifications ? 'translate-x-4' : 'translate-x-0'}`} />
-              </div>
-            </button>
-
-            <button className="w-full py-4 flex items-center justify-between active:opacity-60 transition-all text-left group">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 glass-icon border-white/10 text-text-secondary opacity-60">
-                  <ShieldCheck size={14} />
-                </div>
-                <span className="text-xs font-bold text-white">{t('Gizlilik & güvenlik')}</span>
-              </div>
-              <span className="text-[10px] text-text-secondary opacity-50">{t('Aktif')}</span>
+              <Save size={14} />
+              {isSavingName ? t('Kaydediliyor...') : t('Kaydet')}
             </button>
           </div>
         </section>
 
-        <section className="space-y-3">
-          <div className="mb-2 px-1 flex items-center gap-2">
-            <Activity size={10} className="text-accent-red" />
-            <h2 className="text-[10px] font-bold text-text-secondary opacity-60">{t('Hesap Yönetimi')}</h2>
+        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
+          <button
+            onClick={() => setNotifications(!notifications)}
+            className="flex w-full items-center justify-between rounded-2xl bg-white/[0.05] px-3 py-3 active:opacity-70"
+          >
+            <span className="flex items-center gap-3 text-[13px] font-bold text-white">
+              <Bell size={16} className="text-[#9fc7e9]" />
+              {t('Bildirimler')}
+            </span>
+            <span className={`flex h-6 w-11 items-center rounded-full p-1 transition-colors ${notifications ? 'bg-[#50b889]' : 'bg-white/12'}`}>
+              <span className={`h-4 w-4 rounded-full bg-white transition-transform ${notifications ? 'translate-x-5' : 'translate-x-0'}`} />
+            </span>
+          </button>
+
+          <div className="mt-2 flex w-full items-center justify-between rounded-2xl bg-white/[0.05] px-3 py-3">
+            <span className="flex items-center gap-3 text-[13px] font-bold text-white">
+              <ShieldCheck size={16} className="text-[#9fc7e9]" />
+              {t('Gizlilik & güvenlik')}
+            </span>
+            <span className="text-[11px] font-bold text-[#9fc7e9]">{t('Aktif')}</span>
           </div>
-          <div className="rounded-2xl glass-panel bg-white/[0.03] border border-white/5 overflow-hidden px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setPendingDangerAction('delete-data')}
-              disabled={!canManageAccount}
-              className="w-full h-10 rounded-xl border border-dashed px-3 text-[12px] font-semibold inline-flex items-center justify-between text-[#ffd2cc] disabled:opacity-60"
-              style={{ borderColor: 'rgba(232,137,137,0.42)', background: 'rgba(88,32,37,0.32)' }}
-            >
-              <span>{t('Verilerimi Sil')}</span>
-              <Trash2 size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setPendingDangerAction('delete-account')}
-              disabled={!canManageAccount}
-              className="mt-2 w-full h-10 rounded-xl border border-dashed px-3 text-[12px] font-bold inline-flex items-center justify-between text-white disabled:opacity-60"
-              style={{ borderColor: 'rgba(255,154,140,0.62)', background: 'linear-gradient(135deg, #9f3c42 0%, #71272c 100%)' }}
-            >
-              <span>{t('Hesabımı Sil')}</span>
-              <AlertTriangle size={14} />
-            </button>
-            {!canManageAccount && (
-              <p className="mt-2 text-[11px] text-text-secondary opacity-70">{t('Misafir oturumunda hesap yönetimi işlemleri kapalıdır.')}</p>
-            )}
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-[#25141a]/72 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <AlertTriangle size={13} className="text-[#ffb3a8]" />
+            <h2 className="text-[12px] font-black uppercase tracking-[0.14em] text-[#ffd2cc]">{t('Hesap Yönetimi')}</h2>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setPendingDangerAction('delete-data')}
+            disabled={!canManageAccount}
+            className="flex h-11 w-full items-center justify-between rounded-2xl bg-[#5b252b] px-3 text-[12px] font-bold text-[#ffd2cc] disabled:opacity-60"
+          >
+            <span>{t('Verilerimi Sil')}</span>
+            <Trash2 size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendingDangerAction('delete-account')}
+            disabled={!canManageAccount}
+            className="mt-2 flex h-11 w-full items-center justify-between rounded-2xl bg-[#9b3840] px-3 text-[12px] font-black text-white disabled:opacity-60"
+          >
+            <span>{t('Hesabımı Sil')}</span>
+            <AlertTriangle size={14} />
+          </button>
+          {!canManageAccount && (
+            <p className="mt-2 text-[11px] font-semibold text-[#ffd2cc]/75">{t('Misafir oturumunda hesap yönetimi işlemleri kapalıdır.')}</p>
+          )}
         </section>
 
         <section className="px-1 pb-12">
           <button
             onClick={onLogout}
-            className="flex items-center gap-3 text-text-secondary hover:text-accent-red active:scale-95 transition-all w-full py-1"
+            className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.04] px-3 py-3 text-[#c7d8ea] active:opacity-70"
           >
-            <div className="h-8 w-8 btn-glass-danger border-none shadow-none">
-              <LogOut size={14} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#472229] text-[#ffb3a8]">
+              <LogOut size={15} />
             </div>
-            <span className="text-[10px] font-black tracking-widest opacity-40">{t('Oturumu kapat')}</span>
+            <span className="text-[12px] font-black">{t('Oturumu kapat')}</span>
           </button>
-
-          <div className="mt-6 text-center">
-            <p className="text-[8px] font-black text-text-secondary opacity-20 tracking-tighter">
-              Fortale v3.4.0 (2026 Edition)
-            </p>
-          </div>
         </section>
-
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { lazy, startTransition, Suspense, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
@@ -27,7 +28,7 @@ import {
 } from './data/appLanguages';
 import { LEGAL_CONSENT_VERSION, defaultPrivacyPolicy, defaultTermsPolicy } from './data/policies';
 import { appCheckReady, auth, db, functions } from './firebaseConfig';
-import { collection, getDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, onSnapshot, deleteField } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { deleteUser, onAuthStateChanged, signOut, updateProfile, type User as FirebaseUser } from 'firebase/auth';
 import { getBlob, getDownloadURL, getStorage, listAll, ref as storageRef, uploadBytes, uploadString } from 'firebase/storage';
@@ -50,6 +51,7 @@ import {
 import { normalizeMarkdownNarrativeLayout } from './utils/markdownLayout';
 
 const HomeView = lazy(() => import('./views/HomeView'));
+const CommunityView = lazy(() => import('./views/CommunityView'));
 const CourseFlowView = lazy(() => import('./views/CourseFlowView'));
 const PersonalGrowthView = lazy(() => import('./views/PersonalGrowthView'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
@@ -60,11 +62,19 @@ const OnboardingView = lazy(() => import('./views/OnboardingView'));
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
 const LegalConsentModal = lazy(() => import('./components/LegalConsentModal'));
 const CreditPaywallModal = lazy(() => import('./components/CreditPaywallModal'));
+const LoginPromptModal = lazy(() => import('./components/LoginPromptModal'));
 
 const LOCAL_COURSE_KEY_PREFIX = 'f-study-courses';
 const LOCAL_FULL_COURSE_CACHE_KEY_PREFIX = 'f-study-full-courses';
 const LOCAL_COURSE_COVER_CACHE_KEY_PREFIX = 'f-study-course-cover-cache';
 const NATIVE_FULL_COURSE_CACHE_DIR = 'smartbook-cache';
+const NATIVE_COURSE_COVER_CACHE_DIR = 'smartbook-covers';
+const NATIVE_BOOK_PACKAGE_CACHE_DIR = 'smartbook-packages';
+const NATIVE_BOOK_ASSET_CACHE_DIR = 'smartbook-assets';
+const WEB_BOOK_PACKAGE_DB_NAME = 'fortale-smartbook-cache-v1';
+const WEB_BOOK_PACKAGE_DB_VERSION = 1;
+const WEB_BOOK_PACKAGE_STORE = 'bookPackages';
+const WEB_BOOK_COURSE_STORE = 'bookCourses';
 const LOCAL_STICKY_KEY_PREFIX = 'f-study-sticky-notes';
 const LOCAL_LIKED_COURSES_KEY_PREFIX = 'f-study-liked-courses';
 const LOCAL_CREDIT_WALLET_KEY_PREFIX = 'f-study-credit-wallet';
@@ -75,19 +85,15 @@ const LAST_AUTH_UID_KEY = 'f-study-last-auth-uid';
 const GUEST_LOCAL_UID = 'guest';
 const COURSE_CLOUD_SYNC_DEBOUNCE_MS = 1300;
 const COURSE_LOCAL_CACHE_DEBOUNCE_MS = 180;
-const MAX_LOCAL_COURSE_CACHE_ITEMS = 10;
-const MAX_LOCAL_FULL_COURSE_CACHE_ITEMS = 6;
-const MAX_LOCAL_INLINE_COVER_CACHE_ITEMS = 4;
 const BACKGROUND_SMARTBOOK_POLL_MS = 300;
 const SMARTBOOK_PREFETCH_RETRY_COOLDOWN_MS = 15_000;
 const SMARTBOOK_COVER_REPAIR_RETRY_COOLDOWN_MS = 3500;
 const SMARTBOOK_HYDRATION_PREFETCH_CONCURRENCY = 4;
 const SMARTBOOK_EXPORT_HYDRATION_WAIT_MS = 5000;
-const SMARTBOOK_PACKAGE_FETCH_TIMEOUT_MS = 40_000;
-const SMARTBOOK_STORAGE_BLOB_TIMEOUT_MS = 30_000;
+const SMARTBOOK_PACKAGE_FETCH_TIMEOUT_MS = 120_000;
+const SMARTBOOK_STORAGE_BLOB_TIMEOUT_MS = 120_000;
 const SMARTBOOK_STORAGE_URL_TIMEOUT_MS = 20_000;
 const SMARTBOOK_BACKEND_TIMEOUT_MS = 45_000;
-const SMARTBOOK_OPEN_HYDRATION_TIMEOUT_MS = 65_000;
 const READING_WORDS_PER_MINUTE = 180;
 const CREDIT_WEBHOOK_SYNC_TIMEOUT_MS = 45_000;
 const CREDIT_WEBHOOK_SYNC_POLL_MS = 1_250;
@@ -103,7 +109,7 @@ const IOS_APP_STORE_URL = (import.meta.env.VITE_IOS_APP_STORE_URL as string | un
 const SHARE_DEEP_LINK_FALLBACK_MS = 1400;
 const SHARE_DEEP_LINK_SECONDARY_SCHEME_DELAY_MS = 350;
 const FREE_STARTER_CREDITS: CreditWallet = { createCredits: 3 };
-const DEFAULT_ACTION_CREDIT_COST: Record<CreditActionType, number> = { create: 1 };
+const DEFAULT_ACTION_CREDIT_COST: Record<CreditActionType, number> = { create: 1, community_download: 0.5 };
 const CREDIT_PACKS: CreditPackOption[] = [
   { id: 'pack-5', createCredits: 10, priceUsd: 4.99 },
   { id: 'pack-15', createCredits: 25, priceUsd: 12.99 },
@@ -191,6 +197,13 @@ type NativeLibraryIndexPayload = {
   courses: StoredCourse[];
 };
 
+type NativeCourseCoverCachePayload = {
+  schemaVersion: number;
+  courseId: string;
+  sourceKey: string;
+  updatedAt: string;
+};
+
 type CreditGatewayOperation = 'getWallet' | 'consume' | 'refund';
 
 type CreditGatewayRequest = {
@@ -210,6 +223,11 @@ type CreditGatewayResponse = {
 type ListMySmartBookCoursesResponse = {
   success?: boolean;
   books?: Record<string, unknown>[];
+};
+
+type RepairSmartBookCoverResponse = {
+  success?: boolean;
+  coverImageUrl?: string;
 };
 
 type LegalConsentState = 'unknown' | 'required' | 'accepted';
@@ -243,6 +261,26 @@ function blobToDataUrlInApp(blob: Blob): Promise<string | null> {
     reader.onerror = () => resolve(null);
     reader.readAsDataURL(blob);
   });
+}
+
+async function blobToBase64InApp(blob: Blob): Promise<string | null> {
+  const dataUrl = await blobToDataUrlInApp(blob);
+  const marker = 'base64,';
+  const markerIndex = dataUrl?.indexOf(marker) ?? -1;
+  return markerIndex >= 0 ? dataUrl!.slice(markerIndex + marker.length) : null;
+}
+
+function base64ToBlobInApp(base64: string, mimeType: string): Blob | null {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new Blob([bytes], { type: mimeType });
+  } catch {
+    return null;
+  }
 }
 
 function isOptimizableSmartbookImageMimeType(mimeType: string): boolean {
@@ -340,6 +378,9 @@ const localCourseCacheWarned = new Set<string>();
 const localCourseCacheDisabledByQuota = new Set<string>();
 const missingNativeFullCourseCachePaths = new Set<string>();
 const missingNativeFullCourseCacheDirs = new Set<string>();
+const missingNativeBookPackageCachePaths = new Set<string>();
+const missingNativeBookPackageCacheDirs = new Set<string>();
+const nativeInstalledCourseIdsByUid = new Map<string, Set<string>>();
 const nativeFullCourseCacheRevisionByPath = new Map<string, string>();
 const nativeFullCourseCacheWritePromiseByPath = new Map<string, Promise<void>>();
 const creditGateway = httpsCallable<CreditGatewayRequest, CreditGatewayResponse>(functions, 'creditGateway', {
@@ -350,6 +391,12 @@ const listMySmartBookCourses = httpsCallable<Record<string, never>, ListMySmartB
   'listMySmartBookCourses',
   { timeout: 45_000 }
 );
+const repairSmartBookCover = httpsCallable<{ bookId: string }, RepairSmartBookCoverResponse>(
+  functions,
+  'repairSmartBookCover',
+  { timeout: 120_000 }
+);
+const deleteMyCommunityData = httpsCallable<Record<string, never>, { ok: boolean }>(functions, 'deleteMyCommunityData');
 
 function sortCoursesByLastActivity(courses: CourseData[]): CourseData[] {
   return [...courses].sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
@@ -532,12 +579,20 @@ function getBookPackagePathCandidates(value: unknown): string[] {
 }
 
 function resolvePreferredBookZipStoragePath(...values: Array<unknown>): string | undefined {
+  const zipCandidates: string[] = [];
   for (const value of values) {
     const candidates = getBookPackagePathCandidates(value);
-    const zipCandidate = candidates.find((candidate) => isBookZipStoragePath(candidate));
-    if (zipCandidate) return zipCandidate;
+    for (const candidate of candidates) {
+      if (!isBookZipStoragePath(candidate) || zipCandidates.includes(candidate)) continue;
+      zipCandidates.push(candidate);
+    }
   }
-  return undefined;
+  if (zipCandidates.length === 0) return undefined;
+  return zipCandidates.reduce((best, candidate) => {
+    const bestVersion = extractBundleVersionFromPath(best);
+    const candidateVersion = extractBundleVersionFromPath(candidate);
+    return candidateVersion > bestVersion ? candidate : best;
+  }, zipCandidates[0]);
 }
 
 function normalizeCourseStatus(value: unknown): CourseData['status'] | undefined {
@@ -584,7 +639,7 @@ function buildBookDocumentPayload(
 ): Record<string, unknown> {
   const now = new Date();
   const title = resolveCourseTopic(course.topic);
-  const packagePath = resolvePreferredBookZipStoragePath(course.bundle?.path, course.contentPackagePath) || '';
+  const packagePath = resolvePreferredBookZipStoragePath(course.contentPackagePath, course.bundle?.path) || '';
   const generatedAt = (
     course.contentPackageUpdatedAt instanceof Date &&
     !Number.isNaN(course.contentPackageUpdatedAt.getTime())
@@ -594,7 +649,7 @@ function buildBookDocumentPayload(
   const existingBundleVersion = Number.isFinite(course.bundle?.version)
     ? Math.max(1, Math.floor(Number(course.bundle?.version)))
     : undefined;
-  const bundleVersion = existingBundleVersion || extractBundleVersionFromPath(packagePath);
+  const bundleVersion = extractBundleVersionFromPath(packagePath) || existingBundleVersion;
   const includesPodcast = Array.isArray(course.nodes)
     ? course.nodes.some((node) => Boolean(node.podcastAudioUrl?.trim()))
     : false;
@@ -607,10 +662,13 @@ function buildBookDocumentPayload(
   if (typeof course.cover?.path === 'string' && course.cover.path.trim()) {
     nextCover.path = course.cover.path.trim();
   }
-  if (typeof course.cover?.url === 'string' && course.cover.url.trim()) {
-    nextCover.url = course.cover.url.trim();
-  } else if (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim()) {
-    nextCover.url = course.coverImageUrl.trim();
+  const coverUrlCandidate = (typeof course.cover?.url === 'string' && course.cover.url.trim())
+    ? course.cover.url.trim()
+    : (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim())
+      ? course.coverImageUrl.trim()
+      : null;
+  if (coverUrlCandidate && !DATA_IMAGE_URL_PREFIX_RE.test(coverUrlCandidate) && !coverUrlCandidate.startsWith('blob:')) {
+    nextCover.url = coverUrlCandidate;
   }
 
   const bundle = packagePath
@@ -645,7 +703,7 @@ function buildBookDocumentPayload(
     visualStoryMode: course.visualStoryMode === true,
     visualStoryAudioStatus: course.visualStoryAudioStatus,
     coverNarrationText: course.coverNarrationText,
-    coverNarrationAudioUrl: course.coverNarrationAudioUrl,
+    coverNarrationAudioUrl: isAudioDataOrBlobUrl(course.coverNarrationAudioUrl) ? undefined : course.coverNarrationAudioUrl,
     coverNarrationAudioStoragePath: course.coverNarrationAudioStoragePath,
     status,
     cover: Object.keys(nextCover).length > 0 ? nextCover : undefined,
@@ -843,6 +901,31 @@ function getLocalCreditWalletKey(uid: string): string {
   return `${LOCAL_CREDIT_WALLET_KEY_PREFIX}:${uid}`;
 }
 
+function getNativeCourseCoverCacheDir(uid: string): string {
+  return `${NATIVE_COURSE_COVER_CACHE_DIR}/${getNativeFullCourseCacheSafeUid(uid)}`;
+}
+
+function getNativeCourseCoverCachePath(uid: string, courseId: string): string {
+  return `${getNativeCourseCoverCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}.json`;
+}
+
+function getNativeCourseCoverImageFilePath(uid: string, courseId: string): string {
+  return `${getNativeCourseCoverCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}.img`;
+}
+
+function getNativeBookPackageCacheDir(uid: string): string {
+  return `${NATIVE_BOOK_PACKAGE_CACHE_DIR}/${getNativeFullCourseCacheSafeUid(uid)}`;
+}
+
+function getNativeBookPackageCourseCacheDir(uid: string, courseId: string): string {
+  return `${getNativeBookPackageCacheDir(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}`;
+}
+
+function getNativeBookPackageCachePath(uid: string, courseId: string, version: number): string {
+  const safeVersion = Number.isFinite(version) ? Math.max(1, Math.floor(version)) : 1;
+  return `${getNativeBookPackageCourseCacheDir(uid, courseId)}/v${safeVersion}/book.zip`;
+}
+
 function clearLocalUserDataCaches(uid: string): void {
   const timer = localCourseWriteTimers.get(uid);
   if (typeof timer === 'number') {
@@ -852,6 +935,7 @@ function clearLocalUserDataCaches(uid: string): void {
   pendingLocalCourseWrites.delete(uid);
   localCourseCacheWarned.delete(uid);
   localCourseCacheDisabledByQuota.delete(uid);
+  nativeInstalledCourseIdsByUid.delete(uid);
 
   const nativeCachePathPrefix = `${getNativeFullCourseCacheDir(uid)}/`;
   for (const cachePath of Array.from(missingNativeFullCourseCachePaths)) {
@@ -1042,6 +1126,40 @@ function tryParseFirebaseStorageObjectPath(url: string): string | null {
   }
 }
 
+function getCourseCoverSourceUrl(course: CourseData | null | undefined): string | undefined {
+  const coverUrl = typeof course?.coverImageUrl === 'string' ? course.coverImageUrl.trim() : '';
+  if (coverUrl) return coverUrl;
+  const descriptorUrl = typeof course?.cover?.url === 'string' ? course.cover.url.trim() : '';
+  return descriptorUrl || undefined;
+}
+
+function getCourseCoverCacheSourceKey(course: CourseData | null | undefined): string | undefined {
+  const coverPath = normalizeStorageObjectPath(course?.cover?.path);
+  if (coverPath) return `path:${coverPath}`;
+
+  const coverUrl = getCourseCoverSourceUrl(course);
+  if (!coverUrl) return undefined;
+  if (DATA_IMAGE_URL_PREFIX_RE.test(coverUrl)) return `data:${simpleStableHash(coverUrl)}`;
+  if (isFirebaseStorageDownloadUrl(coverUrl)) {
+    const objectPath = tryParseFirebaseStorageObjectPath(coverUrl);
+    if (objectPath) return `path:${objectPath}`;
+  }
+  return `url:${coverUrl}`;
+}
+
+async function fetchCourseCoverAsDataUrl(course: CourseData): Promise<string | null> {
+  const sourceUrl = getCourseCoverSourceUrl(course);
+  if (!sourceUrl) return null;
+  if (DATA_IMAGE_URL_PREFIX_RE.test(sourceUrl)) return sourceUrl;
+  if (!/^https?:\/\//i.test(sourceUrl)) return null;
+
+  const response = await fetch(sourceUrl, { cache: 'force-cache' });
+  if (!response.ok) throw new Error(`Cover fetch failed (${response.status})`);
+  const blob = await response.blob();
+  const optimizedBlob = await optimizeImageBlobForSmartbook(blob);
+  return blobToDataUrlInApp(optimizedBlob);
+}
+
 function inferMimeTypeFromAssetPath(pathValue: string): string {
   const normalized = String(pathValue || '').toLowerCase();
   if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
@@ -1059,25 +1177,428 @@ function inferMimeTypeFromAssetPath(pathValue: string): string {
   return 'application/octet-stream';
 }
 
+type BookBundleHydrationOptions = {
+  localUserId?: string;
+  versionHint?: number;
+  persistAssets?: boolean;
+};
+
+type WebBookPackageRecord = {
+  key: string;
+  uid: string;
+  courseId: string;
+  version: number;
+  packageUrl?: string;
+  packagePath?: string;
+  updatedAt: string;
+  blob: Blob;
+};
+
+type WebBookCourseRecord = {
+  key: string;
+  uid: string;
+  courseId: string;
+  version: number;
+  updatedAt: string;
+  course: StoredCourse;
+};
+
+function normalizeBundleAssetPath(rawPath: string): string | undefined {
+  const normalized = String(rawPath || '')
+    .trim()
+    .replace(/^\.?\//, '')
+    .replace(/\\/g, '/');
+  if (!normalized || normalized.includes('..') || normalized.startsWith('/')) return undefined;
+  return normalized;
+}
+
+function getInstalledBookVersion(course: Pick<CourseData, 'bundle' | 'contentPackagePath'> | null | undefined): number {
+  if (Number.isFinite(Number(course?.bundle?.version))) {
+    return Math.max(1, Math.floor(Number(course?.bundle?.version)));
+  }
+  const pathVersion = extractBundleVersionFromPath(course?.contentPackagePath);
+  return Math.max(1, pathVersion || 1);
+}
+
+function getNativeBookAssetCourseCacheDir(uid: string, courseId: string, version: number): string {
+  const safeVersion = Number.isFinite(version) ? Math.max(1, Math.floor(version)) : 1;
+  return `${NATIVE_BOOK_ASSET_CACHE_DIR}/${getNativeFullCourseCacheSafeUid(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}/v${safeVersion}`;
+}
+
+function getNativeBookAssetCachePath(uid: string, courseId: string, version: number, assetPath: string): string {
+  return `${getNativeBookAssetCourseCacheDir(uid, courseId, version)}/${assetPath}`;
+}
+
+function extractNativeBookAssetPath(
+  uid: string,
+  courseId: string,
+  version: number,
+  rawValue: unknown
+): string | undefined {
+  const raw = typeof rawValue === 'string' ? rawValue.trim() : '';
+  if (!raw) return undefined;
+
+  const directPath = normalizeBundleAssetPath(raw);
+  if (directPath?.startsWith('assets/')) return directPath;
+
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    // Keep the original value when a URL contains malformed escapes.
+  }
+
+  const safeVersion = Number.isFinite(version) ? Math.max(1, Math.floor(version)) : 1;
+  const marker = `/${NATIVE_BOOK_ASSET_CACHE_DIR}/${getNativeFullCourseCacheSafeUid(uid)}/${getNativeFullCourseCacheSafeCourseId(courseId)}/v${safeVersion}/`;
+  const markerIndex = decoded.indexOf(marker);
+  if (markerIndex < 0) return undefined;
+  const assetPath = normalizeBundleAssetPath(decoded.slice(markerIndex + marker.length).split(/[?#]/, 1)[0]);
+  return assetPath?.startsWith('assets/') ? assetPath : undefined;
+}
+
+function stabilizeNativeBookAssetUrl(
+  uid: string,
+  courseId: string,
+  version: number,
+  rawValue: unknown
+): string | undefined {
+  const assetPath = extractNativeBookAssetPath(uid, courseId, version, rawValue);
+  if (assetPath) return assetPath;
+  return typeof rawValue === 'string' && rawValue.trim() ? rawValue.trim() : undefined;
+}
+
+function stabilizeNativeMarkdownAssetUrls(
+  uid: string,
+  courseId: string,
+  version: number,
+  markdown: string | undefined
+): string | undefined {
+  if (typeof markdown !== 'string' || !markdown.trim()) return markdown;
+  return markdown.replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?\s*\)/g, (full, alt: string, source: string) => {
+    const assetPath = extractNativeBookAssetPath(uid, courseId, version, source);
+    return assetPath ? `![${alt}](${assetPath})` : full;
+  });
+}
+
+function toNativeStoredCourse(uid: string, course: CourseData): StoredCourse {
+  const version = resolveNativeCourseCacheVersion(course);
+  const stored = toStoredCourse(course);
+  const stableCoverImageUrl = stabilizeNativeBookAssetUrl(uid, course.id, version, stored.coverImageUrl);
+  return {
+    ...stored,
+    coverImageUrl: stableCoverImageUrl,
+    coverNarrationAudioUrl: stabilizeNativeBookAssetUrl(uid, course.id, version, stored.coverNarrationAudioUrl),
+    cover: stored.cover
+      ? {
+        ...stored.cover,
+        url: stabilizeNativeBookAssetUrl(uid, course.id, version, stored.cover.url) || stableCoverImageUrl
+      }
+      : stored.cover,
+    nodes: stored.nodes.map((node) => ({
+      ...node,
+      content: stabilizeNativeMarkdownAssetUrls(uid, course.id, version, node.content),
+      podcastAudioUrl: stabilizeNativeBookAssetUrl(uid, course.id, version, node.podcastAudioUrl),
+      pageImageUrl: stabilizeNativeBookAssetUrl(uid, course.id, version, node.pageImageUrl),
+      pageAudioUrl: stabilizeNativeBookAssetUrl(uid, course.id, version, node.pageAudioUrl)
+    }))
+  };
+}
+
+async function resolveNativeInstalledAssetUrl(
+  uid: string,
+  courseId: string,
+  version: number,
+  rawValue: unknown
+): Promise<{ url?: string; local: boolean; valid: boolean }> {
+  const raw = typeof rawValue === 'string' ? rawValue.trim() : '';
+  if (!raw) return { local: false, valid: true };
+  const assetPath = extractNativeBookAssetPath(uid, courseId, version, raw);
+  if (!assetPath) return { url: raw, local: false, valid: false };
+  const filePath = getNativeBookAssetCachePath(uid, courseId, version, assetPath);
+  try {
+    const stat = await Filesystem.stat({ path: filePath, directory: Directory.Data });
+    if (stat.type === 'directory' || Number(stat.size || 0) <= 0) {
+      return { local: true, valid: false };
+    }
+    const uriResult = await Filesystem.getUri({ path: filePath, directory: Directory.Data });
+    return {
+      url: Capacitor.convertFileSrc(uriResult.uri),
+      local: true,
+      valid: true
+    };
+  } catch {
+    return { local: true, valid: false };
+  }
+}
+
+async function materializeNativeInstalledCourseAssets(
+  uid: string,
+  course: CourseData,
+  versionHint?: number
+): Promise<CourseData | null> {
+  if (!isCapacitorNativeRuntime()) return course;
+  const version = Number.isFinite(versionHint)
+    ? Math.max(1, Math.floor(Number(versionHint)))
+    : resolveNativeCourseCacheVersion(course);
+
+  const coverImage = await resolveNativeInstalledAssetUrl(uid, course.id, version, course.coverImageUrl);
+  const coverAudio = await resolveNativeInstalledAssetUrl(uid, course.id, version, course.coverNarrationAudioUrl);
+  if (!coverImage.valid || !coverAudio.valid) return null;
+
+  let invalidAsset = false;
+  const nodes = await Promise.all((course.nodes || []).map(async (node) => {
+    const [podcastAudio, pageImage, pageAudio] = await Promise.all([
+      resolveNativeInstalledAssetUrl(uid, course.id, version, node.podcastAudioUrl),
+      resolveNativeInstalledAssetUrl(uid, course.id, version, node.pageImageUrl),
+      resolveNativeInstalledAssetUrl(uid, course.id, version, node.pageAudioUrl)
+    ]);
+    if (!podcastAudio.valid || !pageImage.valid || !pageAudio.valid) invalidAsset = true;
+
+    let content = node.content;
+    if (typeof content === 'string' && content.trim()) {
+      const imageRegex = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?\s*\)/g;
+      let output = '';
+      let cursor = 0;
+      let match: RegExpExecArray | null = imageRegex.exec(content);
+      while (match) {
+        const resolved = await resolveNativeInstalledAssetUrl(uid, course.id, version, match[2]);
+        if (!resolved.valid || !resolved.url) {
+          invalidAsset = true;
+        } else {
+          output += content.slice(cursor, match.index) + `![${match[1] || ''}](${resolved.url})`;
+          cursor = match.index + match[0].length;
+        }
+        match = imageRegex.exec(content);
+      }
+      if (cursor > 0) content = `${output}${content.slice(cursor)}`;
+    }
+
+    return {
+      ...node,
+      content,
+      podcastAudioUrl: podcastAudio.url,
+      pageImageUrl: pageImage.url,
+      pageAudioUrl: pageAudio.url
+    };
+  }));
+
+  const lectureNodes = nodes.filter((node) => node.type === 'lecture');
+  if (course.visualStoryMode === true) {
+    if (!coverImage.url || lectureNodes.length === 0 || lectureNodes.some((node) => !node.pageImageUrl)) {
+      invalidAsset = true;
+    }
+    if (course.visualStoryAudioStatus === 'ready') {
+      if (!coverAudio.url || lectureNodes.some((node) => !node.pageAudioUrl)) invalidAsset = true;
+    }
+  }
+  if (invalidAsset) return null;
+
+  return {
+    ...course,
+    coverImageUrl: coverImage.url,
+    coverNarrationAudioUrl: coverAudio.url,
+    cover: course.cover
+      ? { ...course.cover, url: coverImage.url || course.cover.url }
+      : course.cover,
+    nodes
+  };
+}
+
+async function writeBundleAssetToNativeCache(
+  uid: string,
+  courseId: string,
+  version: number,
+  assetPath: string,
+  blob: Blob
+): Promise<string | undefined> {
+  if (!isCapacitorNativeRuntime()) return undefined;
+  const normalizedPath = normalizeBundleAssetPath(assetPath);
+  if (!normalizedPath) return undefined;
+  const base64 = await blobToBase64InApp(blob);
+  if (!base64) return undefined;
+  const filePath = getNativeBookAssetCachePath(uid, courseId, version, normalizedPath);
+  await Filesystem.writeFile({
+    path: filePath,
+    data: base64,
+    directory: Directory.Data,
+    recursive: true
+  });
+  const uriResult = await Filesystem.getUri({ path: filePath, directory: Directory.Data });
+  return Capacitor.convertFileSrc(uriResult.uri);
+}
+
+function getWebBookCacheKey(uid: string, courseId: string, version: number): string {
+  const safeVersion = Number.isFinite(version) ? Math.max(1, Math.floor(version)) : 1;
+  return `${uid}:${courseId}:v${safeVersion}`;
+}
+
+function openWebBookPackageDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const request = indexedDB.open(WEB_BOOK_PACKAGE_DB_NAME, WEB_BOOK_PACKAGE_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(WEB_BOOK_PACKAGE_STORE)) {
+        const packageStore = db.createObjectStore(WEB_BOOK_PACKAGE_STORE, { keyPath: 'key' });
+        packageStore.createIndex('uid', 'uid', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(WEB_BOOK_COURSE_STORE)) {
+        const courseStore = db.createObjectStore(WEB_BOOK_COURSE_STORE, { keyPath: 'key' });
+        courseStore.createIndex('uid', 'uid', { unique: false });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+}
+
+function runWebBookStoreOperation<T>(
+  storeName: string,
+  mode: IDBTransactionMode,
+  operation: (store: IDBObjectStore) => IDBRequest<T> | T
+): Promise<T | null> {
+  return new Promise((resolve) => {
+    void openWebBookPackageDb().then((db) => {
+      if (!db) {
+        resolve(null);
+        return;
+      }
+      try {
+        const transaction = db.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        const result = operation(store);
+        if (result && typeof (result as IDBRequest<T>).onsuccess !== 'undefined') {
+          const request = result as IDBRequest<T>;
+          request.onsuccess = () => resolve(request.result ?? null);
+          request.onerror = () => resolve(null);
+          return;
+        }
+        transaction.oncomplete = () => resolve(result as T);
+        transaction.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function writeBookPackageToWebCache(
+  uid: string,
+  courseId: string,
+  version: number,
+  blob: Blob,
+  course: CourseData,
+  packageUrl?: string,
+  packagePath?: string
+): Promise<void> {
+  if (isCapacitorNativeRuntime() || !uid || !courseId) return;
+  const key = getWebBookCacheKey(uid, courseId, version);
+  const updatedAt = new Date().toISOString();
+  await runWebBookStoreOperation<IDBValidKey>(WEB_BOOK_PACKAGE_STORE, 'readwrite', (store) =>
+    store.put({
+      key,
+      uid,
+      courseId,
+      version,
+      packageUrl,
+      packagePath,
+      updatedAt,
+      blob
+    } satisfies WebBookPackageRecord)
+  );
+  await runWebBookStoreOperation<IDBValidKey>(WEB_BOOK_COURSE_STORE, 'readwrite', (store) =>
+    store.put({
+      key,
+      uid,
+      courseId,
+      version,
+      updatedAt,
+      course: toStoredCourse(course)
+    } satisfies WebBookCourseRecord)
+  );
+}
+
+async function readBookPackageFromWebCache(uid: string, courseId: string, versionHint?: number): Promise<WebBookPackageRecord | null> {
+  if (isCapacitorNativeRuntime() || !uid || !courseId) return null;
+  const hintedVersion = Number.isFinite(versionHint) ? Math.max(1, Math.floor(Number(versionHint))) : undefined;
+  if (hintedVersion) {
+    const hinted = await runWebBookStoreOperation<WebBookPackageRecord>(
+      WEB_BOOK_PACKAGE_STORE,
+      'readonly',
+      (store) => store.get(getWebBookCacheKey(uid, courseId, hintedVersion))
+    );
+    if (hinted?.blob) return hinted;
+  }
+  const records = await runWebBookStoreOperation<WebBookPackageRecord[]>(
+    WEB_BOOK_PACKAGE_STORE,
+    'readonly',
+    (store) => store.index('uid').getAll(uid)
+  );
+  const matches = (records || [])
+    .filter((record) => record.courseId === courseId && record.blob)
+    .sort((left, right) => right.version - left.version);
+  return matches[0] || null;
+}
+
+async function readInstalledCoursesFromWebCache(uid: string): Promise<CourseData[]> {
+  if (isCapacitorNativeRuntime() || !uid) return [];
+  const records = await runWebBookStoreOperation<WebBookPackageRecord[]>(
+    WEB_BOOK_PACKAGE_STORE,
+    'readonly',
+    (store) => store.index('uid').getAll(uid)
+  );
+  const latestByCourseId = new Map<string, WebBookPackageRecord>();
+  for (const record of records || []) {
+    const existing = latestByCourseId.get(record.courseId);
+    if (!existing || record.version > existing.version) {
+      latestByCourseId.set(record.courseId, record);
+    }
+  }
+  const courses: CourseData[] = [];
+  for (const record of latestByCourseId.values()) {
+    try {
+      const course = await hydrateCourseFromBundleBlob(
+        record.courseId,
+        record.blob,
+        record.packageUrl,
+        record.packagePath,
+        { localUserId: uid, versionHint: record.version, persistAssets: true }
+      );
+      if (course && hasPersistableCourseContent(course)) {
+        courses.push(course);
+      }
+    } catch (error) {
+      console.warn('Web installed book cache read failed:', error);
+    }
+  }
+  return courses;
+}
+
 async function hydrateCourseFromBundleBlob(
   courseId: string,
   bundleBlob: Blob,
   urlOverride?: string,
-  pathOverride?: string
+  pathOverride?: string,
+  options?: BookBundleHydrationOptions
 ): Promise<CourseData | null> {
   const zip = await JSZip.loadAsync(await bundleBlob.arrayBuffer());
   const manifestFile = zip.file('manifest.json');
   if (!manifestFile) return null;
 
   const manifestRaw = JSON.parse(await manifestFile.async('string')) as Record<string, unknown>;
-  const imageAssetCache = new Map<string, string>();
-  const audioAssetCache = new Map<string, string>();
-  const audioDataAssetCache = new Map<string, string>();
+  const assetUrlCache = new Map<string, string>();
+  const packageVersion = Number.isFinite(options?.versionHint)
+    ? Math.max(1, Math.floor(Number(options?.versionHint)))
+    : (extractBundleVersionFromPath(pathOverride) || 1);
+  const localUserId = String(options?.localUserId || '').trim();
+  const shouldPersistAssets = options?.persistAssets === true && Boolean(localUserId);
 
-  const resolveAssetImageDataUrl = async (rawPath: string): Promise<string | undefined> => {
-    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
+  const resolveAssetUrl = async (rawPath: string, kind: 'image' | 'audio'): Promise<string | undefined> => {
+    const normalizedPath = normalizeBundleAssetPath(rawPath);
     if (!normalizedPath) return undefined;
-    const cached = imageAssetCache.get(normalizedPath);
+    const cacheKey = `${kind}:${normalizedPath}`;
+    const cached = assetUrlCache.get(cacheKey);
     if (cached) return cached;
     const assetFile = zip.file(normalizedPath);
     if (!assetFile) return undefined;
@@ -1086,42 +1607,53 @@ async function hydrateCourseFromBundleBlob(
     const typedBlob = (blob.type || '').trim()
       ? blob
       : new Blob([blob], { type: mimeType });
-    const optimizedBlob = await optimizeImageBlobForSmartbook(typedBlob);
+
+    if (shouldPersistAssets && isCapacitorNativeRuntime()) {
+      try {
+        const localUrl = await writeBundleAssetToNativeCache(
+          localUserId,
+          courseId,
+          packageVersion,
+          normalizedPath,
+          typedBlob
+        );
+        if (localUrl) {
+          assetUrlCache.set(cacheKey, localUrl);
+          return localUrl;
+        }
+      } catch (error) {
+        console.warn('Native book asset write failed:', error);
+      }
+      return undefined;
+    }
+
+    if (shouldPersistAssets && typeof URL !== 'undefined') {
+      const objectUrl = URL.createObjectURL(typedBlob);
+      assetUrlCache.set(cacheKey, objectUrl);
+      return objectUrl;
+    }
+
+    if (kind === 'audio' && typeof URL !== 'undefined') {
+      const objectUrl = URL.createObjectURL(typedBlob);
+      assetUrlCache.set(cacheKey, objectUrl);
+      return objectUrl;
+    }
+
+    const optimizedBlob = kind === 'image'
+      ? await optimizeImageBlobForSmartbook(typedBlob)
+      : typedBlob;
     const dataUrl = await blobToDataUrlInApp(optimizedBlob);
     if (!dataUrl) return undefined;
-    imageAssetCache.set(normalizedPath, dataUrl);
+    assetUrlCache.set(cacheKey, dataUrl);
     return dataUrl;
   };
 
-  const resolveAssetAudioUrl = async (rawPath: string): Promise<string | undefined> => {
-    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
+  const resolveBundledAssetPath = (rawPath: string): string | undefined => {
+    const normalizedPath = normalizeBundleAssetPath(rawPath);
     if (!normalizedPath) return undefined;
-    const cached = audioAssetCache.get(normalizedPath);
-    if (cached) return cached;
     const assetFile = zip.file(normalizedPath);
     if (!assetFile) return undefined;
-    const blob = await assetFile.async('blob');
-    const objectUrl = URL.createObjectURL(blob);
-    audioAssetCache.set(normalizedPath, objectUrl);
-    return objectUrl;
-  };
-
-  const resolveAssetAudioDataUrl = async (rawPath: string): Promise<string | undefined> => {
-    const normalizedPath = String(rawPath || '').trim().replace(/^\.?\//, '');
-    if (!normalizedPath) return undefined;
-    const cached = audioDataAssetCache.get(normalizedPath);
-    if (cached) return cached;
-    const assetFile = zip.file(normalizedPath);
-    if (!assetFile) return undefined;
-    const mimeType = inferMimeTypeFromAssetPath(normalizedPath);
-    const blob = await assetFile.async('blob');
-    const typedBlob = (blob.type || '').trim()
-      ? blob
-      : new Blob([blob], { type: mimeType });
-    const dataUrl = await blobToDataUrlInApp(typedBlob);
-    if (!dataUrl) return undefined;
-    audioDataAssetCache.set(normalizedPath, dataUrl);
-    return dataUrl;
+    return normalizedPath;
   };
 
   const rewriteMarkdownImageUrls = async (markdown: string | undefined): Promise<string | undefined> => {
@@ -1141,7 +1673,7 @@ async function hydrateCourseFromBundleBlob(
         !/^https?:\/\//i.test(source) &&
         !source.startsWith('blob:')
       ) {
-        const assetUrl = await resolveAssetImageDataUrl(source);
+        const assetUrl = await resolveAssetUrl(source, 'image');
         if (assetUrl) {
           const escapedAlt = alt.replace(/]/g, '\\]');
           replacement = `![${escapedAlt}](${assetUrl})`;
@@ -1169,7 +1701,7 @@ async function hydrateCourseFromBundleBlob(
         !/^data:/i.test(podcastAudioUrlRaw) &&
         !podcastAudioUrlRaw.startsWith('blob:')
       )
-        ? await resolveAssetAudioUrl(podcastAudioUrlRaw)
+        ? (await resolveAssetUrl(podcastAudioUrlRaw, 'audio') || resolveBundledAssetPath(podcastAudioUrlRaw))
         : podcastAudioUrlRaw;
       const resolvedPageImageUrl = (
         pageImageUrlRaw &&
@@ -1177,7 +1709,7 @@ async function hydrateCourseFromBundleBlob(
         !/^data:/i.test(pageImageUrlRaw) &&
         !pageImageUrlRaw.startsWith('blob:')
       )
-        ? await resolveAssetImageDataUrl(pageImageUrlRaw)
+        ? await resolveAssetUrl(pageImageUrlRaw, 'image')
         : pageImageUrlRaw;
       const resolvedPageAudioUrl = (
         pageAudioUrlRaw &&
@@ -1185,7 +1717,7 @@ async function hydrateCourseFromBundleBlob(
         !/^data:/i.test(pageAudioUrlRaw) &&
         !pageAudioUrlRaw.startsWith('blob:')
       )
-        ? await resolveAssetAudioDataUrl(pageAudioUrlRaw)
+        ? (await resolveAssetUrl(pageAudioUrlRaw, 'audio') || resolveBundledAssetPath(pageAudioUrlRaw) || pageAudioUrlRaw)
         : pageAudioUrlRaw;
       return {
         id: typeof node.id === 'string' ? node.id : `node-${index + 1}`,
@@ -1214,7 +1746,7 @@ async function hydrateCourseFromBundleBlob(
     ? manifestRaw.cover as Record<string, unknown>
     : null;
   const coverPath = typeof rawCover?.path === 'string' ? rawCover.path : undefined;
-  const coverDataUrl = coverPath ? await resolveAssetImageDataUrl(coverPath) : undefined;
+  const coverImageUrl = coverPath ? await resolveAssetUrl(coverPath, 'image') : undefined;
   const coverNarrationAudioRaw = typeof manifestRaw.coverNarrationAudioUrl === 'string'
     ? manifestRaw.coverNarrationAudioUrl
     : undefined;
@@ -1224,14 +1756,14 @@ async function hydrateCourseFromBundleBlob(
     !/^data:/i.test(coverNarrationAudioRaw) &&
     !coverNarrationAudioRaw.startsWith('blob:')
   )
-    ? await resolveAssetAudioDataUrl(coverNarrationAudioRaw)
+    ? (await resolveAssetUrl(coverNarrationAudioRaw, 'audio') || resolveBundledAssetPath(coverNarrationAudioRaw) || coverNarrationAudioRaw)
     : coverNarrationAudioRaw;
 
   const materializedRawCourse: Record<string, unknown> = {
     ...manifestRaw,
     id: typeof manifestRaw.id === 'string' ? manifestRaw.id : courseId,
     topic: resolveCourseTopic(manifestRaw.topic, manifestRaw.title, manifestRaw.bookTitle),
-    coverImageUrl: coverDataUrl,
+    coverImageUrl,
     visualStoryMode: manifestRaw.visualStoryMode === true,
     visualStoryAudioStatus: typeof manifestRaw.visualStoryAudioStatus === 'string' ? manifestRaw.visualStoryAudioStatus : undefined,
     coverNarrationText: typeof manifestRaw.coverNarrationText === 'string' ? manifestRaw.coverNarrationText : undefined,
@@ -1258,11 +1790,22 @@ function isAudioDataOrBlobUrl(url: unknown): boolean {
   return url.startsWith('data:') || url.startsWith('blob:');
 }
 
+function isTransientBlobUrl(url: unknown): boolean {
+  return typeof url === 'string' && url.startsWith('blob:');
+}
+
 function sanitizeNodeForLocalStorage(node: TimelineNode): TimelineNode {
   const nextNode: TimelineNode = { ...node };
 
   if (typeof nextNode.content === 'string') {
-    nextNode.content = stripEmbeddedDataImagesFromMarkdown(nextNode.content);
+    nextNode.content = stripEmbeddedDataImagesFromMarkdown(nextNode.content)
+      .replace(/!\[[^\]]*]\(\s*blob:[^)]+\)\s*/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  if (isTransientBlobUrl(nextNode.pageImageUrl)) {
+    nextNode.pageImageUrl = undefined;
   }
 
   // Audio data/blob URLs are too large to persist (can be hundreds of MB in aggregate).
@@ -1353,6 +1896,36 @@ function hasMissingNarrativeImagesForHydration(course: CourseData | null | undef
     .map((node) => String(node.content || ''));
   if (!lectureBodies.length) return false;
 
+  const hasBundledRelativeImageReference = lectureBodies.some((body) => {
+    const markdownImageRe = /!\[[^\]]*]\(\s*<?([^)\s>]+)>?\s*\)/gi;
+    const htmlImageRe = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
+    const isBundledRelativeSource = (value: string | undefined): boolean => {
+      const source = String(value || '').trim();
+      return Boolean(
+        source &&
+        !/^data:/i.test(source) &&
+        !/^https?:\/\//i.test(source) &&
+        !source.startsWith('blob:') &&
+        !/^(\/|\.{1,2}\/)/.test(source)
+      );
+    };
+
+    let match: RegExpExecArray | null = markdownImageRe.exec(body);
+    while (match) {
+      if (isBundledRelativeSource(match[1])) return true;
+      match = markdownImageRe.exec(body);
+    }
+
+    match = htmlImageRe.exec(body);
+    while (match) {
+      if (isBundledRelativeSource(match[1] || match[2] || match[3])) return true;
+      match = htmlImageRe.exec(body);
+    }
+
+    return false;
+  });
+  if (hasBundledRelativeImageReference) return true;
+
   const hasAnyImageMarkup = lectureBodies.some((body) => /!\[[^\]]*]\([^)]+\)|<img\b/i.test(body));
   return !hasAnyImageMarkup;
 }
@@ -1405,16 +1978,96 @@ function courseNeedsContentHydration(course: CourseData | null | undefined): boo
   );
 }
 
+function courseNeedsStartupCloudRefresh(course: CourseData | null | undefined): boolean {
+  if (!course) return true;
+  const normalizedStatus = normalizeCourseStatus(course.status);
+  if (normalizedStatus === 'processing') return true;
+  if (isPlaceholderCourseTopic(course.topic)) return true;
+  if (!course.contentPackagePath && !course.contentPackageUrl && !course.bundle?.path && courseNeedsContentHydration(course)) {
+    return true;
+  }
+  return false;
+}
+
 function visualStoryNeedsAudioHydration(course: CourseData | null | undefined): boolean {
   if (!course || course.visualStoryMode !== true) return false;
   const hasAudioSignal =
     course.visualStoryAudioStatus === 'ready' ||
     course.visualStoryAudioStatus === 'partial' ||
-    course.bundle?.includesPodcast === true;
+    course.bundle?.includesPodcast === true ||
+    (course.nodes || []).some((node) => String(node.pageAudioStoragePath || '').trim()) ||
+    Boolean(String(course.coverNarrationAudioStoragePath || '').trim());
   if (!hasAudioSignal) return false;
   const lectureNodes = (course.nodes || []).filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()));
   if (lectureNodes.length === 0) return false;
   return lectureNodes.some((node) => !node.pageAudioUrl?.trim());
+}
+
+function getPackagePathFromUrl(url: unknown): string | undefined {
+  const normalizedUrl = typeof url === 'string' ? url.trim() : '';
+  if (!normalizedUrl || !isFirebaseStorageDownloadUrl(normalizedUrl)) return undefined;
+  return tryParseFirebaseStorageObjectPath(normalizedUrl) || undefined;
+}
+
+function mergeCoursePackageMetadata(localCourse: CourseData, cloudCourse: CourseData): CourseData {
+  const preferredPath = resolvePreferredBookZipStoragePath(
+    localCourse.contentPackagePath,
+    cloudCourse.contentPackagePath,
+    localCourse.bundle?.path,
+    cloudCourse.bundle?.path
+  );
+  const pickUrlForPath = (path: string | undefined): string | undefined => {
+    if (!path) return localCourse.contentPackageUrl || cloudCourse.contentPackageUrl;
+    const candidates = [cloudCourse, localCourse];
+    for (const candidate of candidates) {
+      const candidatePath = normalizeStorageObjectPath(candidate.contentPackagePath);
+      const candidateUrlPath = getPackagePathFromUrl(candidate.contentPackageUrl);
+      if ((candidatePath === path || candidateUrlPath === path) && candidate.contentPackageUrl) {
+        return candidate.contentPackageUrl;
+      }
+    }
+    return localCourse.contentPackageUrl || cloudCourse.contentPackageUrl;
+  };
+  const bundleForPreferredPath =
+    (normalizeStorageObjectPath(cloudCourse.bundle?.path) === preferredPath ? cloudCourse.bundle : undefined) ||
+    (normalizeStorageObjectPath(localCourse.bundle?.path) === preferredPath ? localCourse.bundle : undefined) ||
+    cloudCourse.bundle ||
+    localCourse.bundle;
+  const preferredVersion = preferredPath ? extractBundleVersionFromPath(preferredPath) : undefined;
+  const mergedBundle = preferredPath
+    ? {
+      ...bundleForPreferredPath,
+      path: preferredPath,
+      version: preferredVersion || bundleForPreferredPath?.version || 1,
+      includesPodcast: Boolean(
+        bundleForPreferredPath?.includesPodcast ||
+        cloudCourse.bundle?.includesPodcast ||
+        localCourse.bundle?.includesPodcast
+      ),
+      generatedAt:
+        bundleForPreferredPath?.generatedAt ||
+        cloudCourse.contentPackageUpdatedAt ||
+        localCourse.contentPackageUpdatedAt ||
+        new Date()
+    }
+    : (localCourse.bundle || cloudCourse.bundle);
+
+  return {
+    ...localCourse,
+    userId: localCourse.userId || cloudCourse.userId,
+    visualStoryMode: localCourse.visualStoryMode === true || cloudCourse.visualStoryMode === true,
+    visualStoryAudioStatus: cloudCourse.visualStoryAudioStatus || localCourse.visualStoryAudioStatus,
+    coverNarrationText: cloudCourse.coverNarrationText || localCourse.coverNarrationText,
+    coverNarrationAudioUrl: cloudCourse.coverNarrationAudioUrl || localCourse.coverNarrationAudioUrl,
+    coverNarrationAudioStoragePath: cloudCourse.coverNarrationAudioStoragePath || localCourse.coverNarrationAudioStoragePath,
+    coverImageUrl: localCourse.coverImageUrl || cloudCourse.coverImageUrl,
+    contentPackagePath: preferredPath || localCourse.contentPackagePath || cloudCourse.contentPackagePath,
+    contentPackageUrl: pickUrlForPath(preferredPath),
+    contentPackageUpdatedAt: cloudCourse.contentPackageUpdatedAt || localCourse.contentPackageUpdatedAt,
+    bundle: mergedBundle,
+    cover: localCourse.cover || cloudCourse.cover,
+    status: normalizeCourseStatus(localCourse.status) || normalizeCourseStatus(cloudCourse.status)
+  };
 }
 
 function toCompactStoredNode(node: TimelineNode): TimelineNode {
@@ -1443,8 +2096,10 @@ function toQuotaSafeStoredNode(node: TimelineNode): TimelineNode {
 function toStoredCourse(course: CourseData): StoredCourse {
   return {
     ...course,
+    deviceCoverImageUrl: undefined,
     coverImageUrl:
-      typeof course.coverImageUrl === 'string' && DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl)
+      typeof course.coverImageUrl === 'string' &&
+      (DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl) || isTransientBlobUrl(course.coverImageUrl))
         ? undefined
         : course.coverImageUrl,
     // Cover narration audio data/blob URLs are too large to persist.
@@ -1460,6 +2115,7 @@ function toStoredCourse(course: CourseData): StoredCourse {
 function toStoragePackageCourse(course: CourseData): StoredCourse {
   return {
     ...course,
+    deviceCoverImageUrl: undefined,
     nodes: Array.isArray(course.nodes) ? course.nodes.map((node) => ({ ...node })) : [],
     createdAt: course.createdAt.toISOString(),
     lastActivity: course.lastActivity.toISOString()
@@ -1469,8 +2125,10 @@ function toStoragePackageCourse(course: CourseData): StoredCourse {
 function toCompactStoredCourse(course: CourseData): StoredCourse {
   return {
     ...course,
+    deviceCoverImageUrl: undefined,
     coverImageUrl:
-      typeof course.coverImageUrl === 'string' && DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl)
+      typeof course.coverImageUrl === 'string' &&
+      (DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl) || isTransientBlobUrl(course.coverImageUrl))
         ? undefined
         : course.coverImageUrl,
     nodes: Array.isArray(course.nodes) ? course.nodes.map(toCompactStoredNode) : [],
@@ -1482,6 +2140,7 @@ function toCompactStoredCourse(course: CourseData): StoredCourse {
 function toQuotaSafeStoredCourse(course: CourseData): StoredCourse {
   return {
     ...course,
+    deviceCoverImageUrl: undefined,
     description: undefined,
     language: course.language,
     ageGroup: course.ageGroup,
@@ -1491,7 +2150,8 @@ function toQuotaSafeStoredCourse(course: CourseData): StoredCourse {
       : undefined,
     totalDuration: course.totalDuration,
     coverImageUrl:
-      typeof course.coverImageUrl === 'string' && DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl)
+      typeof course.coverImageUrl === 'string' &&
+      (DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl) || isTransientBlobUrl(course.coverImageUrl))
         ? undefined
         : course.coverImageUrl,
     nodes: Array.isArray(course.nodes) ? course.nodes.map(toQuotaSafeStoredNode) : [],
@@ -1501,11 +2161,25 @@ function toQuotaSafeStoredCourse(course: CourseData): StoredCourse {
 }
 
 function writeFullCoursesToLocal(uid: string, courses: CourseData[]): void {
-  if (localCourseCacheDisabledByQuota.has(uid)) return;
   const storageKey = getLocalFullCoursesKey(uid);
+  if (isCapacitorNativeRuntime()) {
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // Native iOS/Android keeps full downloaded books in Filesystem-backed storage.
+    }
+    return;
+  }
+  if (localCourseCacheDisabledByQuota.has(uid)) {
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // Ignore cleanup failures.
+    }
+    return;
+  }
   const candidates = sortCoursesByLastActivity(courses)
     .filter((course) => hasPersistableCourseContent(course))
-    .slice(0, MAX_LOCAL_FULL_COURSE_CACHE_ITEMS)
     .map(toStoredCourse);
 
   if (candidates.length === 0) {
@@ -1529,11 +2203,7 @@ function writeFullCoursesToLocal(uid: string, courses: CourseData[]): void {
     }
   }
 
-  localCourseCacheDisabledByQuota.add(uid);
-  if (!localCourseCacheWarned.has(uid)) {
-    localCourseCacheWarned.add(uid);
-    console.warn('Book local cache disabled (storage quota exceeded). Firebase sync continues.');
-  }
+  console.warn('Full book local cache skipped (storage quota exceeded). Compact book list cache continues.');
 
   try {
     window.localStorage.removeItem(storageKey);
@@ -1576,10 +2246,7 @@ function resolveNativeCourseCacheVersionFromPath(path: string | undefined): numb
 }
 
 function resolveNativeCourseCacheVersion(course: CourseData): number {
-  if (Number.isFinite(course.bundle?.version)) {
-    return Math.max(1, Math.floor(Number(course.bundle?.version)));
-  }
-  return resolveNativeCourseCacheVersionFromPath(course.contentPackagePath);
+  return getInstalledBookVersion(course);
 }
 
 function getNativeFullCourseNodeRevision(node: TimelineNode): string {
@@ -1624,7 +2291,8 @@ function getNativeFullCourseNodeRevision(node: TimelineNode): string {
 function getNativeFullCourseCacheRevision(course: CourseData): string {
   const normalizedCover = (
     typeof course.coverImageUrl === 'string' &&
-    !DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl)
+    !DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl) &&
+    !isTransientBlobUrl(course.coverImageUrl)
   )
     ? course.coverImageUrl.trim()
     : '';
@@ -1664,6 +2332,7 @@ function isRemoteOrUnresolvedAssetUrl(value: unknown): boolean {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (!normalized) return true;
   if (isPersistentLocalAssetUrl(normalized)) return false;
+  if (DATA_IMAGE_URL_PREFIX_RE.test(normalized)) return false;
   return true;
 }
 
@@ -1728,7 +2397,7 @@ async function writeFullCourseToNativeCache(uid: string, course: CourseData): Pr
     }
   }
 
-  const serializedCourse = JSON.stringify(toStoredCourse(course));
+  const serializedCourse = JSON.stringify(toNativeStoredCourse(uid, course));
   const writePromise = (async () => {
     try {
       await Filesystem.writeFile({
@@ -1819,12 +2488,140 @@ async function readFullCourseFromNativeCache(uid: string, courseId: string, vers
       const parsed = JSON.parse(raw);
       const course = fromStoredCourse(parsed);
       if (!course || !hasPersistableCourseContent(course)) continue;
+      const version = resolveNativeCourseCacheVersion(course);
+      const materializedCourse = await materializeNativeInstalledCourseAssets(uid, course, version);
+      if (!materializedCourse) continue;
       missingNativeFullCourseCachePaths.delete(cachePath);
-      return course;
+      void writeFullCourseToNativeCache(uid, materializedCourse);
+      return materializedCourse;
     } catch (error) {
       if (isNativeFilesystemMissingError(error)) {
         missingNativeFullCourseCachePaths.add(cachePath);
         nativeFullCourseCacheRevisionByPath.delete(cachePath);
+      }
+    }
+  }
+  const cachedPackage = await readBookPackageFromNativeCache(uid, courseId, versionHint);
+  if (cachedPackage) {
+    try {
+      const hydratedCourse = await hydrateCourseFromBundleBlob(
+        courseId,
+        cachedPackage.blob,
+        undefined,
+        undefined,
+        { localUserId: uid, versionHint: cachedPackage.version, persistAssets: true }
+      );
+      const materializedCourse = hydratedCourse
+        ? await materializeNativeInstalledCourseAssets(uid, hydratedCourse, cachedPackage.version)
+        : null;
+      if (materializedCourse && hasPersistableCourseContent(materializedCourse)) {
+        await writeFullCourseToNativeCache(uid, materializedCourse);
+        return materializedCourse;
+      }
+    } catch (error) {
+      console.warn('Native book ZIP cache read failed:', error);
+    }
+  }
+  return null;
+}
+
+async function writeBookPackageToNativeCache(
+  uid: string,
+  courseId: string,
+  version: number,
+  blob: Blob
+): Promise<void> {
+  if (!isCapacitorNativeRuntime() || !uid || !courseId) return;
+  const base64 = await blobToBase64InApp(blob);
+  if (!base64) return;
+  const packagePath = getNativeBookPackageCachePath(uid, courseId, version);
+  const packageDir = getNativeBookPackageCourseCacheDir(uid, courseId);
+  try {
+    await Filesystem.writeFile({
+      path: packagePath,
+      data: base64,
+      directory: Directory.Data,
+      recursive: true
+    });
+    missingNativeBookPackageCachePaths.delete(packagePath);
+    missingNativeBookPackageCacheDirs.delete(packageDir);
+  } catch (error) {
+    console.warn('Native book ZIP cache write failed:', error);
+  }
+}
+
+async function listNativeBookPackageCacheVersions(uid: string, courseId: string): Promise<number[]> {
+  if (!isCapacitorNativeRuntime()) return [];
+  const packageDir = getNativeBookPackageCourseCacheDir(uid, courseId);
+  if (missingNativeBookPackageCacheDirs.has(packageDir)) return [];
+  try {
+    const result = await Filesystem.readdir({
+      path: packageDir,
+      directory: Directory.Data
+    });
+    const versions = (result.files || [])
+      .map((entry) => (typeof entry === 'string' ? entry : entry?.name || ''))
+      .map((name) => {
+        const match = String(name).match(/^v(\d+)$/i);
+        return match ? Number.parseInt(match[1], 10) : Number.NaN;
+      })
+      .filter((value) => Number.isFinite(value) && value >= 1)
+      .map((value) => Math.floor(value));
+    versions.sort((left, right) => right - left);
+    missingNativeBookPackageCacheDirs.delete(packageDir);
+    return versions;
+  } catch (error) {
+    if (isNativeFilesystemMissingError(error)) {
+      missingNativeBookPackageCacheDirs.add(packageDir);
+    }
+    return [];
+  }
+}
+
+type NativeBookPackageCacheRecord = {
+  blob: Blob;
+  version: number;
+};
+
+async function readBookPackageFromNativeCache(
+  uid: string,
+  courseId: string,
+  versionHint?: number
+): Promise<NativeBookPackageCacheRecord | null> {
+  if (!isCapacitorNativeRuntime() || !uid || !courseId) return null;
+  const candidates: Array<{ path: string; version: number }> = [];
+  const pushCandidate = (version: number) => {
+    const safeVersion = Math.max(1, Math.floor(version));
+    const path = getNativeBookPackageCachePath(uid, courseId, safeVersion);
+    if (candidates.some((candidate) => candidate.path === path)) return;
+    candidates.push({ path, version: safeVersion });
+  };
+  const hintedVersion = Number.isFinite(versionHint) ? Math.max(1, Math.floor(Number(versionHint))) : undefined;
+  if (hintedVersion) {
+    pushCandidate(hintedVersion);
+  }
+  const versions = await listNativeBookPackageCacheVersions(uid, courseId);
+  for (const version of versions) {
+    pushCandidate(version);
+  }
+
+  for (const candidate of candidates) {
+    const packagePath = candidate.path;
+    if (missingNativeBookPackageCachePaths.has(packagePath)) continue;
+    try {
+      const result = await Filesystem.readFile({
+        path: packagePath,
+        directory: Directory.Data
+      });
+      const base64 = typeof result.data === 'string' ? result.data : '';
+      if (!base64) continue;
+      const blob = base64ToBlobInApp(base64, 'application/zip');
+      if (!blob) continue;
+      missingNativeBookPackageCachePaths.delete(packagePath);
+      return { blob, version: candidate.version };
+    } catch (error) {
+      if (isNativeFilesystemMissingError(error)) {
+        missingNativeBookPackageCachePaths.add(packagePath);
       }
     }
   }
@@ -1838,6 +2635,312 @@ async function readFullCoursesFromNativeCache(uid: string, courseIds: string[]):
     if (course) next.set(courseId, course);
   }
   return next;
+}
+
+async function readInstalledBook(uid: string, courseId: string, versionHint?: number): Promise<CourseData | null> {
+  if (!uid || !courseId) return null;
+  if (isCapacitorNativeRuntime()) {
+    return readFullCourseFromNativeCache(uid, courseId, versionHint);
+  }
+  const record = await readBookPackageFromWebCache(uid, courseId, versionHint);
+  if (!record?.blob) return null;
+  return hydrateCourseFromBundleBlob(
+    courseId,
+    record.blob,
+    record.packageUrl,
+    record.packagePath,
+    { localUserId: uid, versionHint: record.version, persistAssets: true }
+  );
+}
+
+async function readInstalledLibrary(uid: string): Promise<CourseData[]> {
+  if (!uid) return [];
+  if (isCapacitorNativeRuntime()) {
+    return readCoursesFromNativeLibraryIndex(uid);
+  }
+  return readInstalledCoursesFromWebCache(uid);
+}
+
+async function installBookPackageBlob(
+  uid: string,
+  course: CourseData,
+  blob: Blob,
+  packageUrl?: string,
+  packagePath?: string,
+  versionHint?: number
+): Promise<CourseData | null> {
+  if (!uid || !course.id) return null;
+  const version = Number.isFinite(versionHint)
+    ? Math.max(1, Math.floor(Number(versionHint)))
+    : getInstalledBookVersion({
+      ...course,
+      contentPackagePath: packagePath || course.contentPackagePath
+    });
+
+  if (isCapacitorNativeRuntime()) {
+    await writeBookPackageToNativeCache(uid, course.id, version, blob);
+  }
+
+  const hydrated = await hydrateCourseFromBundleBlob(
+    course.id,
+    blob,
+    packageUrl || course.contentPackageUrl,
+    packagePath || course.contentPackagePath,
+    { localUserId: uid, versionHint: version, persistAssets: true }
+  );
+  const materializedHydrated = isCapacitorNativeRuntime() && hydrated
+    ? await materializeNativeInstalledCourseAssets(uid, hydrated, version)
+    : hydrated;
+  if (!materializedHydrated || !hasPersistableCourseContent(materializedHydrated)) return null;
+
+  const mergedCourse = mergeSharedCourseWithUserProgress(
+    {
+      ...materializedHydrated,
+      userId: materializedHydrated.userId || course.userId,
+      contentPackageUrl: materializedHydrated.contentPackageUrl || packageUrl || course.contentPackageUrl,
+      contentPackagePath: materializedHydrated.contentPackagePath || packagePath || course.contentPackagePath,
+      contentPackageUpdatedAt: materializedHydrated.contentPackageUpdatedAt || course.contentPackageUpdatedAt,
+      bundle: materializedHydrated.bundle || course.bundle,
+      cover: materializedHydrated.cover || course.cover,
+      status: 'ready'
+    },
+    toProgressDocFromCourseSnapshot(course)
+  );
+
+  if (isCapacitorNativeRuntime()) {
+    await writeFullCourseToNativeCache(uid, mergedCourse);
+  } else {
+    await writeBookPackageToWebCache(
+      uid,
+      course.id,
+      version,
+      blob,
+      mergedCourse,
+      packageUrl || course.contentPackageUrl,
+      packagePath || course.contentPackagePath
+    );
+  }
+
+  return mergedCourse;
+}
+
+async function installBookPackage(uid: string, course: CourseData): Promise<CourseData | null> {
+  if (!uid || !course.id) return null;
+  const versionHint = getInstalledBookVersion(course);
+  const installed = await readInstalledBook(uid, course.id, versionHint);
+  if (
+    installed &&
+    hasPersistableCourseContent(installed) &&
+    getInstalledBookVersion(installed) >= versionHint
+  ) {
+    return mergeSharedCourseWithUserProgress(installed, toProgressDocFromCourseSnapshot(course));
+  }
+
+  const preferredPath = resolvePreferredBookZipStoragePath(course.contentPackagePath, course.bundle?.path);
+  const preferredUrl = typeof course.contentPackageUrl === 'string' && course.contentPackageUrl.trim()
+    ? course.contentPackageUrl.trim()
+    : undefined;
+
+  const tryFetchUrl = async (url: string): Promise<CourseData | null> => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = window.setTimeout(() => controller?.abort(), SMARTBOOK_PACKAGE_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { cache: 'no-store', signal: controller?.signal });
+      if (!response.ok) throw new Error(`Book package fetch failed (${response.status})`);
+      const blob = await response.blob();
+      const pathFromUrl = isFirebaseStorageDownloadUrl(url)
+        ? tryParseFirebaseStorageObjectPath(url)
+        : undefined;
+      return installBookPackageBlob(
+        uid,
+        course,
+        blob,
+        url,
+        preferredPath || pathFromUrl || course.contentPackagePath,
+        extractBundleVersionFromPath(preferredPath || pathFromUrl) || versionHint
+      );
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+
+  if (preferredUrl) {
+    try {
+      const hydrated = await tryFetchUrl(preferredUrl);
+      if (hydrated) return hydrated;
+    } catch (error) {
+      console.warn('Book package URL install failed; trying Storage path:', error);
+    }
+  }
+
+  if (preferredPath) {
+    const blob = await withPromiseTimeout(
+      getBlob(storageRef(getStorage(), preferredPath)),
+      SMARTBOOK_STORAGE_BLOB_TIMEOUT_MS,
+      `Book package blob timeout (${preferredPath})`
+    );
+    let resolvedUrl = preferredUrl;
+    if (!resolvedUrl) {
+      try {
+        resolvedUrl = await withPromiseTimeout(
+          getDownloadURL(storageRef(getStorage(), preferredPath)),
+          SMARTBOOK_STORAGE_URL_TIMEOUT_MS,
+          `Book package URL resolve timeout (${preferredPath})`
+        );
+      } catch {
+        resolvedUrl = undefined;
+      }
+    }
+    return installBookPackageBlob(
+      uid,
+      course,
+      blob,
+      resolvedUrl,
+      preferredPath,
+      extractBundleVersionFromPath(preferredPath) || versionHint
+    );
+  }
+
+  return null;
+}
+
+async function readCourseCoverFromNativeCache(
+  uid: string,
+  courseId: string,
+  sourceKey?: string
+): Promise<string | null> {
+  if (!isCapacitorNativeRuntime()) return null;
+  try {
+    const result = await Filesystem.readFile({
+      path: getNativeCourseCoverCachePath(uid, courseId),
+      directory: Directory.Data,
+      encoding: Encoding.UTF8
+    });
+    const raw = typeof result.data === 'string' ? result.data : '';
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<NativeCourseCoverCachePayload>;
+    if (parsed.schemaVersion !== 2) return null;
+    const cachedSourceKey = typeof parsed.sourceKey === 'string' ? parsed.sourceKey.trim() : '';
+    if (sourceKey && cachedSourceKey && cachedSourceKey !== sourceKey) return null;
+    const imagePath = getNativeCourseCoverImageFilePath(uid, courseId);
+    await Filesystem.stat({ path: imagePath, directory: Directory.Data });
+    const uriResult = await Filesystem.getUri({ path: imagePath, directory: Directory.Data });
+    const cap = (window as any)?.Capacitor;
+    return typeof cap?.convertFileSrc === 'function' ? cap.convertFileSrc(uriResult.uri) : null;
+  } catch (error) {
+    if (!isNativeFilesystemMissingError(error)) {
+      console.warn('Native course cover cache read failed:', error);
+    }
+    return null;
+  }
+}
+
+async function readCourseCoversFromNativeCache(uid: string, courses: CourseData[]): Promise<Map<string, string>> {
+  const next = new Map<string, string>();
+  if (!isCapacitorNativeRuntime()) return next;
+  let cachedCourseIds: Set<string>;
+  try {
+    const result = await Filesystem.readdir({
+      path: getNativeCourseCoverCacheDir(uid),
+      directory: Directory.Data
+    });
+    cachedCourseIds = new Set(
+      (result.files || [])
+        .map((entry) => (typeof entry === 'string' ? entry : entry?.name || ''))
+        .filter((name) => name.endsWith('.json'))
+        .map((name) => name.slice(0, -'.json'.length))
+    );
+  } catch (error) {
+    if (!isNativeFilesystemMissingError(error)) {
+      console.warn('Native course cover cache list failed:', error);
+    }
+    return next;
+  }
+
+  for (const course of courses) {
+    if (!cachedCourseIds.has(getNativeFullCourseCacheSafeCourseId(course.id))) continue;
+    const cachedCover = await readCourseCoverFromNativeCache(
+      uid,
+      course.id,
+      getCourseCoverCacheSourceKey(course)
+    );
+    if (cachedCover) next.set(course.id, cachedCover);
+  }
+  return next;
+}
+
+function mergeDeviceCoversIntoCourses(courses: CourseData[], coversByCourseId: Map<string, string>): CourseData[] {
+  if (coversByCourseId.size === 0) return courses;
+  let changed = false;
+  const nextCourses = courses.map((course) => {
+    const deviceCoverImageUrl = coversByCourseId.get(course.id);
+    if (!deviceCoverImageUrl || course.deviceCoverImageUrl === deviceCoverImageUrl) return course;
+    changed = true;
+    return { ...course, deviceCoverImageUrl };
+  });
+  return changed ? nextCourses : courses;
+}
+
+async function mergeNativeCourseCoversIntoCourses(uid: string, courses: CourseData[]): Promise<CourseData[]> {
+  if (!isCapacitorNativeRuntime() || courses.length === 0) return courses;
+  const coversByCourseId = await readCourseCoversFromNativeCache(uid, courses);
+  return mergeDeviceCoversIntoCourses(courses, coversByCourseId);
+}
+
+async function writeCourseCoverToNativeCache(
+  uid: string,
+  course: CourseData,
+  options?: { skipCacheRead?: boolean }
+): Promise<string | null> {
+  if (!isCapacitorNativeRuntime()) return null;
+  if (!course.id) return null;
+  const sourceKey = getCourseCoverCacheSourceKey(course);
+  if (!sourceKey) return null;
+
+  if (!options?.skipCacheRead) {
+    const cachedUri = await readCourseCoverFromNativeCache(uid, course.id, sourceKey);
+    if (cachedUri) return cachedUri;
+  }
+
+  const dataUrl = await fetchCourseCoverAsDataUrl(course);
+  if (!dataUrl || !DATA_IMAGE_URL_PREFIX_RE.test(dataUrl)) return null;
+
+  const base64Index = dataUrl.indexOf('base64,');
+  if (base64Index < 0) return null;
+  const base64Data = dataUrl.slice(base64Index + 7);
+
+  const imagePath = getNativeCourseCoverImageFilePath(uid, course.id);
+  const metaPath = getNativeCourseCoverCachePath(uid, course.id);
+
+  try {
+    await Filesystem.writeFile({
+      path: imagePath,
+      data: base64Data,
+      directory: Directory.Data,
+      recursive: true
+    });
+
+    const payload: NativeCourseCoverCachePayload = {
+      schemaVersion: 2,
+      courseId: course.id,
+      sourceKey,
+      updatedAt: new Date().toISOString()
+    };
+    await Filesystem.writeFile({
+      path: metaPath,
+      data: JSON.stringify(payload),
+      directory: Directory.Data,
+      encoding: Encoding.UTF8,
+      recursive: true
+    });
+
+    const uriResult = await Filesystem.getUri({ path: imagePath, directory: Directory.Data });
+    const cap = (window as any)?.Capacitor;
+    return typeof cap?.convertFileSrc === 'function' ? cap.convertFileSrc(uriResult.uri) : null;
+  } catch (error) {
+    console.warn('Native course cover cache write failed:', error);
+    return null;
+  }
 }
 
 function readFullCoursesFromLocal(uid: string): Map<string, CourseData> {
@@ -1884,8 +2987,8 @@ function fromStoredCourse(raw: unknown): CourseData | null {
     ? item.cover as Record<string, unknown>
     : null;
   const resolvedBundlePath = resolvePreferredBookZipStoragePath(
-    bundlePayload?.path,
-    item.contentPackagePath
+    item.contentPackagePath,
+    bundlePayload?.path
   );
   const resolvedContentPackagePath = resolvedBundlePath
     || normalizeStorageObjectPath(item.contentPackagePath)
@@ -1917,7 +3020,7 @@ function fromStoredCourse(raw: unknown): CourseData | null {
   )
     ? {
       path: resolvedBundlePath,
-      version: Number.isFinite(bundleVersion) ? Math.max(1, Math.floor(bundleVersion)) : extractBundleVersionFromPath(resolvedBundlePath),
+      version: extractBundleVersionFromPath(resolvedBundlePath) || (Number.isFinite(bundleVersion) ? Math.max(1, Math.floor(bundleVersion)) : 1),
       checksumSha256: typeof bundlePayload?.checksumSha256 === 'string' ? bundlePayload.checksumSha256 : undefined,
       sizeBytes: Number.isFinite(Number(bundlePayload?.sizeBytes))
         ? Math.max(0, Math.floor(Number(bundlePayload?.sizeBytes)))
@@ -2033,11 +3136,30 @@ async function readCoursesFromNativeLibraryIndex(uid: string): Promise<CourseDat
         .map(fromStoredCourse)
         .filter((course): course is CourseData => course !== null)
       : [];
-    if (indexCourses.length === 0) return [];
+    if (indexCourses.length === 0) {
+      nativeInstalledCourseIdsByUid.set(uid, new Set());
+      return [];
+    }
 
     const fullCourses = await readFullCoursesFromNativeCache(uid, indexCourses.map((course) => course.id));
-    return mergeCourseCacheLists(Array.from(fullCourses.values()), indexCourses);
+    const indexById = new Map(indexCourses.map((course) => [course.id, course]));
+    const installedCourses = sortCoursesByLastActivity(
+      Array.from(fullCourses.values()).map((course) => {
+        const indexedCourse = indexById.get(course.id);
+        return indexedCourse
+          ? mergeSharedCourseWithUserProgress(course, toProgressDocFromCourseSnapshot(indexedCourse))
+          : course;
+      })
+    );
+
+    if (installedCourses.length !== indexCourses.length) {
+      await writeCoursesToNativeLibraryIndex(uid, installedCourses);
+    } else {
+      nativeInstalledCourseIdsByUid.set(uid, new Set(installedCourses.map((course) => course.id)));
+    }
+    return installedCourses;
   } catch (error) {
+    nativeInstalledCourseIdsByUid.set(uid, new Set());
     if (!isNativeFilesystemMissingError(error)) {
       console.warn('Native library index read failed:', error);
     }
@@ -2065,9 +3187,20 @@ async function writeCoursesToNativeLibraryIndex(uid: string, courses: CourseData
       encoding: Encoding.UTF8,
       recursive: true
     });
+    nativeInstalledCourseIdsByUid.set(uid, new Set(indexCourses.map((course) => course.id)));
   } catch (error) {
     console.warn('Native library index write failed:', error);
   }
+}
+
+function writeInstalledCoursesToNativeLibraryIndex(uid: string, courses: CourseData[]): void {
+  if (!isCapacitorNativeRuntime()) return;
+  const installedCourseIds = nativeInstalledCourseIdsByUid.get(uid);
+  if (!installedCourseIds || installedCourseIds.size === 0) return;
+  void writeCoursesToNativeLibraryIndex(
+    uid,
+    courses.filter((course) => installedCourseIds.has(course.id))
+  );
 }
 
 async function upsertCourseInNativeLibraryIndex(uid: string, course: CourseData): Promise<void> {
@@ -2141,6 +3274,7 @@ type UserCourseProgressDoc = {
   searchTags?: string[];
   totalDuration?: string;
   coverImageUrl?: string;
+  deviceCoverImageUrl?: string;
   contentPackageUrl?: string;
   contentPackagePath?: string;
   contentPackageUpdatedAt?: Date;
@@ -2199,6 +3333,7 @@ function mergeSharedCourseWithUserProgress(sharedCourse: CourseData, progress: U
     coverNarrationAudioUrl: sharedCourse.coverNarrationAudioUrl || progress.coverNarrationAudioUrl,
     coverNarrationAudioStoragePath: sharedCourse.coverNarrationAudioStoragePath || progress.coverNarrationAudioStoragePath,
     coverImageUrl: sharedCourse.coverImageUrl || progress.coverImageUrl,
+    deviceCoverImageUrl: sharedCourse.deviceCoverImageUrl || progress.deviceCoverImageUrl,
     contentPackageUrl: sharedCourse.contentPackageUrl || progress.contentPackageUrl,
     contentPackagePath: sharedCourse.contentPackagePath || progress.contentPackagePath,
     contentPackageUpdatedAt: sharedCourse.contentPackageUpdatedAt || progress.contentPackageUpdatedAt,
@@ -2234,6 +3369,7 @@ function toProgressDocFromCourseSnapshot(course: CourseData): UserCourseProgress
     coverNarrationAudioUrl: course.coverNarrationAudioUrl,
     coverNarrationAudioStoragePath: course.coverNarrationAudioStoragePath,
     coverImageUrl: course.coverImageUrl,
+    deviceCoverImageUrl: course.deviceCoverImageUrl,
     contentPackageUrl: course.contentPackageUrl,
     contentPackagePath: course.contentPackagePath,
     contentPackageUpdatedAt: course.contentPackageUpdatedAt,
@@ -2290,10 +3426,17 @@ function readCourseCoverCacheFromLocal(uid: string): Map<string, string> {
 }
 
 function writeCourseCoverCacheToLocal(uid: string, courses: CourseData[]): void {
+  if (isCapacitorNativeRuntime()) {
+    try {
+      window.localStorage.removeItem(getLocalCourseCoverCacheKey(uid));
+    } catch {
+      // Native runtime persists covers as files via writeCourseCoverToNativeCache.
+    }
+    return;
+  }
   try {
     const entries: LocalCourseCoverCacheEntry[] = courses
       .filter((course) => typeof course.coverImageUrl === 'string' && DATA_IMAGE_URL_PREFIX_RE.test(course.coverImageUrl))
-      .slice(0, MAX_LOCAL_INLINE_COVER_CACHE_ITEMS)
       .map((course) => ({
         courseId: course.id,
         coverImageUrl: course.coverImageUrl as string,
@@ -2305,13 +3448,30 @@ function writeCourseCoverCacheToLocal(uid: string, courses: CourseData[]): void 
       return;
     }
 
-    window.localStorage.setItem(getLocalCourseCoverCacheKey(uid), JSON.stringify(entries));
+    let count = entries.length;
+    while (count > 0) {
+      try {
+        window.localStorage.setItem(getLocalCourseCoverCacheKey(uid), JSON.stringify(entries.slice(0, count)));
+        return;
+      } catch (error) {
+        if (!isQuotaExceededLocalStorageError(error)) {
+          return;
+        }
+        count = Math.floor(count / 2);
+      }
+    }
+    window.localStorage.removeItem(getLocalCourseCoverCacheKey(uid));
   } catch {
     // Ignore: cover cache is a best-effort recovery layer for freshly created books.
   }
 }
 
 function persistCoursesToLocal(uid: string, courses: CourseData[]): void {
+  if (isCapacitorNativeRuntime()) {
+    pendingLocalCourseWrites.delete(uid);
+    return;
+  }
+
   if (localCourseCacheDisabledByQuota.has(uid)) {
     pendingLocalCourseWrites.delete(uid);
     return;
@@ -2330,21 +3490,23 @@ function persistCoursesToLocal(uid: string, courses: CourseData[]): void {
 
   const storageKey = getLocalCoursesKey(uid);
   const writePlans: Array<{
-    maxItems: number;
+    maxItems?: number;
     mapper: (course: CourseData) => StoredCourse;
   }> = [
-      { maxItems: Math.min(4, MAX_LOCAL_COURSE_CACHE_ITEMS), mapper: toCompactStoredCourse },
-      { maxItems: Math.min(8, MAX_LOCAL_COURSE_CACHE_ITEMS), mapper: toQuotaSafeStoredCourse },
-      { maxItems: MAX_LOCAL_COURSE_CACHE_ITEMS, mapper: toQuotaSafeStoredCourse }
-    ];
+    { mapper: toQuotaSafeStoredCourse },
+    { maxItems: 80, mapper: toQuotaSafeStoredCourse },
+    { maxItems: 40, mapper: toCompactStoredCourse },
+    { maxItems: 12, mapper: toCompactStoredCourse }
+  ];
 
   let quotaExceeded = false;
   for (const plan of writePlans) {
     try {
+      const plannedCourses = typeof plan.maxItems === 'number'
+        ? latestCourses.slice(0, plan.maxItems)
+        : latestCourses;
       const payload = JSON.stringify(
-        latestCourses
-          .slice(0, plan.maxItems)
-          .map(plan.mapper)
+        plannedCourses.map(plan.mapper)
       );
       window.localStorage.setItem(storageKey, payload);
       return;
@@ -2383,13 +3545,23 @@ function flushCoursesToLocalNow(uid: string, courses?: CourseData[]): void {
     pendingLocalCourseWrites.set(uid, [...courses]);
   }
 
-  persistCoursesToLocal(uid, pendingLocalCourseWrites.get(uid) || []);
-  void writeCoursesToNativeLibraryIndex(uid, pendingLocalCourseWrites.get(uid) || []);
+  const coursesToWrite = pendingLocalCourseWrites.get(uid) || [];
+  writeInstalledCoursesToNativeLibraryIndex(uid, coursesToWrite);
+  persistCoursesToLocal(uid, coursesToWrite);
   pendingLocalCourseWrites.delete(uid);
 }
 
 function writeCoursesToLocal(uid: string, courses: CourseData[]): void {
-  void writeCoursesToNativeLibraryIndex(uid, courses);
+  writeInstalledCoursesToNativeLibraryIndex(uid, courses);
+  if (isCapacitorNativeRuntime()) {
+    pendingLocalCourseWrites.delete(uid);
+    const existingTimer = localCourseWriteTimers.get(uid);
+    if (typeof existingTimer === 'number') {
+      window.clearTimeout(existingTimer);
+      localCourseWriteTimers.delete(uid);
+    }
+    return;
+  }
   if (localCourseCacheDisabledByQuota.has(uid)) return;
   pendingLocalCourseWrites.set(uid, [...courses]);
   const existingTimer = localCourseWriteTimers.get(uid);
@@ -2513,7 +3685,7 @@ function normalizeCreditWallet(value: unknown): CreditWallet | null {
   const createCredits = Number(raw.createCredits);
   if (!Number.isFinite(createCredits)) return null;
   return {
-    createCredits: Math.max(0, Math.floor(createCredits))
+    createCredits: Math.max(0, Math.round(createCredits * 10) / 10)
   };
 }
 
@@ -2619,6 +3791,7 @@ export default function App() {
   const [creditWallet, setCreditWallet] = useState<CreditWallet>(FREE_STARTER_CREDITS);
   const [isCreditPaywallOpen, setCreditPaywallOpen] = useState(false);
   const [creditPaywallIntent, setCreditPaywallIntent] = useState<CreditActionType | null>(null);
+  const [isLoginPromptOpen, setLoginPromptOpen] = useState(false);
   const [isCreditPurchaseBusy, setCreditPurchaseBusy] = useState(false);
   const [creditPackDisplayPrices, setCreditPackDisplayPrices] = useState<Partial<Record<string, string>>>({});
   const [legalConsentState, setLegalConsentState] = useState<LegalConsentState>('unknown');
@@ -2650,6 +3823,10 @@ export default function App() {
   const packageSyncAttemptedByCourseRef = useRef<Set<string>>(new Set());
   const coverRepairAttemptedByCourseRef = useRef<Set<string>>(new Set());
   const coverLookupExhaustedRef = useRef<Set<string>>(new Set());
+  const coverRepairInFlightByCourseIdRef = useRef<Set<string>>(new Set());
+  const nativeCoverPrefetchAttemptedRef = useRef<Set<string>>(new Set());
+  const nativeDownloadStateProbeAttemptedRef = useRef<Set<string>>(new Set());
+  const backgroundBookPackageUpdateInFlightRef = useRef<Set<string>>(new Set());
   const shareLinkRedirectAttemptedRef = useRef<Set<string>>(new Set());
   const shareLinkAutoOpenHandledRef = useRef<Set<string>>(new Set());
   const creditWalletRef = useRef<CreditWallet>(FREE_STARTER_CREDITS);
@@ -2849,7 +4026,7 @@ export default function App() {
   };
 
   const buildCourseCoverPathCandidates = (
-    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes'>
+    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes' | 'cover' | 'bundle'>
   ): string[] => {
     const candidates: string[] = [];
     const pushCandidate = (value: string | null | undefined) => {
@@ -2869,13 +4046,18 @@ export default function App() {
       }
     }
 
-    if (isFairyTaleCourse(course)) {
-      return candidates;
-    }
-
-    const packageBasePath = typeof course.contentPackagePath === 'string'
-      ? course.contentPackagePath.trim().replace(/\/(?:package\.json|book\.zip)$/i, '')
+    const preferredPackagePath = resolvePreferredBookZipStoragePath(course.contentPackagePath, course.bundle?.path);
+    const packageBasePath = typeof preferredPackagePath === 'string'
+      ? preferredPackagePath.trim().replace(/\/(?:package\.json|book\.zip)$/i, '')
       : '';
+    const coverPath = normalizeStorageObjectPath(course.cover?.path);
+    if (coverPath) {
+      if (coverPath.startsWith('smartbooks/')) {
+        pushCandidate(coverPath);
+      } else if (packageBasePath) {
+        pushCandidate(`${packageBasePath}/${coverPath}`);
+      }
+    }
     if (packageBasePath) {
       pushCandidate(`${packageBasePath}/cover.jpg`);
       pushCandidate(`${packageBasePath}/cover.jpeg`);
@@ -2897,7 +4079,7 @@ export default function App() {
   };
 
   const resolveFreshCoverUrlForCourse = async (
-    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes'>
+    course: Pick<CourseData, 'id' | 'coverImageUrl' | 'contentPackagePath' | 'bookType' | 'nodes' | 'cover' | 'bundle'>
   ): Promise<string | undefined> => {
     const fairyTaleFirstImageCover = resolveFirstGeneratedImageAsFairyTaleCover(course);
     if (fairyTaleFirstImageCover) {
@@ -3026,7 +4208,7 @@ export default function App() {
     options?: { preferBackend?: boolean; backendOnly?: boolean; versionHint?: number }
   ): Promise<CourseData | null> => {
     const cached = coursePackageByIdRef.current.get(courseId);
-    if (cached && !courseNeedsContentHydration(cached)) return cached;
+    if (cached && hasPersistableCourseContent(cached) && !visualStoryNeedsAudioHydration(cached)) return cached;
 
     const preferBackend = options?.preferBackend === true;
     const backendOnly = options?.backendOnly === true;
@@ -3068,7 +4250,16 @@ export default function App() {
         pushPath(`smartbooks/${safeCourseId}/v1/book.zip`);
       }
 
-      let resolvedUrl = typeof packageUrl === 'string' && packageUrl.trim() ? packageUrl.trim() : undefined;
+      const initialPackageUrl = typeof packageUrl === 'string' && packageUrl.trim() ? packageUrl.trim() : undefined;
+      const initialPackageUrlPath = initialPackageUrl && isFirebaseStorageDownloadUrl(initialPackageUrl)
+        ? tryParseFirebaseStorageObjectPath(initialPackageUrl)
+        : null;
+      const preferredInitialPath = candidatePaths[0];
+      let resolvedUrl = initialPackageUrl &&
+        (!initialPackageUrlPath || !safeOwnerId || initialPackageUrlPath.startsWith(`smartbooks/${safeOwnerId}/`)) &&
+        (!preferredInitialPath || !initialPackageUrlPath || initialPackageUrlPath === preferredInitialPath)
+        ? initialPackageUrl
+        : undefined;
       let resolvedPath = candidatePaths[0];
       let hydratedCourse: CourseData | null = null;
       let lastError: unknown = null;
@@ -3087,12 +4278,33 @@ export default function App() {
             throw new Error(`Book package fetch failed (${response.status})`);
           }
           const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-          const responseBlob = await response.blob();
           const isZipLike = /application\/zip|application\/x-zip-compressed/i.test(contentType) || /\.zip($|\?)/i.test(url);
           if (isZipLike) {
-            return await hydrateCourseFromBundleBlob(courseId, responseBlob, url, resolvedPath || packagePath);
+            const responseBlob = await response.blob();
+            window.clearTimeout(timer);
+            const effectivePath = resolvedPath || packagePath;
+            const effectiveVersion = extractBundleVersionFromPath(effectivePath) || hintedVersion || 1;
+            if (safeOwnerId) {
+              if (isCapacitorNativeRuntime()) {
+                void writeBookPackageToNativeCache(safeOwnerId, courseId, effectiveVersion, responseBlob);
+              }
+            }
+            const hydrated = await hydrateCourseFromBundleBlob(
+              courseId,
+              responseBlob,
+              url,
+              effectivePath,
+              { localUserId: safeOwnerId, versionHint: effectiveVersion, persistAssets: true }
+            );
+            if (safeOwnerId && hydrated) {
+              if (!isCapacitorNativeRuntime()) {
+                void writeBookPackageToWebCache(safeOwnerId, courseId, effectiveVersion, responseBlob, hydrated, url, effectivePath);
+              }
+            }
+            return hydrated;
           }
           const payload = await response.json();
+          window.clearTimeout(timer);
           const course = fromStoredCourse(payload);
           return await materializeCourse(course || null, url, resolvedPath || packagePath);
         } finally {
@@ -3109,7 +4321,23 @@ export default function App() {
         );
         const isZipLike = /\.zip$/i.test(path) || /application\/zip|application\/x-zip-compressed/i.test(String(packageBlob.type || '').toLowerCase());
         if (isZipLike) {
-          return await hydrateCourseFromBundleBlob(courseId, packageBlob, resolvedUrl, path);
+          const effectiveVersion = extractBundleVersionFromPath(path) || hintedVersion || 1;
+          if (safeOwnerId) {
+            if (isCapacitorNativeRuntime()) {
+              void writeBookPackageToNativeCache(safeOwnerId, courseId, effectiveVersion, packageBlob);
+            }
+          }
+          const hydrated = await hydrateCourseFromBundleBlob(
+            courseId,
+            packageBlob,
+            resolvedUrl,
+            path,
+            { localUserId: safeOwnerId, versionHint: effectiveVersion, persistAssets: true }
+          );
+          if (safeOwnerId && hydrated && !isCapacitorNativeRuntime()) {
+            void writeBookPackageToWebCache(safeOwnerId, courseId, effectiveVersion, packageBlob, hydrated, resolvedUrl, path);
+          }
+          return hydrated;
         }
         const payload = JSON.parse(await packageBlob.text());
         const course = fromStoredCourse(payload);
@@ -3140,6 +4368,24 @@ export default function App() {
         // A course with *some* nodes is always better than null.
         coursePackageByIdRef.current.set(courseId, nextCourse);
         return nextCourse;
+      };
+
+      const tryLoadFromNativePackageCache = async (): Promise<CourseData | null> => {
+        if (!safeOwnerId) return null;
+        const packageRecord = await readBookPackageFromNativeCache(safeOwnerId, courseId, hintedVersion);
+        if (!packageRecord) return null;
+        const hydrated = await hydrateCourseFromBundleBlob(
+          courseId,
+          packageRecord.blob,
+          resolvedUrl,
+          resolvedPath || packagePath,
+          {
+            localUserId: safeOwnerId,
+            versionHint: packageRecord.version,
+            persistAssets: true
+          }
+        );
+        return await materializeCourse(hydrated, resolvedUrl, resolvedPath || packagePath);
       };
 
       const tryLoadFromBackend = async (_preferFirestore = false): Promise<CourseData | null> => null;
@@ -3175,7 +4421,16 @@ export default function App() {
         }
       }
 
-      if (resolvedUrl) {
+      try {
+        hydratedCourse = await tryLoadFromNativePackageCache();
+        if (hydratedCourse) {
+          lastError = null;
+        }
+      } catch (nativePackageError) {
+        lastError = nativePackageError;
+      }
+
+      if (!hydratedCourse && resolvedUrl) {
         try {
           hydratedCourse = await tryLoadFromDownloadUrl(resolvedUrl);
           if (!resolvedPath && isFirebaseStorageDownloadUrl(resolvedUrl)) {
@@ -3264,6 +4519,28 @@ export default function App() {
         coursePackagePromiseModeByIdRef.current.delete(courseId);
       }
     }
+  };
+
+  const resolveCourseCoverRepair = async (
+    course: CourseData
+  ): Promise<{ coverImageUrl?: string; hydratedCourse?: CourseData | null }> => {
+    const directCoverImageUrl = await resolveFreshCoverUrlForCourse(course);
+    if (directCoverImageUrl) {
+      return { coverImageUrl: directCoverImageUrl };
+    }
+
+    if (authUser?.uid && (!course.userId || course.userId === authUser.uid)) {
+      try {
+        const result = await repairSmartBookCover({ bookId: course.id });
+        const repairedCoverUrl = String(result.data?.coverImageUrl || '').trim();
+        if (repairedCoverUrl) return { coverImageUrl: repairedCoverUrl };
+      } catch (error) {
+        console.warn(`Standalone book cover repair failed (${course.id}):`, error);
+      }
+    }
+
+    // The device never downloads the full package just to render a library cover.
+    return {};
   };
 
   const waitMs = (ms: number) =>
@@ -3403,13 +4680,16 @@ export default function App() {
 
   const waitForHydratedCourseSnapshot = async (
     courseId: string,
-    timeoutMs = SMARTBOOK_EXPORT_HYDRATION_WAIT_MS
+    timeoutMs = SMARTBOOK_EXPORT_HYDRATION_WAIT_MS,
+    requireAudioHydration = false
   ): Promise<CourseData | null> => {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
       const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || null;
       if (!snapshot) return null;
-      if (!courseNeedsContentHydration(snapshot)) return snapshot;
+      if (!courseNeedsContentHydration(snapshot) && (!requireAudioHydration || !visualStoryNeedsAudioHydration(snapshot))) {
+        return snapshot;
+      }
       await waitMs(120);
     }
 
@@ -3428,7 +4708,7 @@ export default function App() {
       // Best-effort hydration only; export still falls back to the latest known snapshot.
     }
 
-    const hydratedSnapshot = await waitForHydratedCourseSnapshot(courseId);
+    const hydratedSnapshot = await waitForHydratedCourseSnapshot(courseId, SMARTBOOK_EXPORT_HYDRATION_WAIT_MS, needsAudioHydration);
     return hydratedSnapshot || snapshot;
   };
 
@@ -3453,20 +4733,9 @@ export default function App() {
       const nextCourses = prev.map((course) => {
         if (course.id !== cloudCourse.id) return course;
         changed = true;
+        const packageMetadataMerged = mergeCoursePackageMetadata(course, cloudCourse);
         return {
-          ...course,
-          visualStoryMode: cloudCourse.visualStoryMode === true || course.visualStoryMode === true,
-          visualStoryAudioStatus: cloudCourse.visualStoryAudioStatus || course.visualStoryAudioStatus,
-          coverNarrationText: cloudCourse.coverNarrationText || course.coverNarrationText,
-          coverNarrationAudioUrl: cloudCourse.coverNarrationAudioUrl || course.coverNarrationAudioUrl,
-          coverNarrationAudioStoragePath: cloudCourse.coverNarrationAudioStoragePath || course.coverNarrationAudioStoragePath,
-          coverImageUrl: cloudCourse.coverImageUrl || course.coverImageUrl,
-          contentPackageUrl: cloudCourse.contentPackageUrl || course.contentPackageUrl,
-          contentPackagePath: cloudCourse.contentPackagePath || course.contentPackagePath,
-          contentPackageUpdatedAt: cloudCourse.contentPackageUpdatedAt || course.contentPackageUpdatedAt,
-          bundle: cloudCourse.bundle || course.bundle,
-          cover: cloudCourse.cover || course.cover,
-          status: normalizeCourseStatus(cloudCourse.status) || normalizeCourseStatus(course.status),
+          ...packageMetadataMerged,
           nodes: Array.isArray(cloudCourse.nodes) && cloudCourse.nodes.length > 0 ? cloudCourse.nodes : course.nodes
         };
       });
@@ -3498,7 +4767,7 @@ export default function App() {
     const snapshot = savedCoursesRef.current.find((course) => course.id === courseId) || options?.snapshotHint || null;
     const markNodesLoading = options?.markNodesLoading === true;
 
-    const applyHydratedCourseLocally = (hydrated: CourseData, progressSnapshot: CourseData) => {
+    const applyHydratedCourseLocally = (hydrated: CourseData, progressSnapshot: CourseData): CourseData => {
       const mergedCourse = mergeSharedCourseWithUserProgress(
         hydrated,
         toProgressDocFromCourseSnapshot(progressSnapshot)
@@ -3515,9 +4784,10 @@ export default function App() {
         if (!changed) return prev;
         writeCoursesToLocal(localUserId, nextCourses);
         writeFullCoursesToLocal(localUserId, nextCourses);
-        void writeFullCourseToNativeCache(localUserId, mergedCourse);
         return nextCourses;
       });
+
+      return mergedCourse;
     };
 
     if (!snapshot) {
@@ -3528,10 +4798,18 @@ export default function App() {
       return true;
     }
 
-    // Prefer any on-disk cached version (do not re-download on bundle version bumps until explicit open).
-    const nativeCachedCourse = await readFullCourseFromNativeCache(localUserId, courseId);
-    if (!options?.force && nativeCachedCourse && !courseNeedsContentHydration(nativeCachedCourse)) {
-      applyHydratedCourseLocally(nativeCachedCourse, snapshot);
+    // Prefer any installed package; opening should not redownload a book already on the device/browser.
+    const installedCourse = await readInstalledBook(
+      localUserId,
+      courseId,
+      extractBundleVersionFromPath(snapshot.contentPackagePath) || snapshot.bundle?.version
+    );
+    if (
+      installedCourse &&
+      !courseNeedsContentHydration(installedCourse) &&
+      (!options?.force || !visualStoryNeedsAudioHydration(installedCourse))
+    ) {
+      applyHydratedCourseLocally(installedCourse, snapshot);
       return true;
     }
 
@@ -3576,7 +4854,7 @@ export default function App() {
           ownerUid,
           packageUrl,
           packagePath,
-          { preferBackend: true, versionHint: latestSnapshot.bundle?.version }
+          { preferBackend: true, versionHint: extractBundleVersionFromPath(latestSnapshot.contentPackagePath) || latestSnapshot.bundle?.version }
         );
 
         if (!hydrated) {
@@ -3584,7 +4862,8 @@ export default function App() {
           return false;
         }
 
-        applyHydratedCourseLocally(hydrated, latestSnapshot);
+        const mergedCourse = applyHydratedCourseLocally(hydrated, latestSnapshot);
+        await writeFullCourseToNativeCache(localUserId, mergedCourse);
         hydrationSucceeded = true;
         return true;
       } catch (error) {
@@ -3623,7 +4902,8 @@ export default function App() {
 
   const resolveCreditCost = (action: CreditActionType, costOverride?: number): number => {
     if (Number.isFinite(costOverride) && Number(costOverride) > 0) {
-      return Math.max(1, Math.floor(Number(costOverride)));
+      const n = Number(costOverride);
+      return n < 1 ? n : Math.floor(n);
     }
     return DEFAULT_ACTION_CREDIT_COST[action];
   };
@@ -3679,6 +4959,10 @@ export default function App() {
   };
 
   const requireCreditForAction = (action: CreditActionType, costOverride?: number): boolean => {
+    if (isGuestSession || (!authUser && !isAuthLoading)) {
+      setLoginPromptOpen(true);
+      return false;
+    }
     const cost = resolveCreditCost(action, costOverride);
     const wallet = creditWalletRef.current;
     const amount = wallet.createCredits;
@@ -3688,10 +4972,8 @@ export default function App() {
   };
 
   const consumeCreditForAction = async (action: CreditActionType, costOverride?: number): Promise<boolean> => {
-    const localUserId = authUser?.uid
-      ?? (isGuestSession ? GUEST_LOCAL_UID : (isAuthLoading ? bootstrapAuthUid : null));
-    if (!localUserId) {
-      openCreditPaywall(action);
+    if (isGuestSession || (!authUser && !isAuthLoading)) {
+      setLoginPromptOpen(true);
       return false;
     }
 
@@ -3875,7 +5157,12 @@ export default function App() {
       applyCloudHydratedCourseLocally(pending.uid, cloudCourse);
 
       const bookDocPayload = buildBookDocumentPayload(pending.uid, pending.courseId, cloudCourse);
-      const safeBookDocPayload = stripUndefinedDeepForFirestore(bookDocPayload);
+      const safeBookDocPayload = {
+        ...stripUndefinedDeepForFirestore(bookDocPayload),
+        nodes: deleteField(),
+        content: deleteField(),
+        pages: deleteField()
+      };
       await setDoc(
         doc(db, 'users', pending.uid, 'books', pending.courseId),
         safeBookDocPayload,
@@ -4090,6 +5377,136 @@ export default function App() {
   }, [savedCourses]);
 
   useEffect(() => {
+    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    if (!localUserId || !isCapacitorNativeRuntime() || savedCourses.length === 0) return;
+
+    const targets = savedCourses.filter((course) => {
+      const sourceKey = getCourseCoverCacheSourceKey(course);
+      if (!sourceKey) return false;
+      if (course.deviceCoverImageUrl && isPersistentLocalAssetUrl(course.deviceCoverImageUrl)) return false;
+      const attemptKey = `${localUserId}:${course.id}:${simpleStableHash(sourceKey)}`;
+      if (nativeCoverPrefetchAttemptedRef.current.has(attemptKey)) return false;
+      nativeCoverPrefetchAttemptedRef.current.add(attemptKey);
+      return true;
+    });
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+    const downloadedCovers = new Map<string, string>();
+
+    void runTasksWithConcurrency(targets, 1, async (course) => {
+      if (cancelled) return;
+      try {
+        const deviceCoverImageUrl = await writeCourseCoverToNativeCache(
+          localUserId,
+          course,
+          { skipCacheRead: true }
+        );
+        if (deviceCoverImageUrl) downloadedCovers.set(course.id, deviceCoverImageUrl);
+      } catch (error) {
+        console.warn('Native course cover prefetch failed:', error);
+      }
+    }).then(() => {
+      if (cancelled || downloadedCovers.size === 0) return;
+      setSavedCourses((prev) => {
+        const nextCourses = mergeDeviceCoversIntoCourses(prev, downloadedCovers);
+        if (nextCourses === prev) return prev;
+        savedCoursesRef.current = nextCourses;
+        return nextCourses;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.uid, isGuestSession, savedCourses]);
+
+  useEffect(() => {
+    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    if (!localUserId || !isCapacitorNativeRuntime() || savedCourses.length === 0) return;
+    const installedCourseIds = nativeInstalledCourseIdsByUid.get(localUserId);
+    if (!installedCourseIds || installedCourseIds.size === 0) return;
+
+    const targets = savedCourses.filter((course) => {
+      if (!installedCourseIds.has(course.id)) return false;
+      if (!courseNeedsContentHydration(course)) return false;
+      const cacheVersion = resolveNativeCourseCacheVersion(course);
+      const attemptKey = `${localUserId}:${course.id}:v${cacheVersion}`;
+      if (nativeDownloadStateProbeAttemptedRef.current.has(attemptKey)) return false;
+      nativeDownloadStateProbeAttemptedRef.current.add(attemptKey);
+      return true;
+    });
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+    void readFullCoursesFromNativeCache(localUserId, targets.map((course) => course.id)).then((nativeFullCourseCache) => {
+      if (nativeFullCourseCache.size === 0) return;
+
+      const readyCourseIds = new Set<string>();
+
+      if (!cancelled) {
+        setSavedCourses((prev) => {
+          let changed = false;
+          const nextCourses = sortCoursesByLastActivity(prev.map((course) => {
+            const fullCachedCourse = nativeFullCourseCache.get(course.id);
+            if (!fullCachedCourse || !courseNeedsContentHydration(course)) return course;
+            const mergedCourse = mergeSharedCourseWithUserProgress(
+              fullCachedCourse,
+              toProgressDocFromCourseSnapshot(course)
+            );
+            if (!courseNeedsContentHydration(mergedCourse)) {
+              coursePackageByIdRef.current.set(course.id, mergedCourse);
+              readyCourseIds.add(course.id);
+            }
+            changed = true;
+            return mergedCourse;
+          }));
+          if (!changed) return prev;
+          savedCoursesRef.current = nextCourses;
+          writeCoursesToLocal(localUserId, nextCourses);
+          writeFullCoursesToLocal(localUserId, nextCourses);
+          return nextCourses;
+        });
+      } else {
+        // Cancelled due to savedCourses change — still mark cached courses as ready
+        // so the Download button doesn't flash on after Firebase sync overwrites state.
+        for (const course of savedCoursesRef.current) {
+          const fullCachedCourse = nativeFullCourseCache.get(course.id);
+          if (!fullCachedCourse || !courseNeedsContentHydration(course)) continue;
+          const mergedCourse = mergeSharedCourseWithUserProgress(
+            fullCachedCourse,
+            toProgressDocFromCourseSnapshot(course)
+          );
+          if (!courseNeedsContentHydration(mergedCourse)) {
+            coursePackageByIdRef.current.set(course.id, mergedCourse);
+            readyCourseIds.add(course.id);
+          }
+        }
+      }
+
+      if (readyCourseIds.size > 0) {
+        setCourseOpenStateById((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const courseId of readyCourseIds) {
+            const previous = next[courseId];
+            if (previous?.status === 'ready' && previous.progress === 100) continue;
+            next[courseId] = { status: 'ready', progress: 100, updatedAt: Date.now() };
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+      }
+    }).catch((error) => {
+      console.warn('Native downloaded book state probe failed:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.uid, isGuestSession, savedCourses]);
+
+  useEffect(() => {
     if (!authUser?.uid) return;
     if (!savedCourses.length) return;
 
@@ -4097,14 +5514,15 @@ export default function App() {
     const repairTargets = savedCourses.flatMap((course) => {
       const hasUnresolvedStoragePath = typeof course.coverImageUrl === 'string' &&
         course.coverImageUrl.trim().startsWith('smartbooks/');
-      const isFairyTale = isFairyTaleCourse(course);
       const fairyTaleFirstImageCover = resolveFirstGeneratedImageAsFairyTaleCover(course);
       const needsFairyTaleFirstImageCover = !course.coverImageUrl && Boolean(fairyTaleFirstImageCover);
-      const needsCoverFromPackage = !course.coverImageUrl && !isFairyTale && Boolean(course.contentPackagePath);
-      const needsLegacyCoverLookup = !course.coverImageUrl && !isFairyTale;
+      const packagePath = resolvePreferredBookZipStoragePath(course.contentPackagePath, course.bundle?.path);
+      const needsCoverFromPackage = !course.coverImageUrl && Boolean(packagePath || course.contentPackageUrl);
+      const needsLegacyCoverLookup = !course.coverImageUrl;
       if (!hasUnresolvedStoragePath && !needsFairyTaleFirstImageCover && !needsCoverFromPackage && !needsLegacyCoverLookup) return [];
 
-      const repairKey = `${course.id}:${course.coverImageUrl || ''}:${course.contentPackagePath || ''}`;
+      const repairKey = `${course.id}:${course.coverImageUrl || ''}:${packagePath || ''}:${course.cover?.path || ''}`;
+      if (coverRepairInFlightByCourseIdRef.current.has(course.id)) return [];
       if (coverLookupExhaustedRef.current.has(repairKey)) return [];
       if (!markRetriableAttemptWithCooldown(
         coverRepairAttemptedByCourseRef.current,
@@ -4114,21 +5532,33 @@ export default function App() {
         return [];
       }
 
+      coverRepairInFlightByCourseIdRef.current.add(course.id);
       return [{ course, repairKey }];
     });
 
     if (repairTargets.length === 0) return;
 
-    let isCancelled = false;
-
     const repairCourseCovers = async () => {
-      const resolvedCovers = await Promise.all(
-        repairTargets.map(async ({ course, repairKey }) => ({
-          courseId: course.id,
-          repairKey,
-          coverImageUrl: await resolveFreshCoverUrlForCourse(course)
-        }))
-      );
+      const resolvedCovers: Array<{
+        courseId: string;
+        repairKey: string;
+        coverImageUrl?: string;
+        hydratedCourse?: CourseData | null;
+      }> = [];
+
+      await runTasksWithConcurrency(repairTargets, 2, async ({ course, repairKey }) => {
+        try {
+          const repair = await resolveCourseCoverRepair(course);
+          resolvedCovers.push({
+            courseId: course.id,
+            repairKey,
+            coverImageUrl: repair.coverImageUrl,
+            hydratedCourse: repair.hydratedCourse
+          });
+        } finally {
+          coverRepairInFlightByCourseIdRef.current.delete(course.id);
+        }
+      });
 
       const repairedById = new Map(
         resolvedCovers
@@ -4139,6 +5569,13 @@ export default function App() {
             return [entry.courseId, repairedCover] as const;
           })
       );
+      const hydratedById = new Map(
+        resolvedCovers
+          .filter((entry): entry is typeof entry & { hydratedCourse: CourseData } => (
+            Boolean(entry.hydratedCourse && hasPersistableCourseContent(entry.hydratedCourse))
+          ))
+          .map((entry) => [entry.courseId, entry.hydratedCourse] as const)
+      );
 
       for (const entry of resolvedCovers) {
         if (!repairedById.has(entry.courseId)) {
@@ -4146,41 +5583,82 @@ export default function App() {
         }
       }
 
-      if (isCancelled) return;
-      if (repairedById.size === 0) return;
+      if (repairedById.size === 0 && hydratedById.size === 0) return;
+
+      const readyCourseIds = new Set<string>();
+      const nativeCacheCourses: CourseData[] = [];
 
       setSavedCourses((prev) => {
         let changed = false;
         const nextCourses = prev.map((course) => {
           const repairedCoverImageUrl = repairedById.get(course.id);
-          if (!repairedCoverImageUrl || repairedCoverImageUrl === course.coverImageUrl) return course;
-          changed = true;
+          const hydratedCourse = hydratedById.get(course.id);
+          if (!repairedCoverImageUrl && !hydratedCourse) return course;
 
           const cachedCourse = coursePackageByIdRef.current.get(course.id);
           if (cachedCourse) {
             coursePackageByIdRef.current.set(course.id, {
               ...cachedCourse,
-              coverImageUrl: repairedCoverImageUrl
+              coverImageUrl: repairedCoverImageUrl || cachedCourse.coverImageUrl
             });
           }
 
-          return {
-            ...course,
-            coverImageUrl: repairedCoverImageUrl
-          };
+          const nextCourse = hydratedCourse
+            ? mergeSharedCourseWithUserProgress(
+              {
+                ...hydratedCourse,
+                coverImageUrl: repairedCoverImageUrl || hydratedCourse.coverImageUrl
+              },
+              toProgressDocFromCourseSnapshot(course)
+            )
+            : {
+              ...course,
+              coverImageUrl: repairedCoverImageUrl
+            };
+
+          if (
+            nextCourse.coverImageUrl === course.coverImageUrl &&
+            nextCourse.nodes === course.nodes
+          ) {
+            return course;
+          }
+
+          changed = true;
+          if (hydratedCourse && !courseNeedsContentHydration(nextCourse)) {
+            coursePackageByIdRef.current.set(course.id, nextCourse);
+            readyCourseIds.add(course.id);
+            nativeCacheCourses.push(nextCourse);
+          }
+          return nextCourse;
         });
 
         if (!changed) return prev;
         writeCoursesToLocal(localUserId, nextCourses);
+        writeFullCoursesToLocal(localUserId, nextCourses);
         return nextCourses;
       });
+
+      if (readyCourseIds.size > 0) {
+        setCourseOpenStateById((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const courseId of readyCourseIds) {
+            const previous = next[courseId];
+            if (previous?.status === 'ready' && previous.progress === 100) continue;
+            next[courseId] = { status: 'ready', progress: 100, updatedAt: Date.now() };
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+      }
+      if (nativeCacheCourses.length > 0) {
+        void runTasksWithConcurrency(nativeCacheCourses, 2, async (course) => {
+          await writeFullCourseToNativeCache(localUserId, course);
+        });
+      }
     };
 
     void repairCourseCovers();
-
-    return () => {
-      isCancelled = true;
-    };
   }, [authUser?.uid, savedCourses]);
 
   useEffect(() => {
@@ -4265,9 +5743,10 @@ export default function App() {
   };
 
   const handleContactSupport = () => {
-    const subject = encodeURIComponent('Fortale Destek');
-    const mailtoUrl = `mailto:fortale@sponelabs.com?subject=${subject}`;
-    window.location.href = mailtoUrl;
+    const subject = encodeURIComponent('Fortale Support');
+    const body = encodeURIComponent('Hello Fortale Support,\n\nI need help with:\n\n');
+    const mailtoUrl = `mailto:fortale@sponelabs.com?subject=${subject}&body=${body}`;
+    window.location.assign(mailtoUrl);
   };
 
   useEffect(() => {
@@ -4542,7 +6021,9 @@ export default function App() {
                   fullCachedCourse,
                   toProgressDocFromCourseSnapshot(course)
                 );
-                coursePackageByIdRef.current.set(course.id, mergedCourse);
+                if (!courseNeedsContentHydration(mergedCourse)) {
+                  coursePackageByIdRef.current.set(course.id, mergedCourse);
+                }
                 return mergedCourse;
               })
             );
@@ -4561,9 +6042,13 @@ export default function App() {
         }
       };
 
-      const localStorageCourses = readCoursesFromLocal(localUserId);
-      const nativeLibraryCourses = await readCoursesFromNativeLibraryIndex(localUserId);
-      const localCourses = mergeCourseCacheLists(nativeLibraryCourses, localStorageCourses);
+      const installedLibraryCourses = await readInstalledLibrary(localUserId);
+      const installedCourseIds = new Set(installedLibraryCourses.map((course) => course.id));
+      const localStorageCourses = isCapacitorNativeRuntime() ? [] : readCoursesFromLocal(localUserId);
+      let localCourses = mergeCourseCacheLists(installedLibraryCourses, localStorageCourses);
+      if (localCourses.length > 0) {
+        localCourses = await mergeNativeCourseCoversIntoCourses(localUserId, localCourses);
+      }
       const localStickyNotes = readStickyNotesFromLocal(localUserId);
       const localLikedCourseIds = readLikedCourseIdsFromLocal(localUserId);
       const progressOnlyFallbackCourseIds = new Set<string>();
@@ -4581,16 +6066,7 @@ export default function App() {
         return localCourses[0].id;
       });
       setHasCompletedLocalBootstrap(true);
-
-      const nativeCacheMergePromise = localCourses.length > 0
-        ? mergeNativeFullCoursesIntoState(localCourses.map((course) => course.id))
-        : Promise.resolve();
-
-      void nativeCacheMergePromise.finally(() => {
-        if (!isCancelled) {
-          setHasCompletedNativeCacheMerge(true);
-        }
-      });
+      setHasCompletedNativeCacheMerge(true);
 
       const stickyNotesBootstrapPromise = (async () => {
         if (!authUser || !cloudSyncEnabled) return;
@@ -4633,6 +6109,21 @@ export default function App() {
         setIsLoading(false);
       } else {
         setLoadingMessage('Kitaplar senkronize ediliyor...');
+      }
+
+      const shouldStayOnDeviceLibrary =
+        !authUser &&
+        isCapacitorNativeRuntime() &&
+        localCourses.length > 0 &&
+        !incomingSharedSmartBookId &&
+        !localCourses.some(courseNeedsStartupCloudRefresh);
+
+      if (shouldStayOnDeviceLibrary) {
+        progressOnlyFallbackCourseIdsRef.current.clear();
+        void stickyNotesBootstrapPromise;
+        setIsLoading(false);
+        setLoadingMessage('Kitaplar yükleniyor...');
+        return;
       }
 
       if (!authUser || !cloudSyncEnabled) {
@@ -4703,18 +6194,14 @@ export default function App() {
               return;
             }
 
-            if (!courseNeedsContentHydration(existing)) return;
+            const packageMetadataMerged = mergeCoursePackageMetadata(existing, cloudCourse);
+            if (!courseNeedsContentHydration(packageMetadataMerged)) {
+              byId.set(cloudCourse.id, packageMetadataMerged);
+              return;
+            }
 
             const metadataMerged: CourseData = {
-              ...existing,
-              userId: existing.userId || cloudCourse.userId,
-              coverImageUrl: existing.coverImageUrl || cloudCourse.coverImageUrl,
-              contentPackagePath: existing.contentPackagePath || cloudCourse.contentPackagePath,
-              contentPackageUrl: existing.contentPackageUrl || cloudCourse.contentPackageUrl,
-              contentPackageUpdatedAt: existing.contentPackageUpdatedAt || cloudCourse.contentPackageUpdatedAt,
-              bundle: existing.bundle || cloudCourse.bundle,
-              cover: existing.cover || cloudCourse.cover,
-              status: normalizeCourseStatus(existing.status) || normalizeCourseStatus(cloudCourse.status),
+              ...packageMetadataMerged,
               nodes: existing.nodes.length > 0 ? existing.nodes : cloudCourse.nodes
             };
             byId.set(cloudCourse.id, metadataMerged);
@@ -4732,7 +6219,8 @@ export default function App() {
         );
 
         const courses = Array.from(byId.values());
-        const sortedCourses = sortCoursesByLastActivity(courses);
+        let sortedCourses = sortCoursesByLastActivity(courses);
+        sortedCourses = await mergeNativeCourseCoversIntoCourses(localUserId, sortedCourses);
         if (sortedCourses.length > 0) {
           setSavedCourses(sortedCourses);
           savedCoursesRef.current = sortedCourses;
@@ -4743,15 +6231,8 @@ export default function App() {
           );
           writeCoursesToLocal(localUserId, sortedCourses);
           writeFullCoursesToLocal(localUserId, sortedCourses);
-          void runTasksWithConcurrency(
-            sortedCourses.filter((course) => hasPersistableCourseContent(course)),
-            2,
-            async (course) => {
-              await writeFullCourseToNativeCache(localUserId, course);
-            }
-          );
           setIsLoading(false);
-          await mergeNativeFullCoursesIntoState(sortedCourses.map((course) => course.id));
+          await mergeNativeFullCoursesIntoState(Array.from(installedCourseIds));
         } else if (localCourses.length === 0) {
           setSavedCourses([]);
           savedCoursesRef.current = [];
@@ -4779,12 +6260,18 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [authUser?.uid, bootstrapAuthUid, cloudSyncEnabled, isAuthLoading, isGuestSession]);
+  }, [authUser?.uid, bootstrapAuthUid, cloudSyncEnabled, incomingSharedSmartBookId, isAuthLoading, isGuestSession]);
+
+  const nativeRealtimeBookSyncNeeded =
+    !isCapacitorNativeRuntime() ||
+    savedCourses.some((course) => courseNeedsStartupCloudRefresh(course));
 
   useEffect(() => {
     if (!authUser?.uid || !cloudSyncEnabled) return;
 
     const uid = authUser.uid;
+    if (isCapacitorNativeRuntime() && !nativeRealtimeBookSyncNeeded) return;
+
     const userBooksCollection = collection(db, 'users', uid, 'books');
     let unsubscribe: (() => void) | null = null;
     let fallbackAttached = false;
@@ -4808,21 +6295,14 @@ export default function App() {
             continue;
           }
 
-          if (!courseNeedsContentHydration(localBook)) {
-            byId.set(localBook.id, localBook);
+          const packageMetadataMerged = mergeCoursePackageMetadata(localBook, cloudBook);
+          if (!courseNeedsContentHydration(packageMetadataMerged)) {
+            byId.set(localBook.id, packageMetadataMerged);
             continue;
           }
 
           const mergedBook: CourseData = {
-            ...localBook,
-            userId: localBook.userId || cloudBook.userId,
-            coverImageUrl: localBook.coverImageUrl || cloudBook.coverImageUrl,
-            contentPackagePath: localBook.contentPackagePath || cloudBook.contentPackagePath,
-            contentPackageUrl: localBook.contentPackageUrl || cloudBook.contentPackageUrl,
-            contentPackageUpdatedAt: localBook.contentPackageUpdatedAt || cloudBook.contentPackageUpdatedAt,
-            bundle: localBook.bundle || cloudBook.bundle,
-            cover: localBook.cover || cloudBook.cover,
-            status: normalizeCourseStatus(localBook.status) || normalizeCourseStatus(cloudBook.status),
+            ...packageMetadataMerged,
             nodes: localBook.nodes.length > 0 ? localBook.nodes : cloudBook.nodes
           };
           byId.set(cloudBook.id, mergedBook);
@@ -4864,7 +6344,7 @@ export default function App() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [authUser?.uid, cloudSyncEnabled]);
+  }, [authUser?.uid, cloudSyncEnabled, nativeRealtimeBookSyncNeeded]);
 
   useEffect(() => {
     if (!incomingSharedSmartBookId) return;
@@ -5571,9 +7051,27 @@ export default function App() {
       flushCoursesToLocalNow(localUserId, nextCourses);
       return nextCourses;
     });
+
+    const hasServerPackage = Boolean(
+      resolvePreferredBookZipStoragePath(seededCourse.contentPackagePath, seededCourse.bundle?.path) ||
+      String(seededCourse.contentPackageUrl || '').trim()
+    );
+    if (hasServerPackage) {
+      const isInstalled = await ensureCourseHydrated(seededCourse.id, {
+        markNodesLoading: false,
+        force: true,
+        snapshotHint: seededCourse
+      });
+      if (!isInstalled) {
+        updateCourseOpenState(seededCourse.id, { status: 'failed', progress: 0 });
+        throw new Error('Book package could not be installed locally.');
+      }
+      updateCourseOpenState(seededCourse.id, { status: 'ready', progress: 100 });
+      openCourseFlow(seededCourse.id);
+      return;
+    }
+
     openCourseFlow(seededCourse.id);
-    // ZIP bundle'ı indir → savedCourses güncellenir → CourseFlowView tam içerikle açılır
-    void ensureCourseHydrated(seededCourse.id, { markNodesLoading: false, snapshotHint: seededCourse });
     if (seededCourse.nodes.length > 0 && seededCourse.visualStoryMode !== true) {
       startBackgroundSmartBookPackaging(seededCourse.id);
     }
@@ -5624,7 +7122,12 @@ export default function App() {
       const bookDocPayload = buildBookDocumentPayload(authUser.uid, seededCourse.id, cloudCourse);
       await setDoc(
         doc(db, 'users', authUser.uid, 'books', seededCourse.id),
-        stripUndefinedDeepForFirestore(bookDocPayload),
+        {
+          ...stripUndefinedDeepForFirestore(bookDocPayload),
+          nodes: deleteField(),
+          content: deleteField(),
+          pages: deleteField()
+        },
         { merge: true }
       );
     } catch (error) {
@@ -5752,11 +7255,7 @@ export default function App() {
     }, 220);
 
     try {
-      const hydrated = await withPromiseTimeout(
-        ensureCourseHydrated(courseId, { markNodesLoading: false }),
-        SMARTBOOK_OPEN_HYDRATION_TIMEOUT_MS,
-        `Course open hydration timed out (${courseId}).`
-      );
+      const hydrated = await ensureCourseHydrated(courseId, { markNodesLoading: false });
       window.clearInterval(timer);
 
       if (!hydrated) {
@@ -5779,39 +7278,123 @@ export default function App() {
     }
   };
 
+  const applyInstalledCourseForOpen = (
+    localUserId: string,
+    courseId: string,
+    installedCourse: CourseData,
+    progressSnapshot: CourseData
+  ): CourseData => {
+    const mergedCourse = mergeSharedCourseWithUserProgress(
+      installedCourse,
+      toProgressDocFromCourseSnapshot(progressSnapshot)
+    );
+    coursePackageByIdRef.current.set(courseId, mergedCourse);
+    setSavedCourses((prev) => {
+      let changed = false;
+      const nextCourses = sortCoursesByLastActivity(prev.map((course) => {
+        if (course.id !== courseId) return course;
+        changed = true;
+        return mergedCourse;
+      }));
+      if (!changed) return prev;
+      savedCoursesRef.current = nextCourses;
+      writeCoursesToLocal(localUserId, nextCourses);
+      writeFullCoursesToLocal(localUserId, nextCourses);
+      return nextCourses;
+    });
+    return mergedCourse;
+  };
+
+  const queueBookPackageUpdate = (localUserId: string, cloudCourse: CourseData) => {
+    if (!localUserId || !cloudCourse.id) return;
+    const cloudVersion = getInstalledBookVersion(cloudCourse);
+    const updateKey = `${localUserId}:${cloudCourse.id}:v${cloudVersion}`;
+    if (backgroundBookPackageUpdateInFlightRef.current.has(updateKey)) return;
+    backgroundBookPackageUpdateInFlightRef.current.add(updateKey);
+
+    void (async () => {
+      try {
+        const installed = await readInstalledBook(localUserId, cloudCourse.id);
+        const installedVersion = installed ? getInstalledBookVersion(installed) : 0;
+        if (installedVersion >= cloudVersion) return;
+        const updated = await installBookPackage(localUserId, cloudCourse);
+        if (!updated) return;
+
+        if (activeCourseId === cloudCourse.id && currentView === 'COURSE_FLOW') {
+          coursePackageByIdRef.current.set(cloudCourse.id, updated);
+          return;
+        }
+
+        setSavedCourses((prev) => {
+          let changed = false;
+          const nextCourses = sortCoursesByLastActivity(prev.map((course) => {
+            if (course.id !== cloudCourse.id) return course;
+            changed = true;
+            return mergeSharedCourseWithUserProgress(updated, toProgressDocFromCourseSnapshot(course));
+          }));
+          if (!changed) return prev;
+          savedCoursesRef.current = nextCourses;
+          writeCoursesToLocal(localUserId, nextCourses);
+          writeFullCoursesToLocal(localUserId, nextCourses);
+          return nextCourses;
+        });
+      } catch (error) {
+        console.warn('Background book package update skipped:', error);
+      } finally {
+        backgroundBookPackageUpdateInFlightRef.current.delete(updateKey);
+      }
+    })();
+  };
+
   const handleCourseSelect = (courseId: string) => {
     void (async () => {
-      let selectedSnapshot: CourseData | null = null;
+      const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+      if (!localUserId) return;
       const existing = savedCoursesRef.current.find((course) => course.id === courseId)
         || savedCourses.find((course) => course.id === courseId)
         || null;
 
       if (!existing) return;
-      selectedSnapshot = existing;
-      const needsMetadataSync = (
-        isPlaceholderCourseTopic(existing.topic) ||
-        !existing.coverImageUrl ||
-        !existing.contentPackagePath ||
-        !existing.bookType ||
-        !existing.subGenre ||
-        !existing.ageGroup ||
-        !existing.creatorName ||
-        !existing.totalDuration
-      );
-      if (needsMetadataSync && authUser && cloudSyncEnabled) {
-        scheduleCourseCloudWrite(authUser.uid, existing.id, {});
+      const versionHint = extractBundleVersionFromPath(existing.contentPackagePath) || existing.bundle?.version;
+      const installedCourse = await readInstalledBook(localUserId, courseId, versionHint);
+      if (installedCourse && hasPersistableCourseContent(installedCourse)) {
+        applyInstalledCourseForOpen(localUserId, courseId, installedCourse, existing);
+        updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+        openCourseFlow(courseId);
+        queueBookPackageUpdate(localUserId, existing);
+        return;
       }
 
-      if (!selectedSnapshot) return;
+      const hasInstallablePackage = Boolean(
+        resolvePreferredBookZipStoragePath(existing.contentPackagePath, existing.bundle?.path) ||
+        String(existing.contentPackageUrl || '').trim()
+      );
+      if (hasInstallablePackage) {
+        updateCourseOpenState(courseId, { status: 'downloading', progress: 8 });
+        try {
+          const newlyInstalledCourse = await installBookPackage(localUserId, existing);
+          if (!newlyInstalledCourse || !hasPersistableCourseContent(newlyInstalledCourse)) {
+            updateCourseOpenState(courseId, { status: 'failed', progress: 8 });
+            return;
+          }
+          applyInstalledCourseForOpen(localUserId, courseId, newlyInstalledCourse, existing);
+          updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+          openCourseFlow(courseId);
+        } catch (error) {
+          console.warn(`Book package installation failed (${courseId}):`, error);
+          updateCourseOpenState(courseId, { status: 'failed', progress: 8 });
+        }
+        return;
+      }
 
-      // If course already has nodes and content, open immediately.
-      if (selectedSnapshot.nodes.length > 0 && !courseNeedsContentHydration(selectedSnapshot)) {
+      // Legacy books without a package keep their existing reader path.
+      if (existing.nodes.length > 0 && !courseNeedsContentHydration(existing)) {
         updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
         openCourseFlow(courseId);
         return;
       }
 
-      const isReady = await ensureCourseReadyForOpen(courseId, selectedSnapshot);
+      const isReady = await ensureCourseReadyForOpen(courseId, existing);
       if (isReady) {
         openCourseFlow(courseId);
       }
@@ -5988,6 +7571,10 @@ export default function App() {
   const handleDeleteMyData = async (): Promise<void> => {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId) return;
+
+    if (authUser) {
+      await deleteMyCommunityData({});
+    }
 
     if (authUser && cloudSyncEnabled) {
       try {
@@ -6239,6 +7826,7 @@ export default function App() {
             courseOpenStates={courseOpenStateById}
             isLoggedIn={Boolean(authUser && !isGuestSession)}
             onRequestLogin={handleOpenLoginScreen}
+            authUserId={authUser?.uid}
           />
         );
       case 'COURSE_FLOW': {
@@ -6266,6 +7854,8 @@ export default function App() {
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
             bootstrapMessage={loadingMessage}
             courseOpenStates={courseOpenStateById}
+            isLoggedIn={Boolean(authUser && !isGuestSession)}
+            onRequestLogin={handleOpenLoginScreen}
           />
         );
       case 'EXPLORE':
@@ -6291,12 +7881,23 @@ export default function App() {
             onRequestLogin={handleOpenLoginScreen}
           />
         );
+      case 'COMMUNITY':
+        return (
+          <CommunityView
+            authUser={authUser}
+            wallet={creditWallet}
+            onRequireCredit={requireCreditForAction}
+            onNavigate={setCurrentView}
+            onOpenPaywall={() => openCreditPaywall('community_download')}
+          />
+        );
       case 'PROFILE':
         return (
           <ProfileView
             userName={userName}
             userEmail={authUser?.email || (isGuestSession ? 'Misafir oturumu' : undefined)}
             isGuestSession={isGuestSession}
+            savedBookCount={savedCourses.length}
             onLogout={handleLogout}
             onUpdateProfileName={handleProfileNameUpdate}
             onDeleteMyData={handleDeleteMyData}
@@ -6381,6 +7982,14 @@ export default function App() {
       <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
         <div className="fixed inset-0 bg-[#1A1F26] text-text-primary font-sans antialiased flex justify-center">
           <div className="app-shell-width relative h-full overflow-hidden bg-transparent flex flex-col md:border-x md:border-white/5">
+            <LoginPromptModal
+              isOpen={isLoginPromptOpen}
+              onClose={() => setLoginPromptOpen(false)}
+              onLogin={() => {
+                setLoginPromptOpen(false);
+                handleOpenLoginScreen();
+              }}
+            />
             <CreditPaywallModal
               isOpen={isCreditPaywallOpen}
               onClose={() => {

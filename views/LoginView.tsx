@@ -452,15 +452,15 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
   };
 
   const inputStyle: React.CSSProperties = {
-    borderColor: 'rgba(126,183,155,0.46)',
-    background: 'linear-gradient(180deg, rgba(42,77,68,0.82) 0%, rgba(13,35,29,0.88) 100%)',
-    boxShadow: 'inset 0 0 0 1px rgba(126,183,155,0.18)'
+    borderColor: 'rgba(139,187,244,0.46)',
+    background: 'rgba(8,36,70,0.82)',
+    boxShadow: 'inset 0 0 0 1px rgba(139,187,244,0.18)'
   };
 
   const secondaryStyle: React.CSSProperties = {
-    background: 'linear-gradient(160deg, rgba(42,77,68,0.58) 0%, rgba(12,31,25,0.82) 100%)',
-    borderColor: 'rgba(126,183,155,0.3)',
-    boxShadow: 'inset 0 0 0 1px rgba(126,183,155,0.14)'
+    background: 'rgba(8,28,55,0.72)',
+    borderColor: 'rgba(139,187,244,0.3)',
+    boxShadow: 'inset 0 0 0 1px rgba(139,187,244,0.14)'
   };
 
   return (
@@ -468,7 +468,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
       className="fixed inset-0 text-white"
       style={{
         background:
-          'radial-gradient(circle at 17% 0%, rgba(126, 166, 176, 0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(118, 146, 109, 0.2), transparent 34%), linear-gradient(180deg, #314b56 0%, #1c352f 42%, #081510 100%)'
+          'radial-gradient(circle at 17% 0%, rgba(80, 118, 172, 0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74, 112, 168, 0.18), transparent 34%), linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
       }}
     >
       <div
@@ -506,15 +506,15 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
               </div>
               <div className="min-w-0">
                 <h1 className="text-xl font-semibold tracking-tight text-white">Fortale</h1>
-                <p className="text-[11px] text-[#d7efe6]/90">{t('Build Your Epic')}</p>
+                <p className="text-[11px] text-[#cfe4ff]/90">{t('Create, Discover and Share')}</p>
               </div>
             </div>
 
             <form onSubmit={authStep === 'email' ? handleSendCode : handleVerifyCode} className="relative space-y-4">
               <div className="space-y-2">
-                <label className="block text-[12px] font-semibold tracking-wide text-[#d7efe6] ml-1">{t('E-posta')}</label>
+                <label className="block text-[12px] font-semibold tracking-wide text-[#cfe4ff] ml-1">{t('E-posta')}</label>
                 <div className="flex items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 transition-all" style={inputStyle}>
-                  <Mail size={15} className="text-[#b5cfbb]" />
+                  <Mail size={15} className="text-[#9bc7ff]" />
                   <input
                     type="email"
                     name="email"
@@ -528,7 +528,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                     spellCheck={false}
                     inputMode="email"
                     enterKeyHint={authStep === 'code' ? 'done' : 'next'}
-                    className="login-flat-input w-full !border-0 !bg-transparent text-[14px] font-medium text-white !shadow-none outline-none ring-0 placeholder:text-[#9fbfaf] focus:outline-none focus:ring-0"
+                    className="login-flat-input w-full !border-0 !bg-transparent text-[14px] font-medium text-white !shadow-none outline-none ring-0 placeholder:text-[#9bb7d8] focus:outline-none focus:ring-0"
                     required
                   />
                 </div>
@@ -536,16 +536,16 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
 
               {authStep === 'code' && (
                 <div className="space-y-2">
-                  <label className="block text-[12px] font-semibold tracking-wide text-[#d7efe6] ml-1">{t('Giriş kodu')}</label>
+                  <label className="block text-[12px] font-semibold tracking-wide text-[#cfe4ff] ml-1">{t('Giriş kodu')}</label>
                   <div className="flex items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 transition-all" style={inputStyle}>
-                    <KeyRound size={15} className="text-[#b5cfbb]" />
+                    <KeyRound size={15} className="text-[#9bc7ff]" />
                     <input
                       type="text"
                       name="code"
                       value={formData.code}
                       onChange={handleInputChange}
                       placeholder={t('Mail ile gelen 6 haneli kod')}
-                      className="login-flat-input w-full !border-0 !bg-transparent text-[14px] tracking-[0.24em] text-white !shadow-none placeholder:text-[#9fbfaf] focus:outline-none font-medium"
+                      className="login-flat-input w-full !border-0 !bg-transparent text-[14px] tracking-[0.24em] text-white !shadow-none placeholder:text-[#9bb7d8] focus:outline-none font-medium"
                       inputMode="numeric"
                       autoComplete="off"
                       autoCapitalize="none"
@@ -555,7 +555,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                       maxLength={6}
                     />
                   </div>
-                  <p className="text-[11px] text-[#b8d8ca] px-1">{t('E-posta kutunu kontrol et ve gelen kodu gir.')}</p>
+                  <p className="text-[11px] text-[#a9c7ec] px-1">{t('E-posta kutunu kontrol et ve gelen kodu gir.')}</p>
                 </div>
               )}
 
@@ -564,9 +564,9 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                 disabled={isBusy || (authStep === 'code' && formData.code.trim().length < 6)}
                 className="w-full rounded-xl border border-dashed flex items-center justify-center gap-2 px-3 py-2.5 text-center transition-all disabled:opacity-55 disabled:cursor-not-allowed"
                 style={{
-                  borderColor: 'rgba(126,183,155,0.46)',
-                  background: 'linear-gradient(135deg, rgba(44,82,72,0.95) 0%, rgba(18,78,57,0.92) 100%)',
-                  boxShadow: 'inset 0 0 0 1px rgba(220,239,215,0.2), 0 0 14px rgba(16,185,129,0.18)'
+                  borderColor: 'rgba(139,187,244,0.46)',
+                  background: '#0b2342',
+                  boxShadow: 'inset 0 0 0 1px rgba(190,220,255,0.2), 0 0 14px rgba(96,151,214,0.18)'
                 }}
               >
                 {isEmailBusy || isCodeBusy ? (
@@ -594,7 +594,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                       setStatus(null);
                     }}
                     disabled={isBusy}
-                    className="rounded-xl border border-dashed px-2 py-2 text-[11px] font-semibold text-[#d7efe6] transition-all hover:text-white disabled:opacity-60"
+                    className="rounded-xl border border-dashed px-2 py-2 text-[11px] font-semibold text-[#cfe4ff] transition-all hover:text-white disabled:opacity-60"
                     style={secondaryStyle}
                   >
                     {t('E-postayı değiştir')}
@@ -603,7 +603,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                     type="button"
                     onClick={() => void handleSendCode()}
                     disabled={isBusy}
-                    className="rounded-xl border border-dashed px-2 py-2 text-[11px] font-semibold text-[#d7efe6] transition-all hover:text-white disabled:opacity-60"
+                    className="rounded-xl border border-dashed px-2 py-2 text-[11px] font-semibold text-[#cfe4ff] transition-all hover:text-white disabled:opacity-60"
                     style={secondaryStyle}
                   >
                     {t('Kodu tekrar gönder')}
@@ -613,9 +613,9 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
             </form>
 
             <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px bg-[rgba(126,183,155,0.24)]" />
-              <span className="text-[11px] font-semibold tracking-wide text-[#cfeade]">{t('Veya')}</span>
-              <div className="flex-1 h-px bg-[rgba(126,183,155,0.24)]" />
+              <div className="flex-1 h-px bg-[rgba(139,187,244,0.24)]" />
+              <span className="text-[11px] font-semibold tracking-wide text-[#cfe4ff]">{t('Veya')}</span>
+              <div className="flex-1 h-px bg-[rgba(139,187,244,0.24)]" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -656,7 +656,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                 type="button"
                 onClick={onContinueWithoutLogin}
                 disabled={isBusy}
-                className="w-full rounded-xl border border-dashed py-2.5 mt-3 text-[13px] font-semibold text-[#d7efe6] transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-xl border border-dashed py-2.5 mt-3 text-[13px] font-semibold text-[#cfe4ff] transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                 style={secondaryStyle}
               >
                 {t('Giriş yapmadan devam et')}

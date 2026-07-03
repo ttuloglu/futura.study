@@ -55,7 +55,6 @@ export default function GlobalHeader({
                   <FLogo size={16} className="fortale-brand-logo" />
                   <div className="leading-none">
                     <span className="block text-[13px] text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.22)]">Fortale</span>
-                    <span className="block text-[9px] text-white/95 drop-shadow-[0_0_4px_rgba(255,255,255,0.2)]">{t('Build Your Epic')}</span>
                   </div>
                 </div>
               </div>

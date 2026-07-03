@@ -5,7 +5,7 @@ interface FLogoProps {
   size?: number;
 }
 
-const FORTALE_LOGO_GREEN = '#4F9B43';
+const FORTALE_LOGO_BLUE = '#9BC7FF';
 
 export default function FLogo({ className = "", size = 24 }: FLogoProps) {
   return (
@@ -15,7 +15,7 @@ export default function FLogo({ className = "", size = 24 }: FLogoProps) {
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke={FORTALE_LOGO_GREEN}
+      stroke={FORTALE_LOGO_BLUE}
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"

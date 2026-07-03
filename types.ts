@@ -4,6 +4,7 @@ export type ViewState =
   | 'PROFILE'
   | 'AI_CHAT'
   | 'EXPLORE'
+  | 'COMMUNITY'
   | 'PRIVACY'
   | 'TERMS';
 
@@ -29,6 +30,11 @@ export interface SmartBookCreativeBrief {
   bookType: SmartBookBookType;
   subGenre?: string;
   languageText?: string;
+  workbookLevel?: string;
+  workbookCategory?: string;
+  includeExamples?: boolean;
+  includeQuiz?: boolean;
+  includeRelatedBooks?: boolean;
   characters?: string;
   settingPlace?: string;
   settingTime?: string;
@@ -39,7 +45,35 @@ export interface SmartBookCreativeBrief {
   targetPageMax?: number;
 }
 
-export type CreditActionType = 'create';
+export type CreditActionType = 'create' | 'community_download';
+
+export interface CommunityBook {
+  id: string;
+  userId: string;
+  bookId: string;
+  title: string;
+  description?: string;
+  publisherAlias?: string;
+  coverImageUrl?: string;
+  bookType: SmartBookBookType;
+  subGenre?: string;
+  category?: string;
+  ageGroup?: SmartBookAgeGroup;
+  language?: string;
+  tags?: string[];
+  pageCount?: number;
+  outline?: string[];
+  preview?: Array<{ id: string; title: string; content: string }>;
+  previewImages?: Array<{ id: string; title: string; url: string }>;
+  downloadCount: number;
+  likeCount: number;
+  commentCount?: number;
+  isFeatured?: boolean;
+  hotScore?: number;
+  isLiked?: boolean;
+  isOwned?: boolean;
+  publishedAt: Date;
+}
 
 export interface CreditWallet {
   createCredits: number;
@@ -217,12 +251,18 @@ export interface CourseData {
   coverNarrationAudioUrl?: string;
   coverNarrationAudioStoragePath?: string;
   coverImageUrl?: string;
+  deviceCoverImageUrl?: string;
   contentPackageUrl?: string;
   contentPackagePath?: string;
   contentPackageUpdatedAt?: Date;
   bundle?: BookBundleDescriptor;
   cover?: BookCoverDescriptor;
   status?: 'processing' | 'ready' | 'failed';
+  communityPublication?: {
+    id: string;
+    status: 'published' | 'unpublished' | 'hidden' | 'removed';
+    updatedAt?: Date;
+  };
   userId?: string;
   nodes: TimelineNode[];
   createdAt: Date;

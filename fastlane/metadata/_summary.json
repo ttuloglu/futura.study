@@ -1,11 +1,116 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.4",
   "model": "gemini-3.1-flash-lite-preview",
   "summary": {
-    "en-GB": {
-      "promotionalTextLength": 165,
+    "ar-SA": {
+      "promotionalTextLength": 170,
       "keywordsLength": 99,
-      "releaseNotesLength": 217
+      "releaseNotesLength": 2966
+    },
+    "da": {
+      "promotionalTextLength": 168,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3031
+    },
+    "de-DE": {
+      "promotionalTextLength": 168,
+      "keywordsLength": 100,
+      "releaseNotesLength": 3244
+    },
+    "el": {
+      "promotionalTextLength": 170,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3492
+    },
+    "en-GB": {
+      "promotionalTextLength": 169,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3402
+    },
+    "en-US": {
+      "promotionalTextLength": 167,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3346
+    },
+    "es-ES": {
+      "promotionalTextLength": 169,
+      "keywordsLength": 100,
+      "releaseNotesLength": 3349
+    },
+    "fi": {
+      "promotionalTextLength": 170,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3331
+    },
+    "fr-FR": {
+      "promotionalTextLength": 167,
+      "keywordsLength": 100,
+      "releaseNotesLength": 3439
+    },
+    "hi": {
+      "promotionalTextLength": 170,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3470
+    },
+    "id": {
+      "promotionalTextLength": 169,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3079
+    },
+    "it": {
+      "promotionalTextLength": 170,
+      "keywordsLength": 100,
+      "releaseNotesLength": 3263
+    },
+    "ja": {
+      "promotionalTextLength": 166,
+      "keywordsLength": 99,
+      "releaseNotesLength": 2549
+    },
+    "ko": {
+      "promotionalTextLength": 168,
+      "keywordsLength": 99,
+      "releaseNotesLength": 2568
+    },
+    "nl-NL": {
+      "promotionalTextLength": 167,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3152
+    },
+    "no": {
+      "promotionalTextLength": 167,
+      "keywordsLength": 100,
+      "releaseNotesLength": 3485
+    },
+    "pl": {
+      "promotionalTextLength": 169,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3274
+    },
+    "pt-BR": {
+      "promotionalTextLength": 169,
+      "keywordsLength": 100,
+      "releaseNotesLength": 3253
+    },
+    "ru": {
+      "promotionalTextLength": 170,
+      "keywordsLength": 99,
+      "releaseNotesLength": 3120
+    },
+    "sv": {
+      "promotionalTextLength": 166,
+      "keywordsLength": 100,
+      "releaseNotesLength": 2997
+    },
+    "th": {
+      "promotionalTextLength": 169,
+      "keywordsLength": 99,
+      "releaseNotesLength": 2941
+    },
+    "tr": {
+      "promotionalTextLength": 168,
+      "keywordsLength": 99,
+      "releaseNotesLength": 2907
     }
   }
 }
