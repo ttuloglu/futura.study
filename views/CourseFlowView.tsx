@@ -36,6 +36,7 @@ import {
 import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState, PodcastVoiceName } from '../types';
 import FLogo from '../components/FLogo';
 import FaviconSpinner from '../components/FaviconSpinner';
+import FloatIslandSheet from '../components/FloatIslandSheet';
 import {
   formatAiUsageEntryForConsole,
   generateLectureContent,
@@ -2568,9 +2569,9 @@ function VisualStoryReader({
           {isPdfDownloading ? (
             <FaviconSpinner size={16} />
           ) : (
-            <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+            <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
           )}
-          <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+          <span className="text-[10px] font-bold leading-none text-white">
             {isPdfDownloading ? t('Hazırlanıyor') : t('Fortale PDF')}
           </span>
         </button>
@@ -2591,9 +2592,9 @@ function VisualStoryReader({
           {isEpubDownloading ? (
             <FaviconSpinner size={16} />
           ) : (
-            <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+            <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
           )}
-          <span className="text-[10px] font-bold leading-none text-[#e2f1ff]">
+          <span className="text-[10px] font-bold leading-none text-white">
             {isEpubDownloading ? t('Hazırlanıyor') : t('Fortale ePub')}
           </span>
         </button>
@@ -2606,7 +2607,7 @@ function VisualStoryReader({
             boxShadow: 'inset 0 0 0 1px rgba(93,128,168,0.18)'
           }}
         >
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
             {t(selectedPdfBackgroundPreset.label)}
           </p>
           <div className="flex items-center gap-2">
@@ -2677,7 +2678,7 @@ function VisualStoryReader({
         <button
           type="button"
           onClick={onBack}
-          className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white/70 active:scale-95"
+          className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white active:scale-95"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
           aria-label={t('Geri')}
         >
@@ -2686,7 +2687,7 @@ function VisualStoryReader({
         <div className="relative z-10 grid min-h-dvh place-items-center px-4 text-center">
           <div className="space-y-3">
             <FaviconSpinner size={30} />
-            <p className="text-[12px] font-semibold text-white/88">{t('Kitabınız yükleniyor')}</p>
+            <p className="text-[12px] font-semibold text-white">{t('Kitabınız yükleniyor')}</p>
           </div>
         </div>
       </div>
@@ -2704,7 +2705,7 @@ function VisualStoryReader({
         >
           {nativeViewerError ? (
             <>
-              <p className="text-sm font-bold text-white/92">{nativeViewerError}</p>
+              <p className="text-sm font-bold text-white">{nativeViewerError}</p>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <button
                   type="button"
@@ -2713,7 +2714,7 @@ function VisualStoryReader({
                     setNativeViewerError(null);
                     setNativeViewerLaunchToken((current) => current + 1);
                   }}
-                  className="h-10 rounded-xl border border-dashed px-4 text-[12px] font-bold text-white/92 active:scale-95"
+                  className="h-10 rounded-xl border border-dashed px-4 text-[12px] font-bold text-white active:scale-95"
                   style={{
                     background: 'rgba(27, 67, 110, 0.98)',
                     borderColor: 'rgba(171,214,255,0.5)'
@@ -2724,7 +2725,7 @@ function VisualStoryReader({
                 <button
                   type="button"
                   onClick={onBack}
-                  className="h-10 rounded-xl border border-dashed px-4 text-[12px] font-bold text-white/82 active:scale-95"
+                  className="h-10 rounded-xl border border-dashed px-4 text-[12px] font-bold text-white active:scale-95"
                   style={{
                     background: 'rgba(17,22,29,0.78)',
                     borderColor: 'rgba(173,149,124,0.16)'
@@ -2739,8 +2740,8 @@ function VisualStoryReader({
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
                 <FaviconSpinner size={30} />
               </div>
-              <p className="mt-4 text-sm font-bold text-white/92">{t('Native galeri açılıyor')}</p>
-              <p className="mt-2 text-[12px] leading-relaxed text-white/58">
+              <p className="mt-4 text-sm font-bold text-white">{t('Native galeri açılıyor')}</p>
+              <p className="mt-2 text-[12px] leading-relaxed text-white">
                 {t('Galeri kapandığında buradan çıkılacak.')}
               </p>
             </>
@@ -2938,14 +2939,14 @@ function VisualStoryReader({
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); handleRestartNarrationFromBeginning(); }}
-                    className="ml-2 h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/80 transition-all duration-200 active:scale-95"
+                    className="ml-2 h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                     style={{ ...visualStoryGlassControlStyle, ...fullscreenOverlayControlStyle }}
                     aria-label={t('Başa al')}
                   >
                     <SkipBack size={16} />
                   </button>
                 )}
-                <span className="pointer-events-none absolute left-2 top-[calc(100%+2px)] text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
+                <span className="pointer-events-none absolute left-2 top-[calc(100%+2px)] text-[9px] font-black uppercase tracking-[0.24em] text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
                   © Fortale
                 </span>
 		              </div>
@@ -2959,7 +2960,7 @@ function VisualStoryReader({
 	              <div className="flex items-center gap-2">
 	                <button
 	                  type="button"
-	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
 	                  style={{
 	                    ...visualStoryGlassControlStyle,
 	                    ...fullscreenOverlayControlStyle
@@ -2978,7 +2979,7 @@ function VisualStoryReader({
 	                </button>
 	                <button
 	                  type="button"
-	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+	                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                   style={{
                     ...visualStoryGlassControlStyle,
                     ...fullscreenOverlayControlStyle
@@ -2994,7 +2995,7 @@ function VisualStoryReader({
                 </button>
                 <button
                   type="button"
-                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+                  className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                   style={{
                     ...visualStoryGlassControlStyle,
                     ...fullscreenOverlayControlStyle
@@ -3117,14 +3118,14 @@ function VisualStoryReader({
               <button
                 type="button"
                 onClick={() => handleRestartNarrationFromBeginning()}
-                className="ml-2 h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/80 transition-all duration-200 active:scale-95"
+                className="ml-2 h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                 style={visualStoryGlassControlStyle}
                 aria-label={t('Başa al')}
               >
                 <SkipBack size={16} />
               </button>
             )}
-            <span className="pointer-events-none absolute left-2 top-[calc(100%+2px)] text-[9px] font-black uppercase tracking-[0.24em] text-white/55 drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
+            <span className="pointer-events-none absolute left-2 top-[calc(100%+2px)] text-[9px] font-black uppercase tracking-[0.24em] text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.65)]">
               © Fortale
             </span>
           </div>
@@ -3146,7 +3147,7 @@ function VisualStoryReader({
                   return !current;
                 });
               }}
-              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
               style={visualStoryGlassControlStyle}
               aria-label={t('İndir')}
               title={t('İndir')}
@@ -3156,7 +3157,7 @@ function VisualStoryReader({
             <button
               type="button"
               onClick={() => setVisualImageFullscreenPageIndex(pageIndex)}
-              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
               style={visualStoryGlassControlStyle}
               aria-label={t('Görseli tam ekranda aç')}
               title={t('Görseli tam ekranda aç')}
@@ -3169,7 +3170,7 @@ function VisualStoryReader({
                 stopAllVisualStoryAudio();
                 onBack();
               }}
-              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white/92 transition-all duration-200 active:scale-95"
+              className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
               style={visualStoryGlassControlStyle}
               aria-label={t('Kapat')}
               title={t('Kapat')}
@@ -3353,7 +3354,7 @@ function VisualStoryReader({
                             {page.text}
                           </p>
                         ) : (
-                          <p className="m-0 text-center text-[17px] leading-[1.62] text-white/76 drop-shadow-[0_2px_8px_rgba(0,0,0,0.46)]">
+                          <p className="m-0 text-center text-[17px] leading-[1.62] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.46)]">
                             {page.title}
                           </p>
                         )}
@@ -4029,14 +4030,14 @@ export default function CourseFlowView({
     return { textSections, images };
   }, [getFlowTabLabel, hydratedContentNodeIds, isNarrativeBook, orderedTabNodes, t]);
 
-  const hasFullscreenStickyImages =
-    isReadingFullscreen &&
-    fullscreenReaderContent.images.length > 0 &&
-    fullscreenReaderContent.textSections.length > 0;
-  const shouldUseWideFullscreenStickyImage =
+  const shouldShowFullscreenImagesInContentFlow =
     courseData?.bookType === 'story' ||
     courseData?.bookType === 'novel';
-
+  const hasFullscreenStickyImages =
+    isReadingFullscreen &&
+    !shouldShowFullscreenImagesInContentFlow &&
+    fullscreenReaderContent.images.length > 0 &&
+    fullscreenReaderContent.textSections.length > 0;
   const scrollCourseReaderToTop = useCallback(() => {
     const container = fullscreenReaderScrollRef.current;
     if (container) {
@@ -4046,11 +4047,11 @@ export default function CourseFlowView({
   }, []);
 
   useEffect(() => {
-    if (!shouldUseWideFullscreenStickyImage) return;
+    if (!shouldShowFullscreenImagesInContentFlow) return;
     const handleScrollTop = () => scrollCourseReaderToTop();
     window.addEventListener('fortale:course-scroll-top', handleScrollTop);
     return () => window.removeEventListener('fortale:course-scroll-top', handleScrollTop);
-  }, [scrollCourseReaderToTop, shouldUseWideFullscreenStickyImage]);
+  }, [scrollCourseReaderToTop, shouldShowFullscreenImagesInContentFlow]);
 
   useEffect(() => {
     if (!hasFullscreenStickyImages) return;
@@ -5309,7 +5310,7 @@ export default function CourseFlowView({
         <button
           type="button"
           onClick={onBack}
-          className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white/70 active:scale-95"
+          className="absolute left-4 z-20 flex items-center justify-center rounded-full p-2 text-white active:scale-95"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
           aria-label={t('Geri')}
         >
@@ -5317,10 +5318,10 @@ export default function CourseFlowView({
         </button>
         <div className="app-content-width px-4 pt-8">
           <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
-            <div className="fortale-loading-spinner-shell w-16 h-16 rounded-full border flex items-center justify-center mx-auto">
+            <div className="flex h-16 w-16 items-center justify-center mx-auto">
               <FaviconSpinner size={30} />
             </div>
-            <p className="text-[12px] font-semibold text-white/88">
+            <p className="text-[12px] font-semibold text-white">
               {t('Kitabınız yükleniyor')}
             </p>
           </div>
@@ -5353,12 +5354,12 @@ export default function CourseFlowView({
               style={{ background: 'rgba(17,22,29,0.95)', borderColor: 'rgba(173,149,124,0.18)' }}
             >
               <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(86,133,190,0.16)] text-[#b7d2f0] border border-dashed border-[rgba(181,201,228,0.18)]">
+                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(86,133,190,0.16)] text-white border border-dashed border-[rgba(181,201,228,0.18)]">
                   <CheckCircle2 size={12} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[12px] font-bold tracking-wide text-white/90 leading-snug">{toast.title}</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-white/64">{toast.message}</p>
+                  <p className="text-[12px] font-bold tracking-wide text-white leading-snug">{toast.title}</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-white">{toast.message}</p>
                 </div>
               </div>
             </div>
@@ -5434,7 +5435,7 @@ export default function CourseFlowView({
               type="button"
               aria-label={t('Bildirim kapat')}
               onClick={() => setActiveMilestone(null)}
-              className="absolute top-3 right-3 z-10 h-8 w-8 rounded-xl border border-dashed flex items-center justify-center text-white/72 hover:text-white/92 active:scale-95"
+              className="absolute top-3 right-3 z-10 h-8 w-8 rounded-xl border border-dashed flex items-center justify-center text-white hover:text-white active:scale-95"
               style={{ background: 'rgba(17,22,29,0.72)', borderColor: 'rgba(173,149,124,0.14)' }}
             >
               <X size={14} />
@@ -5489,7 +5490,7 @@ export default function CourseFlowView({
                     size={18}
                     className={
                       activeMilestone.tone === 'completion'
-                        ? 'text-[#c6ddf7]'
+                        ? 'text-white'
                         : activeMilestone.tone === 'focus'
                           ? 'text-[#dbc28d]'
                           : 'text-[#86d1a8]'
@@ -5497,18 +5498,18 @@ export default function CourseFlowView({
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className={`text-[13px] font-black tracking-wide leading-snug ${activeMilestone.tone === 'completion' ? 'text-[#d8e8fa]' : activeMilestone.tone === 'focus' ? 'text-[#ebd5aa]' : 'text-[#bfe9cf]'
+                  <p className={`text-[13px] font-black tracking-wide leading-snug ${activeMilestone.tone === 'completion' ? 'text-white' : activeMilestone.tone === 'focus' ? 'text-[#ebd5aa]' : 'text-[#bfe9cf]'
                     }`}>
                     {activeMilestone.title}
                   </p>
-                  <p className={`mt-1.5 leading-relaxed ${activeMilestone.persistent ? 'text-[14px] text-white/82' : 'text-[13px] text-white/74'}`}>
+                  <p className={`mt-1.5 leading-relaxed ${activeMilestone.persistent ? 'text-[14px] text-white' : 'text-[13px] text-white'}`}>
                     {activeMilestone.message}
                   </p>
                   {activeMilestone.nextNodeId && !activeMilestone.persistent && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[11px] font-semibold text-white/75"
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[11px] font-semibold text-white"
                       style={{ background: 'rgba(17,22,29,0.52)', borderColor: 'rgba(173,149,124,0.16)' }}
                     >
-                      <ArrowRight size={11} className="text-white/55" />
+                      <ArrowRight size={11} className="text-white" />
                       Sonraki bölüm hazır
                     </div>
                   )}
@@ -5553,16 +5554,15 @@ export default function CourseFlowView({
           </div>
         </div>
       )}
-      {podcastSkipConfirmNodeId && (
-        <div className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-[2px] flex items-start justify-center px-4 pt-[calc(env(safe-area-inset-top,0px)+120px)]">
-          <div
-            className="w-full max-w-xs rounded-2xl border border-dashed px-4 py-4 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.9)]"
-            style={{ background: 'rgba(17, 22, 29, 0.9)', borderColor: 'rgba(173,149,124,0.14)' }}
-          >
-            <p className="text-[12px] font-semibold leading-relaxed text-white/90">
-              {t('Podcast’i tam dinlemeden geçmek istiyorsunuz. Yine de geçmek istiyor musunuz?')}
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+      <FloatIslandSheet
+        isOpen={Boolean(podcastSkipConfirmNodeId)}
+        onClose={() => setPodcastSkipConfirmNodeId(null)}
+        title={t('Podcast’i geç')}
+        subtitle={t('Podcast’i tam dinlemeden geçmek istiyorsunuz. Yine de geçmek istiyor musunuz?')}
+        maxWidth={320}
+        layer={960}
+      >
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setPodcastSkipConfirmNodeId(null)}
@@ -5580,9 +5580,7 @@ export default function CourseFlowView({
                 {t('Yine de Geç')}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </FloatIslandSheet>
       {coverPreviewImageUrl && (
         <div
           className="fixed inset-0 z-[70] bg-black/78 backdrop-blur-[3px] flex items-center justify-center p-4"
@@ -5595,7 +5593,7 @@ export default function CourseFlowView({
           >
             <button
               type="button"
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
               onClick={async () => {
                 try {
                   const topicSlug = String(courseData.topic || 'gorsel')
@@ -5620,7 +5618,7 @@ export default function CourseFlowView({
             </button>
             <button
               type="button"
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
               onClick={() => setCoverPreviewImageUrl(null)}
               aria-label={t('Kapat')}
               title={t('Kapat')}
@@ -5705,14 +5703,14 @@ export default function CourseFlowView({
                 <h1 className="text-base font-bold text-white leading-snug line-clamp-2 pr-1 mb-1">{courseData.topic}</h1>
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-[#b9cde8]">{buildBookTypeSubGenreLabel(courseData, t)}</span>
+                    <span className="text-[11px] font-bold text-white">{buildBookTypeSubGenreLabel(courseData, t)}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-bold text-accent-green">{calculateTotalDuration(orderedTabNodes)}</span>
                   </div>
                   {courseData.createdAt && (
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-bold text-white/25">
+                      <span className="text-[11px] font-bold text-white">
                         {new Date(courseData.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </span>
                     </div>
@@ -5732,7 +5730,7 @@ export default function CourseFlowView({
                           disabled={isExportBusy || !canDownloadFullSmartBook}
                           className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border transition-all whitespace-nowrap ${canDownloadFullSmartBook
                             ? 'text-white hover:-translate-y-[1px] active:scale-95'
-                            : 'bg-[#162031] border-[#5a7392]/35 text-white/55'
+                            : 'bg-[#162031] border-[#5a7392]/35 text-white'
                             } ${isExportBusy ? 'opacity-85 cursor-wait' : ''}`}
                           style={canDownloadFullSmartBook
                             ? {
@@ -5747,11 +5745,11 @@ export default function CourseFlowView({
                           {isFullPdfExporting ? (
                             <FaviconSpinner size={16} />
                           ) : canDownloadFullSmartBook ? (
-                            <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+                            <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                           ) : (
-                            <Lock size={13} className="text-white/55" />
+                            <Lock size={13} className="text-white" />
                           )}
-                          <span className={`text-[10px] font-bold leading-none ${canDownloadFullSmartBook ? 'text-[#e2f1ff]' : 'text-white/55'}`}>
+                          <span className={`text-[10px] font-bold leading-none ${canDownloadFullSmartBook ? 'text-white' : 'text-white'}`}>
                             {isFullPdfExporting ? t('Hazırlanıyor') : t('Fortale PDF')}
                           </span>
                         </button>
@@ -5761,7 +5759,7 @@ export default function CourseFlowView({
                           disabled={isExportBusy || !canDownloadFullSmartBook}
                           className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border transition-all whitespace-nowrap ${canDownloadFullSmartBook
                             ? 'text-white hover:-translate-y-[1px] active:scale-95'
-                            : 'bg-[#162031] border-[#5a7392]/35 text-white/55'
+                            : 'bg-[#162031] border-[#5a7392]/35 text-white'
                             } ${isExportBusy ? 'opacity-85 cursor-wait' : ''}`}
                           style={canDownloadFullSmartBook
                             ? {
@@ -5776,11 +5774,11 @@ export default function CourseFlowView({
                           {isFullEpubExporting ? (
                             <FaviconSpinner size={16} />
                           ) : canDownloadFullSmartBook ? (
-                            <Download size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+                            <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                           ) : (
-                            <Lock size={13} className="text-white/55" />
+                            <Lock size={13} className="text-white" />
                           )}
-                          <span className={`text-[10px] font-bold leading-none ${canDownloadFullSmartBook ? 'text-[#e2f1ff]' : 'text-white/55'}`}>
+                          <span className={`text-[10px] font-bold leading-none ${canDownloadFullSmartBook ? 'text-white' : 'text-white'}`}>
                             {isFullEpubExporting ? t('Hazırlanıyor') : t('Fortale ePub')}
                           </span>
                         </button>
@@ -5802,7 +5800,7 @@ export default function CourseFlowView({
                             {isPodcastExporting ? (
                               <FaviconSpinner size={16} />
                             ) : (
-                              <AudioLines size={14} className="text-[#d9ecff] transition-transform duration-200 group-hover:scale-110" />
+                              <AudioLines size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                             )}
                             <span className="text-[10px] font-bold leading-none text-white">
                               {isPodcastExporting
@@ -5822,7 +5820,7 @@ export default function CourseFlowView({
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
                             {t(selectedPdfBackgroundPreset.label)}
                           </p>
                           <div className="flex items-center gap-2">
@@ -5915,10 +5913,10 @@ export default function CourseFlowView({
                             />
                           </div>
                           <p className="mt-1 text-center text-[10px] font-bold text-white">%{Math.max(8, Math.min(100, Math.round(podcastGenerationVisualProgress)))}</p>
-                          <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
+                          <p className="mt-1 text-center text-[10px] text-white">
                             {getPodcastGenerationStatusText()}
                           </p>
-                          <p className="mt-1 text-center text-[10px] text-[#b6cde8]">
+                          <p className="mt-1 text-center text-[10px] text-white">
                             {t('Kitabın uzunluğuna göre bu işlem birkaç dakika sürebilir.')}
                           </p>
                           <div className="mt-1 flex items-center justify-center">
@@ -5936,7 +5934,7 @@ export default function CourseFlowView({
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d5e8ff]">
+                          <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
                             {t('Podcast')} ({effectiveHeaderPodcastLanguageLabel})
                           </div>
                           {(headerPodcastAudioUrl && hasSegmentedPodcast) ? (
@@ -5964,7 +5962,7 @@ export default function CourseFlowView({
                                 background: 'rgba(21, 35, 54, 0.62)'
                               }}
                             >
-                              <p className="text-[11px] text-[#d9e9fb]">
+                              <p className="text-[11px] text-white">
                                 {headerPodcastAudioUrl && !hasSegmentedPodcast
                                   ? t('Eski kısa podcast bulundu. Tam kitap podcast için yeniden oluşturun.')
                                   : t('Podcast henüz hazır değil.')}
@@ -5994,10 +5992,10 @@ export default function CourseFlowView({
                                     {isExportBusy ? <FaviconSpinner size={13} /> : <AudioLines size={13} className="text-white" />}
                                   </span>
                                     <span className="min-w-0 text-left leading-tight">
-                                    <span className="block text-[13px] font-black tracking-[0.01em] truncate text-[#f4fbff]">
+                                    <span className="block text-[13px] font-black tracking-[0.01em] truncate text-white">
                                       {t('Podcast oluştur')}
                                     </span>
-                                    <span className="block mt-1 text-[11px] font-medium text-white/68 truncate">
+                                    <span className="block mt-1 text-[11px] font-medium text-white truncate">
                                       {isExportBusy ? t('Hazırlanıyor...') : t('Önce sesi test et, sonra oluştur.')}
                                     </span>
                                   </span>
@@ -6021,10 +6019,10 @@ export default function CourseFlowView({
                                 >
                                   <div className="mb-3 flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                      <p className="text-[11px] font-black tracking-[0.03em] text-[#e5f4ff]">
+                                      <p className="text-[11px] font-black tracking-[0.03em] text-white">
                                         {t('Podcast sesini seç')}
                                       </p>
-                                      <p className="mt-1 text-[10px] text-white/68">
+                                      <p className="mt-1 text-[10px] text-white">
                                         {t('Her sesi kitap dilinde dinleyip sonra seçebilirsin.')}
                                       </p>
                                     </div>
@@ -6035,7 +6033,7 @@ export default function CourseFlowView({
                                         setIsPodcastVoicePickerOpen(false);
                                         stopPodcastVoicePreview();
                                       }}
-                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#d0e4fb] transition-all hover:bg-white/5"
+                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white transition-all hover:bg-white/5"
                                       aria-label={t('Kapat')}
                                       title={t('Kapat')}
                                     >
@@ -6077,8 +6075,8 @@ export default function CourseFlowView({
                                             }}
                                           >
                                             <span className="min-w-0">
-                                              <span className="block text-[12px] font-black text-[#f5fbff]">{option.label}</span>
-                                              <span className={`mt-1 block text-[10px] ${isSelected ? 'text-[#dff6ff]' : 'text-white/68'}`}>
+                                              <span className="block text-[12px] font-black text-white">{option.label}</span>
+                                              <span className={`mt-1 block text-[10px] ${isSelected ? 'text-white' : 'text-white'}`}>
                                                 {isSelected ? t('Seçildi') : t('Ses örneğini dinle')}
                                               </span>
                                             </span>
@@ -6171,7 +6169,7 @@ export default function CourseFlowView({
                       if (!container) return;
                       container.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
+                    className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                     style={{
                       background: 'rgba(17,22,29,0.78)',
                       borderColor: 'rgba(173,149,124,0.16)'
@@ -6184,7 +6182,7 @@ export default function CourseFlowView({
                   <button
                     type="button"
                     onClick={() => setIsReadingFullscreen(false)}
-                    className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white/82 transition-all duration-200 active:scale-95"
+                    className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                     style={{
                       background: 'rgba(17,22,29,0.78)',
                       borderColor: 'rgba(173,149,124,0.16)'
@@ -6208,7 +6206,7 @@ export default function CourseFlowView({
                     type="button"
                     onClick={() => setReadingFullscreenFontStep((current) => Math.max(FULLSCREEN_READER_FONT_STEP_MIN, current - 1))}
                     disabled={readingFullscreenFontStep <= FULLSCREEN_READER_FONT_STEP_MIN}
-                    className="h-9 w-9 inline-flex items-center justify-center text-[15px] font-black text-white/85 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                    className="h-9 w-9 inline-flex items-center justify-center text-[15px] font-black text-white disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
                     aria-label={t('Yazıyı küçült')}
                     title={t('Yazıyı küçült')}
                   >
@@ -6217,7 +6215,7 @@ export default function CourseFlowView({
                   <button
                     type="button"
                     onClick={() => setReadingFullscreenFontStep(0)}
-                    className="h-9 px-2 inline-flex items-center justify-center text-[11px] font-black text-white/88 border-x border-dashed active:scale-95"
+                    className="h-9 px-2 inline-flex items-center justify-center text-[11px] font-black text-white border-x border-dashed active:scale-95"
                     style={{ borderColor: 'rgba(173,149,124,0.16)' }}
                     aria-label={t('Yazı boyutunu sıfırla')}
                     title={t('Yazı boyutunu sıfırla')}
@@ -6228,7 +6226,7 @@ export default function CourseFlowView({
                     type="button"
                     onClick={() => setReadingFullscreenFontStep((current) => Math.min(FULLSCREEN_READER_FONT_STEP_MAX, current + 1))}
                     disabled={readingFullscreenFontStep >= FULLSCREEN_READER_FONT_STEP_MAX}
-                    className="h-9 w-9 inline-flex items-center justify-center text-[14px] text-white/85 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                    className="h-9 w-9 inline-flex items-center justify-center text-[14px] text-white disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
                     aria-label={t('Yazıyı büyüt')}
                     title={t('Yazıyı büyüt')}
                   >
@@ -6240,7 +6238,7 @@ export default function CourseFlowView({
               <button
                 type="button"
                 onClick={() => setIsReadingFullscreen(true)}
-                className="absolute right-0 z-20 h-9 rounded-xl border border-dashed inline-flex items-center justify-center gap-1.5 px-3 text-white/80 transition-all duration-200 active:scale-95"
+                className="absolute right-0 z-20 h-9 rounded-xl border border-dashed inline-flex items-center justify-center gap-1.5 px-3 text-white transition-all duration-200 active:scale-95"
                 style={{
                   top: '18px',
                   background: 'rgba(17,22,29,0.78)',
@@ -6261,9 +6259,9 @@ export default function CourseFlowView({
                   <div className="sticky -top-2 z-20 pb-3 pt-0">
                     <button
                       type="button"
-                      className={`block overflow-hidden bg-transparent ${shouldUseWideFullscreenStickyImage ? 'w-[calc(100%+2rem)] -mx-4' : 'w-full'}`}
+                      className="block w-full overflow-hidden bg-transparent"
                       style={{
-                        height: shouldUseWideFullscreenStickyImage ? 'clamp(170px, 34dvh, 300px)' : 'clamp(148px, 28dvh, 220px)',
+                        height: 'clamp(148px, 28dvh, 220px)',
                         background: 'transparent',
                         border: 0,
                         boxShadow: 'none'
@@ -6313,13 +6311,13 @@ export default function CourseFlowView({
                         {section.heading && (
                           <header className="mb-4 border-b border-dashed pb-3" style={{ borderColor: 'rgba(173,149,124,0.12)' }}>
                             <div className="flex items-center justify-between gap-2">
-                              <h2 className="text-base md:text-[17px] font-bold text-white/95 leading-[1.3]">{section.heading}</h2>
+                              <h2 className="text-base md:text-[17px] font-bold text-white leading-[1.3]">{section.heading}</h2>
                               {section.durationLabel && (
-                                <span className="text-[11px] font-bold text-white/55">{section.durationLabel}</span>
+                                <span className="text-[11px] font-bold text-white">{section.durationLabel}</span>
                               )}
                             </div>
                             {section.subtitle && (
-                              <p className="mt-1 text-[11px] md:text-[12px] text-white/60">{section.subtitle}</p>
+                              <p className="mt-1 text-[11px] md:text-[12px] text-white">{section.subtitle}</p>
                             )}
                           </header>
                         )}
@@ -6381,20 +6379,20 @@ export default function CourseFlowView({
                     {!isReadingFullscreen && (
 	                      <header className="mb-4 border-b border-dashed pb-3" style={{ borderColor: 'rgba(173,149,124,0.12)' }}>
 	                        <div className="flex items-center justify-between gap-2">
-	                          <h2 className="text-base md:text-[17px] font-bold text-white/95 leading-[1.3]">{sectionTitle}</h2>
+	                          <h2 className="text-base md:text-[17px] font-bold text-white leading-[1.3]">{sectionTitle}</h2>
 	                        </div>
 	                        {showNodeSubtitle && (
-                          <p className="mt-1 text-[11px] md:text-[12px] text-white/60">{node.title}</p>
+                          <p className="mt-1 text-[11px] md:text-[12px] text-white">{node.title}</p>
                         )}
                       </header>
                     )}
 
                     {isBookLoadingPlaceholder && (
                       <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
-                        <div className="fortale-loading-spinner-shell w-16 h-16 rounded-full border flex items-center justify-center mx-auto">
+                        <div className="flex h-16 w-16 items-center justify-center mx-auto">
                           <FaviconSpinner size={30} />
                         </div>
-                        <p className="text-[12px] font-semibold text-white/88">
+                        <p className="text-[12px] font-semibold text-white">
                           {t('Kitabınız yükleniyor')}
                         </p>
                       </div>
@@ -6402,7 +6400,7 @@ export default function CourseFlowView({
 
                     {isLocked && !isReadingFullscreen && !isNarrativeBook && (
                       <div
-                        className="rounded-xl border border-dashed px-3 py-3 text-[12px] leading-relaxed text-white/70"
+                        className="rounded-xl border border-dashed px-3 py-3 text-[12px] leading-relaxed text-white"
                         style={{ background: 'rgba(17,22,29,0.66)', borderColor: 'rgba(173,149,124,0.12)' }}
                       >
                         Bu bölüm henüz açık değil. Önce önceki bölümlerin hazırlanması tamamlanmalı.
@@ -6411,13 +6409,13 @@ export default function CourseFlowView({
 
                     {!isLocked && !isReadingFullscreen && !isBookLoadingPlaceholder && (isGen || isBackgroundPreparing || isNarrativeHydrationPlaceholder) && (
                       <div className="space-y-4 py-6 max-w-[300px] mx-auto text-center">
-                        <div className="w-16 h-16 rounded-full border border-white/10 bg-white/5 flex items-center justify-center mx-auto">
+                        <div className="flex h-16 w-16 items-center justify-center mx-auto">
                           <FaviconSpinner size={30} />
                         </div>
-                        <h3 className="text-sm font-bold text-white/90">
+                        <h3 className="text-sm font-bold text-white">
                           {isNarrativeHydrationPlaceholder ? t('İçerik İndiriliyor') : t('İçerik Hazırlanıyor')}
                         </h3>
-                        <p className="text-[11px] text-white/45 leading-relaxed">
+                        <p className="text-[11px] text-white leading-relaxed">
                           {isNarrativeHydrationPlaceholder
                             ? t('Kitap içeriği indiriliyor. Hazır olduğunda bölüm tak diye açılacak.')
                             : isBackgroundPreparing
@@ -6425,7 +6423,7 @@ export default function CourseFlowView({
                             : t('İçerik üretiliyor. Lütfen bekleyin.')}
                         </p>
                         {isNarrativeBook && (
-                          <p className="text-[11px] text-[#b9cde8]">
+                          <p className="text-[11px] text-white">
                             {t('Tahmini üretim süresi')}: {estimatedCreationMinutes} {t('dk')}
                           </p>
                         )}
@@ -6447,7 +6445,7 @@ export default function CourseFlowView({
                     )}
                     {!isLocked && node.content && !isContentHydrated && (
                       <div
-                        className="rounded-xl border border-dashed px-3 py-3 text-[12px] leading-relaxed text-white/64"
+                        className="rounded-xl border border-dashed px-3 py-3 text-[12px] leading-relaxed text-white"
                         style={{ background: 'rgba(17,22,29,0.64)', borderColor: 'rgba(173,149,124,0.12)' }}
                       >
                         {t('Bölüm yükleniyor...')}
@@ -6765,7 +6763,7 @@ function PodcastInlinePlayer({
           >
             {t('Önceki Parça')}
           </button>
-          <span className="text-[10px] text-white/55">
+          <span className="text-[10px] text-white">
             {activeAudioSegmentIndex + 1}. {t('parça')}
           </span>
           <button

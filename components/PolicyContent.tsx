@@ -51,7 +51,7 @@ export default function PolicyContent({ content }: { content: string }) {
   const lines = String(t(content) || '').split('\n');
 
   return (
-    <div className="space-y-3 text-sm leading-7 text-text-secondary">
+    <div className="space-y-3 text-sm leading-7 text-white">
       {lines.map((line, index) => {
         if (!line.trim()) {
           return <div key={`spacer-${index}`} className="h-2" aria-hidden="true" />;

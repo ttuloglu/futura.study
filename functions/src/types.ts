@@ -45,9 +45,11 @@ export interface SmartBookCreativeBrief {
   targetPageMax?: number;
 }
 
-export type CreditActionType = 'create';
+export type CreditActionType = 'create' | 'community_download';
 
 export interface CreditWallet {
+  purchasedCredits: number;
+  communityEarnedCredits: number;
   createCredits: number;
 }
 

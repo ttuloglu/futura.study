@@ -24,18 +24,18 @@ export default function CourseCard({ subject, onClick }: CourseCardProps) {
             <h3 className="text-base font-bold text-white leading-[1.24] mb-0.5">
               {subject.title}
             </h3>
-            <p className="text-text-secondary text-[10px] font-medium opacity-60">
+            <p className="text-white text-[10px] font-medium">
               {subject.subtitle}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center gap-1.5 text-text-secondary opacity-50">
+          <div className="flex items-center gap-1.5 text-white">
             <Clock size={12} />
             <span className="text-[9px] font-bold">{t('45dk kaldı')}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-text-secondary opacity-50">
+          <div className="flex items-center gap-1.5 text-white">
             <BookOpen size={12} />
             <span className="text-[9px] font-bold">{t('12 kart')}</span>
           </div>

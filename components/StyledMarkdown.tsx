@@ -609,8 +609,8 @@ export default function StyledMarkdown({
   const [pagedViewportHeight, setPagedViewportHeight] = useState(0);
   const wrapperClass =
     variant === 'inline'
-      ? 'bg-transparent text-white/90'
-      : 'glass-panel bg-white/5 border-white/5 px-4 py-5 text-white/90 shadow-2xl rounded-2xl';
+      ? 'bg-transparent text-white'
+      : 'glass-panel bg-white/5 border-white/5 px-4 py-5 text-white shadow-2xl rounded-2xl';
   const readerScale = Number.isFinite(fullscreenFontScale)
     ? Math.max(0.86, Math.min(1.45, fullscreenFontScale))
     : 1;
@@ -1049,7 +1049,7 @@ export default function StyledMarkdown({
           ),
           h2: ({ children }) => (
             <h2
-              className="mb-4 mt-8 border-b border-dashed border-white/10 pb-2 text-[18px] font-bold tracking-tight text-white/95"
+              className="mb-4 mt-8 border-b border-dashed border-white/10 pb-2 text-[18px] font-bold tracking-tight text-white"
               style={{ fontSize: 'calc((18px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
@@ -1057,7 +1057,7 @@ export default function StyledMarkdown({
           ),
           h3: ({ children }) => (
             <h3
-              className="mb-3 mt-6 border-b border-dashed border-white/5 pb-1.5 text-[15px] font-bold text-white/90"
+              className="mb-3 mt-6 border-b border-dashed border-white/5 pb-1.5 text-[15px] font-bold text-white"
               style={{ fontSize: 'calc((15px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
@@ -1069,18 +1069,18 @@ export default function StyledMarkdown({
             if (shouldQuoteFirstParagraph && isFirstParagraph) {
               return (
                 <p
-                  className="my-4 text-[14px] leading-[1.8] text-white/85 italic text-center first:mt-0"
+                  className="my-4 text-[14px] leading-[1.8] text-white italic text-center first:mt-0"
                   style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
                 >
-                  <span aria-hidden className="opacity-85">“</span>
+                  <span aria-hidden>“</span>
                   {children}
-                  <span aria-hidden className="opacity-85">”</span>
+                  <span aria-hidden>”</span>
                 </p>
               );
             }
             return (
               <p
-                className="my-3 text-[14px] leading-[1.7] text-white/75 first:mt-0"
+                className="my-3 text-[14px] leading-[1.7] text-white first:mt-0"
                 style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
               >
                 {children}
@@ -1088,12 +1088,12 @@ export default function StyledMarkdown({
             );
           },
           strong: ({ children }) => (
-            <strong className="font-extrabold text-white/95">{children}</strong>
+            <strong className="font-extrabold text-white">{children}</strong>
           ),
-          em: ({ children }) => <em className="italic text-white/80">{children}</em>,
+          em: ({ children }) => <em className="italic text-white">{children}</em>,
           ul: ({ children }) => (
             <ul
-              className="my-4 list-none space-y-2 pl-2 text-[14px] leading-[1.6] text-white/75"
+              className="my-4 list-none space-y-2 pl-2 text-[14px] leading-[1.6] text-white"
               style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {React.Children.map(children, child => {
@@ -1107,7 +1107,7 @@ export default function StyledMarkdown({
           ol: ({ children, ...props }) => (
             <ol
               {...props}
-              className="my-4 list-decimal space-y-2 pl-6 text-[14px] leading-[1.6] text-white/75"
+              className="my-4 list-decimal space-y-2 pl-6 text-[14px] leading-[1.6] text-white"
               style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
@@ -1116,7 +1116,7 @@ export default function StyledMarkdown({
           li: ({ children, className }) => <li className={className || ''}>{children}</li>,
           blockquote: ({ children }) => (
             <blockquote
-              className="my-4 border-l-2 border-accent-green/40 bg-transparent px-4 py-2 text-white/70 italic rounded-r-lg"
+              className="my-4 border-l-2 border-accent-green/40 bg-transparent px-4 py-2 text-white italic rounded-r-lg"
               style={{ fontSize: 'calc((14px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
             >
               {children}
@@ -1129,21 +1129,21 @@ export default function StyledMarkdown({
               </code>
             ) : (
               <code
-                className="block overflow-x-auto rounded-none border-0 bg-transparent p-0 font-mono text-[11px] leading-relaxed text-white/80"
+                className="block overflow-x-auto rounded-none border-0 bg-transparent p-0 font-mono text-[11px] leading-relaxed text-white"
                 style={{ fontSize: 'calc((11px + var(--reader-font-offset, 0px)) * var(--reader-font-scale, 1))' }}
               >
                 {children}
               </code>
             ),
           pre: ({ children }) => (
-            <pre className="my-3 overflow-x-auto whitespace-pre-wrap break-words rounded-none border-0 bg-transparent p-0 text-white/80">
+            <pre className="my-3 overflow-x-auto whitespace-pre-wrap break-words rounded-none border-0 bg-transparent p-0 text-white">
               {children}
             </pre>
           ),
           hr: () => <hr className="my-6 border-white/10" />,
           table: ({ children }) => (
             <div className="my-4 overflow-x-auto rounded-lg border border-white/10 bg-transparent">
-              <table className="min-w-full text-left text-[11px] text-white/70">{children}</table>
+              <table className="min-w-full text-left text-[11px] text-white">{children}</table>
             </div>
           ),
           th: ({ children }) => (
@@ -1317,7 +1317,7 @@ export default function StyledMarkdown({
             </div>
           </div>
           <div
-            className="smartbook-paged-page-number fixed left-1/2 z-[111] -translate-x-1/2 rounded-xl px-3 py-2 text-[11px] font-black text-white/76 pointer-events-none"
+            className="smartbook-paged-page-number fixed left-1/2 z-[111] -translate-x-1/2 rounded-xl px-3 py-2 text-[11px] font-black text-white pointer-events-none"
             style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
           >
             {globalPageIndex + 1}/{globalPageCount}
@@ -1404,7 +1404,7 @@ export default function StyledMarkdown({
                   }
                 })();
               }}
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
               aria-label="Görseli indir"
               title="Görseli indir"
             >
@@ -1413,7 +1413,7 @@ export default function StyledMarkdown({
             <button
               type="button"
               onClick={() => setLightboxImage(null)}
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white/90 inline-flex items-center justify-center active:scale-95"
+              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
               aria-label="Kapat"
               title="Kapat"
             >

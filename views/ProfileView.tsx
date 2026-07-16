@@ -4,12 +4,16 @@ import { httpsCallable } from 'firebase/functions';
 import { useUiI18n } from '../i18n/uiI18n';
 import { functions } from '../firebaseConfig';
 import FaviconSpinner from '../components/FaviconSpinner';
+import FloatIslandSheet from '../components/FloatIslandSheet';
+import CreditBalanceBreakdown from '../components/CreditBalanceBreakdown';
+import type { CreditWallet } from '../types';
 
 interface ProfileViewProps {
   userName: string;
   userEmail?: string;
   isGuestSession?: boolean;
   savedBookCount?: number;
+  wallet: CreditWallet;
   onLogout: () => void | Promise<void>;
   onUpdateProfileName?: (nextName: string) => void | Promise<void>;
   onDeleteMyData?: () => void | Promise<void>;
@@ -37,6 +41,7 @@ export default function ProfileView({
   userEmail,
   isGuestSession = false,
   savedBookCount = 0,
+  wallet,
   onLogout,
   onUpdateProfileName,
   onDeleteMyData,
@@ -187,22 +192,27 @@ export default function ProfileView({
 
   return (
     <div className="view-container">
-      {pendingDangerAction && dangerModalMeta && (
-        <div className="fixed inset-0 z-[980] flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setPendingDangerAction(null)} />
-          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f1722]/95 p-4 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.9)]">
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={16} className="text-[#ffb3a8]" />
-              <p className="text-[14px] font-bold text-white">{dangerModalMeta.title}</p>
-            </div>
-            <p className="mt-2 text-[12px] leading-6 text-[#c5d8ee]">
-              {dangerModalMeta.description}
-            </p>
-            <div className="mt-4 flex items-center justify-end gap-2">
+      <FloatIslandSheet
+        isOpen={Boolean(pendingDangerAction && dangerModalMeta)}
+        onClose={() => setPendingDangerAction(null)}
+        closeDisabled={isDangerActionBusy}
+        title={dangerModalMeta ? (
+          <span className="inline-flex items-center gap-2">
+            <AlertTriangle size={16} className="text-[#ffb3a8]" />
+            {dangerModalMeta.title}
+          </span>
+        ) : undefined}
+        subtitle={dangerModalMeta?.description}
+        maxWidth={384}
+        layer={980}
+        bodyClassName="p-4"
+      >
+        {dangerModalMeta && (
+          <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPendingDangerAction(null)}
-                className="h-9 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-[12px] font-semibold text-[#d8e8f8]"
+                className="h-9 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-[12px] font-semibold text-white"
               >
                 {t('Vazgeç')}
               </button>
@@ -214,10 +224,9 @@ export default function ProfileView({
               >
                 {isDangerActionBusy ? t('İşleniyor...') : dangerModalMeta.confirmLabel}
               </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </FloatIslandSheet>
 
       {(statusMessage || errorMessage) && (
         <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+80px)] z-[985] -translate-x-1/2 px-4">
@@ -230,14 +239,14 @@ export default function ProfileView({
       <div className="app-content-width space-y-4 pb-24 pt-4">
         <section className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
           <div className="flex items-center gap-3">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#17375a] text-[#d9ecff] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#17375a] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
               <User size={25} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#9cbad7]">{t('Profil')}</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white">{t('Profil')}</p>
               <h1 className="mt-1 truncate text-[23px] font-black leading-tight text-white">{userName}</h1>
               {userEmail && (
-                <p className="mt-1 truncate text-[11px] font-semibold text-[#a9bfd6]">{userEmail}</p>
+                <p className="mt-1 truncate text-[11px] font-semibold text-white">{userEmail}</p>
               )}
             </div>
           </div>
@@ -246,11 +255,11 @@ export default function ProfileView({
         <section className="rounded-3xl border border-white/10 bg-[#071d34]/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#9cbad7]">{t('Topluluk Profili')}</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white">{t('Topluluk Profili')}</p>
               <h2 className="mt-1 truncate text-[18px] font-black text-white">
                 {dashboardProfile?.alias || t('Fortale')}
               </h2>
-              <p className="mt-1 text-[11px] font-semibold text-[#91a9c2]">
+              <p className="mt-1 text-[11px] font-semibold text-white">
                 {isCommunityDashboardLoading
                   ? t('Topluluk istatistikleri yükleniyor...')
                   : `${dashboardProfile?.publicationCount ?? 0} ${t('yayında')}`}
@@ -259,7 +268,7 @@ export default function ProfileView({
             {isCommunityDashboardLoading && <FaviconSpinner size={18} />}
           </div>
 
-          <div className="mt-4 space-y-2 text-[12px] font-bold text-[#c8daeb]">
+          <div className="mt-4 space-y-2 text-[12px] font-bold text-white">
             <div className="grid grid-cols-2 gap-x-4">
               <p>{t('Takipçi')}: <span className="text-white">{dashboardProfile?.followerCount ?? 0}</span></p>
               <p>{t('Takip')}: <span className="text-white">{dashboardProfile?.followingCount ?? 0}</span></p>
@@ -270,6 +279,8 @@ export default function ProfileView({
             </div>
           </div>
 
+          <CreditBalanceBreakdown wallet={wallet} className="mt-4" compact />
+
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="rounded-2xl bg-white/[0.06] px-3 py-2">
               <div className="flex items-center gap-1.5 text-[#ff8aa8]">
@@ -279,7 +290,7 @@ export default function ProfileView({
               <p className="mt-1 text-[18px] font-black text-white">{dashboardProfile?.totalLikeCount ?? 0}</p>
             </div>
             <div className="rounded-2xl bg-white/[0.06] px-3 py-2">
-              <div className="flex items-center gap-1.5 text-[#8fd0ff]">
+              <div className="flex items-center gap-1.5 text-white">
                 <Download size={13} />
                 <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('İndirilme')}</span>
               </div>
@@ -290,14 +301,14 @@ export default function ProfileView({
 
         <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
           <div className="mb-4 flex items-center gap-2">
-            <Activity size={13} className="text-[#8fd0ff]" />
-            <h2 className="text-[12px] font-black uppercase tracking-[0.14em] text-[#b9d0e8]">{t('Profil Bilgileri')}</h2>
+            <Activity size={13} className="text-white" />
+            <h2 className="text-[12px] font-black uppercase tracking-[0.14em] text-white">{t('Profil Bilgileri')}</h2>
           </div>
 
           <div className="space-y-3">
             <label className="block">
               <span className="mb-2 flex items-center gap-2 text-[12px] font-bold text-white">
-                <UserRoundPen size={14} className="text-[#9fc7e9]" />
+                <UserRoundPen size={14} className="text-white" />
                 {t('İsim Soyisim')}
               </span>
               <input
@@ -305,7 +316,7 @@ export default function ProfileView({
                 onChange={(event) => setNameInput(event.target.value)}
                 maxLength={80}
                 disabled={!canManageAccount || isSavingName}
-                className="h-11 w-full rounded-2xl border border-white/10 bg-[#0e2238] px-3 text-[13px] font-semibold text-white outline-none placeholder:text-[#8ea8c8] disabled:opacity-70"
+                className="h-11 w-full rounded-2xl border border-white/10 bg-[#0e2238] px-3 text-[13px] font-semibold text-white outline-none placeholder:text-white disabled:opacity-70"
                 placeholder={t('Adınız ve soyadınız')}
               />
             </label>
@@ -327,7 +338,7 @@ export default function ProfileView({
             className="flex w-full items-center justify-between rounded-2xl bg-white/[0.05] px-3 py-3 active:opacity-70"
           >
             <span className="flex items-center gap-3 text-[13px] font-bold text-white">
-              <Bell size={16} className="text-[#9fc7e9]" />
+              <Bell size={16} className="text-white" />
               {t('Bildirimler')}
             </span>
             <span className={`flex h-6 w-11 items-center rounded-full p-1 transition-colors ${notifications ? 'bg-[#50b889]' : 'bg-white/12'}`}>
@@ -337,10 +348,10 @@ export default function ProfileView({
 
           <div className="mt-2 flex w-full items-center justify-between rounded-2xl bg-white/[0.05] px-3 py-3">
             <span className="flex items-center gap-3 text-[13px] font-bold text-white">
-              <ShieldCheck size={16} className="text-[#9fc7e9]" />
+              <ShieldCheck size={16} className="text-white" />
               {t('Gizlilik & güvenlik')}
             </span>
-            <span className="text-[11px] font-bold text-[#9fc7e9]">{t('Aktif')}</span>
+            <span className="text-[11px] font-bold text-white">{t('Aktif')}</span>
           </div>
         </section>
 
@@ -376,7 +387,7 @@ export default function ProfileView({
         <section className="px-1 pb-12">
           <button
             onClick={onLogout}
-            className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.04] px-3 py-3 text-[#c7d8ea] active:opacity-70"
+            className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.04] px-3 py-3 text-white active:opacity-70"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#472229] text-[#ffb3a8]">
               <LogOut size={15} />

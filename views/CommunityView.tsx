@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bell, BookOpen, ChevronLeft, Download, Flag, Heart, Library, MessageCircle,
-  Search, ShieldBan, ShieldCheck, Sparkles, UserPlus, Users, X
+  Bell, BookOpen, Download, Flag, Heart, Library, MessageCircle,
+  Search, Send as SendIcon, Share2, ShieldCheck, Sparkles, UserPlus, Users
 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import type { User } from 'firebase/auth';
@@ -13,8 +13,12 @@ import { CREDIT_WALLET_UPDATED_EVENT } from '../ai';
 import { COMMUNITY_DOWNLOAD_CREDIT_COST } from '../utils/creditCosts';
 import FaviconSpinner from '../components/FaviconSpinner';
 import FortaleDropdown, { FortaleDropdownOption } from '../components/FortaleDropdown';
+import FloatIslandSheet from '../components/FloatIslandSheet';
+import CreditBalanceBreakdown from '../components/CreditBalanceBreakdown';
 import { useUiI18n } from '../i18n/uiI18n';
 import { normalizeAppLanguageCode } from '../data/appLanguages';
+import { FORTALE_BACKGROUND_GRADIENT } from '../theme';
+import { getCommunityBookSectionLabels } from '../utils/communityBookLanguage';
 
 interface CommunityViewProps {
   authUser: User | null;
@@ -53,6 +57,10 @@ interface CommunityBookDto extends Omit<CommunityBook, 'publishedAt'> {
   updatedAt?: number;
 }
 
+function isGenericVisualSectionTitle(value: string | undefined): boolean {
+  return /^(?:g[öo]rsel|image|visual|illustration|page|sayfa)\s*(?:#|no\.?)?\s*\d+(?:\s*\/\s*\d+)?$/iu.test(String(value || '').trim());
+}
+
 interface CommunityListResult {
   books: CommunityBookDto[];
   filters: { languages: string[]; categories: string[]; ageGroups: string[] };
@@ -84,6 +92,12 @@ interface ModerationQueueItem {
   preview: { title?: string; description?: string; coverImageUrl?: string; text?: string; alias?: string; bio?: string; ownerId?: string; status?: string };
 }
 
+interface CommunityReportTarget {
+  entityType: 'book' | 'comment' | 'profile';
+  targetId: string;
+  communityBookId?: string;
+}
+
 const listBooksFn = httpsCallable<Record<string, unknown>, CommunityListResult>(functions, 'listCommunityBooks');
 const getBookFn = httpsCallable<{ communityBookId: string }, CommunityDetailResult>(functions, 'getCommunityBook');
 const likeFn = httpsCallable<{ communityBookId: string }, { liked: boolean; likeCount: number }>(functions, 'toggleCommunityLike');
@@ -91,7 +105,6 @@ const followFn = httpsCallable<{ userId: string }, { following: boolean; followe
 const addCommentFn = httpsCallable<{ communityBookId: string; text: string }, { comment: CommunityComment }>(functions, 'addCommunityComment');
 const deleteCommentFn = httpsCallable<{ communityBookId: string; commentId: string }, { ok: boolean }>(functions, 'deleteCommunityComment');
 const reportFn = httpsCallable<Record<string, unknown>, { ok: boolean }>(functions, 'reportCommunityContent');
-const blockFn = httpsCallable<{ userId: string }, { ok: boolean }>(functions, 'blockCommunityUser');
 const downloadFn = httpsCallable<{ communityBookId: string }, DownloadResult>(functions, 'downloadCommunityBook');
 const upsertProfileFn = httpsCallable<Record<string, unknown>, { alias: string; bio: string }>(functions, 'upsertCommunityProfile');
 const listNotificationsFn = httpsCallable<Record<string, never>, { notifications: CommunityNotification[] }>(functions, 'listCommunityNotifications');
@@ -100,7 +113,13 @@ const listModerationQueueFn = httpsCallable<Record<string, never>, { items: Mode
 const moderateItemFn = httpsCallable<Record<string, unknown>, { ok: boolean }>(functions, 'moderateCommunityItem');
 
 function parseBook(dto: CommunityBookDto): CommunityBook {
-  return { ...dto, publishedAt: new Date(dto.publishedAt || Date.now()) };
+  return {
+    ...dto,
+    outline: dto.outline?.filter((title) => !isGenericVisualSectionTitle(title)),
+    preview: dto.preview?.map((item) => ({ ...item, title: isGenericVisualSectionTitle(item.title) ? '' : item.title })),
+    previewImages: dto.previewImages?.map((item) => ({ ...item, title: isGenericVisualSectionTitle(item.title) ? '' : item.title })),
+    publishedAt: new Date(dto.publishedAt || Date.now())
+  };
 }
 
 function typeLabel(type: SmartBookBookType): string {
@@ -133,41 +152,84 @@ function formatCommunityLanguage(value: string | undefined, locale: string): str
   return `${displayCode} - ${label.charAt(0).toLocaleUpperCase(locale)}${label.slice(1)}`;
 }
 
+function extractFirstPreviewSection(markdown: string): string {
+  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n').filter((line) => {
+    const heading = line.trim().match(/^#{1,6}\s+(.+)$/);
+    return !heading || !isGenericVisualSectionTitle(heading[1]);
+  });
+  const headingIndex = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
+
+  if (headingIndex >= 0) {
+    const nextHeadingIndex = lines.findIndex((line, index) => index > headingIndex && /^#{1,6}\s+\S/.test(line.trim()));
+    return lines.slice(headingIndex, nextHeadingIndex >= 0 ? nextHeadingIndex : lines.length).join('\n').trim();
+  }
+
+  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex < 0) return '';
+  const nextBlankIndex = lines.findIndex((line, index) => index > firstContentIndex && line.trim().length === 0);
+  return lines.slice(firstContentIndex, nextBlankIndex >= 0 ? nextBlankIndex : lines.length).join('\n').trim();
+}
+
+function getCommunityBookSummary(book: CommunityBook): string {
+  const description = String(book.description || '').replace(/\s+/g, ' ').trim();
+  if (description) return description;
+
+  const previewText = String(book.preview?.[0]?.content || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/^#{1,6}\s+.+$/gm, ' ')
+    .replace(/[*_`>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (previewText) return previewText;
+
+  return (book.outline || []).filter(Boolean).slice(0, 3).join(' · ');
+}
+
 function BookCover({ book }: { book: CommunityBook }) {
   const hue = useMemo(() => Math.abs(book.title.split('').reduce((sum, char) => sum * 31 + char.charCodeAt(0), 0)) % 360, [book.title]);
   if (book.coverImageUrl) return <img src={book.coverImageUrl} alt={book.title} className="h-full w-full object-cover" loading="lazy" />;
   return (
     <div className="flex h-full w-full items-center justify-center" style={{ background: `linear-gradient(150deg,hsl(${hue},42%,22%),hsl(${(hue + 45) % 360},34%,10%))` }}>
-      <BookOpen size={30} className="text-white/55" />
+      <BookOpen size={30} className="text-white" />
     </div>
   );
 }
 
-function BookCard({ book, onOpen, onLike }: { book: CommunityBook; onOpen: () => void; onLike: () => void }) {
+function BookCard({ book, onOpen, onLike, onShare }: { book: CommunityBook; onOpen: () => void; onLike: () => void; onShare: () => void }) {
   const { locale, t } = useUiI18n();
+  const summary = getCommunityBookSummary(book);
   return (
-    <article className="fortale-library-card overflow-hidden rounded-[22px] border bg-[#101c2b]/75 p-2.5">
-      <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="relative aspect-[3/4] overflow-hidden bg-[#09101a]">
+    <article className="fortale-book-list-item">
+      <button type="button" onClick={onOpen} className="fortale-book-list-cover" aria-label={book.title}>
+        <span className="fortale-book-list-cover-media">
           <BookCover book={book} />
           {book.isFeatured && (
-            <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-300 px-2 py-1 text-[9px] font-black text-[#1b2230]">
-              <Sparkles size={9} /> {t('Seçki')}
+            <span className="fortale-book-list-featured">
+              <Sparkles size={8} /> {t('Seçki')}
             </span>
           )}
-        </div>
-        <h3 className="mt-2.5 line-clamp-2 min-h-[34px] text-[13px] font-bold leading-[1.3] text-white">{book.title}</h3>
-        <p className="mt-1 truncate text-[10px] font-semibold text-[#9fbbd7]">@{book.publisherAlias || t('Fortale üreticisi')}</p>
-        <div className="mt-2 flex items-center gap-1.5">
-          <span className="rounded-full border px-2 py-1 text-[9px] font-black" style={typeStyle(book.bookType)}>{t(typeLabel(book.bookType))}</span>
-          {book.language && <span className="truncate text-[9px] text-white/50">{formatCommunityLanguage(book.language, locale)}</span>}
-        </div>
+        </span>
       </button>
-      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2">
-        <button type="button" onClick={onLike} className={`inline-flex items-center gap-1 text-[10px] font-bold ${book.isLiked ? 'text-rose-400' : 'text-white/50'}`}>
-          <Heart size={12} fill={book.isLiked ? 'currentColor' : 'none'} /> {book.likeCount}
-        </button>
-        <span className="inline-flex items-center gap-1 text-[10px] text-white/45"><Download size={11} /> {book.downloadCount}</span>
+
+      <div className="fortale-book-list-info">
+        <div className="fortale-book-list-topline">
+          <span className="fortale-book-list-type" style={typeStyle(book.bookType)}>{t(typeLabel(book.bookType))}</span>
+          <button type="button" onClick={onOpen} className="fortale-book-list-read"><BookOpen size={12} /> {t('Oku')}</button>
+        </div>
+        <button type="button" onClick={onOpen} className="fortale-book-list-title">{book.title}</button>
+        <div className="fortale-book-list-byline">
+          <span>@{book.publisherAlias || t('Fortale üreticisi')}</span>
+          <time dateTime={book.publishedAt.toISOString()}>{new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short' }).format(book.publishedAt)}</time>
+          <button type="button" onClick={onShare} title={t('Paylaş')} aria-label={t('Paylaş')}><Share2 size={12} /></button>
+        </div>
+        <button type="button" onClick={onOpen} className="fortale-book-list-description w-full text-left">{summary}</button>
+        <div className="fortale-book-list-stats">
+          <button type="button" onClick={onLike} className={book.isLiked ? 'is-liked' : ''} title={t('Kalp')} aria-label={t('Kalp')}>
+            <Heart size={12} fill={book.isLiked ? 'currentColor' : 'none'} /> {book.likeCount || 0}
+          </button>
+          <span title={t('İndirilme')}><Download size={12} /> {book.downloadCount || 0}</span>
+          <button type="button" onClick={onOpen} title={t('Yorumlar')} aria-label={t('Yorumlar')}><MessageCircle size={12} /> {book.commentCount || 0}</button>
+        </div>
       </div>
     </article>
   );
@@ -183,6 +245,7 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
   const [category, setCategory] = useState('all');
   const [ageGroup, setAgeGroup] = useState('all');
   const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -198,6 +261,8 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
   const [notifications, setNotifications] = useState<CommunityNotification[]>([]);
   const [moderationOpen, setModerationOpen] = useState(false);
   const [moderationItems, setModerationItems] = useState<ModerationQueueItem[]>([]);
+  const [reportTarget, setReportTarget] = useState<CommunityReportTarget | null>(null);
+  const [reportReason, setReportReason] = useState('');
   const [alias, setAlias] = useState('');
   const [bio, setBio] = useState('');
   const [ageConfirmed, setAgeConfirmed] = useState(false);
@@ -209,6 +274,19 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     setToast(message);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
+  }, []);
+
+  const shareBook = useCallback(async (book: CommunityBook) => {
+    const shareData = { title: book.title, text: book.description || book.title, url: window.location.href };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(window.location.href);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+    }
   }, []);
 
   useEffect(() => () => { if (toastTimer.current) window.clearTimeout(toastTimer.current); }, []);
@@ -349,35 +427,27 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     }
   }, [authUser?.uid, busyAction, maybeOpenProfile, onOpenPaywall, onRequireCredit, requireAccount, selected, showToast, t, updateBookEverywhere, wallet.createCredits]);
 
-  const handleReport = useCallback(async (entityType: 'book' | 'comment' | 'profile', targetId: string, communityBookId?: string) => {
+  const handleReport = useCallback((entityType: 'book' | 'comment' | 'profile', targetId: string, communityBookId?: string) => {
     if (!requireAccount() || busyAction) return;
-    const reason = window.prompt(t('Rapor nedenini kısaca yazın.'))?.trim();
-    if (!reason) return;
+    setReportReason('');
+    setReportTarget({ entityType, targetId, communityBookId });
+  }, [busyAction, requireAccount]);
+
+  const submitReport = useCallback(async () => {
+    const reason = reportReason.trim();
+    if (!reportTarget || !reason || busyAction) return;
     setBusyAction('report');
     try {
-      await reportFn({ entityType, targetId, communityBookId, reason });
+      await reportFn({ ...reportTarget, reason });
+      setReportTarget(null);
+      setReportReason('');
       showToast(t('Raporunuz moderasyon ekibine iletildi.'));
     } catch (error) {
       if (!maybeOpenProfile(error)) showToast(t('Rapor gönderilemedi.'));
     } finally {
       setBusyAction('');
     }
-  }, [busyAction, maybeOpenProfile, requireAccount, showToast, t]);
-
-  const handleBlock = useCallback(async () => {
-    if (!selected || !requireAccount() || busyAction || !window.confirm(t('Bu üreticiyi engellemek istiyor musunuz?'))) return;
-    setBusyAction('block');
-    try {
-      await blockFn({ userId: selected.userId });
-      setBooks((current) => current.filter((book) => book.userId !== selected.userId));
-      setSelected(null);
-      showToast(t('Üretici engellendi.'));
-    } catch {
-      showToast(t('İşlem tamamlanamadı.'));
-    } finally {
-      setBusyAction('');
-    }
-  }, [busyAction, requireAccount, selected, showToast, t]);
+  }, [busyAction, maybeOpenProfile, reportReason, reportTarget, showToast, t]);
 
   const saveProfile = useCallback(async () => {
     if (!requireAccount() || busyAction) return;
@@ -444,7 +514,7 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     { id: 'following', label: t('Takip') }
   ];
   const bookTypeOptions: Array<FortaleDropdownOption<BookTypeFilter>> = [
-    { value: 'all', label: t('Tüm Türler') },
+    { value: 'all', label: t('Tüm Kitaplar') },
     { value: 'fairy_tale', label: t('Masal') },
     { value: 'novel', label: t('Hikaye') },
     { value: 'story', label: t('Çalışma Kitabı') }
@@ -466,28 +536,25 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
   return (
     <div className="view-container fortale-library-view">
       <div className="app-content-width fortale-library-content space-y-4 pb-24">
-        <section className="fortale-library-hero">
-          <p>{t('Fortale')}</p>
-          <div className="flex items-center justify-between gap-3">
-            <h1>{t('Topluluk')}</h1>
+        <section className="fortale-library-hero relative z-[70] flex items-center pt-3 pb-1">
+          <div className="flex w-full items-center justify-between gap-2">
+            <button type="button" onClick={() => setSearchOpen(true)} className="fortale-chrome-icon-button relative flex h-9 w-9 items-center justify-center rounded-full text-white" title={t('Ara')} aria-label={t('Ara')}>
+              <Search size={17} />
+              {search.trim() && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-[#9bc7ff]" />}
+            </button>
             <div className="flex items-center gap-2">
               {authUser?.email?.toLowerCase() === 'ttuloglu@gmail.com' && <button type="button" onClick={() => void openModeration()} className="fortale-chrome-icon-button flex h-9 w-9 items-center justify-center rounded-full text-white" title={t('Raporla')}><ShieldCheck size={17} /></button>}
               <button type="button" onClick={() => authUser ? setProfileOpen(true) : requireAccount()} className="fortale-chrome-icon-button flex h-9 w-9 items-center justify-center rounded-full text-white" title={t('Topluluk Profili')}><Users size={17} /></button>
               <button type="button" onClick={() => void openNotifications()} className="fortale-chrome-icon-button relative flex h-9 w-9 items-center justify-center rounded-full text-white" title={t('Bildirimler')}><Bell size={17} />{notifications.some((item) => !item.isRead) && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-400" />}</button>
             </div>
           </div>
-          <span>{t('Keşfet, önizle ve kitaplığına ekle')}</span>
         </section>
 
-        <section className="fortale-library-panel relative z-[60] space-y-3 overflow-visible rounded-2xl border p-3">
-          <div className="fortale-library-mode-switch grid grid-cols-4 gap-1 rounded-xl border p-1">
+        <section className="relative z-[60] space-y-3 overflow-visible">
+          <div className="fortale-library-mode-switch grid grid-cols-4 gap-1 rounded-xl p-1 backdrop-blur-sm">
             {tabs.map((item) => (
-              <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`fortale-library-mode-button h-9 rounded-lg text-[10px] font-black ${tab === item.id ? 'is-active text-[#0b1d32]' : 'text-[#9db5cd]'}`}>{item.label}</button>
+              <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`fortale-library-mode-button h-9 rounded-lg text-[10px] font-black ${tab === item.id ? 'is-active text-[#0b1d32]' : 'text-white'}`}>{item.label}</button>
             ))}
-          </div>
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/45" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Kitap, üretici, kategori veya etiket ara')} className="h-10 w-full rounded-xl border border-white/10 bg-[#0d1a29]/70 pl-9 pr-3 text-[12px] text-white outline-none placeholder:text-white/35" />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <FortaleDropdown label={t('Kitap Türü')} value={bookType} options={bookTypeOptions} onChange={setBookType} />
@@ -498,113 +565,184 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
         </section>
 
         {isLoading ? (
-          <div className="fortale-library-panel flex items-center justify-center rounded-2xl border p-10"><FaviconSpinner size={26} /></div>
+          <div className="flex items-center justify-center p-10"><FaviconSpinner size={26} /></div>
         ) : error ? (
           <div className="fortale-library-panel rounded-2xl border p-8 text-center"><p className="text-[12px] text-red-300">{error}</p><button type="button" onClick={() => void loadBooks()} className="mt-3 text-[11px] font-bold text-white underline">{t('Tekrar dene')}</button></div>
         ) : books.length === 0 ? (
-          <div className="fortale-library-panel rounded-2xl border p-8 text-center"><Library size={28} className="mx-auto text-white/30" /><p className="mt-3 text-[13px] font-bold text-white/70">{t('Bu filtrede kitap bulunamadı.')}</p><button type="button" onClick={() => onNavigate('AI_CHAT')} className="mt-4 rounded-xl bg-emerald-400 px-4 py-2 text-[11px] font-black text-[#102018]">{t('Kitaplarıma Git')}</button></div>
+          <div className="fortale-library-panel rounded-2xl border p-8 text-center"><Library size={28} className="mx-auto text-white" /><p className="mt-3 text-[13px] font-bold text-white">{t('Bu filtrede kitap bulunamadı.')}</p><button type="button" onClick={() => onNavigate('AI_CHAT')} className="mt-4 rounded-xl bg-emerald-400 px-4 py-2 text-[11px] font-black text-[#102018]">{t('Kitaplarıma Git')}</button></div>
         ) : (
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            {books.map((book) => <BookCard key={book.id} book={book} onOpen={() => void openDetail(book)} onLike={() => void handleLike(book)} />)}
+          <section className="fortale-library-cover-grid fortale-book-list-grid">
+            {books.map((book) => <BookCard key={book.id} book={book} onOpen={() => void openDetail(book)} onLike={() => void handleLike(book)} onShare={() => void shareBook(book)} />)}
           </section>
         )}
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-[80] bg-[#07101a]/95 backdrop-blur-xl">
-          <div className="relative mx-auto h-full w-full max-w-xl overflow-y-auto pb-28">
-            <button type="button" onClick={() => setSelected(null)} className="fortale-chrome-icon-button absolute left-4 top-[calc(env(safe-area-inset-top,0px)+12px)] z-20 flex h-10 w-10 items-center justify-center rounded-full text-white"><ChevronLeft size={21} /></button>
-            {isDetailLoading ? <div className="flex justify-center p-16"><FaviconSpinner size={28} /></div> : (
-              <div className="space-y-5 p-4 pt-[calc(env(safe-area-inset-top,0px)+64px)]">
+        <FloatIslandSheet
+          isOpen
+          onClose={() => setSelected(null)}
+          title={selected.title}
+          subtitle={`@${selected.publisherAlias || t('Fortale üreticisi')}`}
+          maxWidth={560}
+          layer={980}
+          bodyClassName="p-0"
+        >
+          {isDetailLoading ? <div className="flex justify-center p-16"><FaviconSpinner size={28} /></div> : (() => {
+              const bookLabels = getCommunityBookSectionLabels(selected.language);
+              return (
+              <div className="community-book-detail space-y-5 p-4">
                 <section className="flex gap-4">
-                  <div className="h-[168px] w-[126px] shrink-0 overflow-hidden bg-black"><BookCover book={selected} /></div>
+                  <div className="w-[126px] shrink-0"><span className="fortale-book-list-cover-media"><BookCover book={selected} /></span></div>
                   <div className="min-w-0 flex-1">
-                    <span className="inline-flex rounded-full border px-2 py-1 text-[9px] font-black" style={typeStyle(selected.bookType)}>{t(typeLabel(selected.bookType))}</span>
-                    <h2 className="mt-2 text-[20px] font-black leading-tight text-white">{selected.title}</h2>
-                    {selected.userId === authUser?.uid ? (
-                      <p className="mt-2 text-[11px] font-bold text-[#9fc7e9]">@{selected.publisherAlias}</p>
-                    ) : (
-                      <button type="button" onClick={() => void handleFollow()} disabled={busyAction === 'follow'} className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-bold text-[#9fc7e9] disabled:opacity-60"><UserPlus size={13} /> @{selected.publisherAlias} · {isFollowing ? t('Takip Ediliyor') : t('Takip Et')}</button>
-                    )}
-                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white/55">
-                      {selected.language && <span>{formatCommunityLanguage(selected.language, locale)}</span>}{selected.bookType === 'story' ? (selected.category && <span>• {t(selected.category)}</span>) : (selected.ageGroup && <span>• {selected.ageGroup}</span>)}{selected.pageCount ? <span>• {selected.pageCount} {t('sayfa')}</span> : null}<button type="button" onClick={() => void handleReport('book', selected.id)} className="inline-flex items-center gap-1 text-white/45 hover:text-white/75" title={t('Raporla')}><span>•</span><Flag size={12} /></button>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="fortale-community-type-chip inline-flex h-7 shrink-0 items-center rounded-full border px-2 text-[9px] font-black" data-book-type={selected.bookType} style={typeStyle(selected.bookType)}>{t(typeLabel(selected.bookType))}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleDownload()}
+                        disabled={busyAction === 'download' || selected.isOwned || selected.userId === authUser?.uid}
+                        className="fortale-community-library-button !m-0 inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[9px] font-black"
+                        title={selected.isOwned || selected.userId === authUser?.uid ? t('Kütüphanede') : `${t('Kitaplığıma ekle')} ${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}
+                        aria-label={selected.isOwned || selected.userId === authUser?.uid ? t('Kütüphanede') : `${t('Kitaplığıma ekle')} ${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}
+                      >
+                        {busyAction === 'download' ? <FaviconSpinner size={12} /> : selected.isOwned || selected.userId === authUser?.uid ? <><Library size={11} /><span className="truncate">{t('Kütüphanede')}</span></> : <><Library size={11} /><span className="truncate">{t('Kitaplığıma ekle')} {`${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}</span></>}
+                      </button>
                     </div>
-                    <div className="mt-3 flex items-center gap-4 text-[11px] text-white/60"><span className="inline-flex items-center gap-1"><Heart size={13} /> {selected.likeCount}</span><span className="inline-flex items-center gap-1"><Download size={13} /> {selected.downloadCount}</span><span className="inline-flex items-center gap-1"><MessageCircle size={13} /> {selected.commentCount || 0}</span></div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      {selected.userId === authUser?.uid ? (
+                        <p className="text-[11px] font-bold text-white">@{selected.publisherAlias}</p>
+                      ) : (
+                        <button type="button" onClick={() => void handleFollow()} disabled={busyAction === 'follow'} className="!m-0 inline-flex min-w-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[10px] font-bold text-white disabled:opacity-60"><UserPlus size={12} className="shrink-0" /><span className="truncate">@{selected.publisherAlias} · {isFollowing ? t('Takip Ediliyor') : t('Takip Et')}</span></button>
+                      )}
+                    </div>
+                    <p className="community-detail-cover-summary mt-2 line-clamp-3 text-[10px] leading-[1.45] text-white">{getCommunityBookSummary(selected)}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white">
+                      {selected.language && <span>{formatCommunityLanguage(selected.language, locale)}</span>}{selected.bookType === 'story' ? (selected.category && <span>• {t(selected.category)}</span>) : (selected.ageGroup && <span>• {selected.ageGroup}</span>)}{selected.pageCount ? <span>• {selected.pageCount} {t('sayfa')}</span> : null}<button type="button" onClick={() => void handleReport('book', selected.id)} className="inline-flex items-center gap-1 text-white hover:text-white" title={t('Raporla')}><span>•</span><Flag size={12} /></button>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3 text-[11px] text-white">
+                      <span className="inline-flex items-center gap-1"><Heart size={13} /> {selected.likeCount}</span>
+                      <span className="inline-flex items-center gap-1"><Download size={13} /> {selected.downloadCount}</span>
+                      <span className="inline-flex items-center gap-1"><MessageCircle size={13} /> {selected.commentCount || 0}</span>
+                    </div>
                   </div>
                 </section>
 
-                <section className="grid grid-cols-2 gap-3">
-                  {selected.coverImageUrl && (
-                    <button type="button" onClick={() => setImageViewer({ id: 'cover', title: t('Kapak'), url: selected.coverImageUrl || '' })} className="group overflow-hidden bg-black/20 text-left">
-                      <div className="aspect-[4/3] overflow-hidden bg-[#09101a]"><img src={selected.coverImageUrl} alt={selected.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" loading="lazy" /></div>
-                      <div className="px-3 py-2 text-[10px] font-black text-white/70">{t('Kapak')}</div>
-                    </button>
-                  )}
-                  {selected.previewImages?.[0]?.url && (
-                    <button type="button" onClick={() => setImageViewer(selected.previewImages?.[0] || null)} className="group overflow-hidden bg-black/20 text-left">
-                      <div className="aspect-[4/3] overflow-hidden bg-[#09101a]"><img src={selected.previewImages[0].url} alt={selected.previewImages[0].title || selected.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" loading="lazy" /></div>
-                      <div className="truncate px-3 py-2 text-[10px] font-black text-white/70">{selected.previewImages[0].title || t('İçerik')}</div>
-                    </button>
-                  )}
-                </section>
+                {selected.previewImages && selected.previewImages.length > 0 && (
+                  <section className={`grid gap-3 ${selected.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {selected.previewImages.slice(0, selected.bookType === 'story' ? 1 : 2).map((image) => (
+                      <button key={image.id} type="button" onClick={() => setImageViewer(image)} className="group block min-w-0 overflow-hidden text-left">
+                        <div className={`${selected.bookType === 'story' ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden`}><img src={image.url} alt={image.title || selected.title} className={`h-full w-full transition-transform duration-300 group-hover:scale-[1.03] ${selected.bookType === 'story' ? 'object-contain' : 'object-cover'}`} loading="lazy" /></div>
+                      </button>
+                    ))}
+                  </section>
+                )}
 
-                {selected.description && <p className="line-clamp-3 px-1 text-[12px] leading-5 text-[#bdd0e2]">{selected.description}</p>}
-                {selected.outline && selected.outline.length > 0 && <section className="px-1"><h3 className="text-[11px] font-black text-white/70">{t('İçindekiler')}</h3><div className="mt-2 flex flex-wrap gap-1.5">{selected.outline.slice(0, 6).map((title, index) => <span key={`${title}-${index}`} className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-[#bdd0e2]">{title}</span>)}</div></section>}
-                {selected.preview && selected.preview.length > 0 && <section className="space-y-5 px-1"><h3 className="text-[12px] font-black uppercase tracking-wider text-white/70">{t('İlk iki bölüm önizlemesi')}</h3>{selected.preview.slice(0, 2).map((page) => <article key={page.id} className="community-preview-markdown prose prose-invert max-w-none overflow-hidden text-[15px] leading-7 text-[#d2deea]"><h4 className="mb-3 text-[17px] font-black text-white">{page.title}</h4><div className="line-clamp-[18]"><ReactMarkdown remarkPlugins={[remarkGfm]}>{page.content}</ReactMarkdown></div></article>)}</section>}
+                {selected.description && <section className="px-1"><h3 className="community-detail-section-title">{bookLabels.description}</h3><p className="community-detail-body mt-2 line-clamp-3 text-white">{selected.description}</p></section>}
+                {selected.outline && selected.outline.length > 0 && <section className="px-1"><h3 className="community-detail-section-title">{bookLabels.contents}</h3><div className="mt-2 flex flex-wrap gap-1.5">{selected.outline.slice(0, 6).map((title, index) => <span key={`${title}-${index}`} className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-semibold text-white">{title}</span>)}</div></section>}
+                {selected.preview && selected.preview.length > 0 && (
+                  <section className="space-y-3 px-1">
+                    <h3 className="community-detail-section-title">{bookLabels.firstChapterPreview}</h3>
+                    <article className="overflow-hidden">
+                      {selected.preview[0].title && <h4 className="text-[12px] font-semibold leading-5 text-white">{selected.preview[0].title}</h4>}
+                      <div className="community-preview-markdown prose prose-invert mt-2 max-w-none text-white">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{extractFirstPreviewSection(selected.preview[0].content)}</ReactMarkdown>
+                      </div>
+                    </article>
+                  </section>
+                )}
 
                 {canAccessSelectedComments && <section className="px-1">
                   <h3 className="text-[12px] font-black text-white">{t('Yorumlar')}</h3>
-                  <div className="mt-3 flex gap-2"><textarea value={commentText} maxLength={500} onChange={(event) => setCommentText(event.target.value)} placeholder={t('Yorum yaz (en fazla 500 karakter)')} className="min-h-20 flex-1 resize-none rounded-xl border border-white/10 bg-[#0b1725] p-3 text-[12px] text-white outline-none placeholder:text-white/30" /><button type="button" onClick={() => void handleComment()} disabled={!commentText.trim() || busyAction === 'comment'} className="self-end rounded-xl bg-[#7eb79b] px-3 py-2 text-[11px] font-black text-[#102018] disabled:opacity-40">{t('Gönder')}</button></div>
-                  <div className="mt-4 space-y-4">{comments.length === 0 ? <p className="text-[11px] text-white/35">{t('Henüz yorum yok.')}</p> : comments.map((comment) => <div key={comment.id}><div className="flex items-center justify-between"><span className="text-[10px] font-black text-[#9fc7e9]">@{comment.alias}</span><span className="text-[9px] text-white/30">{new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</span></div><p className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-[#c8d7e5]">{comment.text}</p><div className="mt-2 flex gap-3">{comment.isMine && <button type="button" onClick={() => void handleDeleteComment(comment)} className="text-[9px] font-bold text-rose-300">{t('Sil')}</button>}<button type="button" onClick={() => void handleReport('comment', comment.id, selected.id)} className="text-[9px] font-bold text-white/35">{t('Raporla')}</button></div></div>)}</div>
+                  <div className="mt-3 flex items-end gap-2"><textarea value={commentText} maxLength={500} onChange={(event) => setCommentText(event.target.value)} placeholder={t('Yorum yaz (en fazla 500 karakter)')} className="block min-h-20 flex-1 resize-none rounded-xl border border-white/10 bg-[#0b1725] p-3 text-[12px] text-white outline-none placeholder:text-white" /><button type="button" onClick={() => void handleComment()} disabled={!commentText.trim() || busyAction === 'comment'} className="fortale-community-comment-send-button !m-0 inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white bg-white px-3 text-[11px] font-black shadow-[0_8px_22px_rgba(255,255,255,0.12)] disabled:opacity-40"><SendIcon size={14} strokeWidth={2.4} /><span>{t('Gönder')}</span></button></div>
+                  <div className="mt-4 space-y-4">{comments.length === 0 ? <p className="text-[11px] text-white">{t('Henüz yorum yok.')}</p> : comments.map((comment) => <div key={comment.id}><div className="flex items-center justify-between"><span className="text-[10px] font-black text-white">@{comment.alias}</span><span className="text-[9px] text-white">{new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</span></div><p className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-white">{comment.text}</p><div className="mt-2 flex gap-3">{comment.isMine && <button type="button" onClick={() => void handleDeleteComment(comment)} className="text-[9px] font-bold text-rose-300">{t('Sil')}</button>}<button type="button" onClick={() => void handleReport('comment', comment.id, selected.id)} className="text-[9px] font-bold text-white">{t('Raporla')}</button></div></div>)}</div>
                 </section>}
 
-                {selected.userId !== authUser?.uid && <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => void handleBlock()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 py-3 text-[11px] font-bold text-rose-200"><ShieldBan size={14} /> {t('Üreticiyi Engelle')}</button><button type="button" onClick={() => void handleReport('profile', selected.userId)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-[11px] font-bold text-white/60"><Flag size={14} /> {t('Profili Raporla')}</button></div>}
+                <button
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  disabled={busyAction === 'download' || selected.isOwned || selected.userId === authUser?.uid}
+                  className="fortale-community-library-button inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 text-[13px] font-black"
+                >
+                  {busyAction === 'download' ? <FaviconSpinner size={14} /> : selected.isOwned || selected.userId === authUser?.uid ? <><Library size={14} /><span>{t('Kütüphanede')}</span></> : <><Library size={14} /><span>{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>}
+                </button>
               </div>
-            )}
-            {!isDetailLoading && <div className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-xl border-t border-white/10 bg-[#091522]/95 p-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] backdrop-blur-xl"><button type="button" onClick={() => void handleDownload()} disabled={busyAction === 'download' || selected.userId === authUser?.uid} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#7eb79b] py-4 text-[13px] font-black text-[#102018] disabled:opacity-55">{busyAction === 'download' ? <FaviconSpinner size={16} /> : selected.isOwned ? <><Library size={16} /> {t('Kitaplığımda')}</> : <><Download size={16} /> {t('0.5 krediyle kitaplığıma ekle')}</>}</button></div>}
-          </div>
-        </div>
+              );
+            })()}
+        </FloatIslandSheet>
       )}
 
       {imageViewer && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={() => setImageViewer(null)}>
-          <button type="button" onClick={() => setImageViewer(null)} className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"><X size={18} /></button>
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 backdrop-blur-sm"
+          style={{ background: FORTALE_BACKGROUND_GRADIENT }}
+          onClick={() => setImageViewer(null)}
+        >
           <div className="max-h-full max-w-full" onClick={(event) => event.stopPropagation()}>
             <img src={imageViewer.url} alt={imageViewer.title} className="max-h-[86vh] max-w-[94vw] object-contain shadow-2xl" />
-            <p className="mt-3 text-center text-[12px] font-bold text-white/70">{imageViewer.title}</p>
+            {imageViewer.title && <p className="mt-3 text-center text-[12px] font-bold text-white">{imageViewer.title}</p>}
           </div>
         </div>
+      )}
+
+      {searchOpen && (
+        <FloatIslandSheet
+          isOpen
+          onClose={() => setSearchOpen(false)}
+          title={t('Ara')}
+          subtitle={t('Kitap, üretici, kategori veya etiket ara')}
+          layer={1000}
+          footer={(
+            <button type="button" onClick={() => setSearchOpen(false)} className="flex h-12 w-full items-center justify-center rounded-2xl bg-white text-[13px] font-black text-[#102018] shadow-[0_8px_22px_rgba(255,255,255,0.12)]">
+              {t('Ara')}
+            </button>
+          )}
+        >
+          <div className="relative">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('Kitap, üretici, kategori veya etiket ara')}
+              aria-label={t('Ara')}
+              autoFocus
+              className="h-12 w-full rounded-2xl border border-white/12 bg-[#0a1522]/75 pl-10 pr-4 text-[13px] text-white outline-none placeholder:text-white focus:border-[#9bc7ff]/55"
+            />
+          </div>
+        </FloatIslandSheet>
+      )}
+
+      {reportTarget && (
+        <FloatIslandSheet isOpen onClose={() => setReportTarget(null)} title={t('Raporla')} closeDisabled={busyAction === 'report'} layer={1200} footer={(
+          <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setReportTarget(null)} disabled={busyAction === 'report'} className="!m-0 h-11 rounded-2xl border border-white/10 bg-white/[0.04] text-[12px] font-bold text-white disabled:opacity-40">{t('Geri')}</button>
+              <button type="button" onClick={() => void submitReport()} disabled={!reportReason.trim() || busyAction === 'report'} className="!m-0 flex h-11 items-center justify-center rounded-2xl bg-[#7eb79b] text-[12px] font-black text-[#102018] disabled:opacity-40">{busyAction === 'report' ? <FaviconSpinner size={15} /> : t('Gönder')}</button>
+          </div>
+        )}>
+          <label className="block text-[11px] font-bold text-white">{t('Rapor nedenini kısaca yazın.')}<textarea value={reportReason} maxLength={500} autoFocus onChange={(event) => setReportReason(event.target.value)} className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-white/10 bg-[#0a1522] p-3 text-[13px] leading-6 text-white outline-none placeholder:text-white focus:border-[#7eb79b]/60" /></label>
+        </FloatIslandSheet>
       )}
 
       {profileOpen && (
-        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/65 p-3 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#101b29] p-5 shadow-2xl">
-            <div className="flex items-center justify-between"><div><h2 className="text-[17px] font-black text-white">{t('Topluluk Profili')}</h2><p className="mt-1 text-[11px] text-white/45">{t('Gerçek adınız ve e-postanız gösterilmez.')}</p></div><button type="button" onClick={() => setProfileOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white"><X size={17} /></button></div>
-            <label className="mt-5 block text-[11px] font-bold text-white/70">{t('Topluluk rumuzu')}<input value={alias} maxLength={32} onChange={(event) => setAlias(event.target.value)} placeholder={t('2–32 karakter')} className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0a1522] px-3 text-[13px] text-white outline-none" /></label>
-            <label className="mt-3 block text-[11px] font-bold text-white/70">{t('Biyografi')}<textarea value={bio} maxLength={160} onChange={(event) => setBio(event.target.value)} className="mt-2 min-h-20 w-full resize-none rounded-xl border border-white/10 bg-[#0a1522] p-3 text-[12px] text-white outline-none" /></label>
-            <label className="mt-4 flex items-start gap-3 text-[11px] leading-5 text-[#c5d5e4]"><input type="checkbox" checked={ageConfirmed} onChange={(event) => setAgeConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-400" />{t('13 yaşında veya daha büyük olduğumu onaylıyorum.')}</label>
-            <label className="mt-3 flex items-start gap-3 text-[11px] leading-5 text-[#c5d5e4]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-400" />{t('Topluluk kurallarını, moderasyonu ve kişisel kullanım lisansını kabul ediyorum.')}</label>
-            <button type="button" onClick={() => void saveProfile()} disabled={!alias.trim() || !ageConfirmed || !termsAccepted || busyAction === 'profile'} className="mt-5 flex h-12 w-full items-center justify-center rounded-2xl bg-[#7eb79b] text-[13px] font-black text-[#102018] disabled:opacity-40">{busyAction === 'profile' ? <FaviconSpinner size={16} /> : t('Profili Kaydet')}</button>
-          </div>
-        </div>
+        <FloatIslandSheet isOpen onClose={() => setProfileOpen(false)} title={t('Topluluk Profili')} subtitle={t('Gerçek adınız ve e-postanız gösterilmez.')} layer={1000} footer={(
+          <button type="button" onClick={() => void saveProfile()} disabled={!alias.trim() || !ageConfirmed || !termsAccepted || busyAction === 'profile'} className="flex h-12 w-full items-center justify-center rounded-2xl bg-white text-[13px] font-black text-[#102018] shadow-[0_8px_22px_rgba(255,255,255,0.12)] disabled:opacity-40">{busyAction === 'profile' ? <FaviconSpinner size={16} /> : t('Profili Kaydet')}</button>
+        )}>
+            <CreditBalanceBreakdown wallet={wallet} compact />
+            <label className="mt-5 block text-[11px] font-bold text-white">{t('Topluluk rumuzu')}<input value={alias} maxLength={32} onChange={(event) => setAlias(event.target.value)} placeholder={t('2–32 karakter')} className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#0a1522] px-3 text-[13px] text-white outline-none" /></label>
+            <label className="mt-3 block text-[11px] font-bold text-white">{t('Biyografi')}<textarea value={bio} maxLength={160} onChange={(event) => setBio(event.target.value)} className="mt-2 min-h-20 w-full resize-none rounded-xl border border-white/10 bg-[#0a1522] p-3 text-[12px] text-white outline-none" /></label>
+            <label className="mt-4 flex items-start gap-3 text-[11px] leading-5 text-white"><input type="checkbox" checked={ageConfirmed} onChange={(event) => setAgeConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-400" />{t('13 yaşında veya daha büyük olduğumu onaylıyorum.')}</label>
+            <label className="mt-3 flex items-start gap-3 text-[11px] leading-5 text-white"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-400" />{t('Topluluk kurallarını, moderasyonu ve kişisel kullanım lisansını kabul ediyorum.')}</label>
+        </FloatIslandSheet>
       )}
 
       {notificationsOpen && (
-        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/65 p-3 backdrop-blur-sm sm:items-center">
-          <div className="max-h-[75vh] w-full max-w-md overflow-y-auto rounded-[26px] border border-white/10 bg-[#101b29] p-5 shadow-2xl">
-            <div className="flex items-center justify-between"><h2 className="text-[17px] font-black text-white">{t('Bildirimler')}</h2><button type="button" onClick={() => setNotificationsOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white"><X size={17} /></button></div>
-            {busyAction === 'notifications' ? <div className="flex justify-center p-10"><FaviconSpinner size={22} /></div> : <div className="mt-4 space-y-2">{notifications.length === 0 ? <p className="py-8 text-center text-[11px] text-white/35">—</p> : notifications.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.035] p-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#17314a] text-[#a9d0ee]">{item.type === 'follow' ? <UserPlus size={15} /> : item.type === 'comment' ? <MessageCircle size={15} /> : <Download size={15} />}</div><div className="min-w-0 flex-1"><p className="truncate text-[11px] font-black text-white">@{item.actorAlias}</p><p className="mt-1 text-[10px] text-white/45">{item.type === 'follow' ? t('Takip') : item.type === 'comment' ? t('Yorumlar') : '+0.25'}</p></div><span className="text-[9px] text-white/30">{new Intl.DateTimeFormat(locale, { dateStyle: 'short' }).format(new Date(item.createdAt))}</span></div>)}</div>}
-          </div>
-        </div>
+        <FloatIslandSheet isOpen onClose={() => setNotificationsOpen(false)} title={t('Bildirimler')} layer={1000}>
+            {busyAction === 'notifications' ? <div className="flex justify-center p-10"><FaviconSpinner size={22} /></div> : <div className="mt-4 space-y-2">{notifications.length === 0 ? <p className="py-8 text-center text-[11px] text-white">—</p> : notifications.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.035] p-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#17314a] text-white">{item.type === 'follow' ? <UserPlus size={15} /> : item.type === 'comment' ? <MessageCircle size={15} /> : <Download size={15} />}</div><div className="min-w-0 flex-1"><p className="truncate text-[11px] font-black text-white">@{item.actorAlias}</p><p className="mt-1 text-[10px] text-white">{item.type === 'follow' ? t('Takip') : item.type === 'comment' ? t('Yorumlar') : '+0.25'}</p></div><span className="text-[9px] text-white">{new Intl.DateTimeFormat(locale, { dateStyle: 'short' }).format(new Date(item.createdAt))}</span></div>)}</div>}
+        </FloatIslandSheet>
       )}
 
       {moderationOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/75 p-3 backdrop-blur-sm sm:items-center">
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-[26px] border border-white/10 bg-[#101b29] p-5 shadow-2xl">
-            <div className="flex items-center justify-between"><h2 className="text-[17px] font-black text-white">{t('Raporla')}</h2><button type="button" onClick={() => setModerationOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white"><X size={17} /></button></div>
-            {busyAction === 'moderation' ? <div className="flex justify-center p-10"><FaviconSpinner size={22} /></div> : <div className="mt-4 space-y-3">{moderationItems.length === 0 ? <p className="py-10 text-center text-[12px] text-white/35">—</p> : moderationItems.map((item) => <article key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="flex items-start gap-3">{item.preview.coverImageUrl && <img src={item.preview.coverImageUrl} alt="" className="h-20 w-[60px] rounded-lg object-cover" />}<div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-wider text-amber-300">{item.entityType} · {item.preview.status}</p><h3 className="mt-1 text-[13px] font-black text-white">{item.preview.title || item.preview.alias || item.preview.text || item.targetId}</h3><p className="mt-2 text-[11px] leading-5 text-[#bdcddd]">{item.preview.description || item.preview.bio || item.preview.text}</p><p className="mt-2 rounded-lg bg-rose-400/10 p-2 text-[10px] text-rose-100">{item.reason}</p></div></div><div className="mt-3 grid grid-cols-3 gap-2"><button type="button" onClick={() => void moderateItem(item, 'restore')} className="rounded-xl bg-emerald-400/15 py-2 text-[10px] font-black text-emerald-100">{t('Geri')}</button><button type="button" onClick={() => void moderateItem(item, 'remove')} className="rounded-xl bg-rose-400/15 py-2 text-[10px] font-black text-rose-100">{t('Sil')}</button><button type="button" onClick={() => void moderateItem(item, 'suspend_creator')} className="rounded-xl bg-amber-400/15 py-2 text-[10px] font-black text-amber-100">{t('Üreticiyi Engelle')}</button></div></article>)}</div>}
-          </div>
-        </div>
+        <FloatIslandSheet isOpen onClose={() => setModerationOpen(false)} title={t('Raporla')} maxWidth={560} layer={1100}>
+            {busyAction === 'moderation' ? <div className="flex justify-center p-10"><FaviconSpinner size={22} /></div> : <div className="mt-4 space-y-3">{moderationItems.length === 0 ? <p className="py-10 text-center text-[12px] text-white">—</p> : moderationItems.map((item) => <article key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="flex items-start gap-3">{item.preview.coverImageUrl && <img src={item.preview.coverImageUrl} alt="" className="h-20 w-[60px] rounded-lg object-cover" />}<div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-wider text-amber-300">{item.entityType} · {item.preview.status}</p><h3 className="mt-1 text-[13px] font-black text-white">{item.preview.title || item.preview.alias || item.preview.text || item.targetId}</h3><p className="mt-2 text-[11px] leading-5 text-white">{item.preview.description || item.preview.bio || item.preview.text}</p><p className="mt-2 rounded-lg bg-rose-400/10 p-2 text-[10px] text-rose-100">{item.reason}</p></div></div><div className="mt-3 grid grid-cols-3 gap-2"><button type="button" onClick={() => void moderateItem(item, 'restore')} className="rounded-xl bg-emerald-400/15 py-2 text-[10px] font-black text-emerald-100">{t('Geri')}</button><button type="button" onClick={() => void moderateItem(item, 'remove')} className="rounded-xl bg-rose-400/15 py-2 text-[10px] font-black text-rose-100">{t('Sil')}</button><button type="button" onClick={() => void moderateItem(item, 'suspend_creator')} className="rounded-xl bg-amber-400/15 py-2 text-[10px] font-black text-amber-100">{t('Üreticiyi Engelle')}</button></div></article>)}</div>}
+        </FloatIslandSheet>
       )}
 
       {toast && <div className="fixed bottom-24 left-1/2 z-[110] w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-2xl border border-white/12 bg-[#0b1724]/95 px-4 py-3 text-center text-[12px] font-bold text-white shadow-2xl backdrop-blur-xl">{toast}</div>}

@@ -17,6 +17,7 @@ type FortaleDropdownProps<T extends string> = {
   triggerStyle?: React.CSSProperties;
   minMenuWidth?: number;
   menuAlign?: 'left' | 'right';
+  wizardStyle?: boolean;
 };
 
 export default function FortaleDropdown<T extends string>({
@@ -28,7 +29,8 @@ export default function FortaleDropdown<T extends string>({
   triggerClassName = '',
   triggerStyle,
   minMenuWidth = 0,
-  menuAlign = 'left'
+  menuAlign = 'left',
+  wizardStyle = false
 }: FortaleDropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -89,7 +91,7 @@ export default function FortaleDropdown<T extends string>({
           if (!isOpen) updateMenuPosition();
           setIsOpen((current) => !current);
         }}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-[11px] font-black text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition-colors ${isOpen ? 'border-white/35 bg-[#183550]' : 'border-white/18 bg-[#10263d] hover:border-white/30 hover:bg-[#17334f]'} ${triggerClassName}`}
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-[11px] ${wizardStyle ? 'font-normal' : 'font-black'} text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition-colors ${isOpen ? 'border-white/35 bg-[#183550]' : 'border-white/18 bg-[#10263d] hover:border-white/30 hover:bg-[#17334f]'} ${triggerClassName}`}
         style={triggerStyle}
         aria-label={label}
         aria-haspopup="listbox"
@@ -124,13 +126,13 @@ export default function FortaleDropdown<T extends string>({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-black transition-colors ${isSelected
-                  ? 'bg-white text-[#0b1d32] shadow-[0_4px_14px_rgba(0,0,0,0.22)]'
+                className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[11px] ${wizardStyle ? 'font-normal' : 'font-black'} transition-colors ${isSelected
+                  ? `bg-white ${wizardStyle ? 'text-black' : 'text-[#0b1d32]'} shadow-[0_4px_14px_rgba(0,0,0,0.22)]`
                   : 'bg-[#10263d] text-white hover:bg-[#193a58]'
                 }`}
               >
-                <span className={`truncate ${isSelected ? '!text-[#0b1d32]' : '!text-white'}`}>{option.label}</span>
-                {isSelected ? <Check size={14} strokeWidth={3} className="shrink-0 text-[#0b1d32]" /> : <span className="h-[14px] w-[14px] shrink-0" />}
+                <span className={`truncate ${isSelected ? (wizardStyle ? '!text-black' : '!text-[#0b1d32]') : '!text-white'}`}>{option.label}</span>
+                {isSelected ? <Check size={14} strokeWidth={3} className={`shrink-0 ${wizardStyle ? 'text-black' : 'text-[#0b1d32]'}`} /> : <span className="h-[14px] w-[14px] shrink-0" />}
               </button>
             );
           })}

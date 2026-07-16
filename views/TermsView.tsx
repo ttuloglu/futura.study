@@ -17,7 +17,7 @@ export default function TermsView() {
       <div className="mx-auto w-full max-w-4xl space-y-8">
         <header className="space-y-2">
           <h1 className="text-left text-3xl font-semibold text-white tracking-tight">{t(title)}</h1>
-          <p className="text-sm text-text-secondary">
+          <p className="text-sm text-white">
             {t(lastUpdatedLabel)}
             {lastUpdatedDate}
           </p>

@@ -217,13 +217,13 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                 {isAssistant ? (
                   <AssistantAvatar />
                 ) : (
-                  <div className="w-8 h-8 flex items-center justify-center shrink-0 rounded-xl glass-panel bg-white/5 text-zinc-300">
+                  <div className="w-8 h-8 flex items-center justify-center shrink-0 rounded-xl glass-panel bg-white/5 text-white">
                     <User size={14} />
                   </div>
                 )}
 
                 <div className={`space-y-1.5 ${isAssistant ? '' : 'items-end flex flex-col'}`}>
-                  <span className="text-[10px] font-medium text-zinc-500 px-1 inline-flex items-center gap-1">
+                  <span className="text-[10px] font-medium text-white px-1 inline-flex items-center gap-1">
                     <span>{isAssistant ? t('Asistan') : t('Sen')}</span>
                     <span>•</span>
                     <span>{formatMessageTime(msg.timestamp, locale)}</span>
@@ -232,7 +232,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                   <div
                     className={`chat-bubble px-3 py-2 rounded-2xl text-[13px] leading-relaxed tracking-tight ${
                       isAssistant
-                        ? 'bg-[#10141d]/88 border border-white/10 text-zinc-100'
+                        ? 'bg-[#10141d]/88 border border-white/10 text-white'
                         : 'bg-white/[0.08] border border-white/15 text-white'
                     }`}
                   >
@@ -240,7 +240,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                   </div>
 
                   {isAssistant ? (
-                    <div className="flex items-center gap-1 px-1 text-zinc-400">
+                    <div className="flex items-center gap-1 px-1 text-white">
                       <button
                         type="button"
                         onClick={() => void handleCopyMessage(msg)}
@@ -269,14 +269,14 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                             <button
                               type="button"
                               onClick={() => handleDownloadMessage(msg, 'txt')}
-                              className="w-full rounded-md px-2 py-1.5 text-left text-[11px] text-zinc-300 hover:bg-white/5 hover:text-white"
+                              className="w-full rounded-md px-2 py-1.5 text-left text-[11px] text-white hover:bg-white/5 hover:text-white"
                             >
                               {t('Metin indir')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDownloadMessage(msg, 'md')}
-                              className="w-full rounded-md px-2 py-1.5 text-left text-[11px] text-zinc-300 hover:bg-white/5 hover:text-white"
+                              className="w-full rounded-md px-2 py-1.5 text-left text-[11px] text-white hover:bg-white/5 hover:text-white"
                             >
                               {t('Markdown indir')}
                             </button>
@@ -294,7 +294,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1 px-1 text-zinc-400">
+                    <div className="flex items-center gap-1 px-1 text-white">
                       <button
                         type="button"
                         onClick={() => void handleCopyMessage(msg)}
@@ -317,7 +317,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
               <AssistantAvatar />
               <div className="chat-thinking-surface rounded-2xl border border-white/10 bg-[#0f141d]/92 px-3 py-2 min-w-[200px]">
                 <div className="flex items-center gap-2 h-6">
-                  <span className="text-[12px] text-zinc-100">{t('Düşünüyor')}</span>
+                  <span className="text-[12px] text-white">{t('Düşünüyor')}</span>
                   <span className="flex items-center gap-1 ml-1">
                     <span className="w-1 h-1 bg-zinc-300 rounded-full animate-bounce" />
                     <span
@@ -348,7 +348,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
               onKeyDown={handleKeyPress}
               placeholder={t('Mesajını yaz...')}
               rows={1}
-              className="chat-input flex-1 bg-transparent border-none text-white text-sm py-2 px-1 focus:outline-none placeholder:text-text-secondary/50 font-medium resize-none max-h-[120px]"
+              className="chat-input flex-1 bg-transparent border-none text-white text-sm py-2 px-1 focus:outline-none placeholder:text-white font-medium resize-none max-h-[120px]"
             />
           </div>
           <div className="flex items-center justify-between">
@@ -357,7 +357,7 @@ export default function AIChatView({ onBack: _onBack, context: _context }: AICha
               onClick={() => textareaRef.current?.focus()}
               className="w-9 h-9 glass-icon shrink-0"
             >
-              <Plus size={16} className="text-text-secondary" />
+              <Plus size={16} className="text-white" />
             </button>
             <button
               onClick={() => void handleSend()}

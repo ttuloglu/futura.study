@@ -1,23 +1,28 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { httpsCallable } from 'firebase/functions';
 import {
   ViewState,
   CourseData,
+  CommunityBook,
   TimelineNode,
   StickyNoteData,
   SmartBookAgeGroup,
   CreditActionType,
   SmartBookBookType,
   SmartBookCreativeBrief,
-  CourseOpenUiState
+  CourseOpenUiState,
+  CreditWallet
 } from '../types';
-import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather } from 'lucide-react';
-import { cancelBookGenerationJob, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
+import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Heart, MessageCircle, Library } from 'lucide-react';
+import { cancelBookGenerationJob, CREDIT_WALLET_UPDATED_EVENT, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
 import FLogo from '../components/FLogo';
 import FortaleDropdown from '../components/FortaleDropdown';
+import FloatIslandSheet from '../components/FloatIslandSheet';
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from '../utils/contentSafety';
 import {
   SMARTBOOK_SUBGENRE_OPTIONS,
@@ -32,12 +37,14 @@ import {
   getSmartBookAgeGroupOptionsForBookType,
   isSmartBookAgeGroupAllowedForBookType
 } from '../utils/smartbookAgeGroup';
-import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
+import { COMMUNITY_DOWNLOAD_CREDIT_COST, getBookTypeCreateCreditCost } from '../utils/creditCosts';
 import { useUiI18n } from '../i18n/uiI18n';
 import { normalizeAppLanguageCode, type AppLanguageCode } from '../data/appLanguages';
 import { LITERARY_FACTS } from '../data/literaryFacts';
 import { App } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { functions } from '../firebaseConfig';
+import { getCommunityBookSectionLabels } from '../utils/communityBookLanguage';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
@@ -69,6 +76,84 @@ type StickyModalState = {
   reminderAt: string | null;
   createdAt: string;
 };
+
+interface HomeCommunityBookDto extends Omit<CommunityBook, 'publishedAt'> {
+  publishedAt: number;
+  updatedAt?: number;
+}
+
+interface HomeCommunityListResult {
+  books: HomeCommunityBookDto[];
+  filters: { languages: string[]; categories: string[]; ageGroups: string[] };
+}
+
+interface HomeCommunityDetailResult {
+  book: HomeCommunityBookDto;
+  isFollowing: boolean;
+  comments: unknown[];
+}
+
+interface HomeCommunityDownloadResult {
+  wallet: CreditWallet;
+  communityBook: HomeCommunityBookDto;
+  bookId: string;
+  alreadyOwned: boolean;
+}
+
+function isGenericHomeCommunityVisualTitle(value: string | undefined): boolean {
+  return /^(?:g[öo]rsel|image|visual|illustration|page|sayfa)\s*(?:#|no\.?)?\s*\d+(?:\s*\/\s*\d+)?$/iu.test(String(value || '').trim());
+}
+
+const listHomeCommunityBooks = httpsCallable<Record<string, unknown>, HomeCommunityListResult>(functions, 'listCommunityBooks');
+const getHomeCommunityBook = httpsCallable<{ communityBookId: string }, HomeCommunityDetailResult>(functions, 'getCommunityBook');
+const downloadHomeCommunityBook = httpsCallable<{ communityBookId: string }, HomeCommunityDownloadResult>(functions, 'downloadCommunityBook');
+
+function parseHomeCommunityBook(dto: HomeCommunityBookDto): CommunityBook {
+  return {
+    ...dto,
+    outline: dto.outline?.filter((title) => !isGenericHomeCommunityVisualTitle(title)),
+    preview: dto.preview?.map((item) => ({ ...item, title: isGenericHomeCommunityVisualTitle(item.title) ? '' : item.title })),
+    previewImages: dto.previewImages?.map((item) => ({ ...item, title: isGenericHomeCommunityVisualTitle(item.title) ? '' : item.title })),
+    publishedAt: new Date(dto.publishedAt || Date.now())
+  };
+}
+
+function shuffledUniqueCommunityBooks(popular: CommunityBook[], discovery: CommunityBook[]): CommunityBook[] {
+  const popularSelection = popular.slice(0, 8);
+  const popularIds = new Set(popularSelection.map((book) => book.id));
+  const randomSelection = discovery
+    .filter((book) => !popularIds.has(book.id))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, Math.max(0, 15 - popularSelection.length));
+  const selectedIds = new Set([...popularSelection, ...randomSelection].map((book) => book.id));
+  const popularFill = popular.filter((book) => !selectedIds.has(book.id));
+
+  return [...popularSelection, ...randomSelection, ...popularFill]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 15);
+}
+
+function homeCommunityTypeLabel(type: SmartBookBookType): string {
+  if (type === 'fairy_tale') return 'Masal';
+  if (type === 'novel') return 'Hikaye';
+  return 'Çalışma Kitabı';
+}
+
+function extractHomeCommunityPreview(markdown: string): string {
+  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n').filter((line) => {
+    const heading = line.trim().match(/^#{1,6}\s+(.+)$/);
+    return !heading || !isGenericHomeCommunityVisualTitle(heading[1]);
+  });
+  const headingIndex = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
+  if (headingIndex >= 0) {
+    const nextHeadingIndex = lines.findIndex((line, index) => index > headingIndex && /^#{1,6}\s+\S/.test(line.trim()));
+    return lines.slice(headingIndex, nextHeadingIndex >= 0 ? nextHeadingIndex : lines.length).join('\n').trim();
+  }
+  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex < 0) return '';
+  const nextBlankIndex = lines.findIndex((line, index) => index > firstContentIndex && line.trim().length === 0);
+  return lines.slice(firstContentIndex, nextBlankIndex >= 0 ? nextBlankIndex : lines.length).join('\n').trim();
+}
 
 function courseHasReadableContent(course: CourseData): boolean {
   const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
@@ -1343,11 +1428,11 @@ function buildTopicSpecificDescription(topic: string, bookType: SmartBookBookTyp
 
   if (detected === 'en') {
     return sanitizeSmartBookDescriptionText(
-      `${cleanedTopic}${genrePart} narrative designed with coherent story flow, character motivation, thematic depth, and a meaningful progression arc.`
+      `${cleanedTopic}${genrePart} is shaped through coherent story flow, clear character motivation, and thematic depth. Its central ideas develop through meaningful choices and a focused progression arc.`
     );
   }
   return sanitizeSmartBookDescriptionText(
-    `${cleanedTopic}${genrePart} anlatısını tutarlı olay örgüsü, karakter motivasyonu, tematik derinlik ve güçlü bir ilerleyiş kurgusuyla ele alan Fortale.`
+    `${cleanedTopic}${genrePart}, tutarlı olay örgüsü, belirgin karakter motivasyonu ve tematik derinlikle şekillenir. Ana fikirleri anlamlı seçimler ve odaklı bir ilerleyiş üzerinden geliştirir.`
   );
 }
 
@@ -1693,6 +1778,7 @@ export default function HomeView({
   const heroPortraitInputRef = useRef<HTMLInputElement | null>(null);
   const stickyRowContainerRef = useRef<HTMLElement | null>(null);
   const homeShelfScrollRef = useRef<HTMLDivElement | null>(null);
+  const homeRailStackRef = useRef<HTMLDivElement | null>(null);
   const stickyCopyTimerRef = useRef<number | null>(null);
   const stickyNoticeTimerRef = useRef<number | null>(null);
   const wizardInlineRef = useRef<HTMLDivElement | null>(null);
@@ -1722,6 +1808,13 @@ export default function HomeView({
   });
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
+  const [homeCommunityBooks, setHomeCommunityBooks] = useState<CommunityBook[]>([]);
+  const [isHomeCommunityLoading, setIsHomeCommunityLoading] = useState(true);
+  const [selectedHomeCommunityBook, setSelectedHomeCommunityBook] = useState<CommunityBook | null>(null);
+  const [isHomeCommunityDetailLoading, setIsHomeCommunityDetailLoading] = useState(false);
+  const [isHomeCommunityDownloading, setIsHomeCommunityDownloading] = useState(false);
+  const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
+  const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
   const generationDisplayLanguage = isGenerating
     ? (activeGeneratingLanguage || normalizeAppLanguageCode(bookLanguageInput) || language)
     : language;
@@ -1730,6 +1823,65 @@ export default function HomeView({
     if (isLoggedIn) return false;
     setLoginRequiredModalOpen(true);
     return true;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsHomeCommunityLoading(true);
+
+    void Promise.all([
+      listHomeCommunityBooks({ tab: 'popular', bookType: 'all', language: 'all', category: 'all', ageGroup: 'all', search: '', limit: 15 }),
+      listHomeCommunityBooks({ tab: 'discover', bookType: 'all', language: 'all', category: 'all', ageGroup: 'all', search: '', limit: 30 })
+    ]).then(([popularResult, discoveryResult]) => {
+      if (cancelled) return;
+      const popular = popularResult.data.books.map(parseHomeCommunityBook);
+      const discovery = discoveryResult.data.books.map(parseHomeCommunityBook);
+      setHomeCommunityBooks(shuffledUniqueCommunityBooks(popular, discovery));
+    }).catch(() => {
+      if (!cancelled) setHomeCommunityBooks([]);
+    }).finally(() => {
+      if (!cancelled) setIsHomeCommunityLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const openHomeCommunityBook = async (book: CommunityBook) => {
+    setSelectedHomeCommunityBook(book);
+    setIsHomeCommunityDetailLoading(true);
+    try {
+      const result = await getHomeCommunityBook({ communityBookId: book.id });
+      setSelectedHomeCommunityBook(parseHomeCommunityBook(result.data.book));
+    } catch {
+      setSelectedHomeCommunityBook(null);
+    } finally {
+      setIsHomeCommunityDetailLoading(false);
+    }
+  };
+
+  const handleHomeCommunityDownload = async () => {
+    const book = selectedHomeCommunityBook;
+    if (!book || isHomeCommunityDownloading) return;
+    if (!isLoggedIn) {
+      onRequestLogin?.();
+      return;
+    }
+    if (book.isOwned || book.userId === authUserId) return;
+    if (!onRequireCredit('community_download', COMMUNITY_DOWNLOAD_CREDIT_COST)) return;
+
+    setIsHomeCommunityDownloading(true);
+    try {
+      const result = await downloadHomeCommunityBook({ communityBookId: book.id });
+      window.dispatchEvent(new CustomEvent(CREDIT_WALLET_UPDATED_EVENT, { detail: result.data.wallet }));
+      const downloadCount = book.downloadCount + (result.data.alreadyOwned ? 0 : 1);
+      setSelectedHomeCommunityBook((current) => current?.id === book.id ? { ...current, isOwned: true, downloadCount } : current);
+      setHomeCommunityBooks((current) => current.map((item) => item.id === book.id ? { ...item, isOwned: true, downloadCount } : item));
+      setSourceNotice(result.data.alreadyOwned ? t('Kitap zaten kitaplığınızda.') : t('Kitap kitaplığınıza eklendi!'));
+    } catch {
+      setSourceNotice(t('İndirme başarısız oldu.'));
+    } finally {
+      setIsHomeCommunityDownloading(false);
+    }
   };
 
   const resetGenerationProgress = (next: number) => {
@@ -2175,12 +2327,12 @@ export default function HomeView({
         style={{ background: 'rgba(96,151,214,0.14)' }}
       />
       <div className="relative flex flex-col items-center gap-4">
-        <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
+        <div className="flex items-center gap-3 px-4 py-2">
           <FaviconSpinner size={26} />
-          <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-[#cfe4ff]">{t('Kitaplar yükleniyor...')}</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-white">{t('Kitaplar yükleniyor...')}</span>
         </div>
 
-        <p className="mx-auto max-w-[260px] text-[11px] leading-5 text-[#a9c7ec]">{bootstrapMessage}</p>
+        <p className="mx-auto max-w-[260px] text-[11px] leading-5 text-white">{bootstrapMessage}</p>
 
         <div className="grid w-full grid-cols-3 gap-3">
           {[0, 1, 2].map((index) => (
@@ -3010,13 +3162,13 @@ export default function HomeView({
           <span className="text-[12px] font-semibold text-white truncate">
             {note.title || t('Yapışkan Not')}
           </span>
-          <StickyNote size={12} className="text-zinc-300 shrink-0" />
+          <StickyNote size={12} className="text-white shrink-0" />
         </div>
-        <p className={`text-[11px] text-zinc-300/85 ${fullWidth ? 'line-clamp-2' : 'truncate'}`}>
+        <p className={`text-[11px] text-white ${fullWidth ? 'line-clamp-2' : 'truncate'}`}>
           {note.text || t('Boş not')}
         </p>
         {fullWidth && (
-          <span className="mt-2 block text-[10px] text-zinc-400 text-right">
+          <span className="mt-2 block text-[10px] text-white text-right">
             {formatStickyDate(note.lastActivity, locale)}
           </span>
         )}
@@ -3025,126 +3177,66 @@ export default function HomeView({
   };
 
   const renderHomeCourseCard = (course: CourseData) => {
-    const canDelete = canDeleteCourse ? canDeleteCourse(course) : true;
     const displayCoverImageUrl = course.deviceCoverImageUrl || course.coverImageUrl;
     const openState = courseOpenStates[course.id] || { status: 'idle', progress: 0, updatedAt: 0 };
     const isOpenDownloading = openState.status === 'downloading';
-    const isOpenReady = openState.status === 'ready' || courseHasReadableContent(course);
-    const isOpenFailed = openState.status === 'failed';
     const openProgress = Math.max(0, Math.min(100, Math.round(openState.progress || 0)));
-
-    const actionLabel = isOpenReady
-      ? t('Oku')
-      : isOpenDownloading
-        ? `${t('İndiriliyor')} %${openProgress}`
-        : isOpenFailed
-          ? t('Tekrar dene')
-          : t('İndir');
-
-    const actionIcon = isOpenReady
-      ? <Check size={15} strokeWidth={2.8} />
-      : isOpenDownloading
-        ? <span className="fortale-shelf-action-percent">%{openProgress}</span>
-        : isOpenFailed
-          ? <Download size={14} strokeWidth={2.5} />
-          : <Download size={14} strokeWidth={2.5} />;
-
-    const actionButtonStyle: React.CSSProperties = isOpenReady
-      ? {
-        borderColor: 'rgba(139, 187, 244, 0.55)',
-        background: 'rgba(31, 76, 125, 0.42)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.26), 0 10px 24px rgba(96,151,214,0.14)'
-      }
-      : isOpenDownloading
-        ? {
-          borderColor: 'rgba(139, 187, 244, 0.52)',
-          background: 'rgba(8, 46, 91, 0.5)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 24px rgba(96,151,214,0.14)'
-        }
-        : isOpenFailed
-          ? {
-            borderColor: 'rgba(248, 113, 113, 0.45)',
-            background: 'rgba(127, 29, 29, 0.48)'
-          }
-          : {
-            borderColor: 'rgba(255, 255, 255, 0.18)',
-            background: 'rgba(255, 255, 255, 0.12)'
-          };
+    const cardDescription = course.description?.trim() || deriveSmartBookDescription(
+      course.topic,
+      course.nodes,
+      course.bookType || 'novel',
+      course.subGenre
+    );
 
     return (
-      <div
-        key={course.id}
-        role="button"
-        tabIndex={0}
-        onClick={() => onCourseSelect(course.id)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            onCourseSelect(course.id);
-          }
-        }}
-        className={`fortale-shelf-card group book-type-${course.bookType || 'book'} ${isOpenReady ? 'is-ready' : ''}`}
-      >
-        <div className="fortale-shelf-cover">
-          {displayCoverImageUrl ? (
-            <img
-              src={displayCoverImageUrl}
-              alt={`${course.topic} ${t('Fortale kapağı')}`}
-              className="h-full w-full object-cover object-center border-0"
-            />
-          ) : (
-            <div className="fortale-shelf-cover-empty">
-              <BookOpen size={24} />
-            </div>
-          )}
-          <div className="fortale-shelf-cover-fade" />
-          <div className="fortale-shelf-meta-row">
-            <span className="fortale-shelf-type">{t(bookTypeToLabel(course.bookType))}</span>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (isOpenDownloading) return;
-                onCourseSelect(course.id);
-              }}
-              disabled={isOpenDownloading}
-              className={`fortale-shelf-action is-icon-only ${isOpenReady ? 'is-ready' : isOpenDownloading ? 'is-loading' : ''}`}
-              style={actionButtonStyle}
-              title={actionLabel}
-              aria-label={actionLabel}
-            >
-              {actionIcon}
-            </button>
-          </div>
-          {isOpenDownloading && (
-            <div className="fortale-shelf-download-overlay">
-              <div className="fortale-shelf-download-bar">
-                <span style={{ width: `${openProgress}%` }} />
-              </div>
-            </div>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                openCourseDeleteModal(course);
-              }}
-              className="fortale-shelf-delete"
-              title={t('Sil')}
-              aria-label={t('Sil')}
-            >
-              <Trash2 size={12} />
-            </button>
-          )}
+      <article key={course.id} className="fortale-book-list-item fortale-home-list-card">
+        <button type="button" onClick={() => setSelectedHomeCourse(course)} className="fortale-book-list-cover" aria-label={course.topic}>
+          <span className="fortale-book-list-cover-media">
+            {displayCoverImageUrl ? (
+              <img src={displayCoverImageUrl} alt={`${course.topic} ${t('Fortale kapağı')}`} className="h-full w-full object-cover object-center" />
+            ) : (
+              <div className="fortale-shelf-cover-empty"><BookOpen size={24} /></div>
+            )}
+            {isOpenDownloading && (
+              <span className="fortale-shelf-download-overlay">
+                <span className="fortale-shelf-download-bar"><span style={{ width: `${openProgress}%` }} /></span>
+              </span>
+            )}
+          </span>
+        </button>
+        <div className="fortale-book-list-info">
+          <button type="button" onClick={() => setSelectedHomeCourse(course)} className="fortale-book-list-title !mt-0">{course.topic}</button>
+          <button type="button" onClick={() => setSelectedHomeCourse(course)} className="fortale-book-list-description w-full text-left">{cardDescription}</button>
         </div>
+      </article>
+    );
+  };
 
-        <div className="fortale-shelf-body">
-          <p className="fortale-shelf-title">{course.topic}</p>
+  const renderHomeCommunityCard = (book: CommunityBook) => {
+    const cardDescription = String(book.description || '').trim()
+      || String(book.preview?.[0]?.content || '')
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+        .replace(/^#{1,6}\s+.+$/gm, ' ')
+        .replace(/[*_`>#-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      || (book.outline || []).filter(Boolean).slice(0, 3).join(' · ');
+    return (
+    <article key={book.id} className="fortale-book-list-item fortale-home-list-card">
+      <button type="button" onClick={() => void openHomeCommunityBook(book)} className="fortale-book-list-cover" aria-label={book.title}>
+        <span className="fortale-book-list-cover-media">
+          {book.coverImageUrl ? <img src={book.coverImageUrl} alt={book.title} loading="lazy" /> : <span className="fortale-home-rail-cover-empty"><BookOpen size={22} /></span>}
+        </span>
+      </button>
+      <div className="fortale-book-list-info">
+        <button type="button" onClick={() => void openHomeCommunityBook(book)} className="fortale-book-list-title !mt-0">{book.title}</button>
+        <button type="button" onClick={() => void openHomeCommunityBook(book)} className="fortale-book-list-description w-full text-left">{cardDescription}</button>
+        <div className="fortale-book-list-stats">
+          <span title={t('Kalp')}><Heart size={12} /> {book.likeCount || 0}</span>
+          <span title={t('İndirilme')}><Download size={12} /> {book.downloadCount || 0}</span>
         </div>
       </div>
+    </article>
     );
   };
 
@@ -3169,6 +3261,40 @@ export default function HomeView({
   const currentVisibleStepIndex = currentVisibleStepIndexRaw >= 0 ? currentVisibleStepIndexRaw : 0;
   const currentVisibleStepNumber = currentVisibleStepIndex + 1;
   const totalVisibleStepCount = Math.max(1, visibleCreationSteps.length);
+
+  useLayoutEffect(() => {
+    if (!isCreationIntroOnly || typeof document === 'undefined') {
+      setHomeCreateDockBounds(null);
+      return;
+    }
+
+    let frame = 0;
+    const syncDockBounds = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const railStack = homeRailStackRef.current;
+        const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
+        if (!railStack || !floatIsland) return;
+        const top = Math.ceil(railStack.getBoundingClientRect().bottom);
+        const bottom = Math.floor(floatIsland.getBoundingClientRect().top);
+        const height = Math.max(224, bottom - top);
+        setHomeCreateDockBounds((current) => current?.top === top && current.height === height ? current : { top, height });
+      });
+    };
+
+    syncDockBounds();
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncDockBounds) : null;
+    if (homeRailStackRef.current) resizeObserver?.observe(homeRailStackRef.current);
+    const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
+    if (floatIsland) resizeObserver?.observe(floatIsland);
+    window.addEventListener('resize', syncDockBounds);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', syncDockBounds);
+    };
+  }, [homeCommunityBooks.length, isCreationIntroOnly]);
 
   useEffect(() => {
     if (currentVisibleStepIndexRaw !== -1) return;
@@ -3329,7 +3455,7 @@ export default function HomeView({
     { creditCount: selectedCreateCreditCost }
   );
   const WIZARD_FIELD_HEIGHT_PX = 54;
-  const wizardFieldClass = 'fortale-input-surface fortale-wizard-field fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 text-[13px] text-zinc-100 placeholder:text-white/35 focus:outline-none';
+  const wizardFieldClass = 'fortale-input-surface fortale-wizard-field fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 text-[13px] text-white placeholder:text-white focus:outline-none';
   const wizardFieldStyle = (options: { fixedHeight?: boolean } = {}): React.CSSProperties => ({
     borderColor: 'rgba(139, 187, 244, 0.24)',
     background: 'rgba(18, 58, 102, 0.76)',
@@ -3358,12 +3484,12 @@ export default function HomeView({
     lineHeight: 1,
     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.13), inset 0 0 0 1px rgba(139, 187, 244, 0.18)'
   };
-  const wizardTextareaClass = 'fortale-input-surface fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 py-3 text-[13px] text-zinc-100 placeholder:text-white/35 resize-none focus:outline-none';
+  const wizardTextareaClass = 'fortale-input-surface fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 py-3 text-[13px] text-white placeholder:text-white resize-none focus:outline-none';
   const selectedBookTypeOptionStyle = selectedBookType === 'fairy_tale'
     ? {
       borderColor: 'rgba(255,255,255,0.72)',
       background: 'linear-gradient(135deg, rgba(255,255,255,0.96), rgba(220,236,255,0.9))',
-      color: 'rgba(8, 28, 55, 0.98)',
+      color: '#000000',
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 18px rgba(220,236,255,0.16)'
     }
     : selectedBookType === 'novel'
@@ -3376,20 +3502,23 @@ export default function HomeView({
     : {
       borderColor: 'rgba(255,238,140,0.72)',
       background: 'linear-gradient(135deg, rgba(255,236,120,0.96), rgba(250,204,21,0.9))',
-      color: 'rgba(8, 28, 55, 0.98)',
+      color: '#000000',
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5), 0 8px 18px rgba(250,204,21,0.16)'
     };
   const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
     borderColor: isSelected ? selectedBookTypeOptionStyle.borderColor : 'rgba(135, 164, 197, 0.18)',
     background: isSelected ? selectedBookTypeOptionStyle.background : 'rgba(18, 58, 102, 0.64)',
-    color: isSelected ? selectedBookTypeOptionStyle.color : 'rgba(190, 220, 255, 0.72)',
+    color: isSelected ? selectedBookTypeOptionStyle.color : '#ffffff',
+    WebkitTextFillColor: isSelected ? selectedBookTypeOptionStyle.color : '#ffffff',
+    fontWeight: 400,
+    opacity: 1,
     minHeight: 46,
     boxShadow: isSelected ? selectedBookTypeOptionStyle.boxShadow : undefined
   });
   const primaryActionButtonStyle: React.CSSProperties = selectedBookType === 'fairy_tale'
     ? {
       background: 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94))',
-      color: 'rgba(8, 28, 55, 0.98)',
+      color: '#000000',
       borderColor: 'rgba(255,255,255,0.76)',
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 10px 24px rgba(220,236,255,0.22)'
     }
@@ -3402,20 +3531,10 @@ export default function HomeView({
     }
     : {
       background: 'linear-gradient(135deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94))',
-      color: 'rgba(8, 28, 55, 0.98)',
+      color: '#000000',
       borderColor: 'rgba(255,238,140,0.78)',
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5), 0 10px 24px rgba(250,204,21,0.2)'
     };
-  const secondaryActionButtonStyle: React.CSSProperties = {
-    background: '#102f56',
-    color: 'rgba(225,240,255,0.92)',
-    borderColor: 'rgba(139,187,244,0.24)'
-  };
-  const disabledActionButtonStyle: React.CSSProperties = {
-    background: 'rgba(10, 20, 32, 0.45)',
-    color: 'rgba(169, 199, 236, 0.34)',
-    borderColor: 'rgba(135, 164, 197, 0.1)'
-  };
   const genderPickerOptions = [{ value: '' as WizardHeroGender, label: 'Seçilmedi' }, ...HERO_GENDER_OPTIONS];
   const renderGenderPicker = (
     value: WizardHeroGender,
@@ -3426,7 +3545,8 @@ export default function HomeView({
       value={value}
       options={genderPickerOptions.map((option) => ({ value: option.value, label: t(option.label) }))}
       onChange={onSelect}
-      triggerClassName="!h-[46px] !rounded-[14px] !px-3 !text-[13px]"
+      triggerClassName="fortale-wizard-select-trigger !h-[46px] !rounded-[14px] !px-3 !text-[13px] !font-normal"
+      wizardStyle
     />
   );
   const renderHeroPortraitPanel = () => (
@@ -3469,7 +3589,7 @@ export default function HomeView({
                 <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 55%, rgba(5, 15, 30, 0.72) 100%)' }} />
                 {/* Overlay controls */}
                 <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-3 pb-3">
-                  <p className="truncate text-[12px] font-bold text-white/90">
+                  <p className="truncate text-[12px] font-bold text-white">
                     {selectedPortraitHeroTarget || t('Portre eklendi')}
                   </p>
                   <div className="flex items-center gap-1.5">
@@ -3477,7 +3597,7 @@ export default function HomeView({
                       type="button"
                       onClick={() => heroPortraitInputRef.current?.click()}
                       className="h-8 rounded-[12px] px-3 text-[11px] font-semibold inline-flex items-center gap-1"
-                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(139, 187, 244, 0.36)', color: '#c8e2ff' }}
+                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(139, 187, 244, 0.36)', color: '#ffffff' }}
                     >
                       {t('Değiştir')}
                     </button>
@@ -3485,7 +3605,7 @@ export default function HomeView({
                       type="button"
                       onClick={clearHeroPortrait}
                       className="h-8 w-8 rounded-[12px] inline-flex items-center justify-center"
-                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(135, 164, 197, 0.26)', color: 'rgba(190, 220, 255, 0.5)' }}
+                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(135, 164, 197, 0.26)', color: '#ffffff' }}
                       aria-label={t('Portreyi kaldır')}
                     >
                       <X size={13} />
@@ -3498,8 +3618,8 @@ export default function HomeView({
             <button
               type="button"
               onClick={() => heroPortraitInputRef.current?.click()}
-              className="w-full rounded-[18px] border px-4 py-4 text-[14px] font-extrabold inline-flex items-center justify-center gap-2.5 transition-opacity active:opacity-75"
-              style={{ background: 'rgba(14, 45, 90, 0.7)', borderColor: 'rgba(155, 199, 255, 0.32)', borderStyle: 'dashed', color: '#d6eaff' }}
+              className="w-full rounded-[18px] border px-4 py-4 text-[14px] font-normal inline-flex items-center justify-center gap-2.5"
+              style={{ background: 'rgba(14, 45, 90, 0.7)', borderColor: 'rgba(155, 199, 255, 0.32)', borderStyle: 'dashed', color: '#ffffff' }}
             >
               <ImagePlus size={18} />
               {t('Fotoğraf Seç')}
@@ -3512,7 +3632,7 @@ export default function HomeView({
       {heroPortraitFile && portraitHeroOptions.length > 0 && (
         <div className="rounded-[22px] border p-3" style={{ borderColor: 'rgba(190, 220, 255, 0.16)', background: 'rgba(8, 36, 70, 0.46)' }}>
           <p className="fortale-section-kicker mb-3">{t('Portre hangi kahramana ait?')}</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
             {portraitHeroOptions.map((name) => {
               const isSelected = selectedPortraitHeroTarget === name;
               return (
@@ -3638,7 +3758,7 @@ export default function HomeView({
   ], []);
 
   return (
-    <div className="view-container fortale-home-view">
+    <div className={`view-container fortale-home-view ${isCreationIntroOnly ? 'is-intro' : ''}`}>
       {/* Yıldız ve peri tozu — header altından tüm sayfayı kaplar */}
       <div className="fixed inset-0 z-[300] overflow-hidden pointer-events-none" aria-hidden>
         {homeStars.map((star, idx) => (
@@ -3684,7 +3804,7 @@ export default function HomeView({
               >
                 <div className="max-h-[58vh] overflow-y-auto hide-scrollbar space-y-2">
                   {sortedStickyNotes.length === 0 ? (
-                    <div className="text-[11px] text-zinc-400 px-2 py-1">{t('Henüz yapışkan not yok.')}</div>
+                    <div className="text-[11px] text-white px-2 py-1">{t('Henüz yapışkan not yok.')}</div>
                   ) : (
                     sortedStickyNotes.map((note) => renderStickyCard(note, true))
                   )}
@@ -3701,8 +3821,8 @@ export default function HomeView({
                   <button
                     onClick={() => setIsStickyRowExpanded((prev) => !prev)}
                     className={`flex-1 border-r transition-colors flex items-center justify-center ${isStickyRowExpanded
-                      ? 'border-[#6287b3]/60 bg-[#1d3855]/22 text-[#c4dbf5]'
-                      : 'border-[#5a7aa0]/45 text-[#abc7e7] hover:bg-[#1d3855]/16'
+                      ? 'border-[#6287b3]/60 bg-[#1d3855]/22 text-white'
+                      : 'border-[#5a7aa0]/45 text-white hover:bg-[#1d3855]/16'
                       }`}
                     title={isStickyRowExpanded ? t('Kapat') : t('Genişlet')}
                     aria-label={isStickyRowExpanded ? t('Kapat') : t('Genişlet')}
@@ -3724,15 +3844,40 @@ export default function HomeView({
           </section>
         )}
 
-        {/* "Fortale" yazısı — header altında, form üstünde; kitap türü seçilince kaybolur */}
-        <div
-          className={`fortale-home-brand-title${(isCreationWizardOpen || isGenerating) ? ' is-gone' : ''}`}
-          aria-hidden
-        >
-          Fortale
-        </div>
+        {isCreationIntroOnly && (
+          <div ref={homeRailStackRef} className="fortale-home-rail-stack">
+            <section className="fortale-home-book-rail" aria-label={t('Son Kitaplarım')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
+              <h2 className="fortale-home-rail-label" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{t('Son Kitaplarım')}</h2>
+              <div ref={homeShelfScrollRef} className="fortale-home-rail-scroll touch-scroll-x" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
+                {homeShelfCourses.length > 0
+                  ? homeShelfCourses.map((course) => renderHomeCourseCard(course))
+                  : isBootstrapping
+                    ? <div className="fortale-home-rail-loading"><FaviconSpinner size={22} /><span>{t('Kitaplar yükleniyor...')}</span></div>
+                    : <div className="fortale-home-rail-empty">{t('Henüz hiç kitap yok.')}</div>}
+              </div>
+            </section>
 
-        <section className="relative">
+            <section className="fortale-home-book-rail" aria-label={t('Toplulukta Popüler')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
+              <h2 className="fortale-home-rail-label" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{t('Toplulukta Popüler')}</h2>
+              <div className="fortale-home-rail-scroll touch-scroll-x" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
+                {isHomeCommunityLoading
+                  ? <div className="fortale-home-rail-loading"><FaviconSpinner size={22} /><span>{t('Kitaplar yükleniyor...')}</span></div>
+                  : homeCommunityBooks.length > 0
+                    ? homeCommunityBooks.map((book) => renderHomeCommunityCard(book))
+                    : <div className="fortale-home-rail-empty">{t('Henüz veri yok')}</div>}
+              </div>
+            </section>
+          </div>
+        )}
+
+        <section
+          className={`relative ${isCreationIntroOnly ? 'fortale-home-create-dock' : ''}`}
+          style={isCreationIntroOnly ? {
+            top: homeCreateDockBounds?.top ?? 0,
+            height: homeCreateDockBounds?.height ?? 224,
+            visibility: homeCreateDockBounds ? 'visible' : 'hidden'
+          } : undefined}
+        >
           <input
             ref={sourceFileInputRef}
             type="file"
@@ -3753,24 +3898,25 @@ export default function HomeView({
             ref={wizardInlineRef}
             className="flex flex-col rounded-[18px]"
             style={{
-              height: (!isGenerating && (isCreationIntroOnly || creationStep === 1))
-                ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
-                : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
-              minHeight: '320px',
+              height: isCreationIntroOnly
+                ? '224px'
+                : creationStep === 1
+                  ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
+                  : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
+              minHeight: isCreationIntroOnly ? '224px' : '320px',
             }}
           >
             {/* TOP BAR: generating'de gizle, intro'da invisible (layout tutmak için) */}
-            {!isGenerating && (
+            {!isGenerating && !isCreationIntroOnly && (
               <div
                 className="flex items-center justify-between gap-3 px-4 pt-3 pb-2"
-                style={{ visibility: isCreationIntroOnly ? 'hidden' : 'visible', pointerEvents: isCreationIntroOnly ? 'none' : 'auto' }}
               >
                 <p className="text-[14px] font-bold text-white">{currentStepTitle}</p>
                 <button
                   type="button"
                   onClick={() => { setCreationWizardOpen(false); setCreationStep(1); setAccentedBookType(null); }}
                   className="h-8 w-8 shrink-0 rounded-[18px] border flex items-center justify-center"
-                  style={{ borderColor: 'rgba(135, 164, 197, 0.18)', background: 'rgba(10, 20, 32, 0.42)', color: 'rgba(190, 220, 255, 0.5)' }}
+                  style={{ borderColor: 'rgba(135, 164, 197, 0.18)', background: 'rgba(10, 20, 32, 0.42)', color: '#ffffff' }}
                   aria-label={t('Kapat')}
                 >
                   <X size={14} />
@@ -3779,10 +3925,9 @@ export default function HomeView({
             )}
 
             {/* PROGRESS DOTS: generating'de gizle, intro'da invisible */}
-            {!isGenerating && (
+            {!isGenerating && !isCreationIntroOnly && (
               <div
                 className="px-4 pb-2 border-b border-white/[0.06]"
-                style={{ visibility: isCreationIntroOnly ? 'hidden' : 'visible' }}
               >
                 <div className="flex gap-1.5">
                   {visibleCreationSteps.map((_, index) => (
@@ -3807,9 +3952,11 @@ export default function HomeView({
               {/* TYPE ORB: intro ve wizard adım 1'de göster */}
               {(isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1)) && (
                 <div className="fortale-type-step">
-                  <div className={`fortale-type-copy ${isCreationIntroOnly ? 'fortale-wizard-layout-ghost' : ''}`}>
-                    <span>{t('Kitap Türünü Seç')}</span>
-                  </div>
+                  {!isCreationIntroOnly && (
+                    <div className="fortale-type-copy">
+                      <span>{t('Kitap Türünü Seç')}</span>
+                    </div>
+                  )}
                   <div className="fortale-type-orb" role="group" aria-label={t('Kitap Türünü Seç')}>
                     <span className="fortale-type-divider horizontal" aria-hidden="true" />
                     <span className="fortale-type-divider left" aria-hidden="true" />
@@ -3867,7 +4014,7 @@ export default function HomeView({
                         ? translateGenerationStatusLabel(generationStatus, generationDisplayLanguage)
                         : translateGenerationStatusLabel('Sunucuda üretim başlatılıyor', generationDisplayLanguage)}
                     </p>
-                    <p className="mt-1 text-center text-[13px] text-white/50">
+                    <p className="mt-1 text-center text-[13px] text-white">
                       {formatGenerationRemainingTime(displayedGenerationMinutesRemaining, generationDisplayLanguage)}
                     </p>
                   </div>
@@ -3879,13 +4026,13 @@ export default function HomeView({
                       />
                     </div>
                     <div className="mt-1.5 flex items-center justify-between">
-                      <p className="text-[14px] text-white/50 tabular-nums">
+                      <p className="text-[14px] text-white tabular-nums">
                         %{Math.max(1, Math.min(100, Math.round(generationProgress || 0)))}
                       </p>
                       <button
                         type="button"
                         onClick={handleCancelGeneration}
-                        className="text-[12px] text-white/35 px-2 py-0.5"
+                        className="text-[12px] text-white px-2 py-0.5"
                       >
                         {t('İptal')}
                       </button>
@@ -3900,7 +4047,7 @@ export default function HomeView({
                       <div className="flex items-center justify-center px-2 mt-auto pt-8">
                         <p
                           key={currentLiteraryFactIndex}
-                          className="text-center italic leading-relaxed text-[#a8c8bc]"
+                          className="text-center italic leading-relaxed text-white"
                           style={{ fontSize: 15, animation: 'fadeIn 0.8s ease' }}
                         >
                           &ldquo;{fact}&rdquo;
@@ -3920,7 +4067,7 @@ export default function HomeView({
                     <div className="space-y-2.5 pt-1">
                       <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                         <p className="fortale-section-kicker mb-2.5">{t('Alt tür')}</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                           {(selectedBookType === 'story'
                             ? WORKBOOK_CATEGORY_OPTIONS
                             : (SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || [])).map((sub) => {
@@ -3978,7 +4125,7 @@ export default function HomeView({
                       <div className={selectedBookType === 'story' ? '' : 'fortale-library-panel rounded-2xl border px-3 py-3'}>
                         <p className="fortale-section-kicker mb-2.5">{t(selectedBookType === 'story' ? 'Ek İçerikler' : 'Tema')}</p>
                         {selectedBookType === 'story' ? (
-                          <div className="space-y-2">
+                          <div className="fortale-wizard-choice-chain-stack space-y-2">
                             {WORKBOOK_EXTRA_OPTIONS.map((option) => {
                               const isSelected = option.key === 'examples'
                                 ? includeWorkbookExamples
@@ -3999,7 +4146,7 @@ export default function HomeView({
                                   aria-pressed={isSelected}
                                 >
                                   <span className="block text-[14px] font-extrabold">{t(option.label)}</span>
-                                  <span className={`mt-1 block text-[11px] font-semibold leading-snug ${isSelected ? 'opacity-100' : 'opacity-70'}`}>
+                                  <span className="mt-1 block text-[11px] font-semibold leading-snug">
                                     {t(option.hint)}
                                   </span>
                                   <span
@@ -4022,7 +4169,7 @@ export default function HomeView({
                           </div>
                         ) : (
                           <>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                           {selectedSubGenreThemes.map((theme) => {
                             const isSelected = selectedTheme === theme;
                             return (
@@ -4068,7 +4215,7 @@ export default function HomeView({
                   {creationStep === ageGroupStep && (
                     <div className="space-y-2.5 pt-1">
                       <p className="fortale-section-kicker mb-3">{t(selectedBookType === 'story' ? 'Seviye' : 'Yaş grubu')}</p>
-                      <div className="space-y-2">
+                      <div className="fortale-wizard-choice-chain-stack space-y-2">
                         {(selectedBookType === 'story' ? WORKBOOK_LEVEL_OPTIONS : ageGroupOptionsForSelectedBookType).map((option) => {
                           const isSelected = selectedBookType === 'story'
                             ? selectedWorkbookLevel === option.value
@@ -4089,7 +4236,7 @@ export default function HomeView({
                               aria-pressed={isSelected}
                             >
                               <span className="block text-[15px] font-extrabold">{t(option.label)}</span>
-                              <span className={`mt-1.5 block text-[12px] font-semibold leading-snug ${isSelected ? 'opacity-100' : 'opacity-70'}`}>
+                              <span className="mt-1.5 block text-[12px] font-semibold leading-snug">
                                 {t(option.hint)}
                               </span>
                             </button>
@@ -4126,13 +4273,13 @@ export default function HomeView({
                                 maxLength={24}
                                 inputMode="numeric"
                                 placeholder={t('Örn: 9')}
-                                className="fortale-input-surface fortale-wizard-keyboard-input fortale-hero-age-input w-full text-[13px] text-zinc-100 placeholder:text-white/35 focus:outline-none"
+                                className="fortale-input-surface fortale-wizard-keyboard-input fortale-hero-age-input w-full text-[13px] text-white placeholder:text-white focus:outline-none"
                                 style={wizardInlineControlStyle}
                               />
                             </div>
                             <div>
                               <label className="fortale-section-kicker mb-2 block">
-                                {t('Cinsiyet')} <span className="font-normal opacity-50">({t('opsiyonel')})</span>
+                                {t('Cinsiyet')} <span className="font-normal">({t('opsiyonel')})</span>
                               </label>
                               {renderGenderPicker(heroGender, setHeroGender)}
                             </div>
@@ -4142,7 +4289,7 @@ export default function HomeView({
 
                       <div className="fortale-library-panel relative z-[1] rounded-2xl border px-3 py-3">
                         <p className="fortale-section-kicker mb-2.5">{t('Kahraman sayısı')}</p>
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid fortale-wizard-choice-chain-grid-four grid grid-cols-4 gap-2">
                           {HERO_COUNT_OPTIONS.map((count) => {
                             const isSelected = heroCount === count;
                             return (
@@ -4183,7 +4330,7 @@ export default function HomeView({
                                 </div>
                                 <div>
                                   <label className="fortale-section-kicker mb-2 block">
-                                    {t('Cinsiyet')} <span className="font-normal opacity-50">({t('opsiyonel')})</span>
+                                    {t('Cinsiyet')} <span className="font-normal">({t('opsiyonel')})</span>
                                   </label>
                                   {renderGenderPicker(
                                     companion.gender,
@@ -4204,7 +4351,7 @@ export default function HomeView({
                     <div className="space-y-2.5 pt-1">
                       <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                         <p className="fortale-section-kicker mb-2.5">{t('Zaman')}</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                           {SETTING_TIME_OPTIONS.map((option) => {
                             const isSelected = settingTimeChoice === option.value;
                             return (
@@ -4240,7 +4387,7 @@ export default function HomeView({
 
                       <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                         <p className="fortale-section-kicker mb-2.5">{t('Mekan')}</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                           {SETTING_PLACE_OPTIONS.map((option) => {
                             const isSelected = settingPlaceChoice === option.value;
                             return (
@@ -4276,7 +4423,7 @@ export default function HomeView({
 
                       <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                         <p className="fortale-section-kicker mb-2.5">{t('Dünya tipi')}</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                           {WORLD_TYPE_OPTIONS.map((option) => {
                             const isSelected = worldTypeChoice === option.value;
                             return (
@@ -4336,7 +4483,7 @@ export default function HomeView({
                         <>
                       <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                         <p className="fortale-section-kicker mb-2.5">{t('Konu kaynağı')}</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -4348,7 +4495,7 @@ export default function HomeView({
                             aria-pressed={premiseMode === 'examples'}
                           >
                             <span className="block text-[12px] font-bold">{t('Örneklerden seç')}</span>
-                            <span className={`mt-0.5 block text-[11px] font-semibold ${premiseMode === 'examples' ? 'opacity-100' : 'opacity-70'}`}>
+                            <span className="mt-0.5 block text-[11px] font-semibold">
                               {t('Fortale hazır çekirdekler sunsun')}
                             </span>
                           </button>
@@ -4363,7 +4510,7 @@ export default function HomeView({
                             aria-pressed={premiseMode === 'custom'}
                           >
                             <span className="block text-[12px] font-bold">{t('Diğer')}</span>
-                            <span className={`mt-0.5 block text-[11px] font-semibold ${premiseMode === 'custom' ? 'opacity-100' : 'opacity-70'}`}>
+                            <span className="mt-0.5 block text-[11px] font-semibold">
                               {t('Konu fikrini sen belirle')}
                             </span>
                           </button>
@@ -4373,7 +4520,7 @@ export default function HomeView({
                       {premiseMode === 'examples' ? (
                         <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                           <p className="fortale-section-kicker mb-2.5">{t('Hikaye çekirdeği')}</p>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
                             {STORY_PREMISE_OPTIONS.map((premise) => {
                               const isSelected = selectedPremise === premise;
                               return (
@@ -4434,7 +4581,7 @@ export default function HomeView({
                     <div className="space-y-2.5 pt-1">
                       <div className="fortale-library-panel rounded-2xl border px-3 py-3">
                         <p className="text-[16px] font-bold text-white">{t('Kitabınıza genel bakış')}</p>
-                        <p className="mt-1 text-[12px] leading-snug text-white/45">
+                        <p className="mt-1 text-[12px] leading-snug text-white">
                           {t('Oluşturmadan önce seçimlerinizi son kez kontrol edin.')}
                         </p>
                       </div>
@@ -4445,7 +4592,7 @@ export default function HomeView({
                             key={`${row.label}-${index}`}
                             className={`flex items-start justify-between gap-4 px-3.5 py-3 ${index > 0 ? 'border-t border-white/[0.08]' : ''}`}
                           >
-                            <span className="shrink-0 text-[12px] font-semibold text-white/50">{row.label}</span>
+                            <span className="shrink-0 text-[12px] font-semibold text-white">{row.label}</span>
                             <span className="min-w-0 text-right text-[12px] font-bold leading-snug text-white">
                               {row.value}
                             </span>
@@ -4458,7 +4605,7 @@ export default function HomeView({
                           <span className="text-[13px] font-bold text-white">{t('Maliyet')}</span>
                           <span className="text-[15px] font-extrabold text-white">{selectedCreateCreditCost} {t('kredi')}</span>
                         </div>
-                        <p className="mt-1 text-[11px] leading-snug text-white/45">{createCreditUseSentence}</p>
+                        <p className="mt-1 text-[11px] leading-snug text-white">{createCreditUseSentence}</p>
                       </div>
                     </div>
                   )}
@@ -4471,7 +4618,7 @@ export default function HomeView({
 
         {/* WIZARD GERİ / İLERİ — bottom nav üstüne fixed */}
         {isCreationWizardOpen && !isGenerating && (
-          <div className="fixed left-0 right-0 z-[35] pointer-events-none" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+          <div className="wizard-footer-position fixed left-0 right-0 z-[35] pointer-events-none">
             <div className="app-chrome-width">
               {creationStep === portraitStep && (
                 <p
@@ -4481,13 +4628,12 @@ export default function HomeView({
                   {t('Fotoğrafın AI tarafından kitabın görsel stiline uyarlanır. İsteğe bağlıdır, eklenirse +1 kredi kullanır.')}
                 </p>
               )}
-              <div className="flex gap-2 px-4 py-2 pointer-events-auto">
+              <div className={`wizard-footer-controls gap-2 px-4 pointer-events-auto ${currentVisibleStepIndex > 0 ? 'has-back' : 'only-primary'}`}>
                 {currentVisibleStepIndex > 0 && (
                   <button
                     type="button"
                     onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
-                    className="h-[52px] flex-1 rounded-[18px] border text-[13px] font-semibold inline-flex items-center justify-center gap-2"
-                    style={secondaryActionButtonStyle}
+                    className="wizard-footer-button wizard-footer-back"
                   >
                     <ArrowLeft size={14} />{t('Geri')}
                   </button>
@@ -4497,8 +4643,7 @@ export default function HomeView({
                     type="button"
                     onClick={() => { if (requireLoginForGeneration()) return; setCreationStep((prev) => getNextCreationStep(prev)); }}
                     disabled={!canMoveNext}
-                    className="h-[52px] flex-[2] rounded-[18px] border text-[13px] font-bold inline-flex items-center justify-center gap-2"
-                    style={canMoveNext ? primaryActionButtonStyle : disabledActionButtonStyle}
+                    className={`wizard-footer-button wizard-footer-back wizard-footer-${selectedBookType}`}
                   >
                     {t('İleri')}<ArrowRight size={14} />
                   </button>
@@ -4510,8 +4655,7 @@ export default function HomeView({
                       void handleCreateSmartBook();
                     }}
                     disabled={!canCreateOnFinalStep}
-                    className="h-[52px] flex-[2] rounded-[18px] border text-[13px] font-bold inline-flex items-center justify-center gap-2"
-                    style={canCreateOnFinalStep ? primaryActionButtonStyle : disabledActionButtonStyle}
+                    className={`wizard-footer-button wizard-footer-back wizard-footer-${selectedBookType}`}
                   >
                     <BookPlus size={15} />{t('Oluştur')}
                   </button>
@@ -4521,27 +4665,20 @@ export default function HomeView({
           </div>
         )}
 
-        {isLoginRequiredModalOpen && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-[120]">
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
-              onClick={() => setLoginRequiredModalOpen(false)}
-              aria-label={t('Vazgeç')}
-            />
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-              <div className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#171f29]/95 p-4 text-center shadow-[0_24px_64px_rgba(0,0,0,0.45)]">
-                <p className="text-[15px] font-semibold text-white">
-                  {t('Üretim için giriş gerekli')}
-                </p>
-                <p className="mt-1 text-[12px] text-[#b8d0ea]">
-                  {t('Üretime devam etmek için lütfen giriş yapın.')}
-                </p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+        <FloatIslandSheet
+          isOpen={isLoginRequiredModalOpen}
+          onClose={() => setLoginRequiredModalOpen(false)}
+          title={t('Üretim için giriş gerekli')}
+          subtitle={t('Üretime devam etmek için lütfen giriş yapın.')}
+          maxWidth={448}
+          layer={1200}
+          bodyClassName="p-0"
+          footer={(
+            <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setLoginRequiredModalOpen(false)}
-                    className="h-12 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[14px] font-semibold text-[#d6e5f4]"
+                    className="h-12 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[14px] font-normal text-white"
                   >
                     {t('Vazgeç')}
                   </button>
@@ -4551,44 +4688,49 @@ export default function HomeView({
                       setLoginRequiredModalOpen(false);
                       onRequestLogin?.();
                     }}
-                    className="h-12 rounded-2xl border border-[#7eb3ef]/38 bg-[#0b2342] text-[14px] font-bold text-white"
+                    className="h-12 rounded-2xl border border-[#7eb3ef]/38 bg-[#0b2342] text-[14px] font-normal text-white"
                   >
                     {t('Giriş Yap')}
                   </button>
-                </div>
-              </div>
             </div>
-          </div>,
-          document.body
-        )}
+          )}
+        >
+          <span />
+        </FloatIslandSheet>
 
-        {heroPortraitCrop && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-[115]">
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
-              onClick={heroPortraitCrop.isProcessing ? undefined : dismissHeroPortraitCrop}
-              aria-label={t('Vazgeç')}
-            />
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-              <div className="w-full max-w-md rounded-[24px] border border-white/10 bg-[#171f29]/95 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.48)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[15px] font-bold text-white">{t('Portreyi Hazırla')}</p>
-                    <p className="mt-0.5 truncate text-[12px] text-[#b8d0ea]">{heroPortraitCrop.fileName}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={dismissHeroPortraitCrop}
-                    disabled={heroPortraitCrop.isProcessing}
-                    className="h-8 w-8 shrink-0 rounded-xl border border-white/12 text-[#d6e5f4] disabled:opacity-50 inline-flex items-center justify-center"
-                    aria-label={t('Kapat')}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-
-                <div className="mt-4 flex justify-center">
+        <FloatIslandSheet
+          isOpen={Boolean(heroPortraitCrop)}
+          onClose={dismissHeroPortraitCrop}
+          closeDisabled={Boolean(heroPortraitCrop?.isProcessing)}
+          title={t('Portreyi Hazırla')}
+          subtitle={heroPortraitCrop?.fileName}
+          maxWidth={448}
+          layer={1150}
+          footer={heroPortraitCrop ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={dismissHeroPortraitCrop}
+                disabled={heroPortraitCrop.isProcessing}
+                className="h-11 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[13px] font-normal text-white disabled:opacity-60"
+              >
+                {t('Vazgeç')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void applyHeroPortraitCrop()}
+                disabled={heroPortraitCrop.isProcessing}
+                className="h-11 rounded-2xl border text-[13px] font-normal disabled:opacity-60"
+                style={primaryActionButtonStyle}
+              >
+                {heroPortraitCrop.isProcessing ? t('İşleniyor...') : t('Portreyi Kullan')}
+              </button>
+            </div>
+          ) : undefined}
+        >
+          {heroPortraitCrop && (
+            <>
+                <div className="flex justify-center">
                   <div className="relative h-[min(78vw,360px)] w-[min(78vw,360px)] overflow-hidden rounded-2xl border border-white/14 bg-black/30 touch-none">
                     <Cropper
                       image={heroPortraitCrop.sourceUrl}
@@ -4608,34 +4750,12 @@ export default function HomeView({
                     />
                   </div>
                 </div>
-                <p className="mt-3 text-center text-[12px] leading-snug text-[#b8d0ea]">
+                <p className="mt-3 text-center text-[12px] leading-snug text-white">
                   {t('Portreniz ne kadar belirginse görseliniz o kalitede olur. Yüzünüzü ve saçınızı net biçimde ortalayın.')}
                 </p>
-
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={dismissHeroPortraitCrop}
-                    disabled={heroPortraitCrop.isProcessing}
-                    className="h-11 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[13px] font-semibold text-[#d6e5f4] disabled:opacity-60"
-                  >
-                    {t('Vazgeç')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void applyHeroPortraitCrop()}
-                    disabled={heroPortraitCrop.isProcessing}
-                    className="h-11 rounded-2xl border text-[13px] font-bold text-white disabled:opacity-60"
-                    style={primaryActionButtonStyle}
-                  >
-                    {heroPortraitCrop.isProcessing ? t('İşleniyor...') : t('Portreyi Kullan')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+            </>
+          )}
+        </FloatIslandSheet>
 
         {sourceNotice && (
           <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+80px)] z-[126] -translate-x-1/2 px-4">
@@ -4645,57 +4765,226 @@ export default function HomeView({
           </div>
         )}
 
-        {isCreationIntroOnly && (homeShelfCourses.length > 0 ? (
-          <section className="fortale-shelf-section pb-4">
-            <div ref={homeShelfScrollRef} className="fortale-shelf-scroll touch-scroll-x">
-              {homeShelfCourses.map((course) => renderHomeCourseCard(course))}
-            </div>
-          </section>
-        ) : (
-          <div className="glass-panel p-6 rounded-2xl border-white/10 flex flex-col items-center text-center space-y-4">
-            {isBootstrapping ? (
-              renderBootstrapShelf()
-            ) : (
-              <>
-                <div className="w-12 h-12 glass-icon text-accent-green">
-                  <Plus size={24} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">{t('Yeni Bir Fortale Başlat')}</h3>
-                  <p className="text-[10px] text-[#d2e6ff] mt-1">{t('Create, Discover and Share')}</p>
-                  <p className="text-[10px] text-text-secondary max-w-[220px] mt-1">{t('Konu yazarak veya doküman yükleyerek hemen başlayabilirsin.')}</p>
-                </div>
-              </>
-            )}
-          </div>
-        ))}
-
       </div>
 
-      {courseDeleteModal.isOpen && (
-        <div className="fixed inset-0 z-[65]">
-          <button
-            type="button"
-            aria-label={t('Vazgeç')}
-            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
-            onClick={closeCourseDeleteModal}
-          />
-          <div className="absolute inset-x-0 bottom-0 p-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
-            <div className="mx-auto w-full max-w-md">
-              <div className="rounded-[26px] border border-white/10 bg-[#171f29]/95 p-4 text-center shadow-[0_24px_64px_rgba(0,0,0,0.45)]">
-                <p className="text-[15px] font-semibold text-white">
-                  {t('Bu kitabı silmek istediğine emin misin?')}
-                </p>
-                <p className="mt-1 text-[12px] text-[#b8d0ea] line-clamp-2">
-                  {courseDeleteModal.courseTitle}
-                </p>
+      {selectedHomeCourse && (() => {
+        const selectedOpenState = courseOpenStates[selectedHomeCourse.id] || { status: 'idle', progress: 0, updatedAt: 0 };
+        const selectedOpenProgress = Math.max(0, Math.min(100, Math.round(selectedOpenState.progress || 0)));
+        const selectedIsDownloading = selectedOpenState.status === 'downloading';
+        const selectedIsReady = selectedOpenState.status === 'ready' || courseHasReadableContent(selectedHomeCourse);
+        const selectedIsFailed = selectedOpenState.status === 'failed';
+        const selectedActionLabel = selectedIsReady
+          ? t('Oku')
+          : selectedIsDownloading
+            ? `${t('İndiriliyor')} %${selectedOpenProgress}`
+            : selectedIsFailed
+              ? t('Tekrar dene')
+              : t('İndir');
+        const selectedCover = selectedHomeCourse.deviceCoverImageUrl || selectedHomeCourse.coverImageUrl;
+        const selectedCanDelete = canDeleteCourse ? canDeleteCourse(selectedHomeCourse) : true;
+
+        return (
+          <FloatIslandSheet
+            isOpen
+            onClose={() => setSelectedHomeCourse(null)}
+            title={selectedHomeCourse.topic}
+            subtitle={`${t(bookTypeToLabel(selectedHomeCourse.bookType))} · ${formatStickyDate(selectedHomeCourse.lastActivity, locale)}`}
+            maxWidth={520}
+            layer={980}
+            footer={(
+              <div className={selectedCanDelete ? 'grid grid-cols-2 gap-2' : ''}>
+                {selectedCanDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const course = selectedHomeCourse;
+                      setSelectedHomeCourse(null);
+                      openCourseDeleteModal(course);
+                    }}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-300/25 bg-rose-400/10 text-[12px] font-black text-rose-100"
+                  >
+                    <Trash2 size={14} /> {t('Sil')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const courseId = selectedHomeCourse.id;
+                    setSelectedHomeCourse(null);
+                    onCourseSelect(courseId);
+                  }}
+                  disabled={selectedIsDownloading}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white text-[12px] font-black text-[#102018] disabled:opacity-55"
+                >
+                  {selectedIsDownloading ? <FaviconSpinner size={14} /> : selectedIsReady ? <BookOpen size={14} /> : <Download size={14} />}
+                  {selectedActionLabel}
+                </button>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+            )}
+          >
+            <div className="flex gap-4">
+              <div className="w-[126px] shrink-0">
+                <span className="fortale-book-list-cover-media">
+                  {selectedCover ? (
+                    <img src={selectedCover} alt={selectedHomeCourse.topic} />
+                  ) : (
+                    <span className="fortale-home-rail-cover-empty"><BookOpen size={28} /></span>
+                  )}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1 space-y-2 text-[11px] leading-5 text-white">
+                <span className="inline-flex rounded-full border border-white/15 bg-white/[0.08] px-2.5 py-1 text-[9px] font-black text-white">
+                  {t(bookTypeToLabel(selectedHomeCourse.bookType))}
+                </span>
+                {selectedHomeCourse.language && <p>{selectedHomeCourse.language}</p>}
+                {selectedHomeCourse.subGenre && <p>{t(selectedHomeCourse.subGenre)}</p>}
+                <p>{selectedHomeCourse.nodes.length} {t('bölüm')}</p>
+              </div>
+            </div>
+            {selectedHomeCourse.description && (
+              <div className="mt-5 border-t border-dashed border-white/15 pt-4">
+                <h3 className="text-[13px] font-black text-white">{t('Açıklama')}</h3>
+                <p className="mt-2 text-[12px] leading-6 text-white">{selectedHomeCourse.description}</p>
+              </div>
+            )}
+          </FloatIslandSheet>
+        );
+      })()}
+
+      {selectedHomeCommunityBook && (
+        <FloatIslandSheet
+          isOpen
+          onClose={() => setSelectedHomeCommunityBook(null)}
+          title={selectedHomeCommunityBook.title}
+          subtitle={`@${selectedHomeCommunityBook.publisherAlias || t('Fortale üreticisi')}`}
+          maxWidth={560}
+          layer={980}
+          bodyClassName="p-0"
+          footer={(
+            <div className="fortale-home-community-footer grid grid-cols-2 items-stretch gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedHomeCommunityBook(null);
+                  _onNavigate('COMMUNITY');
+                }}
+                className="rounded-2xl border border-white/12 bg-white/[0.06] px-2 text-[11px] font-normal text-white whitespace-nowrap"
+              >
+                {t('Topluluk')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleHomeCommunityDownload()}
+                disabled={isHomeCommunityDownloading || selectedHomeCommunityBook.isOwned || selectedHomeCommunityBook.userId === authUserId}
+                className="fortale-community-library-button inline-flex items-center justify-center gap-1.5 rounded-2xl px-2 text-[10px] font-normal whitespace-nowrap"
+              >
+                {isHomeCommunityDownloading ? (
+                  <FaviconSpinner size={14} />
+                ) : selectedHomeCommunityBook.isOwned || selectedHomeCommunityBook.userId === authUserId ? (
+                  <><BookOpen size={13} /><span className="whitespace-nowrap">{t('Kütüphanede')}</span></>
+                ) : (
+                  <><Library size={13} /><span className="whitespace-nowrap">{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST} {t('kredi')}</span></>
+                )}
+              </button>
+            </div>
+          )}
+        >
+          {isHomeCommunityDetailLoading ? (
+            <div className="flex justify-center p-16"><FaviconSpinner size={28} /></div>
+          ) : (() => {
+            const bookLabels = getCommunityBookSectionLabels(selectedHomeCommunityBook.language);
+            return (
+            <div className="community-book-detail space-y-5 p-4">
+              <section className="flex gap-4">
+                <div className="w-[126px] shrink-0">
+                  <span className="fortale-book-list-cover-media">
+                    {selectedHomeCommunityBook.coverImageUrl ? (
+                      <img src={selectedHomeCommunityBook.coverImageUrl} alt={selectedHomeCommunityBook.title} />
+                    ) : (
+                      <span className="fortale-home-rail-cover-empty"><BookOpen size={30} /></span>
+                    )}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="fortale-community-type-chip inline-flex rounded-full border px-2 py-1 text-[9px] font-black" data-book-type={selectedHomeCommunityBook.bookType}>
+                    {t(homeCommunityTypeLabel(selectedHomeCommunityBook.bookType))}
+                  </span>
+                  <p className="mt-3 text-[11px] font-bold text-white">@{selectedHomeCommunityBook.publisherAlias || t('Fortale üreticisi')}</p>
+                  <p className="community-detail-cover-summary mt-2 line-clamp-3 text-[10px] leading-[1.45] text-white">{String(selectedHomeCommunityBook.description || '').trim() || String(selectedHomeCommunityBook.preview?.[0]?.content || '').replace(/^#{1,6}\s+.+$/gm, ' ').replace(/[*_`>#-]/g, ' ').replace(/\s+/g, ' ').trim()}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white">
+                    {selectedHomeCommunityBook.language && <span>{selectedHomeCommunityBook.language}</span>}
+                    {selectedHomeCommunityBook.category && <span>• {t(selectedHomeCommunityBook.category)}</span>}
+                    {selectedHomeCommunityBook.pageCount ? <span>• {selectedHomeCommunityBook.pageCount} {t('sayfa')}</span> : null}
+                  </div>
+                  <div className="mt-4 flex items-center gap-4 text-[11px] text-white">
+                    <span className="inline-flex items-center gap-1"><Heart size={13} /> {selectedHomeCommunityBook.likeCount || 0}</span>
+                    <span className="inline-flex items-center gap-1"><Download size={13} /> {selectedHomeCommunityBook.downloadCount || 0}</span>
+                    <span className="inline-flex items-center gap-1"><MessageCircle size={13} /> {selectedHomeCommunityBook.commentCount || 0}</span>
+                  </div>
+                </div>
+              </section>
+
+              {selectedHomeCommunityBook.previewImages && selectedHomeCommunityBook.previewImages.length > 0 && (
+                <section className={`grid gap-3 ${selectedHomeCommunityBook.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  {selectedHomeCommunityBook.previewImages.slice(0, selectedHomeCommunityBook.bookType === 'story' ? 1 : 2).map((image) => (
+                    <div key={image.id} className={`${selectedHomeCommunityBook.bookType === 'story' ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden`}>
+                      <img src={image.url} alt={image.title || selectedHomeCommunityBook.title} className={`h-full w-full ${selectedHomeCommunityBook.bookType === 'story' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {selectedHomeCommunityBook.description && (
+                <section className="px-1">
+                  <h3 className="community-detail-section-title">{bookLabels.description}</h3>
+                  <p className="community-detail-body mt-2 text-white">{selectedHomeCommunityBook.description}</p>
+                </section>
+              )}
+
+              {selectedHomeCommunityBook.outline && selectedHomeCommunityBook.outline.length > 0 && (
+                <section className="px-1">
+                  <h3 className="community-detail-section-title">{bookLabels.contents}</h3>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedHomeCommunityBook.outline.slice(0, 6).map((title, index) => (
+                      <span key={`${title}-${index}`} className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-semibold text-white">{title}</span>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {selectedHomeCommunityBook.preview && selectedHomeCommunityBook.preview.length > 0 && (
+                <section className="space-y-3 px-1">
+                  <h3 className="community-detail-section-title">{bookLabels.firstChapterPreview}</h3>
+                  <article className="overflow-hidden">
+                    {selectedHomeCommunityBook.preview[0].title && <h4 className="text-[12px] font-semibold leading-5 text-white">{selectedHomeCommunityBook.preview[0].title}</h4>}
+                    <div className="community-preview-markdown prose prose-invert mt-2 max-w-none text-white">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{extractHomeCommunityPreview(selectedHomeCommunityBook.preview[0].content)}</ReactMarkdown>
+                    </div>
+                  </article>
+                </section>
+              )}
+            </div>
+            );
+          })()}
+        </FloatIslandSheet>
+      )}
+
+      <FloatIslandSheet
+        isOpen={courseDeleteModal.isOpen}
+        onClose={closeCourseDeleteModal}
+        closeDisabled={isCourseDeleting}
+        title={t('Bu kitabı silmek istediğine emin misin?')}
+        subtitle={courseDeleteModal.courseTitle}
+        maxWidth={448}
+        layer={965}
+        bodyClassName="p-0"
+        footer={(
+          <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={closeCourseDeleteModal}
                   disabled={isCourseDeleting}
-                  className="h-12 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[14px] font-semibold text-[#d6e5f4] disabled:opacity-60"
+                  className="h-12 rounded-2xl border border-white/12 bg-[rgba(34,44,58,0.95)] text-[14px] font-semibold text-white disabled:opacity-60"
                 >
                   {t('Vazgeç')}
                 </button>
@@ -4707,17 +4996,17 @@ export default function HomeView({
                 >
                   {isCourseDeleting ? t('İşleniyor...') : t('Sil')}
                 </button>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      >
+        <span />
+      </FloatIslandSheet>
 
       {showStickyNotes && stickyModal.isOpen && (
         <div className="fixed inset-0 z-50">
           <button
             type="button"
-            className="absolute inset-0 bg-transparent"
+            className="fortale-modal-backdrop absolute inset-0 bg-transparent"
             onClick={closeStickyModal}
             aria-label={t('Kapat')}
           />
@@ -4729,7 +5018,7 @@ export default function HomeView({
             }}
           >
             <div
-              className="h-full rounded-2xl border shadow-[0_24px_36px_-24px_rgba(0,0,0,0.78)] overflow-hidden flex flex-col"
+              className="fortale-floatisland-sheet-panel h-full rounded-2xl border shadow-[0_24px_36px_-24px_rgba(0,0,0,0.78)] overflow-hidden flex flex-col"
               style={{
                 borderColor: activeStickyTint.border,
                 backgroundColor: APP_SURFACE_COLOR
@@ -4746,14 +5035,14 @@ export default function HomeView({
                   value={stickyModal.title}
                   onChange={(event) => setStickyModal((prev) => ({ ...prev, title: event.target.value.slice(0, 80) }))}
                   placeholder={t('Başlık ekle')}
-                  className="sticky-modal-title-input flex-1 text-sm text-white placeholder:text-zinc-500 outline-none ring-0 focus:!ring-0"
+                  className="sticky-modal-title-input flex-1 text-sm text-white placeholder:text-white outline-none ring-0 focus:!ring-0"
                 />
                 <div className="text-right shrink-0">
-                  <span className="block text-[11px] text-zinc-400">
+                  <span className="block text-[11px] text-white">
                     {formatStickyDate(stickyModal.createdAt, locale)}
                   </span>
                   {stickyModal.reminderAt && (
-                    <span className="block text-[10px] text-zinc-300">
+                    <span className="block text-[10px] text-white">
                       {formatStickyReminder(stickyModal.reminderAt, locale)}
                     </span>
                   )}
@@ -4761,7 +5050,7 @@ export default function HomeView({
                 <button
                   type="button"
                   onClick={closeStickyModal}
-                  className="w-7 h-7 rounded-lg border border-zinc-600/70 text-zinc-300 hover:bg-white/10 transition-colors flex items-center justify-center"
+                  className="w-7 h-7 rounded-lg border border-zinc-600/70 text-white hover:bg-white/10 transition-colors flex items-center justify-center"
                 >
                   <X size={14} />
                 </button>
@@ -4772,7 +5061,7 @@ export default function HomeView({
                   value={stickyModal.text}
                   onChange={(event) => setStickyModal((prev) => ({ ...prev, text: event.target.value }))}
                   placeholder={t('Yapışkan notunu yaz...')}
-                  className="w-full h-full resize-none !border-0 !bg-transparent !shadow-none text-[14px] leading-relaxed text-white placeholder:text-zinc-500 outline-none ring-0 focus:!border-0 focus:!ring-0"
+                  className="w-full h-full resize-none !border-0 !bg-transparent !shadow-none text-[14px] leading-relaxed text-white placeholder:text-white outline-none ring-0 focus:!border-0 focus:!ring-0"
                 />
               </div>
 
@@ -4784,12 +5073,12 @@ export default function HomeView({
                     backgroundColor: APP_SURFACE_COLOR
                   }}
                 >
-                  <label className="block text-[11px] text-zinc-300 mb-2">{t('Hatırlatıcı zamanı')}</label>
+                  <label className="block text-[11px] text-white mb-2">{t('Hatırlatıcı zamanı')}</label>
                   <input
                     type="datetime-local"
                     value={reminderDraft}
                     onChange={(event) => setReminderDraft(event.target.value)}
-                    className="w-full h-10 rounded-lg border border-zinc-600/70 bg-black/25 px-2 text-[13px] text-zinc-200 outline-none focus:border-emerald-400/70"
+                    className="w-full h-10 rounded-lg border border-zinc-600/70 bg-black/25 px-2 text-[13px] text-white outline-none focus:border-emerald-400/70"
                   />
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <button
@@ -4839,7 +5128,7 @@ export default function HomeView({
                     type="button"
                     onClick={handleStickyDownload}
                     disabled={!hasStickyContent}
-                    className="w-8 h-8 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-zinc-300"
+                    className="w-8 h-8 rounded-lg text-white hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-white"
                     title={t('İndir')}
                   >
                     <Download size={14} />
@@ -4850,7 +5139,7 @@ export default function HomeView({
                       void handleStickyCopy();
                     }}
                     disabled={!hasStickyContent}
-                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent ${isStickyCopyConfirmed ? 'text-sky-300 bg-sky-500/15' : 'text-zinc-300 hover:text-white hover:bg-white/10'}`}
+                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent ${isStickyCopyConfirmed ? 'text-sky-300 bg-sky-500/15' : 'text-white hover:text-white hover:bg-white/10'}`}
                     title={isStickyCopyConfirmed ? t('Kopyalandı.') : t('Kopyala')}
                   >
                     {isStickyCopyConfirmed ? <Check size={14} /> : <Copy size={14} />}
@@ -4861,7 +5150,7 @@ export default function HomeView({
                       void handleStickyShare();
                     }}
                     disabled={!hasStickyContent}
-                    className="w-8 h-8 rounded-lg text-zinc-300 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-zinc-300"
+                    className="w-8 h-8 rounded-lg text-white hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-white"
                     title={t('Paylaş')}
                   >
                     <Share2 size={14} />
@@ -4876,14 +5165,14 @@ export default function HomeView({
                       setReminderDraft(toLocalDateTimeValue(stickyModal.reminderAt));
                       setIsReminderPickerOpen(true);
                     }}
-                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center ${stickyModal.reminderAt ? 'text-sky-300 bg-sky-500/10' : 'text-zinc-300 hover:text-white hover:bg-white/10'}`}
+                    className={`w-8 h-8 rounded-lg transition-colors flex items-center justify-center ${stickyModal.reminderAt ? 'text-sky-300 bg-sky-500/10' : 'text-white hover:text-white hover:bg-white/10'}`}
                     title={stickyModal.reminderAt ? t('Hatırlatıcıyı düzenle') : t('Hatırlatıcı ekle')}
                   >
                     <Bell size={14} />
                   </button>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {stickyNotice && <span className="text-[11px] text-zinc-300">{stickyNotice}</span>}
+                  {stickyNotice && <span className="text-[11px] text-white">{stickyNotice}</span>}
                   <button
                     type="button"
                     onClick={handleStickySave}

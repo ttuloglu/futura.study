@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Check,
   ChevronDown,
@@ -9,12 +10,13 @@ import {
   Mail,
   Scale,
   ShieldCheck,
-  User as UserIcon,
-  X
+  User as UserIcon
 } from 'lucide-react';
 import { CreditWallet, ViewState } from '../types';
 import { APP_LANGUAGE_OPTIONS, getAppLanguageLabel, type AppLanguageCode } from '../data/appLanguages';
 import { useUiI18n } from '../i18n/uiI18n';
+import FloatIslandSheet from './FloatIslandSheet';
+import CreditBalanceBreakdown from './CreditBalanceBreakdown';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -60,14 +62,6 @@ export default function SettingsModal({
   const smartbookSurfaceStyle: React.CSSProperties = {
     backgroundColor: SMARTBOOK_SURFACE_BG,
     borderColor: SMARTBOOK_SURFACE_BORDER
-  };
-  const modalViewportStyle: React.CSSProperties = {
-    paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 20px), 20px)',
-    paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 20px), 20px)'
-  };
-  const modalPanelStyle: React.CSSProperties = {
-    ...smartbookSurfaceStyle,
-    maxHeight: '100%'
   };
 
   useEffect(() => {
@@ -135,7 +129,7 @@ export default function SettingsModal({
         top: openUpwards ? undefined : Math.min(rect.bottom + gap, viewportHeight - estimatedHeight - 12),
         bottom: openUpwards ? Math.max(viewportHeight - rect.top + gap, 12) : undefined,
         maxHeight: Math.min(356, Math.max(220, viewportHeight - 32)),
-        zIndex: 10002
+        zIndex: 10003
       });
     };
 
@@ -156,32 +150,8 @@ export default function SettingsModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[10000] bg-black/22 backdrop-blur-sm animate-enter" onClick={onClose} />
-
-      <div
-        className="fixed inset-0 z-[10001] flex items-center justify-center px-3 sm:px-4 md:px-6"
-        style={modalViewportStyle}
-      >
-        <div
-          ref={panelRef}
-          className="fortale-settings-panel mx-auto w-full max-w-[480px] overflow-y-auto rounded-[24px] border shadow-[0_20px_38px_-18px_rgba(0,0,0,0.7)] backdrop-blur-[22px] animate-enter md:max-w-[520px]"
-          style={modalPanelStyle}
-        >
-          <div className="w-full p-4 space-y-4">
-            <div className="flex items-start justify-between gap-3 p-2">
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-white truncate">{userName}</p>
-                <p className="text-[11px] text-text-secondary truncate">{userEmail || t('Misafir oturumu')}</p>
-              </div>
-              <button
-                onClick={onClose}
-                className="fortale-settings-surface shrink-0 flex items-center justify-center w-8 h-8 rounded-full border text-white leading-none transition-colors hover:bg-[rgba(23,28,36,0.52)]"
-                style={smartbookSurfaceStyle}
-              >
-                <X size={14} />
-              </button>
-            </div>
-
+      <FloatIslandSheet isOpen onClose={onClose} title={userName} subtitle={userEmail || t('Misafir oturumu')} layer={10001} maxWidth={520} panelRef={panelRef} panelClassName="fortale-settings-panel" bodyClassName="p-4">
+          <div className="w-full space-y-4">
             <button
               onClick={() => { onOpenPaywall(); onClose(); }}
               className="fortale-settings-surface w-full rounded-2xl border px-3 py-2.5 text-left transition-all hover:bg-[rgba(23,28,36,0.52)]"
@@ -191,9 +161,7 @@ export default function SettingsModal({
                 <Coins size={14} className="text-accent-green" />
                 <p className="text-[12px] font-semibold text-white">{t('Kredi Bakiyesi')}</p>
               </div>
-              <p className="mt-1 text-[11px] text-white/72">
-                {t('Oluşturma Kredisi:')} <span className="font-bold text-white">{credits.createCredits}</span>
-              </p>
+              <CreditBalanceBreakdown wallet={credits} className="mt-3" compact />
             </button>
 
             <div className="grid w-full grid-cols-2 gap-3">
@@ -233,12 +201,12 @@ export default function SettingsModal({
                     </div>
                     <div className="min-w-0">
                       <p className="text-[12px] font-semibold text-white">{t('Uygulama Dili')}</p>
-                      <p className="truncate text-[11px] text-[#b8cee8]">{getAppLanguageLabel(appLanguage)}</p>
+                      <p className="truncate text-[11px] text-white">{getAppLanguageLabel(appLanguage)}</p>
                     </div>
                   </div>
                   <ChevronDown
                     size={16}
-                    className={`shrink-0 text-[#b8cee8] transition-transform ${isLanguageMenuOpen ? 'rotate-180' : ''}`}
+                    className={`shrink-0 text-white transition-transform ${isLanguageMenuOpen ? 'rotate-180' : ''}`}
                   />
                 </button>
               </div>
@@ -264,14 +232,13 @@ export default function SettingsModal({
               </button>
             )}
           </div>
-        </div>
-      </div>
+      </FloatIslandSheet>
 
-      {isLanguageMenuOpen ? (
+      {isLanguageMenuOpen && typeof document !== 'undefined' ? createPortal((
         <>
           <button
             type="button"
-            className="fixed inset-0 z-[10001] bg-transparent"
+            className="fixed inset-0 z-[10002] bg-transparent"
             aria-label={t('Dil menüsünü kapat')}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -302,7 +269,7 @@ export default function SettingsModal({
             }}
           >
             <div className="border-b border-[rgba(230,245,238,0.14)] px-3 py-2.5">
-              <p className="text-[10px] font-bold tracking-[0.18em] text-[#92aeca]">{t('Diller')}</p>
+              <p className="text-[10px] font-bold tracking-[0.18em] text-white">{t('Diller')}</p>
             </div>
             <div className="overflow-y-auto p-2" style={{ maxHeight: 'min(42vh, 304px)' }}>
               {APP_LANGUAGE_OPTIONS.map((option) => {
@@ -323,7 +290,7 @@ export default function SettingsModal({
                     }}
                     className={`flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition-all ${isActive
                       ? 'bg-[rgba(25,60,97,0.82)] text-white'
-                      : 'text-[#d7e4f3] hover:bg-[rgba(25,35,47,0.92)]'
+                      : 'text-white hover:bg-[rgba(25,35,47,0.92)]'
                       }`}
                   >
                     <span className="text-[12px] font-semibold">{option.label}</span>
@@ -334,7 +301,7 @@ export default function SettingsModal({
             </div>
           </div>
         </>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }

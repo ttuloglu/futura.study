@@ -527,6 +527,8 @@ interface AiGatewayResponse {
   message?: string;
   usage?: UsageReport;
   creditWallet?: {
+    purchasedCredits: number;
+    communityEarnedCredits: number;
     createCredits: number;
   };
 }
@@ -538,7 +540,14 @@ type CreditActionType = "create" | "community_download";
 type CreditGatewayOperation = "getWallet" | "consume" | "refund";
 
 interface CreditWalletSnapshot {
+  purchasedCredits: number;
+  communityEarnedCredits: number;
   createCredits: number;
+}
+
+interface CreditDebitBreakdown {
+  purchasedCredits: number;
+  communityEarnedCredits: number;
 }
 
 interface CreditGatewayRequest {
@@ -1576,7 +1585,60 @@ function isGenericBookDescription(value: string, topic: string): boolean {
   ];
   if (genericPatterns.some((pattern) => pattern.test(lower))) return true;
   if (!hasTopicSignal(compact, topic)) return true;
-  return compact.length < 28;
+  const sentenceCount = compact.split(/[.!?…。！？]+/u).map((part) => part.trim()).filter(Boolean).length;
+  return compact.length < 120 || sentenceCount < 2;
+}
+
+function buildLocalizedBookDescriptionFallback(
+  topic: string,
+  language: PreferredLanguage,
+  isNarrative: boolean
+): string {
+  const narrativeTemplates: Record<PreferredLanguage, string> = {
+    ar: `${topic} حكاية تتبع صراع شخصياتها واختياراتها ضمن مسار مترابط. تتصاعد الأحداث تدريجيًا حتى تصل إلى خاتمة واضحة ومؤثرة.`,
+    da: `${topic} følger karakterernes konflikt og valg i et sammenhængende fortælleforløb. Begivenhederne udvikler sig gradvist mod en klar og meningsfuld afslutning.`,
+    de: `${topic} erzählt von den Konflikten und Entscheidungen seiner Figuren in einer zusammenhängenden Handlung. Die Ereignisse verdichten sich bis zu einem klaren und bedeutungsvollen Ende.`,
+    el: `Το ${topic} ακολουθεί τις συγκρούσεις και τις επιλογές των χαρακτήρων μέσα από μια συνεκτική αφήγηση. Τα γεγονότα κορυφώνονται σταδιακά και οδηγούν σε ένα σαφές, ουσιαστικό τέλος.`,
+    en: `${topic} follows its characters through connected conflicts and meaningful choices. The events build steadily toward a clear and satisfying resolution.`,
+    es: `${topic} sigue los conflictos y las decisiones de sus personajes mediante una trama coherente. Los acontecimientos crecen de forma gradual hasta llegar a un desenlace claro y significativo.`,
+    fi: `${topic} seuraa hahmojen ristiriitoja ja valintoja yhtenäisen tarinan kautta. Tapahtumat voimistuvat vähitellen ja johtavat selkeään, merkitykselliseen ratkaisuun.`,
+    fr: `${topic} suit les conflits et les choix de ses personnages dans un récit cohérent. Les événements gagnent progressivement en intensité jusqu’à un dénouement clair et marquant.`,
+    hi: `${topic} अपने पात्रों के संघर्ष और निर्णयों को एक सुसंगत कथा में आगे बढ़ाती है। घटनाएँ धीरे-धीरे गहराती हैं और एक स्पष्ट तथा अर्थपूर्ण निष्कर्ष तक पहुँचती हैं।`,
+    id: `${topic} mengikuti konflik dan pilihan para tokohnya dalam alur yang saling terhubung. Peristiwa berkembang secara bertahap menuju penyelesaian yang jelas dan bermakna.`,
+    it: `${topic} segue i conflitti e le scelte dei personaggi attraverso una trama coerente. Gli eventi crescono gradualmente fino a raggiungere una conclusione chiara e significativa.`,
+    ja: `${topic}は、登場人物たちの葛藤と選択を一つのまとまった物語として描きます。出来事は次第に深まり、明確で意味のある結末へと進んでいきます。`,
+    ko: `${topic}은 인물들의 갈등과 선택을 하나의 일관된 이야기로 풀어냅니다. 사건은 점차 깊어지며 분명하고 의미 있는 결말로 이어집니다.`,
+    nl: `${topic} volgt de conflicten en keuzes van de personages in een samenhangend verhaal. De gebeurtenissen bouwen geleidelijk op naar een duidelijke en betekenisvolle ontknoping.`,
+    no: `${topic} følger karakterenes konflikter og valg gjennom et sammenhengende handlingsforløp. Hendelsene bygger seg gradvis opp mot en tydelig og meningsfull avslutning.`,
+    pl: `${topic} przedstawia konflikty i wybory bohaterów w spójnej opowieści. Wydarzenia stopniowo nabierają intensywności i prowadzą do wyraźnego, znaczącego zakończenia.`,
+    "pt-BR": `${topic} acompanha os conflitos e as escolhas de seus personagens em uma narrativa coerente. Os acontecimentos ganham intensidade aos poucos até chegar a um desfecho claro e significativo.`,
+    sv: `${topic} följer karaktärernas konflikter och val i en sammanhängande berättelse. Händelserna byggs gradvis upp mot ett tydligt och meningsfullt slut.`,
+    th: `${topic} ถ่ายทอดความขัดแย้งและการตัดสินใจของตัวละครผ่านเรื่องราวที่เชื่อมโยงกัน เหตุการณ์ค่อย ๆ เข้มข้นขึ้นก่อนนำไปสู่บทสรุปที่ชัดเจนและมีความหมาย`,
+    tr: `${topic}, karakterlerin çatışmalarını ve seçimlerini tutarlı bir olay örgüsü içinde anlatır. Olaylar giderek yoğunlaşır ve açık, anlamlı bir çözüme ulaşır.`
+  };
+  const academicTemplates: Record<PreferredLanguage, string> = {
+    ar: `${topic} يشرح المفاهيم الأساسية والأدلة والعلاقات المهمة بصورة منظمة. تربط الشروح بين الموضوع وتطبيقاته ونتائجه العملية.`,
+    da: `${topic} forklarer centrale begreber, belæg og vigtige sammenhænge i en tydelig struktur. Forklaringerne forbinder emnet med dets anvendelser og praktiske konsekvenser.`,
+    de: `${topic} erklärt zentrale Begriffe, Belege und wichtige Zusammenhänge in klarer Struktur. Die Erläuterungen verbinden das Thema mit seinen Anwendungen und praktischen Folgen.`,
+    el: `Το ${topic} παρουσιάζει βασικές έννοιες, τεκμήρια και σημαντικές σχέσεις με σαφή δομή. Οι εξηγήσεις συνδέουν το θέμα με τις εφαρμογές και τις πρακτικές συνέπειές του.`,
+    en: `${topic} explains its core concepts, evidence, and important relationships in a clear structure. The discussion connects the subject with its applications and practical consequences.`,
+    es: `${topic} explica sus conceptos esenciales, pruebas y relaciones importantes con una estructura clara. Las explicaciones conectan el tema con sus aplicaciones y consecuencias prácticas.`,
+    fi: `${topic} selittää keskeiset käsitteet, näytön ja tärkeät yhteydet selkeässä rakenteessa. Selitykset yhdistävät aiheen sen sovelluksiin ja käytännön seurauksiin.`,
+    fr: `${topic} présente les notions essentielles, les éléments de preuve et les relations importantes dans une structure claire. Les explications relient le sujet à ses applications et à ses conséquences pratiques.`,
+    hi: `${topic} मुख्य अवधारणाओं, प्रमाणों और महत्त्वपूर्ण संबंधों को स्पष्ट संरचना में समझाती है। व्याख्या विषय को उसके उपयोगों और व्यावहारिक परिणामों से जोड़ती है।`,
+    id: `${topic} menjelaskan konsep utama, bukti, dan hubungan penting dengan susunan yang jelas. Pembahasannya menghubungkan topik dengan penerapan serta dampak praktisnya.`,
+    it: `${topic} spiega i concetti fondamentali, le prove e le relazioni importanti con una struttura chiara. Le spiegazioni collegano l’argomento alle sue applicazioni e conseguenze pratiche.`,
+    ja: `${topic}は、主要な概念や根拠、重要な関係を明確な構成で解説します。説明を通して、テーマとその応用や実際の影響を結び付けます。`,
+    ko: `${topic}은 핵심 개념과 근거, 중요한 관계를 명확한 구조로 설명합니다. 설명은 주제를 실제 활용과 현실적인 영향에 연결합니다.`,
+    nl: `${topic} legt kernbegrippen, bewijs en belangrijke verbanden uit in een heldere structuur. De uitleg verbindt het onderwerp met toepassingen en praktische gevolgen.`,
+    no: `${topic} forklarer sentrale begreper, dokumentasjon og viktige sammenhenger i en tydelig struktur. Forklaringene knytter emnet til bruksområder og praktiske følger.`,
+    pl: `${topic} wyjaśnia najważniejsze pojęcia, dowody i zależności w przejrzystej strukturze. Omówienie łączy temat z jego zastosowaniami i praktycznymi konsekwencjami.`,
+    "pt-BR": `${topic} explica os conceitos centrais, as evidências e as relações importantes em uma estrutura clara. A abordagem conecta o tema às suas aplicações e consequências práticas.`,
+    sv: `${topic} förklarar centrala begrepp, belägg och viktiga samband i en tydlig struktur. Förklaringarna kopplar ämnet till dess tillämpningar och praktiska konsekvenser.`,
+    th: `${topic} อธิบายแนวคิดหลัก หลักฐาน และความสัมพันธ์สำคัญอย่างเป็นระบบ เนื้อหาเชื่อมโยงหัวข้อเข้ากับการประยุกต์ใช้และผลที่เกิดขึ้นจริง`,
+    tr: `${topic}, temel kavramları, kanıtları ve önemli ilişkileri açık bir yapıda açıklar. Anlatım, konuyu uygulamaları ve gerçek yaşamdaki sonuçlarıyla ilişkilendirir.`
+  };
+  return isNarrative ? narrativeTemplates[language] : academicTemplates[language];
 }
 
 function buildTopicSpecificBookDescription(
@@ -1590,34 +1652,37 @@ function buildTopicSpecificBookDescription(
   const safeCategory = compactDescriptionText(category);
   const safeSubGenre = compactDescriptionText(subGenre || "");
   const isNarrative = bookType === "fairy_tale" || bookType === "novel";
-  const isEn = usesEnglishPromptScaffold(preferredLanguage);
+  if (preferredLanguage !== "en" && preferredLanguage !== "tr") {
+    return ensureDescriptionSentence(buildLocalizedBookDescriptionFallback(safeTopic, preferredLanguage, isNarrative));
+  }
+  const isEn = preferredLanguage === "en";
 
   if (isNarrative) {
     if (isEn) {
       return ensureDescriptionSentence(
         safeSubGenre
-          ? `${safeTopic} narrative in the ${safeSubGenre} style, emphasizing coherent plot progression, character motivation, thematic depth, and meaningful resolution`
-          : `${safeTopic} narrative emphasizing coherent plot progression, character motivation, thematic depth, and meaningful resolution`
+          ? `${safeTopic} is shaped as a ${safeSubGenre} narrative with coherent plot progression, clear character motivation, and thematic depth. Its central conflict develops through meaningful choices and reaches a satisfying resolution`
+          : `${safeTopic} is shaped through coherent plot progression, clear character motivation, and thematic depth. Its central conflict develops through meaningful choices and reaches a satisfying resolution`
       );
     }
     return ensureDescriptionSentence(
       safeSubGenre
-        ? `${safeTopic} anlatısını ${safeSubGenre} üslubunda; tutarlı olay akışı, karakter motivasyonu, tematik derinlik ve anlamlı bir çözülme ile ele alan Fortale`
-        : `${safeTopic} anlatısını tutarlı olay akışı, karakter motivasyonu, tematik derinlik ve anlamlı bir çözülme ile ele alan Fortale`
+        ? `${safeTopic}, ${safeSubGenre} üslubunda tutarlı olay akışı, belirgin karakter motivasyonu ve tematik derinlikle şekillenen bir anlatıdır. Merkezindeki çatışma anlamlı seçimlerle gelişir ve güçlü bir çözülmeye ulaşır`
+        : `${safeTopic}, tutarlı olay akışı, belirgin karakter motivasyonu ve tematik derinlikle şekillenen bir anlatıdır. Merkezindeki çatışma anlamlı seçimlerle gelişir ve güçlü bir çözülmeye ulaşır`
     );
   }
 
   if (isEn) {
     return ensureDescriptionSentence(
       safeCategory
-        ? `${safeTopic} in the ${safeCategory} domain, focusing on core mechanisms, critical distinctions, and applied interpretation through structured scientific explanation`
-        : `${safeTopic}, focusing on core mechanisms, critical distinctions, and applied interpretation through structured scientific explanation`
+        ? `${safeTopic} is examined within the ${safeCategory} domain through its core mechanisms, evidence, and critical distinctions. Structured explanations connect the subject to practical interpretation, common misconceptions, and real-world consequences`
+        : `${safeTopic} is examined through its core mechanisms, evidence, and critical distinctions. Structured explanations connect the subject to practical interpretation, common misconceptions, and real-world consequences`
     );
   }
   return ensureDescriptionSentence(
     safeCategory
-      ? `${safeTopic} konusunu ${safeCategory} alanı bağlamında temel mekanizmalar, kritik ayrımlar ve uygulamaya dönük yorumlarla yapılandırılmış biçimde ele alan Fortale`
-      : `${safeTopic} konusunu temel mekanizmalar, kritik ayrımlar ve uygulamaya dönük yorumlarla yapılandırılmış biçimde ele alan Fortale`
+      ? `${safeTopic}, ${safeCategory} alanı bağlamında temel mekanizmaları, kanıtları ve kritik ayrımlarıyla incelenir. Yapılandırılmış açıklamalar konuyu uygulamaya dönük yorumlar, yaygın yanılgılar ve gerçek yaşam sonuçlarıyla ilişkilendirir`
+      : `${safeTopic}, temel mekanizmaları, kanıtları ve kritik ayrımlarıyla incelenir. Yapılandırılmış açıklamalar konuyu uygulamaya dönük yorumlar, yaygın yanılgılar ve gerçek yaşam sonuçlarıyla ilişkilendirir`
   );
 }
 
@@ -4578,7 +4643,12 @@ async function generateLessonImages(
   } else if (normalizedForcedImageCount) {
     imageCount = normalizedForcedImageCount;
   }
-  const contentLanguage = detectContentLanguageCode(languageEvidenceText, topic, nodeTitle);
+  const contentLanguage = resolvePreferredLanguageFromBrief(
+    creativeBrief,
+    languageEvidenceText,
+    topic,
+    nodeTitle
+  );
   const targetLanguageLabel = contentLanguageLabel(contentLanguage);
   const brainAllowed = isBrainRelatedTopic(topic, nodeTitle);
   const lectureHints = extractLectureInfographicHints(languageEvidenceText);
@@ -5084,7 +5154,12 @@ async function generateRemedialImagesWithOpenAi(
 ): Promise<{ images: LessonImageAsset[]; usageEntry: UsageReportEntry }> {
   const imagePlan = getImageCountPlanByBookType(bookType);
   const imageCount = Math.max(1, imagePlan.remedial);
-  const contentLanguage = detectContentLanguageCode(languageEvidenceText, topic, nodeTitle);
+  const contentLanguage = resolvePreferredLanguageFromBrief(
+    creativeBrief,
+    languageEvidenceText,
+    topic,
+    nodeTitle
+  );
   const targetLanguageLabel = contentLanguageLabel(contentLanguage);
   const brainAllowed = isBrainRelatedTopic(topic, nodeTitle);
   const hintPool = Array.from(
@@ -5276,7 +5351,8 @@ async function generateCourseCover(
 
   const brainAllowed = isBrainRelatedTopic(topic);
   const titleText = String(topic || "").replace(/\s+/g, " ").trim();
-  const titleLanguage = contentLanguageLabel(detectContentLanguageCode(titleText));
+  const requestedLanguage = resolvePreferredLanguageFromBrief(creativeBrief, titleText, coverContext);
+  const titleLanguage = contentLanguageLabel(requestedLanguage);
   const isFairyTale = bookType === "fairy_tale";
   const isWorkbook = bookType === "story";
   const isStory = false;
@@ -5303,7 +5379,7 @@ async function generateCourseCover(
     : "";
   const prompt = `
 Konu / Kitap adı: ${titleText}
-Kapakta kullanılacak dil (varsa görünür metin için): ${titleLanguage}
+Seçilen kitap dili ve kapakta kullanılacak zorunlu dil: ${titleLanguage}
 ${subGenre ? `Alt tür: ${subGenre}` : ""}
 ${normalizedCoverContext ? `İçerik bağlamı (kapak buna sadık olmalı): ${normalizedCoverContext}` : ""}
 ${heroPortraitDirective}
@@ -5325,7 +5401,7 @@ Alt türe özel kompozisyon yasağı: ${coverAntiClicheDirective}
 Kurallar:
 1) KESİN KURAL: kapakta görünür ve doğru yazılmış kitap adı MUTLAKA yer almalı.
 1.1) Kullanılacak TEK görünür metin şudur: "${titleText}"
-1.2) Başlık doğru dilde, tam yazımla, okunur biçimde ve tasarımın doğal parçası olarak görünmeli.
+1.2) Başlık ${titleLanguage} dilindedir. Başlığı başka dile çevirme; verilen metni karakter karakter aynen, tam yazımla ve okunur biçimde kullan.
 1.2.1) Başlık alt türe uygun STİLİZE kapak tipografisiyle yazılmalı; düz daktilo, jenerik sistem fontu, ince beyaz caption, altyazı veya sonradan yapıştırılmış metin görünümü YASAK.
 1.2.2) Başlık, illüstrasyonla birlikte tasarlanmış premium lettering/editoriyal kapak yazısı gibi görünmeli; sadece düz yazı satırı olarak dizilip bırakılmamalı.
 1.3) Başlık dışında başka kelime, alt başlık, slogan, etiket, marka adı, filigran veya dekoratif metin YASAK.
@@ -5742,6 +5818,8 @@ function createCreditReceiptId(): string {
 
 function buildStarterCreditWallet(): CreditWalletSnapshot {
   return {
+    purchasedCredits: STARTER_CREATE_CREDITS,
+    communityEarnedCredits: 0,
     createCredits: STARTER_CREATE_CREDITS
   };
 }
@@ -5749,10 +5827,45 @@ function buildStarterCreditWallet(): CreditWalletSnapshot {
 function normalizeCreditWalletSnapshot(value: unknown): CreditWalletSnapshot | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<CreditWalletSnapshot>;
-  const createCredits = Number(raw.createCredits);
-  if (!Number.isFinite(createCredits)) return null;
+  const legacyTotal = Number(raw.createCredits);
+  const rawPurchased = Number(raw.purchasedCredits);
+  const rawCommunityEarned = Number(raw.communityEarnedCredits);
+  const hasSourceBreakdown = Number.isFinite(rawPurchased) && Number.isFinite(rawCommunityEarned);
+  if (!hasSourceBreakdown && !Number.isFinite(legacyTotal)) return null;
+  const purchasedCredits = roundCreditAmount(Math.max(0, hasSourceBreakdown ? rawPurchased : legacyTotal));
+  const communityEarnedCredits = roundCreditAmount(Math.max(0, hasSourceBreakdown ? rawCommunityEarned : 0));
   return {
-    createCredits: Math.max(0, Math.round(createCredits * 10) / 10)
+    purchasedCredits,
+    communityEarnedCredits,
+    createCredits: roundCreditAmount(purchasedCredits + communityEarnedCredits)
+  };
+}
+
+function roundCreditAmount(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function debitCreditWallet(
+  wallet: CreditWalletSnapshot,
+  cost: number
+): { wallet: CreditWalletSnapshot; debit: CreditDebitBreakdown } {
+  if (wallet.createCredits < cost) {
+    throw new HttpsError("resource-exhausted", "Yetersiz kredi.");
+  }
+  const communityDebit = Math.min(wallet.communityEarnedCredits, cost);
+  const purchasedDebit = roundCreditAmount(cost - communityDebit);
+  const communityEarnedCredits = roundCreditAmount(wallet.communityEarnedCredits - communityDebit);
+  const purchasedCredits = roundCreditAmount(wallet.purchasedCredits - purchasedDebit);
+  return {
+    wallet: {
+      purchasedCredits,
+      communityEarnedCredits,
+      createCredits: roundCreditAmount(purchasedCredits + communityEarnedCredits)
+    },
+    debit: {
+      purchasedCredits: purchasedDebit,
+      communityEarnedCredits: roundCreditAmount(communityDebit)
+    }
   };
 }
 
@@ -5960,7 +6073,9 @@ async function applyRevenueCatCreditPackEvent(
     }
 
     const next: CreditWalletSnapshot = {
-      createCredits: Math.max(0, existing.createCredits + pack.createCredits)
+      purchasedCredits: roundCreditAmount(existing.purchasedCredits + pack.createCredits),
+      communityEarnedCredits: existing.communityEarnedCredits,
+      createCredits: roundCreditAmount(existing.createCredits + pack.createCredits)
     };
 
     tx.set(
@@ -6046,7 +6161,13 @@ async function getOrCreateCreditWallet(uid: string): Promise<CreditWalletSnapsho
   const ref = getCreditWalletRef(uid);
   const snap = await ref.get();
   const existing = normalizeCreditWalletSnapshot(snap.data());
-  if (existing) return existing;
+  if (existing) {
+    const raw = snap.data() || {};
+    if (!Number.isFinite(Number(raw.purchasedCredits)) || !Number.isFinite(Number(raw.communityEarnedCredits))) {
+      await ref.set({ uid, ...existing, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+    return existing;
+  }
 
   const starter = buildStarterCreditWallet();
   await ref.set(
@@ -6092,10 +6213,7 @@ async function consumeCredit(
       throw new HttpsError("resource-exhausted", `Yetersiz ${label} kredisi.`);
     }
 
-    const next: CreditWalletSnapshot = {
-      ...existing,
-      createCredits: Math.max(0, available - cost)
-    };
+    const next = debitCreditWallet(existing, cost).wallet;
     tx.set(
       ref,
       {
@@ -6130,7 +6248,8 @@ async function consumeCreditWithReceipt(
       throw new HttpsError("resource-exhausted", `Yetersiz ${label} kredisi.`);
     }
 
-    const next: CreditWalletSnapshot = { ...existing, createCredits: Math.max(0, available - cost) };
+    const debitResult = debitCreditWallet(existing, cost);
+    const next = debitResult.wallet;
     tx.set(
       ref,
       {
@@ -6147,6 +6266,7 @@ async function consumeCreditWithReceipt(
       uid,
       action,
       cost,
+      debit: debitResult.debit,
       status: "consumed",
       createdAt: FieldValue.serverTimestamp(),
       expiresAt
@@ -6194,9 +6314,19 @@ async function refundCreditByReceipt(
     const cost = sanitizeCreditCost(receiptData.cost);
     const walletSnap = await tx.get(ref);
     const existing = normalizeCreditWalletSnapshot(walletSnap.data()) ?? buildStarterCreditWallet();
+    const debitData = isRecord(receiptData.debit) ? receiptData.debit : {};
+    const purchasedRefund = Number.isFinite(Number(debitData.purchasedCredits))
+      ? Math.max(0, Number(debitData.purchasedCredits))
+      : cost;
+    const communityRefund = Number.isFinite(Number(debitData.communityEarnedCredits))
+      ? Math.max(0, Number(debitData.communityEarnedCredits))
+      : 0;
+    const purchasedCredits = roundCreditAmount(existing.purchasedCredits + purchasedRefund);
+    const communityEarnedCredits = roundCreditAmount(existing.communityEarnedCredits + communityRefund);
     const next: CreditWalletSnapshot = {
-      ...existing,
-      createCredits: Math.max(0, existing.createCredits + cost)
+      purchasedCredits,
+      communityEarnedCredits,
+      createCredits: roundCreditAmount(purchasedCredits + communityEarnedCredits)
     };
 
     tx.set(
@@ -7372,6 +7502,7 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
 ${normalizedTopic ? `"${normalizedTopic}" konusu için yapılandırılmış bir öğrenme yolu oluştur.` : "Kullanıcı konu başlığı belirtmedi. Sadece seçilen tür/alt tür/yaş grubu/karakter ve diğer brief alanlarına göre özgün bir akış oluştur."}
 ${sourceBlock}
 ${outlineAudienceInstruction}
+${languageInstruction(preferredLanguage)}
 Kitap brief:
 ${creativeBriefInstruction}
 ${isWorkbookPrompt ? "KRİTİK KURAL (KALİTE): Bu bir ÇALIŞMA KİTABI üretimidir. Kurmaca yazma. Yaklaşık 12-15 sayfalık bilimsel açıklama planla; 20 sayfa üst sınırı yalnızca yumuşak hedeftir, tamamlanmış içeriği kesme. Başlık, alt başlık, tablo ve liste kullanımını bölümlere dengeli dağıt." : ""}
@@ -7391,7 +7522,7 @@ Her öğede şu alanlar olmalı:
 
 JSON nesnesi alanları:
 - bookTitle (string) -> Fortale için profesyonel kitap adı (kullanıcı dilinde)
-- bookDescription (string) -> 1 cümlelik kısa açıklama (kullanıcı dilinde)
+- bookDescription (string) -> kitabı doğru tanıtan 2-3 doğal cümlelik açıklama metadata'sı (kullanıcı dilinde, yaklaşık 160-320 karakter)
 - bookCategory (string) -> aşağıdaki sabit kategorilerden tam olarak biri
 - bookType (string) -> "fairy_tale" | "story" | "novel"
 - subGenre (string) -> brief ile uyumlu kısa alt tür adı
@@ -7409,8 +7540,8 @@ Kurallar:
 4) description alanları kısa ama net olsun.
 5) bookCategory alakasız bir alan olmasın; konuya en yakın kategoriyi yukarıdaki sabit listeden seç.
 6) searchTags tekrar etmeyen, aranabilir kısa etiketlerden oluşsun.
-7) bookDescription mutlaka konuya özgü olsun; "konunun temel çerçevesi, ana kavramları..." gibi şablon/generic cümle kullanma.
-8) bookDescription içinde konuya ait özgül anahtar kelimeler veya özel bağlam geçmeli; genel geçer kalıp yasak.
+7) bookDescription mutlaka konuya özgü, 2-3 doğal cümle ve yaklaşık 160-320 karakter olsun; "konunun temel çerçevesi, ana kavramları..." gibi şablon/generic cümle kullanma.
+8) bookDescription içinde konuya ait özgül anahtar kelimeler veya özel bağlam, kitabın yaklaşımı ve okuyucunun karşılaşacağı ana kapsam geçmeli; genel geçer kalıp yasak.
 9) bookType alanı brief'teki türle birebir AYNI olmak zorunda (override etme).
 10) subGenre alanı brief'teki alt türle birebir AYNI olmak zorunda (override etme).
 ${bookTitleRule}
@@ -7759,13 +7890,13 @@ Kurallar:
 4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket, karakter adı listesi veya hazır klişe kalıp olmasın.
 4.1) bookTitle kısa ve gerçek bir kitap adı formatında olsun; örnek/tavsiye kelime kullanma.
 4.2) bookTitle genelde 2-4 kelime olmalı. 5 kelime sadece gerçekten doğal ve çok güçlü ise kabul edilir. "ve", "ile", "bir", "the/of/and" gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma.
-5) bookDescription tam olarak 1-2 cümlelik, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
+5) bookDescription tam olarak 2-3 cümlelik, yaklaşık 160-320 karakter uzunluğunda, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
 6) bookDescription generic, öğretici şablon, uygulama içi placeholder veya "bu kitap ..." diye mekanik tanıtım metni gibi durmamalı.
 7) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
 8) Her chapter title doğal/edebi olmalı; "Giriş", "Bölüm 1", "Döşeme", "Serim", "Gelişme", "Sonuç", "Dilek", "Final", "Perde I" gibi teknik etiketler YASAK.
 9) Bütün chapterTitles aynı kitabın tek akışıyla tutarlı ve birbirinden farklı olmalı.
 10) Karakter adlarını anlamsız biçimde zorla başlığa doldurma.
-11) Dil, kullanıcının diliyle aynı olsun.
+11) ${languageInstruction(preferredLanguage)}
 
 Mevcut kitap adı:
 "${rawBookTitleValue || normalizedTopic || "[BOS]"}"
@@ -8600,6 +8731,7 @@ Kurallar:
 13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
 14) ${languageInstruction(preferredLanguage)}
 15) ${options?.heroPortraitName ? `${options.heroPortraitName} portreyle eşleştirilen kahramandır; characterBible alanında bu karakteri görsel tutarlılık için net tanımla.` : "Ana karakter storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
+16) bookDescription kitabın özgün çatışmasını, ana karakterini ve atmosferini anlatan 2-3 doğal cümlelik metadata metni olsun; genel uygulama tanıtımı veya mekanik şablon kullanma.
 
 Sadece JSON döndür.
 `.trim();
@@ -8662,6 +8794,17 @@ Sadece JSON döndür.
     if (sentences.some((sentence) => sentence.split(/\s+/).filter(Boolean).length < 3)) {
       issues.push("storyText içinde aşırı kısa/eksik cümle var.");
     }
+    const candidateDescription = compactDescriptionText(String(candidate.bookDescription || ""));
+    const candidateDescriptionSentenceCount = candidateDescription.split(/[.!?…。！？]+/u).map((part) => part.trim()).filter(Boolean).length;
+    if (candidateDescription.length < 120 || candidateDescriptionSentenceCount < 2) {
+      issues.push("bookDescription en az 2 doğal cümle ve yaklaşık 160-320 karakter olmalı.");
+    }
+    if (detectContentLanguageCode(candidateDescription) !== preferredLanguage) {
+      issues.push(`bookDescription tamamen ${preferredLanguageLabel(preferredLanguage)} dilinde olmalı.`);
+    }
+    if (detectContentLanguageCode(String(candidate.storyText || "")) !== preferredLanguage) {
+      issues.push(`storyText tamamen ${preferredLanguageLabel(preferredLanguage)} dilinde olmalı.`);
+    }
     if (!String(candidate.characterBible || "").trim()) {
       issues.push("characterBible boş.");
     }
@@ -8688,7 +8831,7 @@ Sadece JSON döndür.
     scenePrompt: `Bu görsel, masalın ${index + 1}. parçasındaki olayları resmeder. Görselde yalnızca şu metindeki sahne, karakterler ve duygu takip edilsin: ${pageText}`
   }));
   const bookDescription = String(parsed.bookDescription || "").replace(/\s+/g, " ").trim()
-    || `${bookTitle} için görsel masal akışı.`;
+    || buildTopicSpecificBookDescription(bookTitle, "Edebiyat", preferredLanguage, "fairy_tale", normalizedBrief.subGenre);
   const plan: VisualStoryPlan = {
     bookTitle,
     bookDescription,
@@ -8721,8 +8864,7 @@ Sadece JSON döndür.
       subGenre: normalizedBrief.subGenre || "Masal",
       targetPageCount: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
       searchTags: Array.from(new Set([
-        "görsel masal",
-        "çocuk kitabı",
+        bookTitle,
         String(normalizedBrief.subGenre || "").trim(),
         String(normalizedBrief.settingPlace || "").trim(),
         String(normalizedBrief.characters || "").trim()
@@ -8746,6 +8888,11 @@ function buildVisualStoryPageImagePrompt(params: {
   isCover?: boolean;
 }): string {
   const audienceBucket = resolveVisualFairyTaleAudienceBucket(params.audienceLevel);
+  const coverLanguage = contentLanguageLabel(resolvePreferredLanguageFromBrief(
+    params.creativeBrief,
+    params.bookTitle,
+    params.pageText
+  ));
   const subGenreKey = normalizeStoryPathKey(params.creativeBrief?.subGenre);
   const subGenreVisualRule =
     subGenreKey.includes("klasik")
@@ -8764,13 +8911,16 @@ Create exactly 1 landscape 15:10 children's picture-book spread illustration.
 
 Book: ${params.bookTitle}
 ${params.isCover ? "This is the front cover." : `Page ${params.pageNumber}/${params.totalPages}: ${params.pageTitle}`}
+${params.isCover ? `Required cover title language: ${coverLanguage}\nThe ONLY visible text must be this exact title: "${params.bookTitle}"` : ""}
 Scene prompt: ${params.scenePrompt}
 Character continuity: ${params.characterBible}
 Style anchor: ${params.styleAnchor}
 Character roster: ${compactInline(params.creativeBrief?.characters, 220) || "main child character"}
 Place: ${compactInline(params.creativeBrief?.settingPlace, 160) || "storybook setting"}
 Time: ${compactInline(params.creativeBrief?.settingTime, 160) || "gentle fairy tale time"}
-Story text is rendered separately by the app. This illustration must be text-free.
+${params.isCover
+    ? `Render the exact title "${params.bookTitle}" once, correctly spelled, in ${coverLanguage}. Do not translate, rewrite, abbreviate, or add any other text.`
+    : "Story text is rendered separately by the app. This illustration must be text-free."}
 
 Rules:
 1) Landscape 15:10 only. Wide picture-book spread composition.
@@ -8779,7 +8929,9 @@ Rules:
     : "Beautiful bright children's storybook / polished 3D cartoon illustration for ages 1-6. Keep shapes readable and rounded, expressions warm, props concrete, colors saturated, and the focal action instantly understandable."}
 3) Depict the requested event clearly, warmly, and with one readable focal action.
 4) ${subGenreVisualRule}
-5) No written words, letters, subtitles, watermark, logo, UI, signage, speech bubble, or decorative typography.
+5) ${params.isCover
+    ? `The title "${params.bookTitle}" is mandatory and is the only permitted text. No subtitle, author name, watermark, logo, UI, signage, speech bubble, or extra typography.`
+    : "No written words, letters, subtitles, watermark, logo, UI, signage, speech bubble, or decorative typography."}
 6) Keep recurring characters visually identical across pages.
 7) Keep the composition clean and uncluttered so separate story text can be read comfortably in the app.
 8) STRICTLY non-photorealistic. Lively, colorful, child-safe illustration only.
@@ -8945,12 +9097,12 @@ async function generateValidatedVisualStoryImage(params: {
     label: `${params.label}: görsel üretim`
   });
 
-  try {
+  if (!params.isCover) try {
     const validation = await validateVisualStoryImage(
       params.ai,
       imageResult.imageUrl,
       `${params.label} kalite kontrol`,
-      { isCover: params.isCover === true, audienceLevel: params.audienceLevel }
+      { isCover: false, audienceLevel: params.audienceLevel }
     );
     usageEntries.push(validation.usageEntry);
     if (!validation.passed) {
@@ -12788,14 +12940,19 @@ function buildGeneratedBookCoursePayload(params: {
       .filter(Boolean)
   )).slice(0, 12);
   const now = new Date();
-  const detectedLanguage = detectContentLanguageCode(
-    params.creativeBrief?.languageText,
-    title,
+  const requestedLanguage = params.creativeBrief?.languageText
+    ? resolvePreferredLanguageFromBrief(params.creativeBrief)
+    : undefined;
+  const detectedFromContent = detectContentLanguageCode(
     params.nodes[0]?.content,
     params.nodes[0]?.pageText,
-    description
+    description,
+    title
   );
-  const language = detectedLanguage === "unknown" ? "unknown" : detectedLanguage;
+  const detectedLanguage = detectedFromContent === "unknown"
+    ? detectContentLanguageCode(params.creativeBrief?.languageText)
+    : detectedFromContent;
+  const language = requestedLanguage || (detectedLanguage === "unknown" ? "unknown" : detectedLanguage);
 
   return {
     id: params.courseId,
@@ -15455,6 +15612,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     imageApiKey,
     ai
   } = params;
+  const preferredLanguage = resolvePreferredLanguageFromBrief(creativeBrief, topic, sourceContent);
   const usageEntries: UsageReportEntry[] = [];
 
   await jobRef.set(
@@ -15543,7 +15701,7 @@ async function runVisualFairyTaleBookGenerationJob(params: {
     {
       stage: "visual-book-cover",
       jobId: jobRef.id,
-      maxAttempts: 2,
+      maxAttempts: 1,
       minDelayMs: 1000,
       maxDelayMs: 8_000
     }
@@ -15622,11 +15780,11 @@ async function runVisualFairyTaleBookGenerationJob(params: {
       usageEntries.push(...pageImageResult.usageEntries);
       generatedNodes[pageIndex] = {
         id: page.id,
-        title: page.title,
-        description: page.scenePrompt,
+        title: "",
+        description: "",
         type: "lecture",
         status: pageIndex === 0 ? "current" : "locked",
-        duration: "1 dk",
+        duration: preferredLanguage === "tr" ? "1 dk" : "1 min",
         pageText: page.pageText,
         pageImageUrl: pageImageResult.imageUrl,
         pageSequence: pageIndex + 1
@@ -16092,7 +16250,7 @@ async function runBookGenerationJobTask(
     {
       stage: "book-cover",
       jobId: jobRef.id,
-      maxAttempts: 4,
+      maxAttempts: 1,
       minDelayMs: 2000,
       maxDelayMs: 45_000
     }
@@ -19005,7 +19163,7 @@ export const contactUs = onCall(
 
 const COMMUNITY_DOWNLOAD_COST = 0.5;
 const COMMUNITY_CREATOR_REWARD = 0.25;
-const COMMUNITY_TERMS_VERSION = "2026-07-03";
+const COMMUNITY_TERMS_VERSION = "2026-07-15";
 const COMMUNITY_REPORT_HIDE_THRESHOLD = 3;
 const COMMUNITY_COMMENT_MAX_LENGTH = 500;
 const COMMUNITY_PREVIEW_NODE_COUNT = 2;
@@ -19131,7 +19289,7 @@ function serializeCommunityBook(
     userId: book.userId,
     bookId: book.bookId,
     title: book.title,
-    description: book.description,
+    description: communityDescriptionForDisplay(book),
     publisherAlias: book.publisherAlias,
     coverImageUrl: book.coverImageUrl,
     bookType: book.bookType,
@@ -19141,11 +19299,15 @@ function serializeCommunityBook(
     language: book.language,
     tags: book.tags,
     pageCount: book.pageCount,
-    outline: book.outline,
-    preview: book.preview,
+    outline: (Array.isArray(book.outline) ? book.outline : []).map((title) => sanitizeCommunitySectionTitle(title)).filter(Boolean),
+    preview: (Array.isArray(book.preview) ? book.preview : []).map((item) => ({
+      ...item,
+      title: sanitizeCommunitySectionTitle(item.title),
+      content: sanitizeCommunityPreviewContent(item.content)
+    })),
     previewImages: Array.isArray(book.previewImages) ? book.previewImages.map((image) => ({
       id: image.id,
-      title: image.title,
+      title: sanitizeCommunitySectionTitle(image.title),
       url: image.url
     })).filter((image) => image.url) : [],
     downloadCount: book.downloadCount,
@@ -19162,10 +19324,19 @@ function serializeCommunityBook(
 
 function validateCommunityAlias(value: unknown): string {
   const alias = communityText(value, 32);
-  if (alias.length < 2 || alias.length > 32 || !/^[\p{L}\p{N}][\p{L}\p{N}._ -]*$/u.test(alias)) {
+  if (!isValidCommunityAlias(alias)) {
     throw new HttpsError("invalid-argument", "Topluluk rumuzu 2–32 karakter olmalı ve yalnızca harf, rakam, boşluk, nokta, tire veya alt çizgi içermelidir.");
   }
   return alias;
+}
+
+function isValidCommunityAlias(value: unknown): boolean {
+  const alias = communityText(value, 32);
+  return alias.length >= 2 && alias.length <= 32 && /^[\p{L}\p{N}][\p{L}\p{N}._ -]*$/u.test(alias);
+}
+
+function automaticCommunityAlias(uid: string): string {
+  return `Fortale-${createHash("sha256").update(uid).digest("hex").slice(0, 12)}`;
 }
 
 async function moderateCommunityContent(text: string, imageUrl?: string): Promise<void> {
@@ -19256,18 +19427,133 @@ async function requireCommunityProfile(uid: string): Promise<CommunityProfileDoc
   return profile;
 }
 
+async function ensureAutomaticCommunityProfile(uid: string): Promise<CommunityProfileDoc> {
+  const profileRef = firestore.collection("communityProfiles").doc(uid);
+  const fallbackAlias = automaticCommunityAlias(uid);
+  return firestore.runTransaction(async (tx) => {
+    const profileSnap = await tx.get(profileRef);
+    const existing = profileSnap.exists ? profileSnap.data() as CommunityProfileDoc : null;
+    if (existing?.isSuspended) throw new HttpsError("permission-denied", "Topluluk erişiminiz kısıtlanmış.");
+
+    const alias = isValidCommunityAlias(existing?.alias) ? communityText(existing?.alias, 32) : fallbackAlias;
+    const aliasLower = normalizeCommunitySearch(alias);
+    const aliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(aliasLower).digest("hex"));
+    const aliasSnap = await tx.get(aliasRef);
+    const aliasOwnerId = aliasSnap.exists ? communityText(aliasSnap.data()?.userId, 128) : "";
+    const finalAlias = aliasOwnerId && aliasOwnerId !== uid ? fallbackAlias : alias;
+    const finalAliasLower = normalizeCommunitySearch(finalAlias);
+    const finalAliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(finalAliasLower).digest("hex"));
+    const now = Timestamp.now();
+    const next: CommunityProfileDoc = {
+      userId: uid,
+      alias: finalAlias,
+      aliasLower: finalAliasLower,
+      bio: communityText(existing?.bio, 160),
+      ageConfirmedAt: existing?.ageConfirmedAt ?? now,
+      termsAcceptedAt: existing?.termsAcceptedAt ?? now,
+      termsVersion: COMMUNITY_TERMS_VERSION,
+      followerCount: existing?.followerCount ?? 0,
+      followingCount: existing?.followingCount ?? 0,
+      publicationCount: existing?.publicationCount ?? 0,
+      totalLikeCount: existing?.totalLikeCount ?? 0,
+      totalDownloadCount: existing?.totalDownloadCount ?? 0,
+      isSuspended: false,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    if (existing?.aliasLower && existing.aliasLower !== finalAliasLower) {
+      tx.delete(firestore.collection("communityAliases").doc(createHash("sha256").update(existing.aliasLower).digest("hex")));
+    }
+    tx.set(profileRef, next, { merge: true });
+    tx.set(finalAliasRef, { userId: uid, alias: finalAlias, updatedAt: now }, { merge: true });
+    return next;
+  });
+}
+
 function communityPreviewContent(value: unknown, maxLength = 18_000): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function isGenericCommunityVisualTitle(value: unknown): boolean {
+  const title = communityText(value, 200);
+  return /^(?:g[öo]rsel|image|visual|illustration|page|sayfa)\s*(?:#|no\.?)?\s*\d+(?:\s*\/\s*\d+)?$/iu.test(title);
+}
+
+function sanitizeCommunitySectionTitle(value: unknown): string {
+  const title = communityText(value, 200);
+  return isGenericCommunityVisualTitle(title) ? "" : title;
+}
+
+function sanitizeCommunityPreviewContent(value: unknown): string {
+  return communityPreviewContent(value)
+    .split(/\r?\n/)
+    .filter((line) => {
+      const heading = line.trim().match(/^#{1,6}\s+(.+)$/);
+      return !heading || !isGenericCommunityVisualTitle(heading[1]);
+    })
+    .join("\n")
+    .trim();
+}
+
+const LEGACY_MIXED_DESCRIPTION_PATTERN = /(?:narrative in the|emphasizing coherent plot progression|in the .{0,100}domain, focusing on core mechanisms|anlatısını.{0,100}üslubunda|konusunu.{0,100}alanı bağlamında|yeni başlangıç)/iu;
+
+function communityDescriptionUsesExpectedScript(description: string, language: PreferredLanguage): boolean {
+  const letters = description.match(/\p{L}/gu)?.length || 0;
+  if (letters === 0) return false;
+  const scriptRatio = (pattern: RegExp): number => (description.match(pattern)?.length || 0) / letters;
+  if (language === "ar") return scriptRatio(/[\u0600-\u06ff]/g) >= 0.45;
+  if (language === "el") return scriptRatio(/[\u0370-\u03ff]/g) >= 0.45;
+  if (language === "hi") return scriptRatio(/[\u0900-\u097f]/g) >= 0.45;
+  if (language === "ja") return scriptRatio(/[\u3040-\u30ff\u3400-\u9fff]/g) >= 0.45;
+  if (language === "ko") return scriptRatio(/[\uac00-\ud7af]/g) >= 0.45;
+  if (language === "th") return scriptRatio(/[\u0e00-\u0e7f]/g) >= 0.45;
+  return true;
+}
+
+function isCommunityDescriptionLanguageConsistent(description: string, language: PreferredLanguage): boolean {
+  const compact = communityText(description, 1_000);
+  if (!compact || LEGACY_MIXED_DESCRIPTION_PATTERN.test(compact)) return false;
+  return communityDescriptionUsesExpectedScript(compact, language);
+}
+
+function communityDescriptionForDisplay(book: CommunityBookDoc): string {
+  const description = communityText(book.description, 1_000);
+  const declaredLanguage = resolvePreferredLanguageAlias(book.language);
+  if (!description || !declaredLanguage) return description;
+  if (isCommunityDescriptionLanguageConsistent(description, declaredLanguage)) return description;
+  return buildTopicSpecificBookDescription(
+    book.title,
+    book.category,
+    declaredLanguage,
+    normalizeSmartBookBookType(book.bookType),
+    book.subGenre
+  );
 }
 
 function readableCommunityNodes(manifest: BookBundleManifest): Array<{ id: string; title: string; content: string }> {
   return (Array.isArray(manifest.nodes) ? manifest.nodes : [])
     .map((node) => ({
       id: communityText(node.id, 120),
-      title: communityText(node.title, 200),
-      content: communityPreviewContent(node.content || node.pageText || node.podcastScript, 18_000)
+      title: sanitizeCommunitySectionTitle(node.title),
+      content: sanitizeCommunityPreviewContent(node.content || node.pageText || node.podcastScript)
     }))
     .filter((node) => node.content.length > 0);
+}
+
+function detectCommunityBookLanguage(params: {
+  title: string;
+  description: string;
+  nodes: Array<{ id: string; title: string; content: string }>;
+  fallback?: unknown;
+}): ContentLanguageCode {
+  const contentEvidence = params.nodes
+    .map((node) => node.content)
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 80_000);
+  const detected = detectContentLanguageCode(contentEvidence, params.description, params.title);
+  if (detected !== "unknown") return detected;
+  return resolvePreferredLanguageAlias(params.fallback) || "unknown";
 }
 
 function communityImageContentTypeFromPath(path: string): string {
@@ -19306,12 +19592,12 @@ async function extractCommunityPreviewImages(params: {
       rawNode.imagePath,
       rawNode.assetPath
     );
-    if (sourcePath) candidates.push({ sourcePath, title: communityText(node.title, 120) || "İçerik görseli" });
+    if (sourcePath) candidates.push({ sourcePath, title: sanitizeCommunitySectionTitle(node.title) });
   }
   for (const fileName of Object.keys(params.zip.files)) {
     if (/^assets\/images\/.+\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
       const relatedNode = nodes.find((node) => typeof node.id === "string" && fileName.includes(node.id));
-      candidates.push({ sourcePath: fileName, title: communityText(relatedNode?.title, 120) || "İçerik görseli" });
+      candidates.push({ sourcePath: fileName, title: sanitizeCommunitySectionTitle(relatedNode?.title) });
     }
   }
 
@@ -19450,6 +19736,7 @@ export const publishToCommunity = onCall(
     const data = isRecord(request.data) ? request.data : {};
     const bookId = typeof data.bookId === "string" ? data.bookId.trim() : "";
     const isPublic = data.isPublic !== false;
+    const autoPublish = data.autoPublish === true;
     if (!bookId) throw new HttpsError("invalid-argument", "bookId zorunludur.");
 
     const communityBookId = communityBookIdFor(uid, bookId);
@@ -19469,17 +19756,24 @@ export const publishToCommunity = onCall(
       return { communityBookId };
     }
 
-    if (data.rightsAccepted !== true) throw new HttpsError("failed-precondition", "İçerik hakları beyanı zorunludur.");
-    if (data.hasPersonalLikeness === true && data.likenessAccepted !== true) {
+    const userSnap = await firestore.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() : undefined;
+    if (communityText(userData?.legalConsentVersion, 32) !== COMMUNITY_TERMS_VERSION || !userData?.legalConsentAcceptedAt) {
+      throw new HttpsError("failed-precondition", "Güncel Kullanım Şartlarını kabul etmeniz gerekiyor.");
+    }
+
+    if (!autoPublish && data.hasPersonalLikeness === true && data.likenessAccepted !== true) {
       throw new HttpsError("failed-precondition", "Kişisel benzerliğin toplulukta yayınlanması için ayrıca onay gereklidir.");
     }
-    const profile = await upsertCommunityProfileForUser({
-      uid,
-      alias: communityText(data.alias, 32),
-      bio: communityText(data.bio, 160),
-      ageConfirmed: data.ageConfirmed === true,
-      termsAccepted: data.termsAccepted === true
-    });
+    const profile = autoPublish
+      ? await ensureAutomaticCommunityProfile(uid)
+      : await upsertCommunityProfileForUser({
+        uid,
+        alias: communityText(data.alias, 32),
+        bio: communityText(data.bio, 160),
+        ageConfirmed: data.ageConfirmed === true,
+        termsAccepted: data.termsAccepted === true
+      });
 
     const bookRef = firestore.collection("users").doc(uid).collection("books").doc(bookId);
     const bookSnap = await bookRef.get();
@@ -19503,10 +19797,10 @@ export const publishToCommunity = onCall(
     const manifest = JSON.parse(await manifestFile.async("string")) as BookBundleManifest;
     const readableNodes = readableCommunityNodes(manifest);
     const title = communityText(manifest.title || book.topic, 180);
-    const description = communityText(manifest.description || book.description, 1_000);
+    const rawDescription = communityText(manifest.description || book.description, 1_000);
     const outline = readableNodes.map((node) => node.title).filter(Boolean).slice(0, 40);
     const preview = readableNodes.slice(0, COMMUNITY_PREVIEW_NODE_COUNT);
-    const moderationText = [title, description, profile.alias, profile.bio, ...readableNodes.map((node) => `${node.title}\n${node.content}`)].join("\n").slice(0, 90_000);
+    const moderationText = [title, rawDescription, profile.alias, profile.bio, ...readableNodes.map((node) => `${node.title}\n${node.content}`)].join("\n").slice(0, 90_000);
     const sourceCover = firstNonEmptyString(book.coverImageUrl, manifest.cover?.url);
     await moderateCommunityContent(moderationText, sourceCover);
 
@@ -19551,7 +19845,22 @@ export const publishToCommunity = onCall(
     const bookCreativeBrief = isRecord(book.creativeBrief) ? book.creativeBrief : {};
     const subGenre = communityText(manifest.subGenre || book.subGenre, 120);
     const category = communityText(manifest.category || book.category, 120);
-    const language = communityText(manifest.language || book.language, 80);
+    const language = detectCommunityBookLanguage({
+      title,
+      description: rawDescription,
+      nodes: readableNodes,
+      fallback: manifest.language || book.language
+    });
+    const preferredBookLanguage = language === "unknown" ? null : resolvePreferredLanguageAlias(language);
+    const description = preferredBookLanguage && !isCommunityDescriptionLanguageConsistent(rawDescription, preferredBookLanguage)
+      ? buildTopicSpecificBookDescription(
+        title,
+        category,
+        preferredBookLanguage,
+        normalizeSmartBookBookType(bookType),
+        subGenre
+      )
+      : rawDescription;
     const ageGroup = bookType === "story"
       ? communityText(bookCreativeBrief.workbookLevel, 80)
       : communityText(manifest.ageGroup || book.ageGroup, 80);
@@ -20127,12 +20436,14 @@ export const downloadCommunityBook = onCall(
       if (existing.createCredits < COMMUNITY_DOWNLOAD_COST) {
         throw new HttpsError("resource-exhausted", "Yetersiz kredi. İndirme için 0.5 kredi gerekiyor.");
       }
-      const updatedWallet: CreditWalletSnapshot = {
-        createCredits: Math.round((existing.createCredits - COMMUNITY_DOWNLOAD_COST) * 10) / 10
-      };
+      const downloadDebit = debitCreditWallet(existing, COMMUNITY_DOWNLOAD_COST);
+      const updatedWallet = downloadDebit.wallet;
       const creatorWallet = normalizeCreditWalletSnapshot(creatorWalletSnap.data()) ?? buildStarterCreditWallet();
+      const creatorCommunityEarnedCredits = roundCreditAmount(creatorWallet.communityEarnedCredits + COMMUNITY_CREATOR_REWARD);
       const updatedCreatorWallet: CreditWalletSnapshot = {
-        createCredits: Math.round((creatorWallet.createCredits + COMMUNITY_CREATOR_REWARD) * 10) / 10
+        purchasedCredits: creatorWallet.purchasedCredits,
+        communityEarnedCredits: creatorCommunityEarnedCredits,
+        createCredits: roundCreditAmount(creatorWallet.purchasedCredits + creatorCommunityEarnedCredits)
       };
       const now = Timestamp.now();
       tx.set(walletRef, {
@@ -20172,7 +20483,15 @@ export const downloadCommunityBook = onCall(
         createdAt: now,
         lastActivity: now
       });
-      tx.set(downloadRef, { userId: uid, privateBookId, chargedCredits: COMMUNITY_DOWNLOAD_COST, creatorReward: COMMUNITY_CREATOR_REWARD, createdAt: now });
+      tx.set(downloadRef, {
+        userId: uid,
+        privateBookId,
+        chargedCredits: COMMUNITY_DOWNLOAD_COST,
+        chargedFromPurchasedCredits: downloadDebit.debit.purchasedCredits,
+        chargedFromCommunityEarnedCredits: downloadDebit.debit.communityEarnedCredits,
+        creatorReward: COMMUNITY_CREATOR_REWARD,
+        createdAt: now
+      });
       tx.update(communityRef, { downloadCount: FieldValue.increment(1), updatedAt: now });
       tx.set(firestore.collection("communityProfiles").doc(communityBook.userId), { totalDownloadCount: FieldValue.increment(1), updatedAt: now }, { merge: true });
       return { wallet: updatedWallet, alreadyOwned: false };

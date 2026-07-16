@@ -55,7 +55,7 @@ export default function Sidebar({
                   <FLogo size={20} />
                 </div>
                 <div>
-                  <div className="text-[10px] font-black text-text-secondary opacity-40 tracking-widest">{t('Global Space')}</div>
+                  <div className="text-[10px] font-black text-white tracking-widest">{t('Global Space')}</div>
                   <BrandWordmark size="md" className="block font-bold text-white" />
                 </div>
               </div>
@@ -66,9 +66,9 @@ export default function Sidebar({
 
             <div className="rounded-2xl glass-panel bg-white/5 px-4 py-4 border border-white/5 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="text-[9px] font-black text-text-secondary opacity-40 tracking-tighter mb-0.5">{t('Hesap')}</p>
+                <p className="text-[9px] font-black text-white tracking-tighter mb-0.5">{t('Hesap')}</p>
                 <p className="truncate text-sm font-bold text-white">{userName}</p>
-                <p className="truncate text-[10px] text-text-secondary opacity-60 font-medium">{userEmail || t('Oturum açık')}</p>
+                <p className="truncate text-[10px] text-white font-medium">{userEmail || t('Oturum açık')}</p>
               </div>
               <button
                 onClick={() => {
@@ -97,7 +97,7 @@ export default function Sidebar({
           </div>
 
           <div className="px-6 py-6 pb-12 border-t border-white/5 space-y-4">
-            <div className="flex items-center justify-center gap-6 text-[10px] font-black text-text-secondary opacity-40 tracking-widest">
+            <div className="flex items-center justify-center gap-6 text-[10px] font-black text-white tracking-widest">
               <button onClick={() => handleNavigate('PRIVACY')} className="hover:text-white transition-colors">
                 {t('Gizlilik')}
               </button>
@@ -106,7 +106,7 @@ export default function Sidebar({
               </button>
             </div>
             <div className="text-center">
-              <p className="text-[8px] font-black text-text-secondary opacity-20 tracking-tighter ">
+              <p className="text-[8px] font-black text-white tracking-tighter ">
                 Fortale v3.4.0 (2026 Edition)
               </p>
             </div>
@@ -133,13 +133,13 @@ function SidebarItem({
       onClick={onClick}
       className={`relative flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left transition-all duration-300 overflow-hidden ${active
         ? 'glass-panel bg-white/10 border-white/20 text-white shadow-lg shadow-black/20'
-        : 'text-text-secondary/60 hover:text-white hover:bg-white/5'
+        : 'text-white hover:text-white hover:bg-white/5'
         }`}
     >
       {active && (
         <div className="absolute left-0 top-3 bottom-3 w-1 bg-accent-green rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
       )}
-      <div className={`transition-all duration-300 ${active ? 'text-accent-green scale-110' : 'text-text-secondary opacity-40'}`}>
+      <div className={`transition-all duration-300 ${active ? 'text-accent-green scale-110' : 'text-white opacity-40'}`}>
         <Icon size={18} strokeWidth={2.5} />
       </div>
       <span className={`text-sm tracking-tight ${active ? 'font-bold' : 'font-medium'}`}>

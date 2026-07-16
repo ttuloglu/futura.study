@@ -76,6 +76,8 @@ export interface CommunityBook {
 }
 
 export interface CreditWallet {
+  purchasedCredits: number;
+  communityEarnedCredits: number;
   createCredits: number;
 }
 

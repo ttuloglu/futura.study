@@ -15,6 +15,7 @@ import { httpsCallable } from 'firebase/functions';
 import { appCheckReady, auth, functions } from '../firebaseConfig';
 import { useUiI18n } from '../i18n/uiI18n';
 import { ViewState } from '../types';
+import { FORTALE_BACKGROUND_GRADIENT } from '../theme';
 import {
   canUseNativeSocialSignIn,
   isNativeSocialRuntime,
@@ -205,6 +206,23 @@ const AppleMark = () => (
 
 const SocialIconFrame = ({ children }: { children: React.ReactNode }) => (
   <span className="flex h-5 w-5 items-center justify-center">{children}</span>
+);
+
+// Vocesyo ana sayfasındaki analiz kartlarını bağlayan nokta-halka zinciri.
+const LoginChainLink = () => (
+  <div
+    aria-hidden="true"
+    className="pointer-events-none relative z-[5] flex justify-between px-[30px]"
+  >
+    {[0, 1].map((side) => (
+      <div key={side} className="flex flex-col items-center gap-0.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-[rgba(155,199,255,0.5)]" />
+        <span className="h-[13px] w-2 rounded-full border-[1.6px] border-solid border-[rgba(155,199,255,0.4)]" />
+        <span className="h-[13px] w-2 rounded-full border-[1.6px] border-solid border-[rgba(155,199,255,0.4)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[rgba(155,199,255,0.5)]" />
+      </div>
+    ))}
+  </div>
 );
 
 interface LoginViewProps {
@@ -467,8 +485,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
     <div
       className="fixed inset-0 text-white"
       style={{
-        background:
-          'radial-gradient(circle at 17% 0%, rgba(80, 118, 172, 0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74, 112, 168, 0.18), transparent 34%), linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
+        background: FORTALE_BACKGROUND_GRADIENT
       }}
     >
       <div
@@ -497,24 +514,24 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
       </div>
 
       <div className="app-content-width flex h-full flex-col px-6 md:px-8">
-        <div className="relative flex-1">
-          <div className="flex h-full items-center justify-center pt-[224px] pb-8">
+        <div className="relative min-h-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-full items-start justify-center pb-8 pt-[calc(env(safe-area-inset-top,0px)+258px)]">
             <div className="relative z-10 w-full max-w-[440px] mx-auto space-y-5">
-            <div className="grid grid-cols-[44px_1fr] items-center gap-3 rounded-2xl border border-dashed px-3 py-2.5" style={secondaryStyle}>
-              <div className="h-11 w-11 rounded-2xl p-2 flex items-center justify-center" style={inputStyle}>
-                <img src="/favicon-red.svg" alt="Fortale logo" className="h-7 w-7" />
+            <div className="flex w-full items-center justify-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center">
+                <img src="/favicon-red.svg" alt="Fortale logo" className="h-9 w-9" />
               </div>
               <div className="min-w-0">
                 <h1 className="text-xl font-semibold tracking-tight text-white">Fortale</h1>
-                <p className="text-[11px] text-[#cfe4ff]/90">{t('Create, Discover and Share')}</p>
+                <p className="text-[11px] text-white">{t('Create, Discover and Share')}</p>
               </div>
             </div>
 
-            <form onSubmit={authStep === 'email' ? handleSendCode : handleVerifyCode} className="relative space-y-4">
+            <form onSubmit={authStep === 'email' ? handleSendCode : handleVerifyCode} className="relative">
               <div className="space-y-2">
-                <label className="block text-[12px] font-semibold tracking-wide text-[#cfe4ff] ml-1">{t('E-posta')}</label>
-                <div className="flex items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 transition-all" style={inputStyle}>
-                  <Mail size={15} className="text-[#9bc7ff]" />
+                <label className="block text-[12px] font-semibold tracking-wide text-white ml-1">{t('E-posta')}</label>
+                <div className="flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all" style={inputStyle}>
+                  <Mail size={15} className="text-white" />
                   <input
                     type="email"
                     name="email"
@@ -528,24 +545,24 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                     spellCheck={false}
                     inputMode="email"
                     enterKeyHint={authStep === 'code' ? 'done' : 'next'}
-                    className="login-flat-input w-full !border-0 !bg-transparent text-[14px] font-medium text-white !shadow-none outline-none ring-0 placeholder:text-[#9bb7d8] focus:outline-none focus:ring-0"
+                    className="login-flat-input w-full !border-0 !bg-transparent text-[14px] font-medium text-white !shadow-none outline-none ring-0 placeholder:text-white focus:outline-none focus:ring-0"
                     required
                   />
                 </div>
               </div>
 
               {authStep === 'code' && (
-                <div className="space-y-2">
-                  <label className="block text-[12px] font-semibold tracking-wide text-[#cfe4ff] ml-1">{t('Giriş kodu')}</label>
-                  <div className="flex items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 transition-all" style={inputStyle}>
-                    <KeyRound size={15} className="text-[#9bc7ff]" />
+                <div className="mt-4 space-y-2">
+                  <label className="block text-[12px] font-semibold tracking-wide text-white ml-1">{t('Giriş kodu')}</label>
+                  <div className="flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all" style={inputStyle}>
+                    <KeyRound size={15} className="text-white" />
                     <input
                       type="text"
                       name="code"
                       value={formData.code}
                       onChange={handleInputChange}
                       placeholder={t('Mail ile gelen 6 haneli kod')}
-                      className="login-flat-input w-full !border-0 !bg-transparent text-[14px] tracking-[0.24em] text-white !shadow-none placeholder:text-[#9bb7d8] focus:outline-none font-medium"
+                      className="login-flat-input w-full !border-0 !bg-transparent text-[14px] tracking-[0.24em] text-white !shadow-none placeholder:text-white focus:outline-none font-medium"
                       inputMode="numeric"
                       autoComplete="off"
                       autoCapitalize="none"
@@ -555,14 +572,15 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                       maxLength={6}
                     />
                   </div>
-                  <p className="text-[11px] text-[#a9c7ec] px-1">{t('E-posta kutunu kontrol et ve gelen kodu gir.')}</p>
                 </div>
               )}
+
+              <LoginChainLink />
 
               <button
                 type="submit"
                 disabled={isBusy || (authStep === 'code' && formData.code.trim().length < 6)}
-                className="w-full rounded-xl border border-dashed flex items-center justify-center gap-2 px-3 py-2.5 text-center transition-all disabled:opacity-55 disabled:cursor-not-allowed"
+                className="w-full rounded-xl border flex items-center justify-center gap-2 px-3 py-2.5 text-center transition-all disabled:opacity-55 disabled:cursor-not-allowed"
                 style={{
                   borderColor: 'rgba(139,187,244,0.46)',
                   background: '#0b2342',
@@ -585,7 +603,9 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
               </button>
 
               {authStep === 'code' && (
-                <div className="grid grid-cols-2 gap-3">
+                <>
+                  <p className="mt-2 px-1 text-[11px] text-white">{t('E-posta kutunu kontrol et ve gelen kodu gir.')}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -594,7 +614,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                       setStatus(null);
                     }}
                     disabled={isBusy}
-                    className="rounded-xl border border-dashed px-2 py-2 text-[11px] font-semibold text-[#cfe4ff] transition-all hover:text-white disabled:opacity-60"
+                    className="rounded-xl border px-2 py-2 text-[11px] font-semibold text-white transition-all hover:text-white disabled:opacity-60"
                     style={secondaryStyle}
                   >
                     {t('E-postayı değiştir')}
@@ -603,65 +623,71 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                     type="button"
                     onClick={() => void handleSendCode()}
                     disabled={isBusy}
-                    className="rounded-xl border border-dashed px-2 py-2 text-[11px] font-semibold text-[#cfe4ff] transition-all hover:text-white disabled:opacity-60"
+                    className="rounded-xl border px-2 py-2 text-[11px] font-semibold text-white transition-all hover:text-white disabled:opacity-60"
                     style={secondaryStyle}
                   >
                     {t('Kodu tekrar gönder')}
                   </button>
-                </div>
+                  </div>
+                </>
               )}
             </form>
 
             <div className="flex items-center gap-3 my-4">
               <div className="flex-1 h-px bg-[rgba(139,187,244,0.24)]" />
-              <span className="text-[11px] font-semibold tracking-wide text-[#cfe4ff]">{t('Veya')}</span>
+              <span className="text-[11px] font-semibold tracking-wide text-white">{t('Veya')}</span>
               <div className="flex-1 h-px bg-[rgba(139,187,244,0.24)]" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleSocialSignIn('google')}
-                disabled={isBusy}
-                className="rounded-xl border border-dashed py-2.5 px-3 transition-all disabled:opacity-55 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-                style={inputStyle}
-              >
-                {isBusy && activeAction === 'google' ? (
-                  <FaviconSpinner size={16} />
-                ) : (
-                  <SocialIconFrame>
-                    <GoogleMark />
-                  </SocialIconFrame>
-                )}
-                <span className="text-[13px] font-semibold">Google</span>
-              </button>
-              <button
-                onClick={() => handleSocialSignIn('apple')}
-                disabled={isBusy}
-                className="rounded-xl border border-dashed py-2.5 px-3 transition-all disabled:opacity-55 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-                style={inputStyle}
-              >
-                {isBusy && activeAction === 'apple' ? (
-                  <FaviconSpinner size={16} />
-                ) : (
-                  <SocialIconFrame>
-                    <AppleMark />
-                  </SocialIconFrame>
-                )}
-                <span className="text-[13px] font-semibold">Apple</span>
-              </button>
-            </div>
+            <div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleSocialSignIn('google')}
+                  disabled={isBusy}
+                  className="rounded-xl border py-2.5 px-3 transition-all disabled:opacity-55 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                  style={inputStyle}
+                >
+                  {isBusy && activeAction === 'google' ? (
+                    <FaviconSpinner size={16} />
+                  ) : (
+                    <SocialIconFrame>
+                      <GoogleMark />
+                    </SocialIconFrame>
+                  )}
+                  <span className="text-[13px] font-semibold">Google</span>
+                </button>
+                <button
+                  onClick={() => handleSocialSignIn('apple')}
+                  disabled={isBusy}
+                  className="rounded-xl border py-2.5 px-3 transition-all disabled:opacity-55 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                  style={inputStyle}
+                >
+                  {isBusy && activeAction === 'apple' ? (
+                    <FaviconSpinner size={16} />
+                  ) : (
+                    <SocialIconFrame>
+                      <AppleMark />
+                    </SocialIconFrame>
+                  )}
+                  <span className="text-[13px] font-semibold">Apple</span>
+                </button>
+              </div>
 
-            {onContinueWithoutLogin && (
-              <button
-                type="button"
-                onClick={onContinueWithoutLogin}
-                disabled={isBusy}
-                className="w-full rounded-xl border border-dashed py-2.5 mt-3 text-[13px] font-semibold text-[#cfe4ff] transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                style={secondaryStyle}
-              >
-                {t('Giriş yapmadan devam et')}
-              </button>
-            )}
+              {onContinueWithoutLogin && (
+                <>
+                <LoginChainLink />
+                <button
+                  type="button"
+                  onClick={onContinueWithoutLogin}
+                  disabled={isBusy}
+                  className="w-full rounded-xl border py-2.5 text-[13px] font-semibold text-white transition-all hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  style={secondaryStyle}
+                >
+                  {t('Giriş yapmadan devam et')}
+                </button>
+                </>
+              )}
+            </div>
 
             {status && (
               <p
@@ -671,12 +697,15 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                 {status.message}
               </p>
             )}
+            <p className="mt-3 text-center text-[10px] italic leading-4 text-white">
+              {t('Giriş yaparak Kullanım Şartlarını ve Gizlilik Politikasını kabul etmiş olursunuz.')}
+            </p>
             </div>
           </div>
         </div>
 
         {onNavigate && (
-          <footer className="pb-[calc(env(safe-area-inset-bottom,0px)+14px)] flex items-center justify-center gap-2 text-sm text-text-secondary">
+          <footer className="pb-[calc(env(safe-area-inset-bottom,0px)+14px)] flex items-center justify-center gap-2 text-sm text-white">
             <button
               type="button"
               onClick={() => onNavigate('TERMS')}
@@ -684,7 +713,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
             >
               {t('Kullanım Şartları')}
             </button>
-            <span className="opacity-60">.</span>
+            <span>.</span>
             <button
               type="button"
               onClick={() => onNavigate('PRIVACY')}

@@ -39,7 +39,7 @@ export default function SubjectCard({ subject, onClick }: SubjectCardProps) {
                   {subject.title}
                </h3>
                {subject.subtitle && (
-                  <p className="text-[10px] text-white/50 font-medium line-clamp-1">
+                  <p className="text-[10px] text-white font-medium line-clamp-1">
                      {subject.subtitle}
                   </p>
                )}

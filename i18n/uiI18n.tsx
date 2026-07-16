@@ -6,6 +6,9 @@ import { UI_TRANSLATION_SAFE_KEYS } from '../data/uiTranslationSafeKeys.generate
 import { UI_TRANSLATION_SUPPLEMENTS } from '../data/uiTranslationSupplements';
 import { COMMUNITY_UI_TRANSLATIONS } from '../data/communityUiTranslations.generated';
 import { LIBRARY_DASHBOARD_UI_TRANSLATIONS } from '../data/libraryDashboardUiTranslations';
+import { HOME_SHELF_UI_TRANSLATIONS } from '../data/homeShelfUiTranslations';
+import { COMMUNITY_ACTION_UI_TRANSLATIONS } from '../data/communityActionUiTranslations';
+import { CREDIT_UI_TRANSLATIONS } from '../data/creditUiTranslations';
 
 const translationMaps = new Map<AppLanguageCode, Map<string, string>>();
 const translationLoadPromises = new Map<AppLanguageCode, Promise<Map<string, string>>>();
@@ -2855,7 +2858,32 @@ function translateWorkbookWizardText(language: AppLanguageCode, value: string): 
   return WORKBOOK_WIZARD_TRANSLATION_ROWS[language]?.[keyIndex];
 }
 
+const LOGIN_LEGAL_NOTICE = 'Giriş yaparak Kullanım Şartlarını ve Gizlilik Politikasını kabul etmiş olursunuz.';
+const LOGIN_LEGAL_NOTICE_TRANSLATIONS: Record<AppLanguageCode, string> = {
+  ar: 'بتسجيل الدخول، فإنك توافق على شروط الاستخدام وسياسة الخصوصية.',
+  da: 'Ved at logge ind accepterer du brugsbetingelserne og privatlivspolitikken.',
+  de: 'Mit der Anmeldung akzeptierst du die Nutzungsbedingungen und die Datenschutzerklärung.',
+  el: 'Με τη σύνδεσή σας, αποδέχεστε τους Όρους Χρήσης και την Πολιτική Απορρήτου.',
+  en: 'By signing in, you agree to the Terms of Use and Privacy Policy.',
+  es: 'Al iniciar sesión, aceptas los Términos de uso y la Política de privacidad.',
+  fi: 'Kirjautumalla sisään hyväksyt käyttöehdot ja tietosuojakäytännön.',
+  fr: 'En vous connectant, vous acceptez les Conditions d’utilisation et la Politique de confidentialité.',
+  hi: 'साइन इन करके, आप उपयोग की शर्तों और गोपनीयता नीति से सहमत होते हैं।',
+  id: 'Dengan masuk, Anda menyetujui Ketentuan Penggunaan dan Kebijakan Privasi.',
+  it: 'Accedendo, accetti i Termini di utilizzo e l’Informativa sulla privacy.',
+  ja: 'ログインすることで、利用規約とプライバシーポリシーに同意したものとみなされます。',
+  ko: '로그인하면 이용 약관 및 개인정보 처리방침에 동의하게 됩니다.',
+  nl: 'Door in te loggen ga je akkoord met de Gebruiksvoorwaarden en het Privacybeleid.',
+  no: 'Ved å logge inn godtar du bruksvilkårene og personvernerklæringen.',
+  pl: 'Logując się, akceptujesz Warunki korzystania i Politykę prywatności.',
+  'pt-BR': 'Ao entrar, você concorda com os Termos de Uso e a Política de Privacidade.',
+  sv: 'Genom att logga in godkänner du användarvillkoren och integritetspolicyn.',
+  th: 'การเข้าสู่ระบบถือว่าคุณยอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัว',
+  tr: LOGIN_LEGAL_NOTICE
+};
+
 function translateText(language: AppLanguageCode, value: string): string {
+  if (value === LOGIN_LEGAL_NOTICE) return LOGIN_LEGAL_NOTICE_TRANSLATIONS[language];
   if (!value || language === 'tr') return value;
 
   const supplement = UI_TRANSLATION_SUPPLEMENTS[language]?.[value];
@@ -2864,8 +2892,17 @@ function translateText(language: AppLanguageCode, value: string): string {
   const libraryDashboardTranslation = LIBRARY_DASHBOARD_UI_TRANSLATIONS[language]?.[value];
   if (libraryDashboardTranslation) return libraryDashboardTranslation;
 
+  const communityActionTranslation = COMMUNITY_ACTION_UI_TRANSLATIONS[language]?.[value];
+  if (communityActionTranslation) return communityActionTranslation;
+
+  const creditTranslation = CREDIT_UI_TRANSLATIONS[language]?.[value as keyof (typeof CREDIT_UI_TRANSLATIONS)[AppLanguageCode]];
+  if (creditTranslation) return creditTranslation;
+
   const communityTranslation = COMMUNITY_UI_TRANSLATIONS[language]?.[value];
   if (communityTranslation) return communityTranslation;
+
+  const homeShelfTranslation = HOME_SHELF_UI_TRANSLATIONS[language]?.[value];
+  if (homeShelfTranslation) return homeShelfTranslation;
 
   const wizardTranslation = WIZARD_UI_TRANSLATIONS[language]?.[value];
   if (wizardTranslation) return wizardTranslation;

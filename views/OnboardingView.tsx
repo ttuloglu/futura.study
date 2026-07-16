@@ -288,7 +288,7 @@ export default function OnboardingView({ onFinish }: OnboardingViewProps) {
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-full border border-white/32 bg-black/34 px-3 py-1.5 text-[12px] font-semibold text-white/90 backdrop-blur-sm active:scale-[0.98]"
+              className="rounded-full border border-white/32 bg-black/34 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur-sm active:scale-[0.98]"
             >
               {t('Atla')}
             </button>
@@ -299,7 +299,7 @@ export default function OnboardingView({ onFinish }: OnboardingViewProps) {
           <div className="rounded-3xl border border-white/18 bg-black/34 p-5 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.45)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-200/85">{t(activeSlide.label)}</p>
             <h1 className="mt-2 text-[30px] font-black leading-[1.08] tracking-[-0.02em]">{t(activeSlide.title)}</h1>
-            <p className="mt-3 text-[14px] leading-[1.55] text-white/86">{t(activeSlide.description)}</p>
+            <p className="mt-3 text-[14px] leading-[1.55] text-white">{t(activeSlide.description)}</p>
 
             <div className="mt-5 flex items-center gap-3">
               <button
@@ -309,7 +309,7 @@ export default function OnboardingView({ onFinish }: OnboardingViewProps) {
                 className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition ${
                   canGoBack
                     ? 'border-white/35 bg-black/30 text-white active:scale-[0.98]'
-                    : 'border-white/15 bg-black/20 text-white/30'
+                    : 'border-white/15 bg-black/20 text-white'
                 }`}
                 aria-label={t('Geri')}
               >

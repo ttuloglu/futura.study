@@ -50,19 +50,18 @@ import {
 } from './utils/revenueCat';
 import { normalizeMarkdownNarrativeLayout } from './utils/markdownLayout';
 
-const HomeView = lazy(() => import('./views/HomeView'));
-const CommunityView = lazy(() => import('./views/CommunityView'));
-const CourseFlowView = lazy(() => import('./views/CourseFlowView'));
-const PersonalGrowthView = lazy(() => import('./views/PersonalGrowthView'));
-const ProfileView = lazy(() => import('./views/ProfileView'));
-const PrivacyView = lazy(() => import('./views/PrivacyView'));
-const TermsView = lazy(() => import('./views/TermsView'));
-const LoginView = lazy(() => import('./views/LoginView'));
-const OnboardingView = lazy(() => import('./views/OnboardingView'));
-const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const LegalConsentModal = lazy(() => import('./components/LegalConsentModal'));
-const CreditPaywallModal = lazy(() => import('./components/CreditPaywallModal'));
-const LoginPromptModal = lazy(() => import('./components/LoginPromptModal'));
+import HomeView from './views/HomeView';
+import CommunityView from './views/CommunityView';
+import CourseFlowView from './views/CourseFlowView';
+import PersonalGrowthView from './views/PersonalGrowthView';
+import ProfileView from './views/ProfileView';
+import PrivacyView from './views/PrivacyView';
+import TermsView from './views/TermsView';
+import LoginView from './views/LoginView';
+import OnboardingView from './views/OnboardingView';
+import SettingsModal from './components/SettingsModal';
+import CreditPaywallModal from './components/CreditPaywallModal';
+import LoginPromptModal from './components/LoginPromptModal';
 
 const LOCAL_COURSE_KEY_PREFIX = 'f-study-courses';
 const LOCAL_FULL_COURSE_CACHE_KEY_PREFIX = 'f-study-full-courses';
@@ -108,8 +107,16 @@ const IOS_APP_STORE_URL = (import.meta.env.VITE_IOS_APP_STORE_URL as string | un
   || 'https://apps.apple.com/tr/search?term=fortale';
 const SHARE_DEEP_LINK_FALLBACK_MS = 1400;
 const SHARE_DEEP_LINK_SECONDARY_SCHEME_DELAY_MS = 350;
-const FREE_STARTER_CREDITS: CreditWallet = { createCredits: 3 };
+const FREE_STARTER_CREDITS: CreditWallet = {
+  purchasedCredits: 3,
+  communityEarnedCredits: 0,
+  createCredits: 3
+};
 const DEFAULT_ACTION_CREDIT_COST: Record<CreditActionType, number> = { create: 1, community_download: 0.5 };
+const autoPublishToCommunity = httpsCallable<
+  { bookId: string; isPublic: true; autoPublish: true; rightsAccepted: true; termsAccepted: true; ageConfirmed: true },
+  { communityBookId: string }
+>(functions, 'publishToCommunity');
 const CREDIT_PACKS: CreditPackOption[] = [
   { id: 'pack-5', createCredits: 10, priceUsd: 4.99 },
   { id: 'pack-15', createCredits: 25, priceUsd: 12.99 },
@@ -123,7 +130,7 @@ function FullScreenFallback({ message }: { message: string }) {
         <div className="fortale-loading-spinner-shell">
           <FaviconSpinner size={44} />
         </div>
-        <p className="text-[12px] font-semibold text-white/78">{message}</p>
+        <p className="text-[12px] font-semibold text-white">{message}</p>
       </div>
     </div>
   );
@@ -230,7 +237,7 @@ type RepairSmartBookCoverResponse = {
   coverImageUrl?: string;
 };
 
-type LegalConsentState = 'unknown' | 'required' | 'accepted';
+type LegalConsentState = 'unknown' | 'accepted';
 type AppLanguagePreferenceSource = 'device_auto' | 'manual_selection';
 
 type InitialAppLanguageSetup = {
@@ -1621,7 +1628,7 @@ async function hydrateCourseFromBundleBlob(
           assetUrlCache.set(cacheKey, localUrl);
           return localUrl;
         }
-      } catch (error) {
+      } catch {
         console.warn('Native book asset write failed:', error);
       }
       return undefined;
@@ -3682,10 +3689,17 @@ function writeLikedCourseIdsToLocal(uid: string, courseIds: string[]): void {
 function normalizeCreditWallet(value: unknown): CreditWallet | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Partial<CreditWallet>;
-  const createCredits = Number(raw.createCredits);
-  if (!Number.isFinite(createCredits)) return null;
+  const legacyTotal = Number(raw.createCredits);
+  const rawPurchased = Number(raw.purchasedCredits);
+  const rawCommunityEarned = Number(raw.communityEarnedCredits);
+  const hasSourceBreakdown = Number.isFinite(rawPurchased) && Number.isFinite(rawCommunityEarned);
+  if (!hasSourceBreakdown && !Number.isFinite(legacyTotal)) return null;
+  const purchasedCredits = Math.max(0, Math.round((hasSourceBreakdown ? rawPurchased : legacyTotal) * 100) / 100);
+  const communityEarnedCredits = Math.max(0, Math.round((hasSourceBreakdown ? rawCommunityEarned : 0) * 100) / 100);
   return {
-    createCredits: Math.max(0, Math.round(createCredits * 10) / 10)
+    purchasedCredits,
+    communityEarnedCredits,
+    createCredits: Math.round((purchasedCredits + communityEarnedCredits) * 100) / 100
   };
 }
 
@@ -3763,6 +3777,26 @@ function shouldRetryCreditGatewayError(error: unknown): boolean {
 export default function App() {
   const initialAppLanguageSetupRef = useRef<InitialAppLanguageSetup>(resolveInitialAppLanguageSetup());
   const [currentView, setCurrentView] = useState<ViewState>(() => readInitialViewFromUrl());
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | ''>('');
+  const [animationKey, setAnimationKey] = useState(0);
+
+  const getTabVal = (v: ViewState) => {
+    if (v === 'HOME') return 0;
+    if (v === 'AI_CHAT') return 1;
+    if (v === 'COMMUNITY') return 2;
+    if (v === 'PROFILE') return 3;
+    return 4;
+  };
+
+  const handleViewChange = (nextView: ViewState) => {
+    if (nextView === currentView) return;
+    const currentIdx = getTabVal(currentView);
+    const nextIdx = getTabVal(nextView);
+    setSlideDirection(nextIdx > currentIdx ? 'right' : 'left');
+    setAnimationKey((prev) => prev + 1);
+    setCurrentView(nextView);
+  };
+
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [appLanguage, setAppLanguage] = useState<AppLanguageCode>(initialAppLanguageSetupRef.current.language);
   const [appLanguageSource, setAppLanguageSource] = useState<AppLanguagePreferenceSource>(initialAppLanguageSetupRef.current.source);
@@ -3795,8 +3829,6 @@ export default function App() {
   const [isCreditPurchaseBusy, setCreditPurchaseBusy] = useState(false);
   const [creditPackDisplayPrices, setCreditPackDisplayPrices] = useState<Partial<Record<string, string>>>({});
   const [legalConsentState, setLegalConsentState] = useState<LegalConsentState>('unknown');
-  const [isLegalConsentSaving, setIsLegalConsentSaving] = useState(false);
-  const [legalConsentError, setLegalConsentError] = useState<string | null>(null);
   const appLanguageBootstrapWriteRef = useRef<string | null>(null);
   const didWarnCloudPermissionRef = useRef(false);
   const cloudCourseWriteTimerRef = useRef<number | null>(null);
@@ -3809,6 +3841,7 @@ export default function App() {
   const cloudCourseWriteInFlightRef = useRef(false);
   const courseCloudWriteRetryCountRef = useRef(0);
   const sessionCreatedCourseIdsRef = useRef<Set<string>>(new Set());
+  const automaticCommunityPublishAttemptedRef = useRef<Set<string>>(new Set());
   const progressOnlyFallbackCourseIdsRef = useRef<Set<string>>(new Set());
   const savedCoursesRef = useRef<CourseData[]>([]);
   const courseOpenStateByIdRef = useRef<Record<string, CourseOpenUiState>>({});
@@ -4999,14 +5032,14 @@ export default function App() {
     baselineWallet: CreditWallet,
     pack: CreditPackOption
   ): Promise<CreditWallet | null> => {
-    const expectedCreateCredits = baselineWallet.createCredits + pack.createCredits;
+    const expectedPurchasedCredits = baselineWallet.purchasedCredits + pack.createCredits;
     const deadline = Date.now() + CREDIT_WEBHOOK_SYNC_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
       const { wallet } = await runCreditGatewayOperation(localUserId, {
         operation: 'getWallet'
       });
-      if (wallet && wallet.createCredits >= expectedCreateCredits) {
+      if (wallet && wallet.purchasedCredits >= expectedPurchasedCredits) {
         return wallet;
       }
       await new Promise((resolve) => {
@@ -5322,6 +5355,47 @@ export default function App() {
   useEffect(() => {
     savedCoursesRef.current = savedCourses;
   }, [authUser?.uid, savedCourses]);
+
+  useEffect(() => {
+    const uid = authUser?.uid;
+    if (!uid || isAuthLoading || !hasCompletedLocalBootstrap || legalConsentState !== 'accepted') return;
+
+    const eligibleCourses = savedCourses.filter((course) => {
+      if (!course.id || course.id.startsWith('community_')) return false;
+      if (course.communityPublication?.status === 'published') return false;
+      return Boolean(
+        resolvePreferredBookZipStoragePath(course.bundle?.path, course.contentPackagePath)
+        || String(course.contentPackageUrl || '').trim()
+      );
+    });
+    if (eligibleCourses.length === 0) return;
+
+    void runTasksWithConcurrency(eligibleCourses, 2, async (course) => {
+      const attemptKey = `${uid}:${course.id}`;
+      if (automaticCommunityPublishAttemptedRef.current.has(attemptKey)) return;
+      automaticCommunityPublishAttemptedRef.current.add(attemptKey);
+      try {
+        const result = await autoPublishToCommunity({
+          bookId: course.id,
+          isPublic: true,
+          autoPublish: true,
+          rightsAccepted: true,
+          termsAccepted: true,
+          ageConfirmed: true
+        });
+        const updatedAt = new Date();
+        setSavedCourses((current) => {
+          const next = current.map((item) => item.id === course.id
+            ? { ...item, communityPublication: { id: result.data.communityBookId, status: 'published' as const, updatedAt } }
+            : item);
+          savedCoursesRef.current = next;
+          return next;
+        });
+      } catch (error) {
+        window.setTimeout(() => automaticCommunityPublishAttemptedRef.current.delete(attemptKey), 5 * 60_000);
+      }
+    });
+  }, [authUser?.uid, hasCompletedLocalBootstrap, isAuthLoading, legalConsentState, savedCourses]);
 
   useEffect(() => {
     courseOpenStateByIdRef.current = courseOpenStateById;
@@ -5789,15 +5863,12 @@ export default function App() {
     if (!authUser || isGuestSession) {
       appLanguageBootstrapWriteRef.current = null;
       setLegalConsentState('accepted');
-      setLegalConsentError(null);
-      setIsLegalConsentSaving(false);
       return;
     }
 
     let cancelled = false;
     const loadLegalConsent = async () => {
       setLegalConsentState('unknown');
-      setLegalConsentError(null);
       try {
         const snapshot = await getDoc(doc(db, 'users', authUser.uid));
         const data = snapshot.data() as Record<string, unknown> | undefined;
@@ -5820,8 +5891,31 @@ export default function App() {
           setAppLanguage(resolvedAppLanguage);
           setAppLanguageSource(resolvedAppLanguageSource);
           setAppLanguageSetupOpen(shouldRequireManualSelection);
-          setLegalConsentState(hasAcceptedCurrentVersion ? 'accepted' : 'required');
         }
+
+        if (!hasAcceptedCurrentVersion) {
+          try {
+            await setDoc(
+              doc(db, 'users', authUser.uid),
+              {
+                email: authUser.email ?? null,
+                displayName: authUser.displayName ?? null,
+                appLanguage: resolvedAppLanguage,
+                appLanguageLabel: getAppLanguageLabel(resolvedAppLanguage),
+                legalConsentAcceptedAt: new Date(),
+                legalConsentVersion: LEGAL_CONSENT_VERSION,
+                legalConsentSource: 'login_implicit',
+                legalTermsLastUpdated: defaultTermsPolicy.lastUpdatedDate,
+                legalPrivacyLastUpdated: defaultPrivacyPolicy.lastUpdatedDate
+              },
+              { merge: true }
+            );
+          } catch (error) {
+            console.warn('Implicit legal consent metadata could not be saved:', error);
+          }
+        }
+
+        if (!cancelled) setLegalConsentState('accepted');
 
         if (!storedAppLanguage && !shouldRequireManualSelection) {
           const syncKey = `${authUser.uid}:${resolvedAppLanguage}:${resolvedAppLanguageSource}`;
@@ -5836,10 +5930,7 @@ export default function App() {
         }
       } catch (error) {
         console.error('Legal consent state could not be loaded:', error);
-        if (!cancelled) {
-          setLegalConsentState('required');
-          setLegalConsentError('Onay durumu yüklenemedi. Lütfen şartları onaylayarak devam edin.');
-        }
+        if (!cancelled) setLegalConsentState('accepted');
       }
     };
 
@@ -5848,14 +5939,6 @@ export default function App() {
       cancelled = true;
     };
   }, [authUser?.uid, isGuestSession]);
-
-  useEffect(() => {
-    if (legalConsentState !== 'required') return;
-    setSettingsOpen(false);
-    if (currentView !== 'HOME') {
-      setCurrentView('HOME');
-    }
-  }, [currentView, legalConsentState]);
 
   useEffect(() => {
     if (!isAppLanguageSetupOpen) return;
@@ -7500,36 +7583,6 @@ export default function App() {
     }
   };
 
-  const handleAcceptLegalConsent = async (): Promise<void> => {
-    if (!authUser || isLegalConsentSaving) return;
-    setIsLegalConsentSaving(true);
-    setLegalConsentError(null);
-
-    try {
-      await setDoc(
-        doc(db, 'users', authUser.uid),
-        {
-          email: authUser.email ?? null,
-          displayName: authUser.displayName ?? null,
-          appLanguage,
-          appLanguageLabel: getAppLanguageLabel(appLanguage),
-          legalConsentAcceptedAt: new Date(),
-          legalConsentVersion: LEGAL_CONSENT_VERSION,
-          legalConsentSource: 'home_modal',
-          legalTermsLastUpdated: defaultTermsPolicy.lastUpdatedDate,
-          legalPrivacyLastUpdated: defaultPrivacyPolicy.lastUpdatedDate
-        },
-        { merge: true }
-      );
-      setLegalConsentState('accepted');
-    } catch (error) {
-      console.error('Legal consent save failed:', error);
-      setLegalConsentError('Onay kaydedilemedi. Bağlantınızı kontrol edip tekrar deneyin.');
-    } finally {
-      setIsLegalConsentSaving(false);
-    }
-  };
-
   const persistAppLanguagePreference = async (
     uid: string,
     language: AppLanguageCode,
@@ -7808,7 +7861,7 @@ export default function App() {
       case 'HOME':
         return (
           <HomeView
-            onNavigate={setCurrentView}
+            onNavigate={handleViewChange}
             onCourseCreate={handleCourseCreate}
             onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
@@ -7817,7 +7870,7 @@ export default function App() {
             stickyNotes={stickyNotes}
             onCreateStickyNote={handleStickyNoteCreate}
             onUpdateStickyNote={handleStickyNoteUpdate}
-            onDeleteStickyNote={handleStickyNoteDelete}
+            onDeleteStickyNote={handleCourseDelete}
             onRequireCredit={requireCreditForAction}
             onConsumeCredit={consumeCreditForAction}
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
@@ -7832,8 +7885,8 @@ export default function App() {
       case 'COURSE_FLOW': {
         return (
           <CourseFlowView
-            onBack={() => setCurrentView('HOME')}
-            onNavigate={setCurrentView}
+            onBack={() => handleViewChange('HOME')}
+            onNavigate={handleViewChange}
             courseData={activeCourse}
             onUpdateCourse={handleCourseUpdate}
             onResolveCourseForExport={resolveCourseForExport}
@@ -7856,12 +7909,13 @@ export default function App() {
             courseOpenStates={courseOpenStateById}
             isLoggedIn={Boolean(authUser && !isGuestSession)}
             onRequestLogin={handleOpenLoginScreen}
+            wallet={creditWallet}
           />
         );
       case 'EXPLORE':
         return (
           <HomeView
-            onNavigate={setCurrentView}
+            onNavigate={handleViewChange}
             onCourseCreate={handleCourseCreate}
             onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
@@ -7870,7 +7924,7 @@ export default function App() {
             stickyNotes={stickyNotes}
             onCreateStickyNote={handleStickyNoteCreate}
             onUpdateStickyNote={handleStickyNoteUpdate}
-            onDeleteStickyNote={handleStickyNoteDelete}
+            onDeleteStickyNote={handleCourseDelete}
             onRequireCredit={requireCreditForAction}
             onConsumeCredit={consumeCreditForAction}
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
@@ -7887,7 +7941,7 @@ export default function App() {
             authUser={authUser}
             wallet={creditWallet}
             onRequireCredit={requireCreditForAction}
-            onNavigate={setCurrentView}
+            onNavigate={handleViewChange}
             onOpenPaywall={() => openCreditPaywall('community_download')}
           />
         );
@@ -7898,6 +7952,7 @@ export default function App() {
             userEmail={authUser?.email || (isGuestSession ? 'Misafir oturumu' : undefined)}
             isGuestSession={isGuestSession}
             savedBookCount={savedCourses.length}
+            wallet={creditWallet}
             onLogout={handleLogout}
             onUpdateProfileName={handleProfileNameUpdate}
             onDeleteMyData={handleDeleteMyData}
@@ -7911,7 +7966,7 @@ export default function App() {
       default:
         return (
           <HomeView
-            onNavigate={setCurrentView}
+            onNavigate={handleViewChange}
             onCourseCreate={handleCourseCreate}
             onDeleteCourse={handleCourseDelete}
             savedCourses={savedCourses}
@@ -7920,7 +7975,7 @@ export default function App() {
             stickyNotes={stickyNotes}
             onCreateStickyNote={handleStickyNoteCreate}
             onUpdateStickyNote={handleStickyNoteUpdate}
-            onDeleteStickyNote={handleStickyNoteDelete}
+            onDeleteStickyNote={handleCourseDelete}
             onRequireCredit={requireCreditForAction}
             onConsumeCredit={consumeCreditForAction}
             isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
@@ -8022,13 +8077,6 @@ export default function App() {
               onAuthAction={authUser ? handleLogout : handleOpenLoginScreen}
             />
 
-            <LegalConsentModal
-              isOpen={Boolean(authUser && currentView === 'HOME' && legalConsentState === 'required')}
-              isSaving={isLegalConsentSaving}
-              error={legalConsentError}
-              onAccept={handleAcceptLegalConsent}
-            />
-
             <AppLanguageSetupModal
               isOpen={Boolean(!isAuthLoading && isAppLanguageSetupOpen)}
               selectedLanguage={appLanguage}
@@ -8041,16 +8089,23 @@ export default function App() {
 
             {!isReaderFullscreen && (
               <GlobalHeader
+                currentView={currentView}
                 credits={creditWallet}
                 onOpenPaywall={() => openCreditPaywall()}
                 showBackButton={currentView !== 'HOME'}
-                onBack={() => setCurrentView('HOME')}
+                onBack={() => handleViewChange('HOME')}
               />
             )}
 
             <main className="flex-1 relative overflow-hidden">
               <div className="absolute inset-0 w-full h-full">
-                <div className="w-full h-full">
+                <div
+                  key={animationKey}
+                  className={`w-full h-full transition-container ${
+                    slideDirection === 'right' ? 'animate-slide-from-right' :
+                    slideDirection === 'left' ? 'animate-slide-from-left' : ''
+                  }`}
+                >
                   {renderView()}
                 </div>
               </div>
@@ -8059,7 +8114,7 @@ export default function App() {
             {!isReaderFullscreen && (
               <BottomNav
                 currentView={currentView}
-                onViewChange={setCurrentView}
+                onViewChange={handleViewChange}
                 onToggleSettings={handleToggleSettings}
                 isSettingsOpen={isSettingsOpen}
                 showCourseScrollTop={currentView === 'COURSE_FLOW' && (activeCourse?.bookType === 'story' || activeCourse?.bookType === 'novel')}

@@ -10,12 +10,12 @@ export interface PolicyDocument {
   sections: PolicySection[];
 }
 
-export const LEGAL_CONSENT_VERSION = '2026-07-03';
+export const LEGAL_CONSENT_VERSION = '2026-07-15';
 
 export const defaultTermsPolicy: PolicyDocument = {
   title: 'Fortale Kullanım Şartları',
   lastUpdatedLabel: 'Son güncelleme: ',
-  lastUpdatedDate: '3 Temmuz 2026',
+  lastUpdatedDate: '15 Temmuz 2026',
   sections: [
     {
       title: '1. Kapsam ve Kabul',
@@ -50,12 +50,12 @@ export const defaultTermsPolicy: PolicyDocument = {
     {
       title: '7. Paylaşım, Keşfet ve Kamuya Açık İçerikler',
       content:
-        'Fortale Topluluk kataloğu misafirler tarafından görüntülenebilir; yayınlama, kalp, takip, yorum, rapor ve kitaplığa ekleme işlemleri için giriş ve 13 yaş veya üzeri olma onayı gerekir. Yayınladığınız kitap, kapak, topluluk rumuzu, biyografi ve önizleme bölümleri herkese açık olabilir. E-posta, gerçek ad ve ülke profilinizde gösterilmez.\n\nYayınlayarak içeriği yayınlama hakkına sahip olduğunuzu, varsa kişisel benzerlik içeren stilize görseller için gerekli izinleri aldığınızı ve Fortale\'e içeriği Topluluk içinde barındırma, önizletme, moderasyon amacıyla işleme ve kullanıcıların kişisel kitaplığına lisanslı kopya sağlama yetkisi verdiğinizi beyan edersiniz.\n\nTopluluktan alınan kitaplar kişisel kullanım lisanslıdır. Uygulamada okuma ve kişisel PDF/EPUB dışa aktarımı serbesttir; satış, yeniden yayınlama, topluluğa yeniden yükleme veya kendi eseriymiş gibi sunma yasaktır. Bir yayın kaldırıldığında yeni edinimler kapanır; daha önce edinilmiş kişisel kopyalar geri çağrılmaz.'
+        'Fortale Topluluk kataloğu misafirler tarafından görüntülenebilir; yayınlama, kalp, takip, yorum, rapor ve kitaplığa ekleme işlemleri için giriş ve 13 yaş veya üzeri olma onayı gerekir. Yayınladığınız kitap, kapak, topluluk rumuzu, biyografi ve önizleme bölümleri herkese açık olabilir. E-posta, gerçek ad ve ülke profilinizde gösterilmez.\n\nÖNEMLİ İÇERİK HAKLARI BEYANI: Hesabınızla giriş yapıp bu Kullanım Şartlarını kabul ettiğinizde, Toplulukta yayınladığınız her içerik için; içeriği yayınlama, paylaşma ve gerekli lisansları verme hakkına sahip olduğunuzu otomatik olarak beyan etmiş sayılırsınız. Bu beyan ayrıca bir kutucuğun işaretlenmesini gerektirmez ve her yeni yayın ya da yayın güncellemesi için geçerlidir. İçeriğin size ait olmaması halinde hak sahibinden gerekli izinleri almak, üçüncü kişilerin telif, marka, kişilik, ses, görüntü, gizlilik ve diğer haklarını ihlal etmemek sizin sorumluluğunuzdadır.\n\nBu beyanla Fortale\'e içeriği Topluluk içinde barındırma, göstermek ve önizletmek, teknik biçimlere dönüştürmek, güvenlik ve moderasyon amacıyla incelemek ve kullanıcıların kişisel kitaplığına lisanslı kopya sağlamak için hizmetle sınırlı, münhasır olmayan ve geri alınabilir bir yetki verirsiniz. İçeriğinizin mülkiyeti bu nedenle Fortale\'e geçmez. Gerçek bir kişiye benzeyen stilize görseller için uygulamada ayrıca istenen kişisel benzerlik onayı saklıdır.\n\nTopluluktan alınan kitaplar kişisel kullanım lisanslıdır. Uygulamada okuma ve kişisel PDF/EPUB dışa aktarımı serbesttir; satış, yeniden yayınlama, topluluğa yeniden yükleme veya kendi eseriymiş gibi sunma yasaktır. Bir yayın kaldırıldığında yeni edinimler kapanır; daha önce edinilmiş kişisel kopyalar geri çağrılmaz.'
     },
     {
       title: '8. Topluluk Güvenliği, Raporlama ve Engelleme',
       content:
-        'Topluluk rumuzları, biyografiler, yorumlar, kitap metinleri ve kapaklar otomatik ve gerektiğinde insan moderasyonuna tabi tutulabilir. Kullanıcılar kitap, yorum ve profilleri ayrı ayrı raporlayabilir; diğer üreticileri engelleyebilir. Engellenen üreticinin kitapları, profili ve yorumları engelleyen kullanıcıdan gizlenir.\n\nYorumlar tek seviyeli düz metindir; bağlantı, görsel, mention, özel mesaj ve yanıt zinciri desteklenmez. Spam, taciz, nefret, cinsel içerik, çocuk güvenliğini ihlal eden içerik, tehdit, aldatma ve hak ihlalleri kaldırılabilir. Rapor eşiği veya yüksek risk sinyali içeriği inceleme bitene kadar önerilerden gizleyebilir. İhlaller yayın kaldırma, topluluk erişimini kısıtlama veya hesap işlemleriyle sonuçlanabilir.'
+        'Topluluğu kullanırken aşağıdaki kurallara uymanız gerekir:\n• Yalnızca yayınlama hakkına sahip olduğunuz içerikleri paylaşın; başkasının eserini, markasını, karakterini, sesini, görüntüsünü veya kişisel verisini izinsiz kullanmayın.\n• Çocukların güvenliğini tehlikeye atan, cinsel sömürü veya istismar içeren ya da reşit olmayanları uygunsuz biçimde betimleyen hiçbir içerik paylaşmayın.\n• Nefret söylemi, hedefli taciz, tehdit, zorbalık, ayrımcılık, şiddet teşviki, kendine zarar vermeyi özendirme veya gerçek kişilere zarar verme amacı taşıyan içerik paylaşmayın.\n• Dolandırıcılık, kimliğe bürünme, yanıltıcı bilgi, spam, yapay etkileşim, ödül manipülasyonu, zararlı bağlantı veya kötü amaçlı yazılım kullanmayın.\n• Adres, telefon, e-posta, kimlik belgesi, finansal bilgi, sağlık bilgisi veya özel yazışma gibi kişisel ya da hassas verileri izinsiz yayımlamayın.\n• Yorumlarda yapıcı ve konuyla ilgili olun; tekrar eden mesajlar, reklam, aşağılayıcı ifade veya tartışmayı sabote eden davranışlardan kaçının.\n\nTopluluk rumuzları, biyografiler, yorumlar, kitap metinleri, kapaklar ve önizleme görselleri otomatik sistemlerle ve gerektiğinde insan moderatörler tarafından incelenebilir. Kullanıcılar kitap, yorum ve profilleri ayrı ayrı raporlayabilir ve diğer üreticileri engelleyebilir. Engellenen üreticinin kitapları, profili ve yorumları engelleyen kullanıcıdan gizlenir. Rapor göndermek içeriğin otomatik olarak kaldırılacağı anlamına gelmez; kötü niyetli veya tekrarlanan asılsız raporlar da kötüye kullanım sayılabilir.\n\nRapor eşiği, güvenlik sinyali veya açık ihlal halinde içerik inceleme süresince önerilerden gizlenebilir. İhlalin niteliği ve tekrarına göre içerik görünürlüğü azaltılabilir, yayın kaldırılabilir, özellikler sınırlandırılabilir, Topluluk erişimi askıya alınabilir veya hesap kapatılabilir. Ciddi çocuk güvenliği riski, suç tehdidi ya da hukuki zorunluluk halinde ilgili kayıtlar yetkili mercilerle mevzuata uygun biçimde paylaşılabilir.'
     },
     {
       title: '9. Yasaklı Kullanımlar',
@@ -99,7 +99,7 @@ export const defaultTermsPolicy: PolicyDocument = {
 export const defaultPrivacyPolicy: PolicyDocument = {
   title: 'Fortale Gizlilik Politikası',
   lastUpdatedLabel: 'Son güncelleme: ',
-  lastUpdatedDate: '3 Temmuz 2026',
+  lastUpdatedDate: '15 Temmuz 2026',
   sections: [
     {
       title: '1. Kapsam',

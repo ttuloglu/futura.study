@@ -107,21 +107,21 @@ body,
 .btn-glass-primary {
   @apply btn-glass font-bold px-4 py-2 text-[13px];
   background: rgba(120, 152, 186, 0.14);
-  color: #b9d0ea;
+  color: #fff;
   border-color: rgba(152, 176, 200, 0.34);
 }
 
 .btn-glass-neutral {
   @apply btn-glass font-bold px-4 py-2 text-[13px];
   background: rgba(44, 57, 74, 0.4);
-  color: #dbe9f8;
+  color: #fff;
   border-color: var(--matte-border);
 }
 
 .btn-glass-danger {
   @apply btn-glass font-bold px-4 py-2 text-[13px];
   background: rgba(152, 114, 158, 0.18);
-  color: #d5b6de;
+  color: #fff;
   border-color: rgba(164, 132, 176, 0.32);
 }
 
@@ -130,7 +130,7 @@ body,
   @apply flex items-center justify-center rounded-xl backdrop-blur-sm;
   background: rgba(39, 42, 47, 0.62);
   border: 1px solid var(--matte-border);
-  color: rgba(224, 238, 255, 0.82);
+  color: #fff;
   box-shadow: var(--float-shadow-control);
 }
 
@@ -180,7 +180,7 @@ body,
 
 .podcast-audio-player::-webkit-media-controls-current-time-display,
 .podcast-audio-player::-webkit-media-controls-time-remaining-display {
-  color: #dbf4ff;
+  color: #fff;
   text-shadow: none;
 }
 
@@ -334,8 +334,7 @@ h6 {
 p,
 span,
 div {
-  @apply text-zinc-400;
-  /* Default to grey */
+  @apply text-white;
 }
 
 .text-white {
@@ -343,7 +342,7 @@ div {
 }
 
 .text-text-secondary {
-  color: #a1a1aa !important;
+  color: #fff !important;
 }
 
 .text-accent-green {
@@ -655,13 +654,14 @@ textarea,
 select,
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.hidden) {
   background-color: rgba(19, 27, 39, 0.86) !important;
-  color: #e3f0ff !important;
+  color: #fff !important;
   border: 1px solid rgba(122, 154, 188, 0.2) !important;
 }
 
 textarea::placeholder,
 input::placeholder {
-  color: rgba(155, 184, 214, 0.7) !important;
+  color: #fff !important;
+  opacity: 1 !important;
 }
 
 .chat-bubble,
@@ -760,19 +760,19 @@ select[class*="rounded-"] {
 }
 
 .text-accent-green {
-  color: #b8d0eb !important;
+  color: var(--color-accent-green) !important;
 }
 
 .text-accent-red {
-  color: #d5a7ac !important;
+  color: #f87171 !important;
 }
 
 .text-accent-blue {
-  color: #bfd0e6 !important;
+  color: #60a5fa !important;
 }
 
 .text-accent-yellow {
-  color: #b8cfe8 !important;
+  color: #facc15 !important;
 }
 
 [class*="bg-accent-green/"] {
@@ -792,15 +792,15 @@ select[class*="rounded-"] {
 }
 
 [class*="btn-glass-primary"] {
-  color: #b9d0ea !important;
+  color: #fff !important;
 }
 
 [class*="btn-glass-neutral"] {
-  color: #d7e8fa !important;
+  color: #fff !important;
 }
 
 [class*="btn-glass-danger"] {
-  color: #d5a7ac !important;
+  color: #fff !important;
 }
 
 input.sticky-modal-title-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.hidden) {
@@ -1019,14 +1019,127 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .community-preview-markdown :where(p, li) {
-  margin-top: 0.78em !important;
-  margin-bottom: 0.78em !important;
-  line-height: 1.72 !important;
+  margin-top: 0.65em !important;
+  margin-bottom: 0.65em !important;
+  font-family: inherit !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.65 !important;
 }
 
 .community-preview-markdown :where(h1, h2, h3, h4) {
-  margin-top: 1.05em !important;
-  margin-bottom: 0.62em !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.65em !important;
+  font-family: inherit !important;
+  font-size: 14px !important;
+  font-weight: 750 !important;
+  line-height: 1.45 !important;
+}
+
+.community-book-detail,
+.community-book-detail :where(h1, h2, h3, h4, p, span, button) {
+  font-family: inherit;
+}
+
+/* Community book copy uses one deliberate foreground tone: true white. */
+.community-book-detail,
+.community-book-detail :where(h1, h2, h3, h4, h5, h6, p, span, li, strong, em, time, button),
+.community-book-detail .community-preview-markdown :where(*) {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+/* Prevent muted-white utilities from reintroducing low-contrast copy. */
+#root :where([class*="text-white/"]) {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+#root :where([class*="placeholder:text-white/"])::placeholder {
+  color: #fff !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.community-detail-section-title {
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  padding-bottom: 7px;
+}
+
+.community-detail-body {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.community-book-detail .fortale-community-type-chip[data-book-type="fairy_tale"] {
+  color: #172033 !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: #fff !important;
+  -webkit-text-fill-color: #172033 !important;
+}
+
+.community-book-detail .fortale-community-type-chip[data-book-type="story"] {
+  color: #172033 !important;
+  background: #f7d84b !important;
+  border-color: #ffe77d !important;
+  -webkit-text-fill-color: #172033 !important;
+}
+
+.community-book-detail .fortale-community-type-chip[data-book-type="novel"] {
+  color: #fecaca !important;
+  background: rgba(220, 38, 38, 0.22) !important;
+  border-color: rgba(248, 113, 113, 0.58) !important;
+  -webkit-text-fill-color: #fecaca !important;
+}
+
+.fortale-community-library-button,
+.community-book-detail .fortale-community-library-button {
+  border: 1px solid #fff !important;
+  color: #0a1c31 !important;
+  background: #fff !important;
+  box-shadow: 0 8px 22px rgba(255, 255, 255, 0.12) !important;
+  opacity: 1 !important;
+  font-weight: 400 !important;
+  white-space: nowrap !important;
+  -webkit-text-fill-color: #0a1c31 !important;
+}
+
+.fortale-community-library-button :where(span, svg),
+.community-book-detail .fortale-community-library-button :where(span, svg) {
+  color: #0a1c31 !important;
+  opacity: 1 !important;
+  font-weight: 400 !important;
+  -webkit-text-fill-color: #0a1c31 !important;
+}
+
+.fortale-community-library-button:disabled,
+.community-book-detail .fortale-community-library-button:disabled {
+  color: #0a1c31 !important;
+  background: #fff !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #0a1c31 !important;
+}
+
+.fortale-community-library-button:not(:disabled):active {
+  transform: scale(0.985);
+}
+
+.community-book-detail .fortale-community-comment-send-button,
+.community-book-detail .fortale-community-comment-send-button :where(span, svg) {
+  color: #102018 !important;
+  -webkit-text-fill-color: #102018 !important;
+}
+
+body:has(.community-detail-overlay) .fortale-global-header-status {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .community-preview-markdown :where(table) {
@@ -1215,7 +1328,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 .smartbook-loading-dots > span {
   display: inline-block;
-  color: rgba(190, 220, 255, 0.95);
+  color: #fff;
   animation: smartbook-loading-dot 1.1s ease-in-out infinite;
 }
 
@@ -1610,7 +1723,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 /* Fortale home refresh */
 .fortale-home-view.view-container {
-  padding-top: calc(var(--app-header-row-top) + 24px) !important;
+  padding-top: calc(var(--app-header-row-top) + 72px) !important;
   height: 100%;
   overflow: hidden !important;
   overscroll-behavior: none;
@@ -1627,25 +1740,6 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
     radial-gradient(circle at 17% 0%, rgba(80, 118, 172, 0.22), transparent 34%),
     radial-gradient(circle at 84% 9%, rgba(74, 112, 168, 0.18), transparent 34%),
     linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%) !important;
-}
-
-.fortale-loading-spinner-shell {
-  width: 64px;
-  height: 64px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(230, 245, 238, 0.18);
-  border-radius: 999px;
-  border-color: rgba(230, 245, 238, 0.18) !important;
-  background:
-    radial-gradient(circle at 35% 18%, rgba(255,255,255,0.2), transparent 54%),
-    rgba(14, 38, 31, 0.62) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    0 18px 42px -28px rgba(0, 0, 0, 0.76);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
 }
 
 .fortale-chrome-rail {
@@ -1687,10 +1781,9 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-brand-logo {
-  padding: 2px;
-  border-radius: 999px;
-  background: rgba(6, 18, 36, 0.34);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .fortale-chrome-icon-button .fortale-nav-logo {
@@ -1729,6 +1822,400 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   padding-bottom: 0;
 }
 
+.fortale-home-view.view-container.is-intro {
+  display: flex;
+  overflow: hidden !important;
+  flex-direction: column;
+  padding-top: calc(var(--app-header-row-top) + 72px) !important;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 86px) !important;
+}
+
+.fortale-home-view.view-container.is-intro .fortale-home-content {
+  display: flex;
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.fortale-home-rail-stack {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Cards stay in horizontal rows; only the row heading is vertical. */
+.fortale-home-book-rail {
+  display: flex;
+  height: 184px;
+  min-width: 0;
+  flex: 0 0 184px;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.fortale-home-rail-label {
+  display: flex;
+  height: 100%;
+  width: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: none;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.fortale-home-rail-scroll {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  gap: 9px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 3px 5px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fortale-home-rail-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.fortale-home-book-rail .fortale-home-list-card {
+  width: min(300px, calc(100vw - 76px));
+  min-width: min(300px, calc(100vw - 76px));
+  flex: 0 0 min(300px, calc(100vw - 76px));
+  padding: 2px 10px 10px 0;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+
+.fortale-home-book-rail .fortale-home-list-card .fortale-book-list-info {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fortale-home-list-card .fortale-shelf-download-overlay {
+  z-index: 3;
+  inset: auto 5px 4px 8px;
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.fortale-home-list-card .fortale-shelf-download-bar {
+  height: 4px;
+  border: 1px solid rgba(235,246,255,0.5);
+  background: rgba(4,18,36,0.74);
+  box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+}
+
+/* Home rails show the object itself: a cover with a spine and visible page block. */
+.fortale-home-book-cover-card {
+  position: relative;
+  display: block;
+  width: 116px;
+  min-width: 116px;
+  flex: 0 0 116px;
+  aspect-ratio: 0.69;
+  overflow: visible;
+  padding: 0 5px 5px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.fortale-home-book-cover-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 4px 0 0 5px;
+  border-radius: 4px 10px 10px 5px;
+  background:
+    repeating-linear-gradient(180deg, rgba(229,239,250,0.96) 0 1px, rgba(172,194,218,0.72) 1px 2px, rgba(238,245,252,0.94) 2px 4px);
+  box-shadow: 3px 4px 8px rgba(1, 9, 22, 0.34);
+}
+
+.fortale-home-book-cover-card:active {
+  transform: translateY(1px) scale(0.975);
+  filter: brightness(0.94);
+}
+
+.fortale-home-book-cover-media {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(220,237,255,0.38);
+  border-radius: 4px 10px 10px 4px;
+  background: rgba(8,36,70,0.9);
+  box-shadow:
+    inset 6px 0 9px rgba(0,0,0,0.26),
+    inset 1px 0 0 rgba(255,255,255,0.22),
+    4px 5px 12px rgba(1,9,22,0.26);
+}
+
+.fortale-home-book-cover-media::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 7px;
+  border-right: 1px solid rgba(255,255,255,0.2);
+  background: linear-gradient(90deg, rgba(0,0,0,0.42), rgba(255,255,255,0.08) 72%, transparent);
+  pointer-events: none;
+}
+
+.fortale-home-book-cover-media > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fortale-home-book-cover-card .fortale-shelf-download-overlay {
+  z-index: 3;
+  inset: auto 5px 4px 6px;
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.fortale-home-book-cover-card .fortale-shelf-download-bar {
+  height: 4px;
+  border: 1px solid rgba(235,246,255,0.5);
+  background: rgba(4,18,36,0.74);
+  box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+}
+
+.fortale-home-book-rail .fortale-shelf-card,
+.fortale-home-rail-card {
+  width: 110px;
+  flex: 0 0 110px;
+  overflow: hidden;
+  border: 1px solid rgba(214,235,255,0.3) !important;
+  border-radius: 15px;
+  background: rgba(8, 28, 55, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+  scroll-snap-align: start;
+}
+
+.fortale-home-book-rail .fortale-shelf-cover,
+.fortale-home-rail-cover {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 12.2;
+  overflow: hidden;
+  background: rgba(8, 36, 70, 0.9);
+}
+
+.fortale-home-rail-cover > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fortale-home-rail-cover-empty {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.fortale-home-book-rail .fortale-shelf-body,
+.fortale-home-rail-card-body {
+  display: block;
+  min-height: 45px;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.fortale-home-book-rail .fortale-shelf-title,
+.fortale-home-rail-card-body strong {
+  display: -webkit-box;
+  min-height: 27px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 820;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.fortale-home-book-rail .book-type-fairy_tale .fortale-shelf-title,
+.fortale-home-book-rail .book-type-story .fortale-shelf-title {
+  color: rgba(8, 28, 55, 0.98);
+}
+
+.fortale-home-rail-card-body small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-home-rail-type {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  max-width: calc(100% - 14px);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 999px;
+  background: rgba(8, 28, 55, 0.62);
+  color: #fff;
+  padding: 4px 6px;
+  font-size: 8px;
+  font-weight: 820;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.fortale-home-book-rail .fortale-shelf-delete {
+  top: 6px;
+  right: 6px;
+  width: 25px;
+  height: 25px;
+}
+
+.fortale-home-book-rail .fortale-shelf-meta-row {
+  left: 7px;
+  right: 7px;
+  bottom: 7px;
+}
+
+.fortale-home-book-rail .fortale-shelf-type {
+  max-width: 62px;
+  overflow: hidden;
+  padding: 4px 6px;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-home-book-rail .fortale-shelf-action,
+.fortale-home-book-rail .fortale-shelf-action.is-icon-only {
+  width: 25px;
+  max-width: 25px;
+  min-height: 25px;
+  flex-basis: 25px;
+}
+
+.fortale-home-rail-loading,
+.fortale-home-rail-empty {
+  display: flex;
+  height: 100%;
+  min-width: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.fortale-home-create-dock {
+  position: fixed !important;
+  left: 50%;
+  bottom: auto;
+  z-index: 38;
+  display: flex;
+  width: min(calc(100vw - 24px), 430px);
+  min-height: 0;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.fortale-home-view.view-container.is-intro .fortale-home-create-dock {
+  margin-top: 0 !important;
+}
+
+.fortale-home-create-dock > div,
+.fortale-home-create-dock .fortale-type-step,
+.fortale-home-create-dock .fortale-type-orb,
+.fortale-home-create-dock .fortale-type-choice {
+  pointer-events: auto;
+}
+
+.fortale-home-create-dock .fortale-type-step {
+  min-height: 224px;
+  height: 224px;
+  padding: 0;
+  gap: 0;
+}
+
+.fortale-home-create-dock .fortale-type-orb,
+.fortale-home-create-dock .fortale-type-choice::before {
+  width: 206px;
+  height: 206px;
+}
+
+.fortale-home-create-dock .fortale-type-choice {
+  gap: 6px;
+}
+
+.fortale-home-create-dock .fortale-type-choice.top svg {
+  width: 22px;
+  height: 22px;
+}
+
+.fortale-home-create-dock .fortale-type-choice.bottom-left svg,
+.fortale-home-create-dock .fortale-type-choice.bottom-right svg {
+  width: 18px;
+  height: 18px;
+}
+
+.fortale-home-create-dock .fortale-type-choice.bottom-left svg,
+.fortale-home-create-dock .fortale-type-choice.bottom-left .fortale-type-label {
+  transform: translate(14px, -12px);
+}
+
+.fortale-home-create-dock .fortale-type-choice.bottom-right svg,
+.fortale-home-create-dock .fortale-type-choice.bottom-right .fortale-type-label {
+  transform: translate(-14px, -12px);
+}
+
+.fortale-home-create-dock .fortale-type-choice.top svg,
+.fortale-home-create-dock .fortale-type-choice.top .fortale-type-label {
+  transform: translateY(-6px);
+}
+
+.fortale-home-create-dock .fortale-type-core {
+  transform: translate(-50%, -50%);
+}
+
 .fortale-home-hero {
   display: flex;
   flex-direction: column;
@@ -1754,7 +2241,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 .fortale-home-hero h1 {
   margin: 0;
-  color: rgba(255, 255, 255, 0.98);
+  color: #fff;
   font-size: 42px;
   font-weight: 760;
   line-height: 1;
@@ -1783,7 +2270,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
     opacity 220ms ease;
   background: rgba(8, 36, 70, 0.9) !important;
   border-style: solid !important;
-  border-color: rgba(190, 220, 255, 0.2) !important;
+  border-color: #fff !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.24),
     0 24px 64px -36px rgba(0, 0, 0, 0.86) !important;
@@ -1862,7 +2349,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 .fortale-type-copy span,
 .fortale-section-kicker {
-  color: rgba(207, 228, 255, 0.86);
+  color: #fff;
   font-size: 12px;
   font-weight: 820;
   line-height: 1;
@@ -1873,7 +2360,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 .fortale-type-copy p {
   margin-top: 5px;
   max-width: 280px;
-  color: rgba(255, 255, 255, 0.94);
+  color: #fff;
   font-size: 13px;
   font-weight: 760;
   line-height: 1.28;
@@ -1981,12 +2468,12 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   justify-content: center;
   gap: 6px;
   overflow: hidden;
-  color: rgba(225, 240, 255, 0.9);
+  color: #fff;
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  font-weight: 820;
+  font-weight: 400;
   line-height: 1;
   isolation: isolate;
   -webkit-tap-highlight-color: transparent;
@@ -2084,10 +2571,8 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 
 .fortale-type-choice.selected svg,
 .fortale-type-choice.selected .fortale-type-label {
-  color: rgba(255, 255, 255, 1);
-  text-shadow:
-    0 1px 2px rgba(0,0,0,0.76),
-    0 0 10px rgba(0,0,0,0.58);
+  color: #fff;
+  text-shadow: none;
 }
 
 .fortale-type-choice:active {
@@ -2099,7 +2584,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-type-choice.accent-fairy_tale::before {
-  border-color: rgba(255, 255, 255, 0.92);
+  border-color: #fff;
 }
 
 .fortale-type-choice.accent-novel::before {
@@ -2138,7 +2623,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 .fortale-type-choice.is-accented.accent-fairy_tale,
 .fortale-type-choice.selected.accent-story,
 .fortale-type-choice.is-accented.accent-story {
-  color: rgba(8, 28, 55, 0.98);
+  color: #000;
 }
 
 .fortale-type-choice.selected.accent-fairy_tale svg,
@@ -2149,7 +2634,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 .fortale-type-choice.selected.accent-story .fortale-type-label,
 .fortale-type-choice.is-accented.accent-story svg,
 .fortale-type-choice.is-accented.accent-story .fortale-type-label {
-  color: rgba(8, 28, 55, 0.98);
+  color: #000;
   text-shadow: none;
 }
 
@@ -2157,12 +2642,10 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   max-width: 100%;
   color: inherit;
   font-size: 13px;
-  font-weight: 860;
+  font-weight: 400;
   white-space: nowrap;
   line-height: 1;
-  text-shadow:
-    0 1px 2px rgba(0,0,0,0.72),
-    0 1px 8px rgba(0,0,0,0.46);
+  text-shadow: none;
 }
 
 .fortale-type-label.two-line {
@@ -2229,7 +2712,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  color: rgba(225, 240, 255, 0.88);
+  color: #fff;
   background: rgba(8, 36, 70, 0.96);
   border: 1px solid rgba(247,252,249,0.12);
   box-shadow:
@@ -2252,7 +2735,7 @@ input.login-flat-input:not([type="checkbox"]):not([type="radio"]):not([type="ran
 }
 
 .fortale-input-surface {
-  color: rgba(246,255,251,0.96) !important;
+  color: #fff !important;
   caret-color: #dcecff;
 }
 
@@ -2296,7 +2779,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-input-surface::placeholder {
-  color: rgba(169, 199, 236, 0.72) !important;
+  color: #fff !important;
 }
 
 .fortale-hero-inline-row {
@@ -2337,7 +2820,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-action-button {
-  color: rgba(245,255,250,0.96);
+  color: #fff;
   background: rgba(10, 46, 91, 0.82) !important;
 }
 
@@ -2351,8 +2834,8 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-action-button:disabled {
-  border-color: rgba(190,220,255,0.1) !important;
-  color: rgba(169, 199, 236, 0.56) !important;
+  border-color: #fff !important;
+  color: #fff !important;
   background: rgba(6, 18, 36, 0.54) !important;
 }
 
@@ -2378,7 +2861,7 @@ button.fortale-hero-inline-field {
   padding: 0;
   border-radius: 999px;
   border: 1px solid rgba(190, 220, 255, 0.12);
-  color: rgba(190, 220, 255, 0.66);
+  color: #fff;
   background: rgba(10, 36, 70, 0.54);
   font-size: 11px;
   font-weight: 850;
@@ -2390,7 +2873,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-step-dot.is-done {
-  color: rgba(255,255,255,0.92);
+  color: #fff;
   background: rgba(31, 76, 125, 0.58);
   border-color: var(--fortale-wizard-tone-border, rgba(190, 220, 255, 0.22));
 }
@@ -2408,7 +2891,7 @@ button.fortale-hero-inline-field {
 .fortale-type-hint {
   min-height: 16px;
   max-width: 280px;
-  color: rgba(190, 220, 255, 0.78);
+  color: #fff;
   font-size: 11px;
   font-weight: 680;
   line-height: 1.25;
@@ -2452,7 +2935,7 @@ button.fortale-hero-inline-field {
   background: rgba(236, 248, 242, 0.13);
   border: 1px solid rgba(236,248,242,0.2) !important;
   border-style: solid !important;
-  color: rgba(248, 255, 252, 0.94);
+  color: #fff;
   font-size: 10px;
   font-weight: 780;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.38);
@@ -2515,7 +2998,7 @@ button.fortale-hero-inline-field {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(190, 220, 255, 0.56);
+  color: #fff;
 }
 
 .fortale-shelf-cover-fade {
@@ -2570,7 +3053,7 @@ button.fortale-hero-inline-field {
   right: 8px;
   width: 30px;
   height: 30px;
-  color: rgba(255,255,255,0.86);
+  color: #fff;
   background: rgba(8, 28, 55, 0.46) !important;
   border: 1px solid rgba(255,255,255,0.18) !important;
   border-style: solid !important;
@@ -2582,7 +3065,7 @@ button.fortale-hero-inline-field {
   bottom: 9px;
   width: 20px;
   height: 20px;
-  color: rgba(225, 240, 255, 0.96);
+  color: #fff;
   background: rgba(31, 83, 145, 0.7);
 }
 
@@ -2632,14 +3115,478 @@ button.fortale-hero-inline-field {
 
 .fortale-shelf-title {
   min-height: 31px;
-  color: rgba(255, 255, 255, 0.98);
-  font-size: 12px;
+  color: #fff;
+  font-size: 13px;
   font-weight: 820;
   line-height: 1.26;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Community + My Books use the same cover language as the Home shelf. */
+.fortale-library-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.fortale-shelf-card.fortale-library-cover-card {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  scroll-snap-align: none;
+}
+
+.fortale-library-cover-card .fortale-shelf-body {
+  min-height: 53px;
+}
+
+.fortale-library-cover-author {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 720;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-community-cover-read {
+  display: inline-flex;
+  height: 25px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgba(255,255,255,0.78) !important;
+  border-radius: 9px;
+  background: rgba(255,255,255,0.94) !important;
+  color: #0b1d32 !important;
+  padding: 0 8px;
+  font-size: 9px;
+  font-weight: 850;
+  pointer-events: auto;
+}
+
+.fortale-community-card-byline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.fortale-community-card-byline .fortale-library-cover-author {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+
+.fortale-community-card-byline time {
+  flex: 0 0 auto;
+  color: rgba(8, 28, 55, 0.6);
+  font-size: 8px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.fortale-community-card-byline button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(8, 28, 55, 0.16) !important;
+  border-radius: 8px;
+  background: rgba(8, 28, 55, 0.08) !important;
+  color: rgba(8, 28, 55, 0.72) !important;
+}
+
+.fortale-library-cover-card.book-type-novel .fortale-community-card-byline time,
+.fortale-library-cover-card.book-type-novel .fortale-community-card-byline button {
+  color: #fff !important;
+  border-color: #fff !important;
+  background: rgba(255,255,255,0.08) !important;
+}
+
+.fortale-library-cover-card.book-type-fairy_tale .fortale-library-cover-author,
+.fortale-library-cover-card.book-type-story .fortale-library-cover-author {
+  color: rgba(8, 28, 55, 0.68);
+}
+
+.fortale-library-cover-footer {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border-top: 1px solid rgba(214,235,255,0.15);
+  background: rgba(6, 22, 44, 0.9);
+}
+
+.fortale-library-cover-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.fortale-library-cover-stats > button,
+.fortale-library-cover-stats > span {
+  display: inline-flex;
+  min-width: 0;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(255,255,255,0.055);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.fortale-library-cover-stats > button.is-liked {
+  color: #fb8eaa;
+}
+
+.fortale-library-cover-stats > button:disabled {
+  opacity: 1;
+}
+
+.fortale-library-cover-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.fortale-library-cover-actions time {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-library-cover-actions button {
+  display: inline-flex;
+  height: 26px;
+  min-width: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgba(214,235,255,0.16);
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(255,255,255,0.07);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.fortale-library-cover-actions button.is-published {
+  color: #b7f2d3;
+  border-color: rgba(110,231,183,0.26);
+  background: rgba(16,72,46,0.42);
+}
+
+.fortale-library-cover-actions button.is-primary {
+  padding: 0 8px;
+  color: #0b1d32;
+  border-color: #fff;
+  background: rgba(255,255,255,0.94);
+}
+
+.fortale-library-cover-actions button:disabled {
+  opacity: 0.62;
+}
+
+@media (min-width: 768px) {
+  .fortale-library-cover-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Shared horizontal book list used by Community and My Books. */
+.fortale-library-cover-grid.fortale-book-list-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+}
+
+.fortale-book-list-item {
+  display: flex;
+  min-width: 0;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px dashed rgba(190, 220, 248, 0.28);
+  background: transparent;
+}
+
+.fortale-book-list-cover {
+  width: 92px;
+  min-width: 92px;
+  flex: 0 0 92px;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.fortale-book-list-cover-media {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 13;
+  overflow: hidden;
+  border: 1px solid rgba(207, 229, 251, 0.25);
+  border-radius: 3px 10px 10px 3px;
+  background: #081a30;
+  box-shadow: 0 9px 18px rgba(2, 12, 28, 0.22);
+}
+
+.fortale-book-list-cover-media > img,
+.fortale-book-list-cover-media > div:first-child {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fortale-book-list-featured {
+  position: absolute;
+  top: 7px;
+  left: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 17px);
+  border-radius: 999px;
+  padding: 4px 6px;
+  color: #12253b;
+  background: rgba(255, 224, 91, 0.96);
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.fortale-book-list-info {
+  display: flex;
+  min-width: 0;
+  min-height: 146px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-self: stretch;
+  padding: 2px 0;
+}
+
+.fortale-book-list-topline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fortale-book-list-type {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(210, 232, 252, 0.2);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-book-list-read {
+  display: inline-flex;
+  height: 29px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 9px;
+  padding: 0 10px;
+  color: #0a1c31;
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.fortale-book-list-read:disabled {
+  opacity: 0.58;
+}
+
+.fortale-book-list-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  margin-top: 9px;
+  padding: 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 840;
+  line-height: 1.25;
+  text-align: left;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.fortale-book-list-byline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fortale-book-list-byline > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-book-list-byline time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.fortale-book-list-byline button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(205, 229, 251, 0.16);
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.fortale-book-list-byline button.is-published {
+  color: #baf1d4;
+  border-color: rgba(112, 226, 169, 0.28);
+}
+
+.fortale-book-list-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 7px 0 0;
+  padding: 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.fortale-home-list-card .fortale-book-list-description {
+  -webkit-line-clamp: 4;
+}
+
+.fortale-book-list-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.fortale-book-list-meta > span {
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fortale-book-list-stats {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  margin-top: auto;
+  padding-top: 8px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.fortale-book-list-stats > button,
+.fortale-book-list-stats > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.fortale-book-list-stats > button.is-liked {
+  color: #fb91ad;
+}
+
+.fortale-book-list-stats > button.is-danger {
+  margin-left: auto;
+  color: rgba(255, 144, 157, 0.86);
+}
+
+.fortale-book-list-stats > button:disabled {
+  opacity: 0.45;
+}
+
+@media (min-width: 768px) {
+  .fortale-library-cover-grid.fortale-book-list-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 22px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .fortale-library-cover-grid.fortale-book-list-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fortale-book-list-cover {
+    width: 84px;
+    min-width: 84px;
+    flex-basis: 84px;
+  }
 }
 
 .fortale-shelf-card.book-type-fairy_tale .fortale-shelf-title,
@@ -2649,7 +3596,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-shelf-card.book-type-novel .fortale-shelf-title {
-  color: rgba(255, 255, 255, 0.98);
+  color: #fff;
 }
 
 .fortale-shelf-section {
@@ -2677,7 +3624,7 @@ button.fortale-hero-inline-field {
   justify-content: center;
   border-radius: 999px;
   border-style: solid !important;
-  color: rgba(255,255,255,0.98);
+  color: #fff;
   font-size: 11px;
   font-weight: 820;
 }
@@ -2705,7 +3652,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-shelf-action-percent {
-  color: rgba(241, 248, 255, 0.98);
+  color: #fff;
   font-size: 9px;
   font-weight: 860;
   line-height: 1;
@@ -2714,7 +3661,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-shelf-action.is-loading {
-  color: rgba(225, 240, 255, 0.92);
+  color: #fff;
 }
 
 .fortale-library-view.view-container {
@@ -2754,7 +3701,7 @@ button.fortale-hero-inline-field {
 
 .fortale-library-hero h1 {
   margin-top: 5px;
-  color: rgba(255,255,255,0.98);
+  color: #fff;
   font-size: 28px;
   font-weight: 820;
   line-height: 1.05;
@@ -2772,7 +3719,7 @@ button.fortale-hero-inline-field {
 .fortale-library-panel,
 .fortale-library-card {
   border-style: solid !important;
-  border-color: rgba(190, 220, 255, 0.16) !important;
+  border-color: #fff !important;
   background: rgba(8, 36, 70, 0.72) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.14),
@@ -2798,6 +3745,73 @@ button.fortale-hero-inline-field {
   padding-bottom: calc(170px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
+/* Wizard option signs are linked to the option directly below them. This is
+   the login chain language with one oval link instead of two. */
+.fortale-wizard-choice-chain-grid,
+.fortale-wizard-choice-chain-stack {
+  position: relative;
+  overflow: visible;
+}
+
+.fortale-wizard-choice-chain-grid {
+  row-gap: 29px !important;
+}
+
+.fortale-wizard-choice-chain-stack {
+  display: grid;
+  gap: 29px !important;
+}
+
+.fortale-wizard-choice-chain-stack > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0 !important;
+}
+
+.fortale-wizard-choice-chain-grid > button,
+.fortale-wizard-choice-chain-stack > button {
+  position: relative;
+  z-index: 1;
+  overflow: visible !important;
+}
+
+.fortale-wizard-choice-chain-grid > button:not(:nth-last-child(-n + 2))::before,
+.fortale-wizard-choice-chain-stack > button:not(:last-child)::before {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 4;
+  width: 6px;
+  height: 29px;
+  background:
+    radial-gradient(circle at 50% 3px, rgba(255, 255, 255, 0.52) 0 3px, transparent 3.2px),
+    radial-gradient(circle at 50% 26px, rgba(255, 255, 255, 0.52) 0 3px, transparent 3.2px);
+  content: '';
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.fortale-wizard-choice-chain-grid > button:not(:nth-last-child(-n + 2))::after,
+.fortale-wizard-choice-chain-stack > button:not(:last-child)::after {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 3;
+  width: 8px;
+  height: 13px;
+  border: 1.6px solid rgba(255, 255, 255, 0.46);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  content: '';
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+/* Four hero-count choices occupy one row, so no dangling links are drawn. */
+.fortale-wizard-choice-chain-grid-four > button::before,
+.fortale-wizard-choice-chain-grid-four > button::after {
+  display: none !important;
+}
+
 .fortale-wizard-keyboard-input {
   scroll-margin-bottom: calc(190px + env(safe-area-inset-bottom, 0px));
 }
@@ -2805,12 +3819,148 @@ button.fortale-hero-inline-field {
 .fortale-wizard-fields button[aria-pressed="true"] *,
 .fortale-wizard-fields button[aria-pressed="true"] svg {
   color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.fortale-wizard-fields button:not(:disabled):not([aria-pressed="true"]),
+.fortale-wizard-fields button:not(:disabled):not([aria-pressed="true"]) :where(span, svg) {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.fortale-wizard-fields button:not(:disabled),
+.fortale-wizard-fields button:not(:disabled) :where(span) {
+  font-weight: 400 !important;
+  opacity: 1 !important;
+}
+
+.wizard-footer-position {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 82px);
+}
+
+.wizard-footer-controls {
+  display: grid;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  box-sizing: border-box;
+  align-items: stretch;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.wizard-footer-controls.has-back {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.wizard-footer-controls.only-primary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wizard-footer-button {
+  display: inline-flex;
+  width: 100%;
+  height: 52px !important;
+  min-height: 52px !important;
+  max-height: 52px !important;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid var(--wizard-footer-border, rgba(139, 187, 244, 0.24)) !important;
+  border-radius: 18px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--wizard-footer-background, #102f56) !important;
+  font-size: 13px;
+  font-weight: 400 !important;
+  line-height: 1;
+  box-shadow: var(--float-shadow-control) !important;
+  transform: none !important;
+  filter: none !important;
+  overflow: hidden;
+}
+
+.wizard-footer-back,
+.wizard-footer-back :where(span, svg),
+.wizard-footer-novel,
+.wizard-footer-novel :where(span, svg) {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.wizard-footer-back {
+  --wizard-footer-border: rgba(139, 187, 244, 0.24);
+  --wizard-footer-background: #102f56;
+}
+
+.wizard-footer-fairy_tale,
+.wizard-footer-fairy_tale :where(span, svg),
+.wizard-footer-story,
+.wizard-footer-story :where(span, svg) {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+
+.wizard-footer-fairy_tale {
+  --wizard-footer-border: rgba(255, 255, 255, 0.76);
+  --wizard-footer-background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94));
+}
+
+.wizard-footer-novel {
+  --wizard-footer-border: rgba(255, 140, 140, 0.72);
+  --wizard-footer-background: linear-gradient(135deg, rgba(248,113,113,0.98), rgba(239,68,68,0.94));
+}
+
+.wizard-footer-story {
+  --wizard-footer-border: rgba(255, 238, 140, 0.78);
+  --wizard-footer-background: linear-gradient(135deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94));
+}
+
+.wizard-footer-button:disabled {
+  color: #fff !important;
+  --wizard-footer-border: rgba(135, 164, 197, 0.1);
+  --wizard-footer-background: rgba(10, 20, 32, 0.45);
+  opacity: 0.55;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.wizard-footer-button:disabled :where(span, svg) {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.fortale-wizard-select-trigger:not(:disabled),
+.fortale-wizard-select-trigger:not(:disabled) :where(span, svg) {
+  color: #fff !important;
+  font-weight: 400 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.fortale-home-community-footer > button {
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+  box-sizing: border-box !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+}
+
+.fortale-home-community-footer > button :where(span) {
+  font-weight: 400 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
 }
 
 .fortale-library-mode-switch {
-  border-style: solid !important;
-  border-color: rgba(190, 220, 255, 0.14) !important;
-  background: rgba(6, 18, 36, 0.42) !important;
+  border: 0 !important;
+  background: rgba(6, 18, 36, 0.48) !important;
+  box-shadow: inset 0 0 0 1px rgba(155, 199, 255, 0.16) !important;
 }
 
 .fortale-library-filter-button,
@@ -2818,12 +3968,19 @@ button.fortale-hero-inline-field {
   border-style: solid !important;
 }
 
+.fortale-library-mode-button {
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  background: rgba(10, 34, 65, 0.72) !important;
+  box-shadow: none !important;
+}
+
 .fortale-library-filter-button.is-active,
-.fortale-library-mode-button.is-active,
-.fortale-library-mode-button.text-white {
+.fortale-library-mode-button.is-active {
   color: #0b1d32 !important;
   background: rgba(255,255,255,0.94) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 8px 22px rgba(255,255,255,0.18) !important;
+  border-color: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.24) !important;
 }
 
 .fortale-library-open-button {
@@ -2839,7 +3996,7 @@ button.fortale-hero-inline-field {
 .fortale-library-type-tag.book-type-fairy_tale {
   color: rgba(8, 28, 55, 0.98);
   background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(225,238,255,0.94));
-  border-color: rgba(255,255,255,0.72);
+  border-color: #fff;
 }
 
 .fortale-library-type-tag.book-type-novel {
@@ -2884,7 +4041,7 @@ button.fortale-hero-inline-field {
 
 .fortale-paywall-buy {
   color: #061224 !important;
-  border-color: rgba(255,255,255,0.42) !important;
+  border-color: #fff !important;
 }
 
 @keyframes fortale-orb-breathe {
@@ -3017,7 +4174,7 @@ button.fortale-hero-inline-field {
 
 @media (max-height: 760px) {
   .fortale-home-view.view-container {
-    padding-top: calc(var(--app-header-row-top) + 8px) !important;
+    padding-top: calc(var(--app-header-row-top) + 72px) !important;
   }
 
   .fortale-home-brand-title {
@@ -3123,7 +4280,7 @@ button.fortale-hero-inline-field {
   right: 0;
   z-index: 301;
   text-align: center;
-  color: rgba(255, 255, 255, 0.96);
+  color: #fff;
   font-size: 38px;
   font-weight: 860;
   letter-spacing: -0.01em;
@@ -3153,5 +4310,252 @@ button.fortale-hero-inline-field {
   .home-star,
   .home-fairy-dust {
     animation: none !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* YÜZEN ADA (FLOATISLAND) BOTTOM NAVIGATION — iOS 26 GLASS STYLE            */
+/* ────────────────────────────────────────────────────────────────────────── */
+.floatisland-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(236, 248, 242, 0.22) !important;
+  background: rgba(236, 248, 246, 0.14) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    0 14px 30px -22px rgba(10,24,30,0.72) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  border-radius: 9999px;
+  padding: 6px 12px;
+  margin: 0 auto;
+  width: auto;
+  min-width: 280px;
+  max-width: 360px;
+  pointer-events: auto;
+  gap: 8px;
+}
+
+/* FloatIsland anchored modal system. The sheet's bottom border crosses the
+   vertical center of the island, so both surfaces read as one component. */
+:root {
+  --fortale-floatisland-height: 50px;
+  --fortale-floatisland-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  --fortale-floatisland-half-height: 25px;
+  --fortale-floatisland-clearance: calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-half-height));
+  --fortale-modal-top-clearance: calc(var(--app-header-row-top) + 56px);
+  --fortale-sheet-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fortale-modal-backdrop,
+.fortale-floatisland-sheet-root {
+  animation: fortale-sheet-backdrop-in 180ms ease-out both;
+}
+
+.fortale-floatisland-sheet-root {
+  align-items: flex-end !important;
+  justify-content: center !important;
+  overflow: hidden;
+  background: rgba(2, 9, 20, 0.48) !important;
+  backdrop-filter: blur(10px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(118%) !important;
+  padding-top: var(--fortale-modal-top-clearance) !important;
+  padding-right: 12px !important;
+  padding-bottom: var(--fortale-floatisland-clearance) !important;
+  padding-left: 12px !important;
+}
+
+.fortale-floatisland-sheet-rail {
+  padding-right: 12px !important;
+  padding-bottom: var(--fortale-floatisland-clearance) !important;
+  padding-left: 12px !important;
+}
+
+.fortale-floatisland-sheet-panel {
+  max-height: calc(100dvh - var(--fortale-modal-top-clearance) - var(--fortale-floatisland-clearance)) !important;
+  transform-origin: bottom center;
+  animation: fortale-sheet-slide-in 260ms var(--fortale-sheet-ease-out) both !important;
+  will-change: transform, opacity;
+}
+
+.fortale-sheet-surface {
+  border: 1px solid rgba(225, 241, 255, 0.26);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(155, 199, 255, 0.2), transparent 38%),
+    linear-gradient(155deg, rgba(20, 52, 87, 0.76), rgba(7, 27, 52, 0.74));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.24),
+    inset 0 -1px 0 rgba(155, 199, 255, 0.1),
+    0 -22px 68px rgba(0,0,0,0.38);
+  backdrop-filter: blur(30px) saturate(165%);
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+}
+
+.fortale-sheet-handle {
+  width: 38px;
+  height: 4px;
+  flex: 0 0 auto;
+  margin: 8px auto 2px;
+  border-radius: 999px;
+  background: rgba(214,235,255,0.24);
+}
+
+.fortale-sheet-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid rgba(190,220,255,0.12);
+}
+
+.fortale-sheet-close {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(190,220,255,0.12);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255,255,255,0.055);
+}
+
+.fortale-sheet-close:disabled {
+  opacity: 0.42;
+}
+
+.fortale-sheet-body {
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.fortale-sheet-body::-webkit-scrollbar {
+  display: none;
+}
+
+.fortale-sheet-footer {
+  flex: 0 0 auto;
+  padding: 12px 16px 14px;
+  border-top: 0;
+  background: transparent;
+}
+
+.fortale-sheet-island-clearance {
+  height: var(--fortale-floatisland-half-height);
+  flex: 0 0 var(--fortale-floatisland-half-height);
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+@keyframes fortale-sheet-slide-in {
+  from {
+    opacity: 0.98;
+    transform: translate3d(0, calc(100% + 18px), 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fortale-sheet-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fortale-modal-backdrop,
+  .fortale-floatisland-sheet-root,
+  .fortale-floatisland-sheet-panel {
+    animation: none !important;
+  }
+}
+
+.floatisland-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  border-radius: 9999px;
+  color: #ffffff !important;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  padding: 0 12px;
+  gap: 6px;
+}
+
+.floatisland-item svg {
+  stroke: currentColor;
+}
+
+.floatisland-item:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.floatisland-item.active {
+  background: #ffffff !important;
+  color: #000000 !important; /* Pure black text */
+  box-shadow: 0 4px 14px rgba(255, 255, 255, 0.25);
+}
+
+.floatisland-item.active span,
+.floatisland-item.active .floatisland-label {
+  color: #000000 !important;
+}
+
+.floatisland-item.active svg {
+  stroke: #000000 !important; /* Pure black icon stroke */
+}
+
+.floatisland-label {
+  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 11px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* PAGE SLIDE TRANSITIONS                                                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+.transition-container {
+  will-change: transform, opacity;
+}
+
+.animate-slide-from-right {
+  animation: slideFromRight 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-from-left {
+  animation: slideFromLeft 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }

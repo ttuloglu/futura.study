@@ -1,10 +1,10 @@
 import React from 'react';
 import { ArrowLeft, Coins } from 'lucide-react';
-import { CreditWallet } from '../types';
-import FLogo from './FLogo';
+import { CreditWallet, ViewState } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
 
 interface GlobalHeaderProps {
+  currentView: ViewState;
   credits?: CreditWallet;
   onOpenPaywall?: () => void;
   showBackButton?: boolean;
@@ -12,6 +12,7 @@ interface GlobalHeaderProps {
 }
 
 export default function GlobalHeader({
+  currentView,
   credits,
   onOpenPaywall,
   showBackButton = false,
@@ -32,6 +33,17 @@ export default function GlobalHeader({
     boxShadow: 'none'
   };
 
+  const getHeaderTitle = () => {
+    if (currentView === 'HOME') return 'Fortale';
+    if (currentView === 'AI_CHAT') return t('Kitaplarım');
+    if (currentView === 'COMMUNITY') return t('Topluluk');
+    if (currentView === 'PROFILE') return t('Profil');
+    if (currentView === 'COURSE_FLOW') return t('Kitap Oku');
+    if (currentView === 'PRIVACY') return t('Gizlilik');
+    if (currentView === 'TERMS') return t('Yasal');
+    return 'Fortale';
+  };
+
   return (
     <header
       className="fixed left-0 right-0 z-40 pointer-events-none transition-opacity duration-300"
@@ -49,13 +61,12 @@ export default function GlobalHeader({
       >
         <div className="app-chrome-width">
           <div className="relative flex w-full items-center justify-between py-2 px-2 gap-2">
-            <div className="relative z-10 h-full mr-auto pointer-events-auto">
+            <div className="fortale-global-header-status relative z-10 h-full mr-auto pointer-events-auto transition-opacity duration-200">
               <div className="rounded-full" style={groupShellStyle}>
-                <div className="fortale-chrome-pill px-3 h-9 rounded-full flex items-center gap-2 font-semibold tracking-tight">
-                  <FLogo size={16} className="fortale-brand-logo" />
-                  <div className="leading-none">
-                    <span className="block text-[13px] text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.22)]">Fortale</span>
-                  </div>
+                <div className="fortale-chrome-pill px-3.5 h-9 rounded-full flex items-center justify-center font-bold tracking-tight">
+                  <span className="block text-[14px] text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.22)]">
+                    {getHeaderTitle()}
+                  </span>
                 </div>
               </div>
             </div>

@@ -60,6 +60,8 @@ interface UsageReport {
 }
 
 export interface CreditWalletSnapshot {
+  purchasedCredits: number;
+  communityEarnedCredits: number;
   createCredits: number;
 }
 
@@ -412,10 +414,17 @@ function resolvePreferredBookZipPath(...values: Array<unknown>): string | undefi
 function normalizeCreditWalletSnapshot(value: unknown): CreditWalletSnapshot | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<CreditWalletSnapshot>;
-  const createCredits = Number(raw.createCredits);
-  if (!Number.isFinite(createCredits)) return null;
+  const legacyTotal = Number(raw.createCredits);
+  const rawPurchased = Number(raw.purchasedCredits);
+  const rawCommunityEarned = Number(raw.communityEarnedCredits);
+  const hasSourceBreakdown = Number.isFinite(rawPurchased) && Number.isFinite(rawCommunityEarned);
+  if (!hasSourceBreakdown && !Number.isFinite(legacyTotal)) return null;
+  const purchasedCredits = Math.max(0, Math.round((hasSourceBreakdown ? rawPurchased : legacyTotal) * 100) / 100);
+  const communityEarnedCredits = Math.max(0, Math.round((hasSourceBreakdown ? rawCommunityEarned : 0) * 100) / 100);
   return {
-    createCredits: Math.max(0, Math.floor(createCredits))
+    purchasedCredits,
+    communityEarnedCredits,
+    createCredits: Math.round((purchasedCredits + communityEarnedCredits) * 100) / 100
   };
 }
 

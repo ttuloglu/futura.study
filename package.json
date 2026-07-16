@@ -14,7 +14,8 @@
     "optimize:onboarding": "bash scripts/optimize-onboarding-media.sh",
     "asc:prepare": "node scripts/prepare-appstore-metadata.mjs",
     "asc:verify": "node scripts/validate-asc-metadata.mjs",
-    "asc:upload": "fastlane ios appstore_metadata_upload"
+    "asc:upload": "fastlane ios appstore_metadata_upload",
+    "community:backfill": "node scripts/backfill-community-books.mjs"
   },
   "dependencies": {
     "@capacitor-community/photoviewer": "^8.0.0",
