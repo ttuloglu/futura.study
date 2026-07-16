@@ -7,7 +7,7 @@ import { execSync } from 'node:child_process';
 
 const ROOT = process.cwd();
 const FASTLANE_METADATA_DIR = path.join(ROOT, 'fastlane', 'metadata');
-const MODEL = 'gemini-3.1-flash-lite-preview';
+const MODEL = 'gemini-3.1-flash-lite';
 const VERSION = '1.0.4';
 const MAX_PROMO = 170;
 const MIN_PROMO = 165;

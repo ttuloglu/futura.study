@@ -224,7 +224,7 @@ function BookCard({ book, onOpen, onLike, onShare }: { book: CommunityBook; onOp
         </div>
         <button type="button" onClick={onOpen} className="fortale-book-list-description w-full text-left">{summary}</button>
         <div className="fortale-book-list-stats">
-          <button type="button" onClick={onLike} className={book.isLiked ? 'is-liked' : ''} title={t('Kalp')} aria-label={t('Kalp')}>
+          <button type="button" onClick={(event) => { event.stopPropagation(); onLike(); }} className={book.isLiked ? 'is-liked' : ''} title={t('Kalp')} aria-label={t('Kalp')}>
             <Heart size={12} fill={book.isLiked ? 'currentColor' : 'none'} /> {book.likeCount || 0}
           </button>
           <span title={t('İndirilme')}><Download size={12} /> {book.downloadCount || 0}</span>
@@ -619,7 +619,17 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
                       {selected.language && <span>{formatCommunityLanguage(selected.language, locale)}</span>}{selected.bookType === 'story' ? (selected.category && <span>• {t(selected.category)}</span>) : (selected.ageGroup && <span>• {selected.ageGroup}</span>)}{selected.pageCount ? <span>• {selected.pageCount} {t('sayfa')}</span> : null}<button type="button" onClick={() => void handleReport('book', selected.id)} className="inline-flex items-center gap-1 text-white hover:text-white" title={t('Raporla')}><span>•</span><Flag size={12} /></button>
                     </div>
                     <div className="mt-3 flex items-center gap-3 text-[11px] text-white">
-                      <span className="inline-flex items-center gap-1"><Heart size={13} /> {selected.likeCount}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleLike(selected)}
+                        disabled={busyAction === `like:${selected.id}`}
+                        className={`community-detail-like-button inline-flex items-center gap-1 ${selected.isLiked ? 'is-liked' : ''}`}
+                        title={t('Kalp')}
+                        aria-label={t('Kalp')}
+                        aria-pressed={selected.isLiked === true}
+                      >
+                        <Heart size={13} fill={selected.isLiked ? 'currentColor' : 'none'} /> {selected.likeCount || 0}
+                      </button>
                       <span className="inline-flex items-center gap-1"><Download size={13} /> {selected.downloadCount}</span>
                       <span className="inline-flex items-center gap-1"><MessageCircle size={13} /> {selected.commentCount || 0}</span>
                     </div>

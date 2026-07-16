@@ -3570,6 +3570,30 @@ button.fortale-hero-inline-field {
   opacity: 0.45;
 }
 
+.community-detail-like-button {
+  min-width: 34px;
+  min-height: 28px;
+  margin: -6px;
+  padding: 6px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: transparent;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.community-detail-like-button.is-liked {
+  color: #fb91ad;
+}
+
+.community-detail-like-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 @media (min-width: 768px) {
   .fortale-library-cover-grid.fortale-book-list-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -17,7 +17,7 @@ function readEnvFile(filePath) {
 }
 
 const ROOT_ENV = readEnvFile(path.join(ROOT, '.env'));
-const MODEL = process.env.TRANSLATE_MODEL || 'gemini-3.1-flash-lite';
+const MODEL = 'gemini-3.1-flash-lite';
 const VERTEX_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || ROOT_ENV.GOOGLE_CLOUD_PROJECT || 'f-study-53ef9';
 const VERTEX_LOCATION = process.env.TRANSLATE_LOCATION || 'global';
 const LANGUAGE_NAMES = {

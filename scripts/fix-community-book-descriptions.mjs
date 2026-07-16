@@ -164,7 +164,7 @@ Write exactly 2 concise, natural sentences describing this specific book based o
 - Do not use a heading, quotation marks, Markdown, or a generic phrase such as "coherent plot progression".
 - Return only JSON matching the schema.`;
   const response = await ai.models.generateContent({
-    model: process.env.GEMINI_PLANNER_MODEL || 'gemini-2.5-flash',
+    model: 'gemini-3.1-flash-lite',
     contents: prompt,
     config: {
       temperature: 0.35,
