@@ -1728,10 +1728,7 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
   overflow: hidden !important;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
-  background:
-    radial-gradient(circle at 17% 0%, rgba(80, 118, 172, 0.22), transparent 34%),
-    radial-gradient(circle at 84% 9%, rgba(74, 112, 168, 0.18), transparent 34%),
-    linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%) !important;
+  background: linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%) !important;
 }
 
 .fortale-loading-screen,
@@ -1804,14 +1801,8 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 }
 
 .fortale-home-view::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(20,48,86,0.08) 42%, rgba(76,128,190,0.18) 100%),
-    radial-gradient(ellipse at 50% 0%, rgba(117,155,205,0.2) 0%, transparent 56%);
-  z-index: 0;
+  content: none;
+  display: none;
 }
 
 .fortale-home-content {
@@ -2610,8 +2601,8 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 }
 
 .fortale-type-choice.is-accented.accent-novel::before {
-  --fortale-type-glow: rgba(239, 68, 68, 0.28);
-  background: linear-gradient(135deg, rgba(248,113,113,0.98), rgba(239,68,68,0.92));
+  --fortale-type-glow: rgba(220, 24, 39, 0.34);
+  background: linear-gradient(135deg, rgba(239,35,47,0.98), rgba(185,18,32,0.94));
 }
 
 .fortale-type-choice.is-accented.accent-story::before {
@@ -2784,30 +2775,6 @@ button.fortale-hero-inline-field {
 
 .fortale-hero-inline-row {
   align-items: end !important;
-}
-
-.fortale-hero-inline-row .fortale-hero-age-input,
-.fortale-hero-inline-row .fortale-wizard-select-trigger {
-  display: flex !important;
-  align-items: center !important;
-  width: 100% !important;
-  height: 48px !important;
-  min-height: 48px !important;
-  max-height: 48px !important;
-  margin-top: 4px !important;
-  padding: 0 12px !important;
-  border: 1px solid rgba(139, 187, 244, 0.42) !important;
-  border-radius: 16px !important;
-  box-sizing: border-box !important;
-  background: rgba(18, 58, 102, 0.82) !important;
-  line-height: 1 !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.13),
-    inset 0 0 0 1px rgba(139, 187, 244, 0.18) !important;
-}
-
-.fortale-hero-inline-row .fortale-wizard-select-trigger {
-  justify-content: space-between !important;
 }
 
 .fortale-form-button {
@@ -3349,8 +3316,8 @@ button.fortale-hero-inline-field {
   overflow: hidden;
   border: 1px solid rgba(207, 229, 251, 0.25);
   border-radius: 3px 10px 10px 3px;
-  background: #081a30;
-  box-shadow: 0 9px 18px rgba(2, 12, 28, 0.22);
+  background: transparent;
+  box-shadow: none;
 }
 
 .fortale-book-list-cover-media > img,
@@ -3689,10 +3656,7 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-library-view.view-container {
-  background:
-    radial-gradient(circle at 17% 0%, rgba(80, 118, 172, 0.22), transparent 34%),
-    radial-gradient(circle at 84% 9%, rgba(74, 112, 168, 0.18), transparent 34%),
-    linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%) !important;
+  background: linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%) !important;
 }
 
 .fortale-library-content {
@@ -3701,14 +3665,8 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-library-view::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(20,48,86,0.08) 44%, rgba(76,128,190,0.18) 100%),
-    radial-gradient(ellipse at 50% 0%, rgba(117,155,205,0.2) 0%, transparent 54%);
-  z-index: 0;
+  content: none;
+  display: none;
 }
 
 .fortale-library-hero {
@@ -3767,6 +3725,144 @@ button.fortale-hero-inline-field {
 
 .fortale-wizard-fields {
   padding-bottom: calc(170px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Every editable wizard control uses the same translucent search-field glass. */
+#root .fortale-wizard-fields input.fortale-wizard-glass-control,
+#root .fortale-wizard-fields textarea.fortale-wizard-glass-control,
+#root .fortale-wizard-fields select.fortale-wizard-glass-control,
+#root .fortale-wizard-fields button.fortale-wizard-glass-control {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 1px solid rgba(248, 250, 248, 0.68) !important;
+  border-radius: 18px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 12px 28px -24px rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(18px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+}
+
+#root .fortale-wizard-fields input.fortale-wizard-glass-control:focus,
+#root .fortale-wizard-fields textarea.fortale-wizard-glass-control:focus,
+#root .fortale-wizard-fields select.fortale-wizard-glass-control:focus,
+#root .fortale-wizard-fields button.fortale-wizard-glass-control:focus {
+  border-color: rgba(255, 255, 255, 0.88) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+#root .fortale-wizard-fields input.fortale-wizard-glass-control::placeholder,
+#root .fortale-wizard-fields textarea.fortale-wizard-glass-control::placeholder {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+#root .fortale-wizard-fields select.fortale-wizard-glass-control {
+  padding-right: 36px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  background-size: 14px 14px !important;
+}
+
+.fortale-wizard-fields .fortale-hero-paired-control {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 50px !important;
+  min-height: 50px !important;
+  max-height: 50px !important;
+  margin-top: 4px !important;
+  border-width: 1px !important;
+  border-radius: 18px !important;
+  box-sizing: border-box !important;
+}
+
+/* Book rows expose only their content; no card/surface sits beneath the cover
+   or description in Home and Community. */
+.fortale-home-book-rail .fortale-home-list-card,
+.fortale-home-book-rail .fortale-home-list-card .fortale-book-list-info,
+.fortale-library-cover-grid .fortale-book-list-item,
+.fortale-library-cover-grid .fortale-book-list-item .fortale-book-list-info {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Global button elevation must not turn title/description buttons into dark
+   rectangles beneath book copy. */
+.fortale-book-list-cover,
+.fortale-book-list-title,
+.fortale-book-list-description {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Community detail hero and preview images have no secondary layer. */
+.community-book-detail .community-detail-hero,
+.community-book-detail .community-detail-hero > *,
+.community-book-detail .community-detail-media-grid,
+.community-book-detail .community-detail-media-item,
+.community-book-detail .community-detail-media-item > *,
+.community-book-detail .fortale-book-list-cover-media {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Hero count, primary hero and companions read as one linked input flow. */
+.fortale-wizard-component-chain {
+  display: grid;
+  gap: 29px !important;
+}
+
+.fortale-wizard-component-chain > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0 !important;
+}
+
+.fortale-wizard-chain-node {
+  position: relative;
+  overflow: visible !important;
+}
+
+.fortale-wizard-chain-node:not(:last-child)::before {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 4;
+  width: 6px;
+  height: 29px;
+  background:
+    radial-gradient(circle at 50% 3px, rgba(255, 255, 255, 0.52) 0 3px, transparent 3.2px),
+    radial-gradient(circle at 50% 26px, rgba(255, 255, 255, 0.52) 0 3px, transparent 3.2px);
+  content: '';
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.fortale-wizard-chain-node:not(:last-child)::after {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 3;
+  width: 8px;
+  height: 13px;
+  border: 1.6px solid rgba(255, 255, 255, 0.46);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  content: '';
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 /* Wizard option signs are linked to the option directly below them. This is
@@ -3864,104 +3960,18 @@ button.fortale-hero-inline-field {
 
 .wizard-footer-controls {
   display: grid;
-  height: 52px;
-  min-height: 52px;
-  max-height: 52px;
   box-sizing: border-box;
-  align-items: stretch;
+  align-items: center;
   padding-top: 0;
   padding-bottom: 0;
 }
 
 .wizard-footer-controls.has-back {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .wizard-footer-controls.only-primary {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.wizard-footer-button {
-  display: inline-flex;
-  width: 100%;
-  height: 52px !important;
-  min-height: 52px !important;
-  max-height: 52px !important;
-  box-sizing: border-box;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 0;
-  padding: 0 14px;
-  border: 1px solid var(--wizard-footer-border, rgba(139, 187, 244, 0.24)) !important;
-  border-radius: 18px;
-  appearance: none;
-  -webkit-appearance: none;
-  background: var(--wizard-footer-background, #102f56) !important;
-  font-size: 13px;
-  font-weight: 400 !important;
-  line-height: 1;
-  box-shadow: var(--float-shadow-control) !important;
-  transform: none !important;
-  filter: none !important;
-  overflow: hidden;
-}
-
-.wizard-footer-back,
-.wizard-footer-back :where(span, svg),
-.wizard-footer-novel,
-.wizard-footer-novel :where(span, svg) {
-  color: #fff !important;
-  -webkit-text-fill-color: #fff !important;
-}
-
-.wizard-footer-back {
-  --wizard-footer-border: rgba(139, 187, 244, 0.24);
-  --wizard-footer-background: #102f56;
-}
-
-.wizard-footer-fairy_tale,
-.wizard-footer-fairy_tale :where(span, svg),
-.wizard-footer-story,
-.wizard-footer-story :where(span, svg) {
-  color: #000 !important;
-  -webkit-text-fill-color: #000 !important;
-}
-
-.wizard-footer-fairy_tale {
-  --wizard-footer-border: rgba(255, 255, 255, 0.76);
-  --wizard-footer-background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94));
-}
-
-.wizard-footer-novel {
-  --wizard-footer-border: rgba(255, 140, 140, 0.72);
-  --wizard-footer-background: linear-gradient(135deg, rgba(248,113,113,0.98), rgba(239,68,68,0.94));
-}
-
-.wizard-footer-story {
-  --wizard-footer-border: rgba(255, 238, 140, 0.78);
-  --wizard-footer-background: linear-gradient(135deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94));
-}
-
-.wizard-footer-button:disabled {
-  color: #fff !important;
-  --wizard-footer-border: rgba(135, 164, 197, 0.1);
-  --wizard-footer-background: rgba(10, 20, 32, 0.45);
-  opacity: 0.55;
-  -webkit-text-fill-color: #fff !important;
-}
-
-.wizard-footer-button:disabled :where(span, svg) {
-  color: #fff !important;
-  -webkit-text-fill-color: #fff !important;
-}
-
-.fortale-wizard-select-trigger:not(:disabled),
-.fortale-wizard-select-trigger:not(:disabled) :where(span, svg) {
-  color: #fff !important;
-  font-weight: 400 !important;
-  opacity: 1 !important;
-  -webkit-text-fill-color: #fff !important;
 }
 
 .fortale-home-community-footer > button {
@@ -4369,7 +4379,12 @@ button.fortale-hero-inline-field {
   --fortale-floatisland-half-height: 25px;
   --fortale-floatisland-clearance: calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-half-height));
   --fortale-modal-top-clearance: calc(var(--app-header-row-top) + 56px);
+  --fortale-modal-surface: #16446f;
   --fortale-sheet-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fortale-floatisland-root {
+  bottom: var(--fortale-floatisland-bottom);
 }
 
 .fortale-modal-backdrop,
@@ -4406,9 +4421,7 @@ button.fortale-hero-inline-field {
 .fortale-sheet-surface {
   border: 1px solid rgba(225, 241, 255, 0.26);
   border-radius: 28px;
-  background:
-    radial-gradient(circle at 16% 0%, rgba(155, 199, 255, 0.2), transparent 38%),
-    linear-gradient(155deg, rgba(20, 52, 87, 0.76), rgba(7, 27, 52, 0.74));
+  background: var(--fortale-modal-surface);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.24),
     inset 0 -1px 0 rgba(155, 199, 255, 0.1),

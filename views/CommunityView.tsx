@@ -591,7 +591,7 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
               const bookLabels = getCommunityBookSectionLabels(selected.language);
               return (
               <div className="community-book-detail space-y-5 p-4">
-                <section className="flex gap-4">
+                <section className="community-detail-hero flex gap-4">
                   <div className="w-[126px] shrink-0"><span className="fortale-book-list-cover-media"><BookCover book={selected} /></span></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
@@ -637,9 +637,9 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
                 </section>
 
                 {selected.previewImages && selected.previewImages.length > 0 && (
-                  <section className={`grid gap-3 ${selected.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  <section className={`community-detail-media-grid grid gap-3 ${selected.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
                     {selected.previewImages.slice(0, selected.bookType === 'story' ? 1 : 2).map((image) => (
-                      <button key={image.id} type="button" onClick={() => setImageViewer(image)} className="group block min-w-0 overflow-hidden text-left">
+                      <button key={image.id} type="button" onClick={() => setImageViewer(image)} className="community-detail-media-item group block min-w-0 overflow-hidden text-left">
                         <div className={`${selected.bookType === 'story' ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden`}><img src={image.url} alt={image.title || selected.title} className={`h-full w-full transition-transform duration-300 group-hover:scale-[1.03] ${selected.bookType === 'story' ? 'object-contain' : 'object-cover'}`} loading="lazy" /></div>
                       </button>
                     ))}

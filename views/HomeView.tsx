@@ -3455,10 +3455,8 @@ export default function HomeView({
     { creditCount: selectedCreateCreditCost }
   );
   const WIZARD_FIELD_HEIGHT_PX = 54;
-  const wizardFieldClass = 'fortale-input-surface fortale-wizard-field fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 text-[13px] text-white placeholder:text-white focus:outline-none';
+  const wizardFieldClass = 'fortale-wizard-glass-control fortale-wizard-field fortale-wizard-keyboard-input mt-1 w-full px-3 text-[13px] text-white placeholder:text-white focus:outline-none';
   const wizardFieldStyle = (options: { fixedHeight?: boolean } = {}): React.CSSProperties => ({
-    borderColor: 'rgba(139, 187, 244, 0.24)',
-    background: 'rgba(18, 58, 102, 0.76)',
     boxSizing: 'border-box',
     ...(options.fixedHeight === false
       ? {}
@@ -3469,22 +3467,7 @@ export default function HomeView({
         lineHeight: '1'
       })
   });
-  const wizardInlineControlStyle: React.CSSProperties = {
-    borderColor: 'rgba(139, 187, 244, 0.42)',
-    background: 'rgba(18, 58, 102, 0.82)',
-    boxSizing: 'border-box',
-    height: 50,
-    minHeight: 50,
-    maxHeight: 50,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderRadius: 16,
-    marginTop: 4,
-    padding: '0 12px',
-    lineHeight: 1,
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.13), inset 0 0 0 1px rgba(139, 187, 244, 0.18)'
-  };
-  const wizardTextareaClass = 'fortale-input-surface fortale-wizard-keyboard-input mt-1 w-full rounded-[18px] border px-3 py-3 text-[13px] text-white placeholder:text-white resize-none focus:outline-none';
+  const wizardTextareaClass = 'fortale-wizard-glass-control fortale-wizard-keyboard-input mt-1 w-full px-3 py-3 text-[13px] text-white placeholder:text-white resize-none focus:outline-none';
   const selectedBookTypeOptionStyle = selectedBookType === 'fairy_tale'
     ? {
       borderColor: 'rgba(255,255,255,0.72)',
@@ -3494,10 +3477,10 @@ export default function HomeView({
     }
     : selectedBookType === 'novel'
     ? {
-      borderColor: 'rgba(255,140,140,0.68)',
-      background: 'linear-gradient(135deg, rgba(248,113,113,0.96), rgba(239,68,68,0.9))',
+      borderColor: 'rgba(255,82,92,0.78)',
+      background: 'linear-gradient(135deg, rgba(239,35,47,0.98), rgba(185,18,32,0.94))',
       color: '#ffffff',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.24), 0 8px 18px rgba(239,68,68,0.16)'
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.24), 0 8px 18px rgba(220,24,39,0.22)'
     }
     : {
       borderColor: 'rgba(255,238,140,0.72)',
@@ -3506,8 +3489,8 @@ export default function HomeView({
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5), 0 8px 18px rgba(250,204,21,0.16)'
     };
   const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
-    borderColor: isSelected ? selectedBookTypeOptionStyle.borderColor : 'rgba(135, 164, 197, 0.18)',
-    background: isSelected ? selectedBookTypeOptionStyle.background : 'rgba(18, 58, 102, 0.64)',
+    borderColor: isSelected ? selectedBookTypeOptionStyle.borderColor : 'rgba(244, 248, 244, 0.68)',
+    background: isSelected ? selectedBookTypeOptionStyle.background : 'rgba(196, 204, 198, 0.42)',
     color: isSelected ? selectedBookTypeOptionStyle.color : '#ffffff',
     WebkitTextFillColor: isSelected ? selectedBookTypeOptionStyle.color : '#ffffff',
     fontWeight: 400,
@@ -3515,6 +3498,7 @@ export default function HomeView({
     minHeight: 46,
     boxShadow: isSelected ? selectedBookTypeOptionStyle.boxShadow : undefined
   });
+  const wizardChoiceButtonClass = 'rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-all active:scale-[0.98]';
   const primaryActionButtonStyle: React.CSSProperties = selectedBookType === 'fairy_tale'
     ? {
       background: 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94))',
@@ -3524,10 +3508,10 @@ export default function HomeView({
     }
     : selectedBookType === 'novel'
     ? {
-      background: 'linear-gradient(135deg, rgba(248,113,113,0.98), rgba(239,68,68,0.94))',
+      background: 'linear-gradient(135deg, rgba(239,35,47,0.98), rgba(185,18,32,0.94))',
       color: '#ffffff',
-      borderColor: 'rgba(255,140,140,0.72)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 24px rgba(239,68,68,0.22)'
+      borderColor: 'rgba(255,82,92,0.82)',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 24px rgba(220,24,39,0.28)'
     }
     : {
       background: 'linear-gradient(135deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94))',
@@ -3543,9 +3527,10 @@ export default function HomeView({
     <FortaleDropdown
       label={t('Cinsiyet')}
       value={value}
-      options={genderPickerOptions.map((option) => ({ value: option.value, label: t(option.label) }))}
+      options={genderPickerOptions.map((option) => ({ ...option, label: t(option.label) }))}
       onChange={onSelect}
-      triggerClassName="fortale-wizard-select-trigger !h-[46px] !rounded-[14px] !px-3 !text-[13px] !font-normal"
+      className="w-full"
+      triggerClassName="fortale-wizard-glass-control fortale-hero-paired-control !px-3 !text-[13px] !font-normal"
       wizardStyle
     />
   );
@@ -3657,7 +3642,7 @@ export default function HomeView({
   const wizardAccentColor = (activeGeneratingBookType ?? selectedBookType) === 'fairy_tale'
     ? 'linear-gradient(90deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94))'
     : (activeGeneratingBookType ?? selectedBookType) === 'novel'
-    ? 'linear-gradient(90deg, rgba(248,113,113,0.98), rgba(239,68,68,0.94))'
+    ? 'linear-gradient(90deg, rgba(239,35,47,0.98), rgba(185,18,32,0.94))'
     : 'linear-gradient(90deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94))';
   const showStickyNotes = false;
   const stickyModalTop =
@@ -3927,7 +3912,7 @@ export default function HomeView({
             {/* PROGRESS DOTS: generating'de gizle, intro'da invisible */}
             {!isGenerating && !isCreationIntroOnly && (
               <div
-                className="px-4 pb-2 border-b border-white/[0.06]"
+                className="px-4 pb-2"
               >
                 <div className="flex gap-1.5">
                   {visibleCreationSteps.map((_, index) => (
@@ -4082,7 +4067,7 @@ export default function HomeView({
                                     setSelectedTheme('');
                                   }
                                 }}
-                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                className={`${wizardChoiceButtonClass} text-left`}
                                 style={wizardOptionButtonStyle(isSelected)}
                                 aria-pressed={isSelected}
                               >
@@ -4097,7 +4082,7 @@ export default function HomeView({
                                 setSelectedSubGenre(CUSTOM_WIZARD_OPTION);
                                 setSelectedTheme('');
                               }}
-                              className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                              className={`${wizardChoiceButtonClass} text-left`}
                               style={wizardOptionButtonStyle(selectedSubGenre === CUSTOM_WIZARD_OPTION)}
                               aria-pressed={selectedSubGenre === CUSTOM_WIZARD_OPTION}
                             >
@@ -4248,9 +4233,30 @@ export default function HomeView({
 
                   {/* ── ADIM 5: Kahramanlar ── */}
                   {creationStep === storyModeStep && (
-                    <div className="space-y-2.5 pt-1">
+                    <div className="fortale-wizard-component-chain space-y-2.5 pt-1">
+                      <div className="fortale-wizard-chain-node fortale-library-panel relative z-[1] rounded-2xl border px-3 py-3">
+                        <p className="fortale-section-kicker mb-2.5">{t('Kahraman sayısı')}</p>
+                        <div className="fortale-wizard-choice-chain-grid fortale-wizard-choice-chain-grid-four grid grid-cols-4 gap-2">
+                          {HERO_COUNT_OPTIONS.map((count) => {
+                            const isSelected = heroCount === count;
+                            return (
+                              <button
+                                key={count}
+                                type="button"
+                                onClick={() => handleHeroCountChange(count)}
+                                className="rounded-xl border px-2 py-2.5 text-center text-[13px] font-bold transition-all active:scale-[0.98]"
+                                style={wizardOptionButtonStyle(isSelected)}
+                                aria-pressed={isSelected}
+                              >
+                                {count}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       <div
-                        className="fortale-library-panel relative rounded-2xl border px-3 py-3"
+                        className="fortale-wizard-chain-node fortale-library-panel relative rounded-2xl border px-3 py-3"
                       >
                         <div className="space-y-3">
                           <div>
@@ -4273,8 +4279,7 @@ export default function HomeView({
                                 maxLength={24}
                                 inputMode="numeric"
                                 placeholder={t('Örn: 9')}
-                                className="fortale-input-surface fortale-wizard-keyboard-input fortale-hero-age-input w-full text-[13px] text-white placeholder:text-white focus:outline-none"
-                                style={wizardInlineControlStyle}
+                                className="fortale-wizard-glass-control fortale-wizard-keyboard-input fortale-hero-age-input fortale-hero-paired-control w-full px-3 text-[13px] text-white placeholder:text-white focus:outline-none"
                               />
                             </div>
                             <div>
@@ -4287,30 +4292,9 @@ export default function HomeView({
                         </div>
                       </div>
 
-                      <div className="fortale-library-panel relative z-[1] rounded-2xl border px-3 py-3">
-                        <p className="fortale-section-kicker mb-2.5">{t('Kahraman sayısı')}</p>
-                        <div className="fortale-wizard-choice-chain-grid fortale-wizard-choice-chain-grid-four grid grid-cols-4 gap-2">
-                          {HERO_COUNT_OPTIONS.map((count) => {
-                            const isSelected = heroCount === count;
-                            return (
-                              <button
-                                key={count}
-                                type="button"
-                                onClick={() => handleHeroCountChange(count)}
-                                className="rounded-xl border px-2 py-2.5 text-center text-[13px] font-bold transition-all active:scale-[0.98]"
-                                style={wizardOptionButtonStyle(isSelected)}
-                                aria-pressed={isSelected}
-                              >
-                                {count}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
                       {heroCount > 1 && (
                         <div
-                          className="fortale-library-panel relative rounded-2xl border px-3 py-3 space-y-3"
+                          className="fortale-wizard-chain-node fortale-library-panel relative rounded-2xl border px-3 py-3 space-y-3"
                         >
                           <p className="fortale-section-kicker">{t('Diğer kahramanlar')}</p>
                           {Array.from({ length: heroCount - 1 }, (_, index) => {
@@ -4633,7 +4617,8 @@ export default function HomeView({
                   <button
                     type="button"
                     onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
-                    className="wizard-footer-button wizard-footer-back"
+                    className={`${wizardChoiceButtonClass} inline-flex w-full items-center justify-center gap-2 text-center`}
+                    style={wizardOptionButtonStyle(false)}
                   >
                     <ArrowLeft size={14} />{t('Geri')}
                   </button>
@@ -4643,7 +4628,8 @@ export default function HomeView({
                     type="button"
                     onClick={() => { if (requireLoginForGeneration()) return; setCreationStep((prev) => getNextCreationStep(prev)); }}
                     disabled={!canMoveNext}
-                    className={`wizard-footer-button wizard-footer-back wizard-footer-${selectedBookType}`}
+                    className={`${wizardChoiceButtonClass} inline-flex w-full items-center justify-center gap-2 text-center`}
+                    style={{ ...wizardOptionButtonStyle(true), opacity: canMoveNext ? 1 : 0.55 }}
                   >
                     {t('İleri')}<ArrowRight size={14} />
                   </button>
@@ -4655,7 +4641,8 @@ export default function HomeView({
                       void handleCreateSmartBook();
                     }}
                     disabled={!canCreateOnFinalStep}
-                    className={`wizard-footer-button wizard-footer-back wizard-footer-${selectedBookType}`}
+                    className={`${wizardChoiceButtonClass} inline-flex w-full items-center justify-center gap-2 text-center`}
+                    style={{ ...wizardOptionButtonStyle(true), opacity: canCreateOnFinalStep ? 1 : 0.55 }}
                   >
                     <BookPlus size={15} />{t('Oluştur')}
                   </button>
@@ -4895,7 +4882,7 @@ export default function HomeView({
             const bookLabels = getCommunityBookSectionLabels(selectedHomeCommunityBook.language);
             return (
             <div className="community-book-detail space-y-5 p-4">
-              <section className="flex gap-4">
+              <section className="community-detail-hero flex gap-4">
                 <div className="w-[126px] shrink-0">
                   <span className="fortale-book-list-cover-media">
                     {selectedHomeCommunityBook.coverImageUrl ? (
@@ -4925,9 +4912,9 @@ export default function HomeView({
               </section>
 
               {selectedHomeCommunityBook.previewImages && selectedHomeCommunityBook.previewImages.length > 0 && (
-                <section className={`grid gap-3 ${selectedHomeCommunityBook.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                <section className={`community-detail-media-grid grid gap-3 ${selectedHomeCommunityBook.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
                   {selectedHomeCommunityBook.previewImages.slice(0, selectedHomeCommunityBook.bookType === 'story' ? 1 : 2).map((image) => (
-                    <div key={image.id} className={`${selectedHomeCommunityBook.bookType === 'story' ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden`}>
+                    <div key={image.id} className={`community-detail-media-item ${selectedHomeCommunityBook.bookType === 'story' ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden`}>
                       <img src={image.url} alt={image.title || selectedHomeCommunityBook.title} className={`h-full w-full ${selectedHomeCommunityBook.bookType === 'story' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
                     </div>
                   ))}

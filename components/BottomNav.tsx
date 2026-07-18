@@ -30,7 +30,10 @@ export default function BottomNav({
   const isSettingsActive = isSettingsOpen;
 
   const navigation = (
-    <div className="fixed bottom-5 left-0 right-0 pointer-events-none flex flex-col items-center gap-2 px-4 pb-safe" style={{ zIndex: 20000 }}>
+    <div
+      className="fortale-floatisland-root fixed left-0 right-0 pointer-events-none flex flex-col items-center gap-2 px-4"
+      style={{ zIndex: 20000 }}
+    >
       {showCourseScrollTop && (
         <button
           type="button"
