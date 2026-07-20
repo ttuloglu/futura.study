@@ -1,48 +1,69 @@
-# f-study: AI Destekli Kişiselleştirilmiş Öğrenme Platformu
+# Fortale — Create, Discover and Share
 
-Minimalist tasarım ve yapay zeka gücüyle oluşturulmuş, mobil öncelikli yeni nesil öğrenme deneyimi.
+Fortale; fikirleri yapay zeka destekli, görselli ve sesli dijital kitaplara dönüştüren mobil öncelikli bir üretim, okuma ve paylaşım platformudur.
 
-## Özellikler
+## Ürün Özellikleri
 
-*   **AI Müfredat Oluşturucu**: Herhangi bir konu için (Python, Makroekonomi, Sanat Tarihi vb.) anında yapılandırılmış ders planı oluşturur.
-*   **Dinamik İçerik Üretimi**:
-    *   **Ders Notları**: Akademik derinlikte, markdown formatında ders içerikleri.
-    *   **Podcast Senaryoları**: Konuyu tartışan iki kişilik diyaloglar.
-    *   **Sınavlar & Testler**: Öğrenilenleri pekiştirmek için zorluk seviyesine göre üretilen testler.
-    *   **Akıllı Tekrar**: Başarısız olunan konularda eksikleri kapatmaya yönelik özel içerik.
-*   **İlerleme Takibi**: Görselleştirilmiş ilerleme çubukları ve adım adım akış.
-*   **Minimalist Arayüz**: Odaklanmayı artıran, modern ve temiz tasarım (Swiss Style).
-*   **Asistan (AI Chat)**: Konu bağlamında soruları yanıtlayan kişisel asistan.
+- **Masal, hikaye ve çalışma kitabı üretimi**: Alt tür, tema, yaş/seviye, karakter, zaman, mekan ve hikaye çekirdeğine göre kişiselleştirilmiş kitaplar.
+- **Karakter portresi**: Yüklenen portreyi karakter kimliği için görsel referans olarak kullanma.
+- **Görsel ve sesli okuma**: Kapak ve bölüm görselleri, sayfa seslendirmesi, podcast ve arka plan sesi desteği.
+- **Çalışma kitabı seçenekleri**: Gerçek yaşam örnekleri, quiz ve ilgili kitap önerileri.
+- **Kişisel kitaplık**: Arama, filtreleme, sıralama, bulut senkronizasyonu ve cihaz önbelleği.
+- **Dışa aktarma**: Kitapları PDF ve EPUB olarak indirme ve paylaşma.
+- **Topluluk**: Kitap yayınlama, önizleme, beğeni, yorum, takip, bildirim, şikayet ve moderasyon.
+- **Çoklu dil**: Türkçe dahil 20 arayüz dili.
+- **Kredi ekonomisi**: Kitap üretimi, portre kullanımı ve topluluk kitaplarını kişisel kitaplığa ekleme için kredi sistemi.
 
-## Teknolojiler
+## Teknoloji
 
-*   **Frontend**: React 19, Tailwind CSS, Lucide React
-*   **AI Gateway (Backend)**: Firebase Cloud Functions + Google Gemini API (`@google/genai`)
-*   **Güvenlik**: Gemini anahtarı Google Secret Manager üzerinde saklanır (frontend'e verilmez)
-*   **Mimari**: SPA + Backend API katmanı (frontend doğrudan model API çağrısı yapmaz)
+- **İstemci**: React 19, TypeScript, Vite, Tailwind CSS
+- **Mobil**: Capacitor 8, iOS ve Android
+- **Backend**: Firebase Authentication, Firestore, Storage, Cloud Functions ve Cloud Messaging
+- **Yapay zeka**: Metin planlama ve üretiminde Gemini; görsel üretimi ve desteklenen ses akışlarında OpenAI
+- **Satın alma**: RevenueCat üzerinden uygulama içi kredi paketleri
 
-## Kurulum
+## Yerel Geliştirme
 
-1.  Repoyu klonlayın.
-2.  Root bağımlılıkları kurun: `npm install`
-3.  Functions bağımlılıklarını kurun: `cd functions && npm install && cd ..`
-4.  `.env` dosyasında sadece Firebase istemci anahtarlarını tanımlayın:
-    * `VITE_FIREBASE_API_KEY`
-    * `VITE_FIREBASE_AUTH_DOMAIN`
-    * `VITE_FIREBASE_PROJECT_ID`
-    * `VITE_FIREBASE_STORAGE_BUCKET`
-    * `VITE_FIREBASE_MESSAGING_SENDER_ID`
-    * `VITE_FIREBASE_APP_ID`
-    * `VITE_FIREBASE_MEASUREMENT_ID`
-5.  Gemini anahtarını Secret Manager'a yazın:
-    * `firebase functions:secrets:set GEMINI_API_KEY`
-6.  Function deploy edin:
-    * `firebase deploy --only functions:aiGateway`
-7.  Uygulamayı başlatın:
-    * `npm run dev`
+1. Ana bağımlılıkları kurun:
 
-## Güvenlik Notları
+   ```bash
+   npm install
+   ```
 
-*   Gemini API key artık frontend tarafından kullanılmaz ve `.env` içine konulmaz.
-*   AI çağrılarının tamamı `aiGateway` Cloud Function üzerinden geçer.
-*   Backend tarafında input doğrulama, operasyon whitelist'i ve istek/çıktı limitleri uygulanır.
+2. Cloud Functions bağımlılıklarını kurun:
+
+   ```bash
+   cd functions
+   npm install
+   cd ..
+   ```
+
+3. Firebase istemci değişkenlerini `.env` dosyasına ekleyin:
+
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - `VITE_FIREBASE_APP_ID`
+   - `VITE_FIREBASE_MEASUREMENT_ID`
+
+4. Uygulamayı başlatın:
+
+   ```bash
+   npm run dev
+   ```
+
+## Güvenlik ve Veri Mimarisi
+
+- Model ve servis anahtarları istemciye verilmez; Secret Manager ve Cloud Functions üzerinden kullanılır.
+- Kitaplar ve kullanıcı dosyaları kullanıcıya özel Firestore ve Storage yollarında saklanır.
+- Kredi hareketleri ve topluluk mutasyonları doğrudan istemciden değil, sunucu tarafındaki doğrulanmış callable işlevlerden yürütülür.
+- E-posta giriş kodları, kullanım limitleri, kredi cüzdanları ve moderasyon verileri sunucuya özeldir.
+
+## Kontroller
+
+```bash
+npm run build
+npm run i18n:check
+```

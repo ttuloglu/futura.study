@@ -134,7 +134,6 @@ const PODCAST_VOICE_OPTIONS: Array<{ id: string; label: string; voiceName: Podca
 const FULLSCREEN_READER_FONT_STEP_MIN = -1;
 const FULLSCREEN_READER_FONT_STEP_MAX = 3;
 const DEFAULT_PODCAST_VOICE_NAME: PodcastVoiceName = PODCAST_VOICE_OPTIONS[0].voiceName;
-const IMAGE_PREVIEW_ACTION_TOP = 'calc(env(safe-area-inset-top, 0px) + 76px)';
 
 type ImagePreviewState = {
   url: string;
@@ -3477,6 +3476,8 @@ export default function CourseFlowView({
   const shouldBoostFullscreenReaderOnIpad =
     isReadingFullscreen &&
     (courseData?.bookType === 'story' || courseData?.bookType === 'novel');
+  const shouldPreserveReaderImageAspectRatio =
+    courseData?.bookType === 'story' || courseData?.bookType === 'novel';
   const readingFullscreenFontScale = useMemo(() => {
     if (readingFullscreenFontStep <= -1) return 0.92;
     if (readingFullscreenFontStep === 0) return 1;
@@ -5586,45 +5587,49 @@ export default function CourseFlowView({
           className="fixed inset-0 z-[70] bg-black/78 backdrop-blur-[3px] flex items-center justify-center p-4"
           onClick={() => { if (coverPreviewScaleRef.current <= 1) setCoverPreviewImageUrl(null); }}
         >
-          <div
-            className="absolute right-4 z-[71] flex items-center gap-2"
-            style={{ top: IMAGE_PREVIEW_ACTION_TOP }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
-              onClick={async () => {
-                try {
-                  const topicSlug = String(courseData.topic || 'gorsel')
-                    .trim()
-                    .toLocaleLowerCase('tr-TR')
-                    .replace(/[^a-z0-9çğıöşü_-]+/gi, '-')
-                    .replace(/-+/g, '-')
-                    .replace(/^-|-$/g, '') || 'gorsel';
-                  await downloadFile({
-                    url: coverPreviewImageUrl,
-                    fileName: `${topicSlug}-gorsel.jpg`
-                  });
-                } catch (error) {
-                  console.error('Cover preview download failed:', error);
-                  showIosPopup(t('İndirilecek dosya bulunamadı.'));
-                }
-              }}
-              aria-label={t('İndir')}
-              title={t('İndir')}
-            >
-              <Download size={18} />
-            </button>
-            <button
-              type="button"
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
-              onClick={() => setCoverPreviewImageUrl(null)}
-              aria-label={t('Kapat')}
-              title={t('Kapat')}
-            >
-              <X size={18} />
-            </button>
+          <div className="pointer-events-none absolute inset-x-0 z-[71]" style={{ top: 'var(--app-header-row-top)' }}>
+            <div className="app-chrome-width">
+              <div
+                className="pointer-events-auto flex items-center justify-end gap-1.5 px-2 py-2"
+                dir="ltr"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="fortale-chrome-icon-button h-9 w-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] inline-flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
+                  onClick={async () => {
+                    try {
+                      const topicSlug = String(courseData.topic || 'gorsel')
+                        .trim()
+                        .toLocaleLowerCase('tr-TR')
+                        .replace(/[^a-z0-9çğıöşü_-]+/gi, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-|-$/g, '') || 'gorsel';
+                      await downloadFile({
+                        url: coverPreviewImageUrl,
+                        fileName: `${topicSlug}-gorsel.jpg`
+                      });
+                    } catch (error) {
+                      console.error('Cover preview download failed:', error);
+                      showIosPopup(t('İndirilecek dosya bulunamadı.'));
+                    }
+                  }}
+                  aria-label={t('İndir')}
+                  title={t('İndir')}
+                >
+                  <Download size={17} />
+                </button>
+                <button
+                  type="button"
+                  className="fortale-chrome-icon-button h-9 w-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] inline-flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
+                  onClick={() => setCoverPreviewImageUrl(null)}
+                  aria-label={t('Kapat')}
+                  title={t('Kapat')}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            </div>
           </div>
           <div
             className="flex items-center justify-center select-none"
@@ -6238,7 +6243,7 @@ export default function CourseFlowView({
               <button
                 type="button"
                 onClick={() => setIsReadingFullscreen(true)}
-                className="absolute right-0 z-20 h-9 rounded-xl border border-dashed inline-flex items-center justify-center gap-1.5 px-3 text-white transition-all duration-200 active:scale-95"
+                className="absolute right-0 z-20 h-9 rounded-xl border inline-flex items-center justify-center gap-1.5 px-3 text-white transition-all duration-200 active:scale-95"
                 style={{
                   top: '18px',
                   background: 'rgba(17,22,29,0.78)',
@@ -6330,6 +6335,7 @@ export default function CourseFlowView({
                             quoteFirstParagraph={Boolean(section.heading) && index === 0 && !isNarrativeBook}
                             readerMode="default"
                             fullscreenFontScale={readingFullscreenFontScale}
+                            preserveImageAspectRatio={shouldPreserveReaderImageAspectRatio}
                           />
                         ) : (
                           <div className="min-h-8" />
@@ -6441,6 +6447,7 @@ export default function CourseFlowView({
                         quoteFirstParagraph={node.type === 'lecture' && !isNarrativeBook}
                         readerMode="default"
                         fullscreenFontScale={isReadingFullscreen ? readingFullscreenFontScale : 1}
+                        preserveImageAspectRatio={shouldPreserveReaderImageAspectRatio}
                       />
                     )}
                     {!isLocked && node.content && !isContentHydrated && (

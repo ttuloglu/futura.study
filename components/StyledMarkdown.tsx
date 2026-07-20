@@ -16,12 +16,12 @@ interface StyledMarkdownProps {
   variant?: 'card' | 'inline';
   quoteFirstParagraph?: boolean;
   enableImageLightbox?: boolean;
+  preserveImageAspectRatio?: boolean;
   readerMode?: 'default' | 'fairytale-fullscreen' | 'paged-fullscreen';
   fullscreenFontScale?: number;
 }
 
 const MATH_COMMAND_RE = /\\(?:sum|prod|vec|frac|sqrt|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|phi|omega|Delta|Sigma|Pi|Omega|times|cdot|div|pm|mp|neq|ne|leq|geq|approx|sim|to|rightarrow|leftarrow|infty|in|notin|subseteq|subset|supseteq|cup|cap|forall|exists|therefore|because)\b/;
-const LIGHTBOX_ACTION_TOP = 'calc(env(safe-area-inset-top, 0px) + 76px)';
 
 function normalizeLatexSnippet(input: string): string {
   let out = String(input || '');
@@ -574,6 +574,7 @@ export default function StyledMarkdown({
   variant = 'card',
   quoteFirstParagraph = false,
   enableImageLightbox = true,
+  preserveImageAspectRatio = false,
   readerMode = 'default',
   fullscreenFontScale = 1
 }: StyledMarkdownProps) {
@@ -1171,7 +1172,11 @@ export default function StyledMarkdown({
                   setLightboxImage({ src: safeSrc, alt: safeAlt });
                 }}
                 title={enableImageLightbox ? t('Tam ekran aç') : undefined}
-                className={`my-4 aspect-[16/9] min-h-[210px] w-full border border-white/10 bg-black/20 object-cover transition-opacity ${
+                className={`my-4 block w-full border border-white/10 bg-black/20 transition-opacity ${
+                  preserveImageAspectRatio
+                    ? 'h-auto max-h-[70dvh] object-contain'
+                    : 'aspect-[16/9] min-h-[210px] object-cover'
+                } ${
                   enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
                 }`}
               />
@@ -1197,7 +1202,7 @@ export default function StyledMarkdown({
           setLightboxImage({ src, alt });
         }}
         title={enableImageLightbox ? t('Tam ekran aç') : undefined}
-        className={`block w-full object-cover ${options?.bare ? '' : 'bg-black/20'} ${heightClass} transition-opacity ${
+        className={`block w-full ${preserveImageAspectRatio ? 'h-auto max-h-[70dvh] object-contain' : `object-cover ${heightClass}`} ${options?.bare ? '' : 'bg-black/20'} transition-opacity ${
           enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
         }`}
       />
@@ -1275,7 +1280,7 @@ export default function StyledMarkdown({
                     setLightboxImage({ src: activePagedSection.imageSrc, alt: activePagedSection.imageAlt });
                   }}
                   title={enableImageLightbox ? t('Tam ekran aç') : undefined}
-                  className={`h-full w-full object-cover transition-opacity ${enableImageLightbox ? 'cursor-zoom-in active:opacity-90' : ''}`}
+                  className={`h-full w-full ${preserveImageAspectRatio ? 'object-contain' : 'object-cover'} transition-opacity ${enableImageLightbox ? 'cursor-zoom-in active:opacity-90' : ''}`}
                 />
               </div>
             )}
@@ -1357,6 +1362,7 @@ export default function StyledMarkdown({
     pagedSectionIndex,
     pagedViewportHeight,
     pagedViewportWidth,
+    preserveImageAspectRatio,
     quoteFirstParagraph,
     readerMode,
     safeContent,
@@ -1387,38 +1393,42 @@ export default function StyledMarkdown({
             backgroundColor: `rgba(0, 0, 0, ${lightboxBackdropOpacity})`
           }}
         >
-          <div
-            className="absolute right-4 flex items-center gap-2"
-            style={{ top: LIGHTBOX_ACTION_TOP }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await downloadLightboxImage();
-                  } catch (error) {
-                    console.error('Image download failed:', error);
-                    alert('Görsel indirilemedi.');
-                  }
-                })();
-              }}
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
-              aria-label="Görseli indir"
-              title="Görseli indir"
-            >
-              <Download size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setLightboxImage(null)}
-              className="h-10 w-10 rounded-xl border border-white/30 bg-black/65 text-white inline-flex items-center justify-center active:scale-95"
-              aria-label="Kapat"
-              title="Kapat"
-            >
-              <X size={18} />
-            </button>
+          <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: 'var(--app-header-row-top)' }}>
+            <div className="app-chrome-width">
+              <div
+                className="pointer-events-auto flex items-center justify-end gap-1.5 px-2 py-2"
+                dir="ltr"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        await downloadLightboxImage();
+                      } catch (error) {
+                        console.error('Image download failed:', error);
+                        alert('Görsel indirilemedi.');
+                      }
+                    })();
+                  }}
+                  className="fortale-chrome-icon-button h-9 w-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] inline-flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
+                  aria-label="Görseli indir"
+                  title="Görseli indir"
+                >
+                  <Download size={17} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLightboxImage(null)}
+                  className="fortale-chrome-icon-button h-9 w-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] inline-flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
+                  aria-label="Kapat"
+                  title="Kapat"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            </div>
           </div>
           <div
             className="flex max-h-[98vh] max-w-[98vw] items-center justify-center select-none"
