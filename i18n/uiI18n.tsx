@@ -9,6 +9,7 @@ import { LIBRARY_DASHBOARD_UI_TRANSLATIONS } from '../data/libraryDashboardUiTra
 import { HOME_SHELF_UI_TRANSLATIONS } from '../data/homeShelfUiTranslations';
 import { COMMUNITY_ACTION_UI_TRANSLATIONS } from '../data/communityActionUiTranslations';
 import { CREDIT_UI_TRANSLATIONS } from '../data/creditUiTranslations';
+import { NARRATION_BILLING_UI_TRANSLATIONS } from '../data/narrationBillingUiTranslations';
 
 const translationMaps = new Map<AppLanguageCode, Map<string, string>>();
 const translationLoadPromises = new Map<AppLanguageCode, Promise<Map<string, string>>>();
@@ -2897,6 +2898,9 @@ function translateText(language: AppLanguageCode, value: string): string {
 
   const creditTranslation = CREDIT_UI_TRANSLATIONS[language]?.[value as keyof (typeof CREDIT_UI_TRANSLATIONS)[AppLanguageCode]];
   if (creditTranslation) return creditTranslation;
+
+  const narrationBillingTranslation = NARRATION_BILLING_UI_TRANSLATIONS[language]?.[value as keyof (typeof NARRATION_BILLING_UI_TRANSLATIONS)[AppLanguageCode]];
+  if (narrationBillingTranslation) return narrationBillingTranslation;
 
   const communityTranslation = COMMUNITY_UI_TRANSLATIONS[language]?.[value];
   if (communityTranslation) return communityTranslation;

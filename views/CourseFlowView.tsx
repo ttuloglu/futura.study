@@ -46,7 +46,12 @@ import {
   startPodcastAudioJob,
   generateSummaryCard
 } from '../ai';
-import { PODCAST_CREATE_CREDIT_COST } from '../utils/creditCosts';
+import {
+  getWorkbookNarrationCreditQuote,
+  PODCAST_CREATE_CREDIT_COST,
+  WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE,
+  type WorkbookNarrationCreditQuote
+} from '../utils/creditCosts';
 import { downloadFile } from '../utils/fileDownload';
 import StyledMarkdown, { extractMarkdownImageSections } from '../components/StyledMarkdown';
 import { FREE_PLAN_LIMITS } from '../planLimits';
@@ -234,6 +239,10 @@ function isFairyTaleBookType(bookType: CourseData['bookType'] | undefined): bool
   return normalized === 'fairy_tale' || normalized === 'fairy-tale';
 }
 
+function isWorkbookBookType(bookType: CourseData['bookType'] | undefined): boolean {
+  return String(bookType || '').trim().toLowerCase() === 'story';
+}
+
 function getPodcastVoicePreviewText(languageCode: string): string {
   const normalized = normalizeAppLanguageCode(languageCode) || 'en';
   return PODCAST_VOICE_PREVIEW_TEXTS[normalized] || PODCAST_VOICE_PREVIEW_TEXTS.en;
@@ -313,6 +322,12 @@ type BackgroundReadyToast = {
   title: string;
   message: string;
   nodeId?: string;
+};
+
+type WorkbookNarrationCompletionSummary = {
+  durationSeconds: number;
+  chargedCredits: number;
+  refundedCredits: number;
 };
 
 type PdfBackgroundPresetId = (typeof PDF_BACKGROUND_PRESETS)[number]['id'];
@@ -3400,6 +3415,8 @@ export default function CourseFlowView({
   const [iosPopupMessage, setIosPopupMessage] = useState<string | null>(null);
   const [podcastSkipConfirmNodeId, setPodcastSkipConfirmNodeId] = useState<string | null>(null);
   const [isHeaderPodcastPanelOpen, setIsHeaderPodcastPanelOpen] = useState(false);
+  const [pendingWorkbookNarrationQuote, setPendingWorkbookNarrationQuote] = useState<WorkbookNarrationCreditQuote | null>(null);
+  const [workbookNarrationCompletionSummary, setWorkbookNarrationCompletionSummary] = useState<WorkbookNarrationCompletionSummary | null>(null);
   const [headerPodcastLanguageCode, setHeaderPodcastLanguageCode] = useState<string>('tr');
   const [isPodcastVoicePickerOpen, setIsPodcastVoicePickerOpen] = useState(false);
   const [selectedPodcastVoiceName, setSelectedPodcastVoiceName] = useState<PodcastVoiceName>(DEFAULT_PODCAST_VOICE_NAME);
@@ -4656,9 +4673,24 @@ export default function CourseFlowView({
           ? await onResolveCourseForExport(courseData.id)
           : courseData;
         const exportSource = resolvedCourse || courseData;
+        const currentNodesById = new Map((courseData.nodes || []).map((node) => [node.id, node]));
         const exportCourse: CourseData = {
           ...exportSource,
-          nodes: (exportSource.nodes || []).filter(isNodeVisibleInFlow)
+          nodes: (exportSource.nodes || [])
+            .filter(isNodeVisibleInFlow)
+            .map((node) => {
+              const currentNode = currentNodesById.get(node.id);
+              if (!currentNode) return node;
+              return {
+                ...node,
+                podcastScript: node.podcastScript || currentNode.podcastScript,
+                podcastAudioUrl: node.podcastAudioUrl || currentNode.podcastAudioUrl,
+                podcastSegments: node.podcastSegments?.length ? node.podcastSegments : currentNode.podcastSegments,
+                podcastUsage: node.podcastUsage || currentNode.podcastUsage,
+                podcastVoiceName: node.podcastVoiceName || currentNode.podcastVoiceName,
+                podcastVariants: node.podcastVariants || currentNode.podcastVariants
+              };
+            })
         };
         const { exportCourseToEpub } = await loadExportUtils();
         await exportCourseToEpub(exportCourse);
@@ -4888,8 +4920,13 @@ export default function CourseFlowView({
     e.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
-    if (!isFairyTaleBookType(courseData.bookType)) {
-      showIosPopup(t('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.'));
+    if (!isFairyTaleBookType(courseData.bookType) && !isWorkbookBookType(courseData.bookType)) {
+      showIosPopup(t('İşlem tamamlanamadı.'));
+      return;
+    }
+
+    if (isWorkbookBookType(courseData.bookType)) {
+      void handleCreatePodcast(e);
       return;
     }
 
@@ -4968,7 +5005,7 @@ export default function CourseFlowView({
     e.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
-    if (!isFairyTaleBookType(courseData.bookType)) return;
+    if (!isFairyTaleBookType(courseData.bookType) && !isWorkbookBookType(courseData.bookType)) return;
 
     const podcastNode = getPodcastCarrierNode(courseData.nodes);
     if (!podcastNode) {
@@ -4990,12 +5027,12 @@ export default function CourseFlowView({
     stopPodcastVoicePreview();
   };
 
-  const handleCreatePodcast = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCreatePodcast = async (e?: React.MouseEvent, approvedMaxCreditCost?: number) => {
+    e?.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
-    if (!isFairyTaleBookType(courseData.bookType)) {
-      showIosPopup(t('Masal seslendirme yalnızca masal kitaplarında kullanılabilir.'));
+    if (!isFairyTaleBookType(courseData.bookType) && !isWorkbookBookType(courseData.bookType)) {
+      showIosPopup(t('İşlem tamamlanamadı.'));
       return;
     }
 
@@ -5031,9 +5068,31 @@ export default function CourseFlowView({
       return;
     }
 
-    if (!onRequireCredit('create', PODCAST_CREATE_CREDIT_COST)) {
+    const workbookNarrationQuote = isWorkbookBookType(courseData.bookType)
+      ? getWorkbookNarrationCreditQuote(fullBookScript)
+      : null;
+    if (workbookNarrationQuote && approvedMaxCreditCost === undefined) {
+      setPendingWorkbookNarrationQuote(workbookNarrationQuote);
+      return;
+    }
+    if (
+      workbookNarrationQuote &&
+      Number(approvedMaxCreditCost) + 0.001 < workbookNarrationQuote.reservedCredits
+    ) {
+      setPendingWorkbookNarrationQuote(workbookNarrationQuote);
+      showIosPopup(t('Seslendirme tahmini güncellendi. Lütfen yeniden onaylayın.'));
+      return;
+    }
+
+    const requiredCreditCost = workbookNarrationQuote
+      ? workbookNarrationQuote.reservedCredits
+      : PODCAST_CREATE_CREDIT_COST;
+    if (!isFairyTaleBookType(courseData.bookType) && !onRequireCredit('create', requiredCreditCost)) {
       showIosPopup(
-        t('Podcast oluşturmak için {{var0}} kredi gerekir.').replace('{{var0}}', String(PODCAST_CREATE_CREDIT_COST))
+        t('Podcast oluşturmak için {{var0}} kredi gerekir.').replace(
+          '{{var0}}',
+          requiredCreditCost.toLocaleString(locale, { maximumFractionDigits: 2 })
+        )
       );
       return;
     }
@@ -5043,6 +5102,7 @@ export default function CourseFlowView({
       let resolvedAudioUrl = '';
       let resolvedUsage: PodcastUsageSummary | undefined;
       let resolvedSegmentCount = 0;
+      let resolvedBilling: Awaited<ReturnType<typeof startPodcastAudioJob>>['billing'] | undefined;
       await runExportWithSpinner('podcast-generate', async () => {
         podcastGenerationProgressRef.current = {
           total: 0,
@@ -5082,7 +5142,8 @@ export default function CourseFlowView({
               bookType: courseData.bookType,
               voiceName: selectedVoiceName,
               bookId: courseData.id,
-              nodeId: podcastNode.id
+              nodeId: podcastNode.id,
+              maxCreditCost: workbookNarrationQuote ? approvedMaxCreditCost : undefined
             }
           );
           podcastGenerationProgressRef.current = {
@@ -5149,6 +5210,7 @@ export default function CourseFlowView({
             estimatedCostUsd: jobState.usage.estimatedCostUsd,
             audioFileBytes: jobState.usage.audioFileBytes
           };
+          resolvedBilling = jobState.billing;
 
           updateNodes((nodes) =>
             nodes.map((node) => {
@@ -5192,14 +5254,19 @@ export default function CourseFlowView({
         throw new Error('Podcast sesi üretilemedi.');
       }
       if (resolvedUsage) {
+        const estimatedCostUsd = Math.max(0, Number(resolvedUsage.estimatedCostUsd) || 0);
+        console.info(
+          `[ai-cost] seslendirme toplam - input ${resolvedUsage.inputTokens || 0} out ${resolvedUsage.outputTokens || 0} total ${resolvedUsage.totalTokens || 0} price ${estimatedCostUsd.toFixed(6)} usd`
+        );
         console.info('[podcast-summary]', {
+          estimatedCostUsd: Number(estimatedCostUsd.toFixed(6)),
+          estimatedCostDisplay: `$${estimatedCostUsd.toFixed(6)}`,
           topic: courseData.topic || '',
           language: languageCode,
           segments: resolvedSegmentCount,
           totalTokens: resolvedUsage.totalTokens || 0,
           inputTokens: resolvedUsage.inputTokens || 0,
           outputTokens: resolvedUsage.outputTokens || 0,
-          estimatedCostUsd: resolvedUsage.estimatedCostUsd || 0,
           audioFileBytes: resolvedUsage.audioFileBytes || 0,
           audioFileMB: Number(((resolvedUsage.audioFileBytes || 0) / (1024 * 1024)).toFixed(2))
         });
@@ -5215,11 +5282,27 @@ export default function CourseFlowView({
       setHeaderPodcastLanguageCode(languageCode);
       setIsHeaderPodcastPanelOpen(true);
       setIsPodcastVoicePickerOpen(false);
-      showIosPopup(t('Podcast hazır.'));
+      if (workbookNarrationQuote && resolvedBilling?.actualDurationSeconds) {
+        setWorkbookNarrationCompletionSummary({
+          durationSeconds: resolvedBilling.actualDurationSeconds,
+          chargedCredits: resolvedBilling.chargedCredits,
+          refundedCredits: resolvedBilling.refundedCredits
+        });
+      } else {
+        showIosPopup(t('Podcast hazır.'));
+      }
     } catch (error) {
       console.error('Podcast download failed:', error);
       showIosPopup(getPodcastErrorMessage(error));
     }
+  };
+
+  const handleConfirmWorkbookNarration = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const quote = pendingWorkbookNarrationQuote;
+    if (!quote) return;
+    setPendingWorkbookNarrationQuote(null);
+    void handleCreatePodcast(e, quote.reservedCredits);
   };
 
   const handleHeaderPodcastAudioDownload = async (e: React.MouseEvent) => {
@@ -5282,6 +5365,8 @@ export default function CourseFlowView({
 
   if (!courseData) return null;
   const isFairyTaleBook = isFairyTaleBookType(courseData.bookType);
+  const isWorkbookBook = isWorkbookBookType(courseData.bookType);
+  const supportsHeaderNarration = isFairyTaleBook || isWorkbookBook;
   const displayCoverImageUrl = courseData.deviceCoverImageUrl || courseData.coverImageUrl;
   const headerPodcastNode = getPodcastCarrierNode(courseData.nodes);
   const effectiveHeaderPodcastLanguage = (headerPodcastLanguageCode || resolveActiveLanguageCode()).toLowerCase();
@@ -5294,7 +5379,16 @@ export default function CourseFlowView({
     || headerPodcastNode?.podcastAudioUrl
     || headerPodcastSegments?.[0]?.audioUrl
     || '';
+  const hasHeaderNarrationAudio = Boolean(headerPodcastAudioUrl.trim());
   const hasSegmentedPodcast = headerPodcastSegments.length > 0;
+  const workbookNarrationRateLabel = `${WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })} ${t('kredi')}/${t('dk')}`;
+  const workbookNarrationCompactRateLabel = `${WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}/${t('dk')}`;
 	  if (courseData.visualStoryMode === true) {
 	    return (
 	      <VisualStoryReader
@@ -5556,6 +5650,107 @@ export default function CourseFlowView({
         </div>
       )}
       <FloatIslandSheet
+        isOpen={Boolean(pendingWorkbookNarrationQuote)}
+        onClose={() => setPendingWorkbookNarrationQuote(null)}
+        title={t('Sesli sürümü oluştur')}
+        subtitle={t('Ücret, başlayan her ses dakikası için hesaplanır.')}
+        maxWidth={380}
+        layer={970}
+      >
+        {pendingWorkbookNarrationQuote && (
+          <div className="space-y-3">
+            <div
+              className="rounded-2xl border p-3"
+              style={{ background: 'rgba(17,31,49,0.82)', borderColor: 'rgba(120,171,226,0.34)' }}
+            >
+              <div className="flex items-center justify-between gap-3 text-[12px] text-white">
+                <span>{t('Dakika başına')}</span>
+                <strong>{workbookNarrationRateLabel}</strong>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 text-[12px] text-white">
+                <span>{t('Tahmini süre')}</span>
+                <strong>
+                  {Math.max(1, Math.ceil(pendingWorkbookNarrationQuote.estimatedDurationSeconds / 60)).toLocaleString(locale)} {t('dk')}
+                </strong>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 text-[12px] text-white">
+                <span>{t('Tahmini kredi')}</span>
+                <strong>
+                  {pendingWorkbookNarrationQuote.estimatedCredits.toLocaleString(locale, { maximumFractionDigits: 2 })} {t('kredi')}
+                </strong>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2 text-[12px] text-white" style={{ borderColor: 'rgba(120,171,226,0.22)' }}>
+                <span>{t('Kullanılacak en fazla kredi')}</span>
+                <strong className="text-emerald-200">
+                  {pendingWorkbookNarrationQuote.reservedCredits.toLocaleString(locale, { maximumFractionDigits: 2 })} {t('kredi')}
+                </strong>
+              </div>
+            </div>
+            <p className="text-[11px] leading-relaxed text-white">
+              {t('Daha kısa sürerse fark otomatik iade edilir. Tahmin aşılırsa ek kredi alınmaz.')}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingWorkbookNarrationQuote(null)}
+                className="h-10 rounded-xl border text-[12px] font-bold text-white"
+                style={{ background: 'rgba(17,22,29,0.76)', borderColor: 'rgba(120,171,226,0.28)' }}
+              >
+                {t('İptal')}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmWorkbookNarration}
+                className="h-10 rounded-xl border text-[12px] font-black text-white"
+                style={{ background: 'rgba(5,150,105,0.92)', borderColor: 'rgba(110,231,183,0.64)' }}
+              >
+                {pendingWorkbookNarrationQuote.reservedCredits.toLocaleString(locale, { maximumFractionDigits: 2 })} {t('krediyle seslendir')}
+              </button>
+            </div>
+          </div>
+        )}
+      </FloatIslandSheet>
+      <FloatIslandSheet
+        isOpen={Boolean(workbookNarrationCompletionSummary)}
+        onClose={() => setWorkbookNarrationCompletionSummary(null)}
+        title={t('Seslendirme hazır')}
+        subtitle={t('Sesli çalışma kitabınız kullanıma hazır.')}
+        maxWidth={360}
+        layer={971}
+      >
+        {workbookNarrationCompletionSummary && (
+          <div className="space-y-3">
+            <div
+              className="rounded-2xl border p-3"
+              style={{ background: 'rgba(7,78,60,0.32)', borderColor: 'rgba(110,231,183,0.42)' }}
+            >
+              <div className="flex items-center justify-between gap-3 text-[12px] text-white">
+                <span>{t('Gerçek süre')}</span>
+                <strong>{formatPodcastDurationFromSeconds(workbookNarrationCompletionSummary.durationSeconds, t)}</strong>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 text-[12px] text-white">
+                <span>{t('Kullanılan kredi')}</span>
+                <strong>{workbookNarrationCompletionSummary.chargedCredits.toLocaleString(locale, { maximumFractionDigits: 2 })}</strong>
+              </div>
+              {workbookNarrationCompletionSummary.refundedCredits > 0 && (
+                <div className="mt-2 flex items-center justify-between gap-3 text-[12px] text-emerald-100">
+                  <span>{t('İade edilen kredi')}</span>
+                  <strong>{workbookNarrationCompletionSummary.refundedCredits.toLocaleString(locale, { maximumFractionDigits: 2 })}</strong>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setWorkbookNarrationCompletionSummary(null)}
+              className="h-10 w-full rounded-xl border text-[12px] font-black text-white"
+              style={{ background: 'rgba(5,150,105,0.92)', borderColor: 'rgba(110,231,183,0.64)' }}
+            >
+              {t('Kapat')}
+            </button>
+          </div>
+        )}
+      </FloatIslandSheet>
+      <FloatIslandSheet
         isOpen={Boolean(podcastSkipConfirmNodeId)}
         onClose={() => setPodcastSkipConfirmNodeId(null)}
         title={t('Podcast’i geç')}
@@ -5726,10 +5921,9 @@ export default function CourseFlowView({
                   const isFullEpubExporting = isExportingKey('full-epub');
                   const isPodcastExporting = isExportingKey('podcast-generate');
                   const isPodcastDownloadExporting = isExportingKey('podcast-download');
-                  const hasHeaderPodcastAudio = Boolean(headerPodcastAudioUrl);
                   return (
                     <div className="mt-8 -ml-[88px] w-[calc(100%+88px)]">
-                      <div className={`grid gap-2 ${isFairyTaleBook ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      <div className={`grid gap-2 ${supportsHeaderNarration ? 'grid-cols-3' : 'grid-cols-2'}`}>
                         <button
                           onClick={handlePdfPaletteToggle}
                           disabled={isExportBusy || !canDownloadFullSmartBook}
@@ -5788,29 +5982,49 @@ export default function CourseFlowView({
                           </span>
                         </button>
 
-                        {isFairyTaleBook && (
+                        {supportsHeaderNarration && (
                           <button
                             onClick={handlePodcastDownload}
                             disabled={isExportBusy}
                             className={`group flex-1 h-9 inline-flex items-center justify-center gap-1.5 px-2 rounded-xl border transition-all whitespace-nowrap ${isExportBusy ? 'opacity-85 cursor-wait' : 'hover:-translate-y-[1px] active:scale-95'
-                              }`}
-                            style={{
-                              background: 'rgba(31, 64, 102, 0.92)',
-                              borderColor: 'rgba(171,214,255,0.5)',
-                              boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
-                            }}
-                            title={hasHeaderPodcastAudio ? t('Masalı Seslendir') : t('Masalı Seslendir')}
-                            aria-label={hasHeaderPodcastAudio ? t('Masalı Seslendir') : t('Masalı Seslendir')}
+                            }`}
+                            style={hasHeaderNarrationAudio
+                              ? {
+                                background: 'linear-gradient(135deg, rgba(5,150,105,0.96) 0%, rgba(4,120,87,0.96) 100%)',
+                                borderColor: 'rgba(110,231,183,0.72)',
+                                boxShadow: 'inset 0 0 0 1px rgba(167,243,208,0.22), 0 6px 14px rgba(4,78,60,0.3)'
+                              }
+                              : {
+                                background: 'rgba(31, 64, 102, 0.92)',
+                                borderColor: 'rgba(171,214,255,0.5)',
+                                boxShadow: 'inset 0 0 0 1px rgba(145,191,244,0.24), 0 6px 14px rgba(11,23,38,0.28)'
+                              }}
+                            title={hasHeaderNarrationAudio
+                              ? t('Dinle')
+                              : isWorkbookBook
+                                ? `${t('Seslendir')} · ${workbookNarrationRateLabel}`
+                                : t('Masalı Seslendir')}
+                            aria-label={hasHeaderNarrationAudio
+                              ? t('Dinle')
+                              : isWorkbookBook
+                                ? `${t('Seslendir')} · ${workbookNarrationRateLabel}`
+                                : t('Masalı Seslendir')}
                           >
                             {isPodcastExporting ? (
                               <FaviconSpinner size={16} />
+                            ) : hasHeaderNarrationAudio ? (
+                              <PlayCircle size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                             ) : (
                               <AudioLines size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                             )}
                             <span className="text-[10px] font-bold leading-none text-white">
                               {isPodcastExporting
                                 ? t('Oluşturuluyor')
-                                : t('Masalı Seslendir')}
+                                : hasHeaderNarrationAudio
+                                  ? t('Dinle')
+                                  : isWorkbookBook
+                                    ? `${t('Seslendir')} · ${workbookNarrationCompactRateLabel}`
+                                    : t('Masalı Seslendir')}
                             </span>
                           </button>
                         )}
@@ -5886,9 +6100,9 @@ export default function CourseFlowView({
                           </div>
                         </div>
                       )}
-                      {isFairyTaleBook && isPodcastExporting && (
+                      {supportsHeaderNarration && isPodcastExporting && (
                         <div
-                          className="mt-2 rounded-2xl border border-dashed p-3"
+                          className="mt-2 rounded-2xl border p-3"
                           style={{
                             background: 'rgba(19,33,51,0.86)',
                             borderColor: 'rgba(108,144,186,0.35)',
@@ -5896,7 +6110,7 @@ export default function CourseFlowView({
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border border-dashed border-[#7da3cf]/40 bg-[#0f1b2a]">
+                          <div className="mx-auto w-full max-w-[296px] overflow-hidden rounded-xl border border-[#7da3cf]/40 bg-[#0f1b2a]">
                             <video
                               className="h-auto w-full"
                               src={PODCAST_CREATING_LOOP_VIDEO_SRC}
@@ -5929,9 +6143,9 @@ export default function CourseFlowView({
                           </div>
                         </div>
                       )}
-                      {isFairyTaleBook && isHeaderPodcastPanelOpen && !isPodcastExporting && (
+                      {supportsHeaderNarration && isHeaderPodcastPanelOpen && !isPodcastExporting && (
                         <div
-                          className="mt-2 rounded-2xl border border-dashed p-2"
+                          className="mt-2 rounded-2xl border p-2"
                           style={{
                             background: 'rgba(17, 27, 40, 0.94)',
                             borderColor: 'rgba(120,171,226,0.34)',
@@ -5940,7 +6154,7 @@ export default function CourseFlowView({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                            {t('Podcast')} ({effectiveHeaderPodcastLanguageLabel})
+                            {isWorkbookBook ? t('Seslendirme') : t('Podcast')} ({effectiveHeaderPodcastLanguageLabel})
                           </div>
                           {(headerPodcastAudioUrl && hasSegmentedPodcast) ? (
                             <PodcastInlinePlayer
@@ -5998,24 +6212,30 @@ export default function CourseFlowView({
                                   </span>
                                     <span className="min-w-0 text-left leading-tight">
                                     <span className="block text-[13px] font-black tracking-[0.01em] truncate text-white">
-                                      {t('Podcast oluştur')}
+                                      {isWorkbookBook ? t('Seslendir') : t('Podcast oluştur')}
                                     </span>
                                     <span className="block mt-1 text-[11px] font-medium text-white truncate">
-                                      {isExportBusy ? t('Hazırlanıyor...') : t('Önce sesi test et, sonra oluştur.')}
+                                      {isExportBusy
+                                        ? t('Hazırlanıyor...')
+                                        : isWorkbookBook
+                                          ? t('Tek parça sesli anlatım')
+                                          : t('Önce sesi test et, sonra oluştur.')}
                                     </span>
                                   </span>
                                 </span>
-                                <span
-                                  className="relative ml-2 shrink-0 h-8 px-2.5 rounded-xl inline-flex items-center justify-center text-[11px] font-black"
-                                  style={{
-                                    background: 'rgba(16,185,129,0.12)',
-                                    color: '#dbfff4'
-                                  }}
-                                >
-                                  {PODCAST_CREATE_CREDIT_COST} {t('kredi')}
-                                </span>
+                                {isWorkbookBook && (
+                                  <span
+                                    className="relative ml-2 shrink-0 h-8 px-2.5 rounded-xl inline-flex items-center justify-center text-[11px] font-black"
+                                    style={{
+                                      background: 'rgba(16,185,129,0.12)',
+                                      color: '#dbfff4'
+                                    }}
+                                  >
+                                    {workbookNarrationRateLabel}
+                                  </span>
+                                )}
                               </button>
-                              {isPodcastVoicePickerOpen && (
+                              {isFairyTaleBook && isPodcastVoicePickerOpen && (
                                 <div
                                   className="mt-3 rounded-2xl p-3"
                                   style={{
@@ -6147,7 +6367,7 @@ export default function CourseFlowView({
                           )}
                         </div>
                       )}
-                      <div className="mt-2 border-t border-dashed" style={{ borderColor: 'rgba(120,171,226,0.22)' }} />
+                      <div className="mt-2 border-t" style={{ borderColor: 'rgba(120,171,226,0.22)' }} />
                     </div>
                   );
                 })()}

@@ -12,6 +12,8 @@ import { extractStandaloneMarkdownImages } from './markdownLayout';
 
 const EXPORT_ASSET_TIMEOUT_MS = 7000;
 const EXPORT_NATIVE_ASSET_TIMEOUT_MS = 15000;
+const EXPORT_AUDIO_ASSET_TIMEOUT_MS = 180000;
+const EXPORT_NATIVE_AUDIO_ASSET_TIMEOUT_MS = 300000;
 const MAX_PDF_INLINE_IMAGES = 8;
 const MAX_EPUB_IMAGE_ASSETS = 10;
 const DEFAULT_PDF_PAGE_BACKGROUND_COLOR = '#d9f2ff';
@@ -2176,7 +2178,11 @@ const fetchAssetBlobViaNativeFilesystem = async (url: string): Promise<Blob | nu
     }
 };
 
-const fetchAssetBlob = async (url: string): Promise<Blob | null> => {
+const fetchAssetBlob = async (
+    url: string,
+    timeoutMs = EXPORT_ASSET_TIMEOUT_MS,
+    nativeTimeoutMs = EXPORT_NATIVE_ASSET_TIMEOUT_MS
+): Promise<Blob | null> => {
     const normalizedUrl = String(url || '').trim();
     if (!normalizedUrl) return null;
 
@@ -2185,17 +2191,17 @@ const fetchAssetBlob = async (url: string): Promise<Blob | null> => {
 
     const nativeBlob = await withTimeout(
         fetchAssetBlobViaNativeFilesystem(normalizedUrl),
-        EXPORT_NATIVE_ASSET_TIMEOUT_MS,
+        nativeTimeoutMs,
         null
     );
     if (nativeBlob) return await ensureBlobMediaType(nativeBlob, normalizedUrl);
 
-    const firebaseBlob = await withTimeout(getFirebaseStorageBlobFromUrl(normalizedUrl), EXPORT_ASSET_TIMEOUT_MS, null);
+    const firebaseBlob = await withTimeout(getFirebaseStorageBlobFromUrl(normalizedUrl), timeoutMs, null);
     if (firebaseBlob) return await ensureBlobMediaType(firebaseBlob, normalizedUrl);
 
     try {
         const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), EXPORT_ASSET_TIMEOUT_MS);
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
         const response = await fetch(normalizedUrl, { signal: controller.signal });
         window.clearTimeout(timer);
         if (!response.ok) return null;
@@ -2416,7 +2422,11 @@ class EpubAssetCollector {
         const existing = this.bySource.get(sourceKey);
         if (existing) return existing;
 
-        const rawBlob = await fetchAssetBlob(url);
+        const rawBlob = await fetchAssetBlob(
+            url,
+            kind === 'audio' ? EXPORT_AUDIO_ASSET_TIMEOUT_MS : EXPORT_ASSET_TIMEOUT_MS,
+            kind === 'audio' ? EXPORT_NATIVE_AUDIO_ASSET_TIMEOUT_MS : EXPORT_NATIVE_ASSET_TIMEOUT_MS
+        );
         if (!rawBlob) return null;
 
         let blob = rawBlob;
@@ -3165,6 +3175,44 @@ const formatEpubDate = (value: Date | string | undefined): string => {
     return date.toISOString();
 };
 
+const resolveNodeNarrationAudioUrl = (course: CourseData, node: TimelineNode): string => {
+    const languageCode = String(course.language || '').trim().toLowerCase();
+    const languageVariant = languageCode ? node.podcastVariants?.[languageCode] : undefined;
+    return String(
+        languageVariant?.audioUrl ||
+        node.podcastAudioUrl ||
+        languageVariant?.segments?.[0]?.audioUrl ||
+        node.podcastSegments?.[0]?.audioUrl ||
+        ''
+    ).trim();
+};
+
+const buildNodeNarrationAudioHtml = async (
+    course: CourseData,
+    node: TimelineNode,
+    collector: EpubAssetCollector,
+    sectionBaseName: string
+): Promise<string> => {
+    const audioUrl = resolveNodeNarrationAudioUrl(course, node);
+    if (!audioUrl) return '';
+
+    const audioRef = await collector.addRemoteAsset(audioUrl, 'audio', `${sectionBaseName}_narration`);
+    if (!audioRef) {
+        throw new Error(`EPUB narration audio could not be embedded for node ${node.id}.`);
+    }
+
+    return `
+      <aside class="podcast-block" aria-label="Seslendirme">
+        <h2 class="subheading blue">Seslendirme</h2>
+        <audio controls="controls" preload="metadata">
+          <source src="${escapeXml(toTextSectionRelativeHref(audioRef.href))}" type="${escapeXml(audioRef.mediaType)}" />
+          Ses dosyası bu okuyucuda oynatılamıyor.
+        </audio>
+        <p class="podcast-note">Ses dosyası bu ePub paketine dahildir.</p>
+      </aside>
+    `;
+};
+
 const buildNodeSectionBodyHtml = async (
     course: CourseData,
     node: TimelineNode,
@@ -3175,6 +3223,8 @@ const buildNodeSectionBodyHtml = async (
     const showTabLabel = normalizeExportCompareKey(tabLabel) !== normalizeExportCompareKey(contentTitle);
     const sectionBaseName = `${slugifyFileName(course.topic)}_${node.type}_${slugifyFileName(node.id)}`;
     let bodyParts: string[] = [];
+    const narrationAudioHtml = await buildNodeNarrationAudioHtml(course, node, collector, sectionBaseName);
+    if (narrationAudioHtml) bodyParts.push(narrationAudioHtml);
 
     if (node.type === 'podcast') {
         const scriptHtml = await renderMarkdownToEpubHtml(node.podcastScript || node.content || '_Podcast metni hazır değil._', {

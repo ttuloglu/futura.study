@@ -118,9 +118,9 @@ const autoPublishToCommunity = httpsCallable<
   { communityBookId: string }
 >(functions, 'publishToCommunity');
 const CREDIT_PACKS: CreditPackOption[] = [
-  { id: 'pack-5', createCredits: 10, priceUsd: 4.99 },
+  { id: 'pack-5', createCredits: 10, priceUsd: 5.99 },
   { id: 'pack-15', createCredits: 25, priceUsd: 12.99 },
-  { id: 'pack-30', createCredits: 50, priceUsd: 19.99 }
+  { id: 'pack-30', createCredits: 50, priceUsd: 20.99 }
 ];
 
 function FullScreenFallback({ message }: { message: string }) {
@@ -4935,8 +4935,7 @@ export default function App() {
 
   const resolveCreditCost = (action: CreditActionType, costOverride?: number): number => {
     if (Number.isFinite(costOverride) && Number(costOverride) > 0) {
-      const n = Number(costOverride);
-      return n < 1 ? n : Math.floor(n);
+      return Math.round(Number(costOverride) * 100) / 100;
     }
     return DEFAULT_ACTION_CREDIT_COST[action];
   };

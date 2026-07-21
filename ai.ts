@@ -100,6 +100,12 @@ interface PodcastAudioJobResponse {
   outputTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
+  estimatedDurationSeconds?: number;
+  actualDurationSeconds?: number;
+  creditsPerMinute?: number;
+  reservedCredits?: number;
+  chargedCredits?: number;
+  refundedCredits?: number;
   usageEntries?: unknown;
   error?: string | null;
   wallet?: CreditWalletSnapshot;
@@ -800,6 +806,14 @@ export interface PodcastAudioJobResult {
   segmentPaths: string[];
   usage: PodcastUsageSummary;
   usageEntries: UsageReportEntry[];
+  billing: {
+    estimatedDurationSeconds: number;
+    actualDurationSeconds: number;
+    creditsPerMinute: number;
+    reservedCredits: number;
+    chargedCredits: number;
+    refundedCredits: number;
+  };
   segments: Array<{
     id: string;
     title: string;
@@ -1171,6 +1185,14 @@ async function hydratePodcastAudioJob(data: PodcastAudioJobResponse): Promise<Po
       audioFileBytes: Math.max(0, Math.floor(Number(data.audioFileBytes) || 0))
     },
     usageEntries,
+    billing: {
+      estimatedDurationSeconds: Math.max(0, Math.floor(Number(data.estimatedDurationSeconds) || 0)),
+      actualDurationSeconds: Math.max(0, Math.floor(Number(data.actualDurationSeconds) || 0)),
+      creditsPerMinute: Math.max(0, Number(data.creditsPerMinute) || 0),
+      reservedCredits: Math.max(0, Number(data.reservedCredits) || 0),
+      chargedCredits: Math.max(0, Number(data.chargedCredits) || 0),
+      refundedCredits: Math.max(0, Number(data.refundedCredits) || 0)
+    },
     segments,
     error: typeof data.error === 'string' ? data.error : null
   };
@@ -1241,6 +1263,7 @@ export async function startPodcastAudioJob(
       script: string;
       pageSequence?: number;
     }>;
+    maxCreditCost?: number;
   }
 ): Promise<PodcastAudioJobResult> {
   await appCheckReady;
@@ -1250,6 +1273,7 @@ export async function startPodcastAudioJob(
   if (options?.bookId) payload.bookId = options.bookId;
   if (options?.nodeId) payload.nodeId = options.nodeId;
   if (options?.target) payload.target = options.target;
+  if (Number.isFinite(options?.maxCreditCost)) payload.maxCreditCost = Number(options?.maxCreditCost);
   if (options?.coverScript?.trim()) payload.coverScript = options.coverScript.trim();
   if (Array.isArray(options?.visualStoryPages) && options.visualStoryPages.length > 0) {
     payload.visualStoryPages = options.visualStoryPages

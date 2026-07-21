@@ -89,6 +89,8 @@ const PODCAST_VOICE_OPTIONS = [
 ] as const;
 type PodcastVoiceName = (typeof PODCAST_VOICE_OPTIONS)[number];
 const PODCAST_VOICE_NAME_SET = new Set<string>(PODCAST_VOICE_OPTIONS);
+// Keep workbook narration aligned with Spone AI chat's inline monologue podcast preset.
+const WORKBOOK_PODCAST_VOICE_NAME = "Algenib";
 const FAIRY_TALE_CHAPTER_COUNT = 5;
 const STORY_CHAPTER_COUNT = 5;
 const NOVEL_CHAPTER_COUNT = 6;
@@ -130,10 +132,13 @@ const FREE_CHAT_DAILY_MESSAGES = 5;
 const STARTER_CREATE_CREDITS = 3;
 const MAX_CREDIT_COST_PER_ACTION = 10;
 const PODCAST_CREATE_CREDIT_COST = 2;
+const WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE = 0.1;
+const WORKBOOK_NARRATION_ESTIMATED_WORDS_PER_MINUTE = 110;
+const WORKBOOK_NARRATION_RESERVATION_SAFETY_RATIO = 1.12;
 const HERO_PORTRAIT_MAX_BYTES = 4 * 1024 * 1024;
 const CREDIT_REFUND_RECEIPT_TTL_MS = 30 * 60 * 1000;
 const BOOK_TYPE_CREATE_CREDIT_COST: Record<string, number> = {
-  fairy_tale: 1,
+  fairy_tale: 2,
   story: 2,
   novel: 2
 };
@@ -628,6 +633,12 @@ interface PodcastAudioJobResponse {
   outputTokens?: number;
   totalTokens?: number;
   estimatedCostUsd?: number;
+  estimatedDurationSeconds?: number;
+  actualDurationSeconds?: number;
+  creditsPerMinute?: number;
+  reservedCredits?: number;
+  chargedCredits?: number;
+  refundedCredits?: number;
   usageEntries?: UsageReportEntry[];
   error?: string | null;
   wallet?: CreditWalletSnapshot;
@@ -5976,7 +5987,7 @@ function sanitizeCreditCost(value: unknown): number {
   if (!Number.isFinite(numeric) || numeric <= 0) {
     throw new HttpsError("invalid-argument", "Invalid credit cost.");
   }
-  return Math.min(MAX_CREDIT_COST_PER_ACTION, Math.max(1, Math.floor(numeric)));
+  return Math.min(MAX_CREDIT_COST_PER_ACTION, Math.max(0.01, roundCreditAmount(numeric)));
 }
 
 function sanitizeCreditReceiptId(value: unknown): string {
@@ -6370,6 +6381,89 @@ async function consumeCreditWithReceipt(
       wallet: next,
       receiptId
     };
+  });
+}
+
+interface CreditSettlementResult {
+  wallet: CreditWalletSnapshot;
+  reservedCredits: number;
+  chargedCredits: number;
+  refundedCredits: number;
+}
+
+async function settleCreditReceiptAndCompleteJob(
+  uid: string,
+  receiptId: string,
+  finalCost: number,
+  jobRef: FirebaseFirestore.DocumentReference,
+  completionPatch: Record<string, unknown>
+): Promise<CreditSettlementResult> {
+  const walletRef = getCreditWalletRef(uid);
+  const receiptRef = getCreditRefundReceiptRef(uid, receiptId);
+  return firestore.runTransaction(async (tx) => {
+    const receiptSnap = await tx.get(receiptRef);
+    if (!receiptSnap.exists) {
+      throw new HttpsError("failed-precondition", "Credit settlement receipt not found.");
+    }
+    const receiptData = receiptSnap.data() as Record<string, unknown> | undefined;
+    if (!receiptData || String(receiptData.uid || "") !== uid) {
+      throw new HttpsError("permission-denied", "Credit settlement receipt owner mismatch.");
+    }
+
+    const walletSnap = await tx.get(walletRef);
+    const existingWallet = normalizeCreditWalletSnapshot(walletSnap.data()) ?? buildStarterCreditWallet();
+    const status = String(receiptData.status || "");
+    if (status === "settled") {
+      const reservedCredits = roundCreditAmount(safeNumber(receiptData.cost));
+      const chargedCredits = roundCreditAmount(safeNumber(receiptData.finalCost));
+      const refundedCredits = roundCreditAmount(safeNumber(receiptData.refundAmount));
+      tx.set(jobRef, completionPatch, { merge: true });
+      return { wallet: existingWallet, reservedCredits, chargedCredits, refundedCredits };
+    }
+    if (status !== "consumed") {
+      throw new HttpsError("failed-precondition", "Credit receipt cannot be settled.");
+    }
+
+    const reservedCredits = sanitizeCreditCost(receiptData.cost);
+    const chargedCredits = roundCreditAmount(Math.min(reservedCredits, Math.max(0, Number(finalCost) || 0)));
+    const refundedCredits = roundCreditAmount(Math.max(0, reservedCredits - chargedCredits));
+    const debitData = isRecord(receiptData.debit) ? receiptData.debit : {};
+    const purchasedDebit = roundCreditAmount(Math.max(0, safeNumber(debitData.purchasedCredits)));
+    const communityDebit = roundCreditAmount(Math.max(0, safeNumber(debitData.communityEarnedCredits)));
+    const purchasedRefund = roundCreditAmount(Math.min(purchasedDebit, refundedCredits));
+    const communityRefund = roundCreditAmount(Math.min(
+      communityDebit,
+      Math.max(0, refundedCredits - purchasedRefund)
+    ));
+    const nextWallet: CreditWalletSnapshot = {
+      purchasedCredits: roundCreditAmount(existingWallet.purchasedCredits + purchasedRefund),
+      communityEarnedCredits: roundCreditAmount(existingWallet.communityEarnedCredits + communityRefund),
+      createCredits: 0
+    };
+    nextWallet.createCredits = roundCreditAmount(nextWallet.purchasedCredits + nextWallet.communityEarnedCredits);
+
+    if (refundedCredits > 0) {
+      tx.set(walletRef, {
+        uid,
+        ...nextWallet,
+        createdAt: walletSnap.exists
+          ? walletSnap.data()?.createdAt ?? FieldValue.serverTimestamp()
+          : FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+    tx.set(receiptRef, {
+      status: "settled",
+      finalCost: chargedCredits,
+      refundAmount: refundedCredits,
+      remainingDebit: {
+        purchasedCredits: roundCreditAmount(Math.max(0, purchasedDebit - purchasedRefund)),
+        communityEarnedCredits: roundCreditAmount(Math.max(0, communityDebit - communityRefund))
+      },
+      settledAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    tx.set(jobRef, completionPatch, { merge: true });
+    return { wallet: nextWallet, reservedCredits, chargedCredits, refundedCredits };
   });
 }
 
@@ -11239,6 +11333,38 @@ function countPodcastWords(text: string): number {
   return normalized.split(/\s+/u).filter(Boolean).length;
 }
 
+interface WorkbookNarrationCreditQuote {
+  wordCount: number;
+  estimatedDurationSeconds: number;
+  estimatedCredits: number;
+  reservedCredits: number;
+}
+
+function buildWorkbookNarrationCreditQuote(script: string): WorkbookNarrationCreditQuote {
+  const wordCount = countPodcastWords(normalizeNarrationTextForTts(script));
+  const estimatedDurationSeconds = Math.max(
+    60,
+    Math.ceil((wordCount / WORKBOOK_NARRATION_ESTIMATED_WORDS_PER_MINUTE) * 60)
+  );
+  const estimatedStartedMinutes = Math.max(1, Math.ceil(estimatedDurationSeconds / 60));
+  const reservedStartedMinutes = Math.max(
+    estimatedStartedMinutes,
+    Math.ceil((estimatedDurationSeconds * WORKBOOK_NARRATION_RESERVATION_SAFETY_RATIO) / 60)
+  );
+  const estimatedCredits = roundCreditAmount(
+    estimatedStartedMinutes * WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE
+  );
+  const reservedCredits = roundCreditAmount(
+    reservedStartedMinutes * WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE
+  );
+  return { wordCount, estimatedDurationSeconds, estimatedCredits, reservedCredits };
+}
+
+function calculateWorkbookNarrationActualCredits(durationSeconds: number): number {
+  const startedMinutes = Math.max(1, Math.ceil(Math.max(0, durationSeconds) / 60));
+  return roundCreditAmount(startedMinutes * WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE);
+}
+
 function splitOversizedPodcastUnit(
   unit: string,
   maxChunkWords: number,
@@ -11658,6 +11784,19 @@ function estimateOpenAiMiniTtsOutputTokensFromWav(wavBuffer: Buffer): number {
   }
 }
 
+function getWavDurationSeconds(wavBuffer: Buffer): number {
+  const parts = extractWavParts(wavBuffer);
+  const bytesPerSecond = parts.sampleRate * parts.numChannels * (parts.bitsPerSample / 8);
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
+    throw new HttpsError("internal", "Ses süresi hesaplanamadı.");
+  }
+  const durationSeconds = parts.pcmData.length / bytesPerSecond;
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    throw new HttpsError("internal", "Ses süresi hesaplanamadı.");
+  }
+  return durationSeconds;
+}
+
 function parseOpenAiTtsUsageFromHeaders(headers: Headers): TokenUsageMetrics | null {
   const parseIntegerHeader = (...keys: string[]): number => {
     for (const key of keys) {
@@ -11978,6 +12117,31 @@ function buildVisualStoryAudioSourceFromBookPayload(payload: Record<string, unkn
     normalizeVisualStoryNarrationSource(payload.title)
   ) || "";
   return { coverScript, pages };
+}
+
+function bookPayloadHasReadyNarration(payload: Record<string, unknown>): boolean {
+  if (String(payload.visualStoryAudioStatus || "").trim().toLowerCase() === "ready") {
+    return true;
+  }
+  const nodes = Array.isArray(payload.nodes) ? payload.nodes.filter(isRecord) : [];
+  if (nodes.some((node) => firstNonEmptyString(node.podcastAudioUrl))) {
+    return true;
+  }
+  if (nodes.some((node) => Array.isArray(node.podcastSegments) && node.podcastSegments.length > 0)) {
+    return true;
+  }
+  const illustratedPages = nodes.filter((node) => firstNonEmptyString(node.pageImageUrl));
+  if (illustratedPages.length > 0) {
+    const hasCoverAudio = Boolean(firstNonEmptyString(payload.coverNarrationAudioUrl));
+    const everyPageHasAudio = illustratedPages.every((node) =>
+      String(node.pageAudioStatus || "").trim().toLowerCase() === "ready" ||
+      Boolean(firstNonEmptyString(node.pageAudioUrl))
+    );
+    if (hasCoverAudio && everyPageHasAudio) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveVisualStoryChunkLabel(
@@ -12683,6 +12847,65 @@ function parseBundleVersionFromPath(bundlePath: string | undefined): number | un
   return parsed;
 }
 
+async function syncPublishedCommunityBundleSnapshot(params: {
+  uid: string;
+  bookId: string;
+  bookPayload: Record<string, unknown>;
+  bundleBuffer: Buffer;
+}): Promise<void> {
+  const publication = isRecord(params.bookPayload.communityPublication)
+    ? params.bookPayload.communityPublication
+    : null;
+  if (String(publication?.status || "").trim().toLowerCase() !== "published") {
+    return;
+  }
+
+  const communityBookId = firstNonEmptyString(publication?.id) || communityBookIdFor(params.uid, params.bookId);
+  const communityRef = firestore.collection("communityBooks").doc(communityBookId);
+  const communitySnap = await communityRef.get();
+  if (!communitySnap.exists) {
+    throw new HttpsError("failed-precondition", "Topluluk kitap kaydı bulunamadı.");
+  }
+  const communityPayload = communitySnap.data() as Record<string, unknown>;
+  if (
+    firstNonEmptyString(communityPayload.userId) !== params.uid ||
+    firstNonEmptyString(communityPayload.bookId) !== params.bookId
+  ) {
+    throw new HttpsError("permission-denied", "Topluluk kitap sahipliği doğrulanamadı.");
+  }
+  if (String(communityPayload.status || "").trim().toLowerCase() !== "published") {
+    return;
+  }
+
+  const currentVersion = Number.isFinite(Number(communityPayload.snapshotVersion))
+    ? Math.max(0, Math.floor(Number(communityPayload.snapshotVersion)))
+    : 0;
+  const nextVersion = currentVersion + 1;
+  const snapshotPath = `communityPackages/${communityBookId}/v${nextVersion}/book.zip`;
+  const bucket = getStorage().bucket();
+  await bucket.file(snapshotPath).save(params.bundleBuffer, {
+    resumable: false,
+    contentType: "application/zip",
+    metadata: {
+      cacheControl: "private,max-age=0",
+      metadata: {
+        ownerId: params.uid,
+        communityBookId,
+        sourceBookId: params.bookId,
+        includesNarration: "true"
+      }
+    }
+  });
+  await communityRef.set(
+    {
+      snapshotPath,
+      snapshotVersion: nextVersion,
+      updatedAt: Timestamp.now()
+    },
+    { merge: true }
+  );
+}
+
 async function republishBookBundleWithPodcastAudio(params: {
   uid: string;
   bookId: string;
@@ -12802,6 +13025,12 @@ async function republishBookBundleWithPodcastAudio(params: {
     lastActivity: nowIso
   };
   await bookRef.set(JSON.parse(JSON.stringify(nextBookPayload)) as Record<string, unknown>, { merge: true });
+  await syncPublishedCommunityBundleSnapshot({
+    uid,
+    bookId,
+    bookPayload,
+    bundleBuffer: rebuiltBuffer
+  });
   return bundleDescriptor;
 }
 
@@ -12878,6 +13107,20 @@ async function republishBookBundleWithVisualStoryAudio(params: {
     };
   }
 
+  if (params.coverAudioPath && !coverNarrationAudioUrl) {
+    throw new HttpsError("failed-precondition", "Kapak seslendirmesi kitap paketine eklenemedi.");
+  }
+  const expectedPageNodeIds = Array.from(new Set(
+    params.pageAudioPaths.map((page) => String(page.nodeId || "").trim()).filter(Boolean)
+  ));
+  const missingPageAudioNodeIds = expectedPageNodeIds.filter((nodeId) => !pageAudioByNodeId.has(nodeId));
+  if (missingPageAudioNodeIds.length > 0) {
+    throw new HttpsError(
+      "failed-precondition",
+      `Sayfa sesleri kitap paketine eksik eklendi: ${missingPageAudioNodeIds.join(", ")}`
+    );
+  }
+
   const readyPageCount = manifest.nodes.filter((node) => String(node.pageAudioStatus || "") === "ready").length;
   const visualStoryAudioStatus =
     (coverNarrationAudioUrl || manifest.coverNarrationAudioUrl) && readyPageCount > 0
@@ -12885,6 +13128,7 @@ async function republishBookBundleWithVisualStoryAudio(params: {
       : "partial";
   const nowIso = new Date().toISOString();
   manifest.visualStoryAudioStatus = visualStoryAudioStatus;
+  manifest.includesPodcast = true;
   if (coverNarrationAudioUrl) {
     manifest.coverNarrationAudioUrl = coverNarrationAudioUrl;
     manifest.coverNarrationAudioStoragePath = params.coverAudioPath;
@@ -12962,6 +13206,12 @@ async function republishBookBundleWithVisualStoryAudio(params: {
     lastActivity: nowIso
   };
   await bookRef.set(JSON.parse(JSON.stringify(nextBookPayload)) as Record<string, unknown>, { merge: true });
+  await syncPublishedCommunityBundleSnapshot({
+    uid,
+    bookId,
+    bookPayload,
+    bundleBuffer: rebuiltBuffer
+  });
   return bundleDescriptor;
 }
 
@@ -13273,6 +13523,12 @@ function buildPodcastJobResponse(
     outputTokens: toNonNegativeInt(data?.outputTokens),
     totalTokens: toNonNegativeInt(data?.totalTokens),
     estimatedCostUsd: roundUsd(safeNumber(data?.estimatedCostUsd)),
+    estimatedDurationSeconds: toNonNegativeInt(data?.estimatedDurationSeconds),
+    actualDurationSeconds: toNonNegativeInt(data?.actualDurationSeconds),
+    creditsPerMinute: roundCreditAmount(safeNumber(data?.creditsPerMinute)),
+    reservedCredits: roundCreditAmount(safeNumber(data?.reservedCredits ?? data?.creditCost)),
+    chargedCredits: roundCreditAmount(safeNumber(data?.chargedCredits ?? data?.creditCost)),
+    refundedCredits: roundCreditAmount(safeNumber(data?.refundedCredits)),
     usageEntries,
     error: typeof data?.errorMessage === "string" ? data.errorMessage : null,
     wallet
@@ -17632,10 +17888,22 @@ export const startPodcastAudioJob = onCall(
       throw new HttpsError("invalid-argument", `Field too long: script`);
     }
     const script = rawScript;
-    const bookType = parseSmartBookBookType(payload.bookType);
-    const voiceName = normalizePodcastVoiceName(payload.voiceName || "Kore");
     const bookId = asOptionalString(payload.bookId, "bookId", 120);
     const nodeId = asOptionalString(payload.nodeId, "nodeId", 120);
+    let bookType = parseSmartBookBookType(payload.bookType);
+    let boundBookPayload: Record<string, unknown> | null = null;
+    if (bookId) {
+      const bookSnapshot = await getUserBookRef(uid, bookId).get();
+      if (!bookSnapshot.exists) {
+        throw new HttpsError("not-found", "Seslendirilecek kitap bulunamadı.");
+      }
+      boundBookPayload = bookSnapshot.data() as Record<string, unknown>;
+      const storedBookType = parseSmartBookBookType(boundBookPayload.bookType);
+      if (storedBookType) {
+        bookType = storedBookType;
+      }
+    }
+    const voiceName = normalizePodcastVoiceName(payload.voiceName || "Kore");
     const visualStoryPagesRaw = Array.isArray(payload.visualStoryPages) ? payload.visualStoryPages : [];
     let visualStoryPages = visualStoryPagesRaw
       .filter(isRecord)
@@ -17648,35 +17916,31 @@ export const startPodcastAudioJob = onCall(
       .filter((page) => page.nodeId && page.script);
     let coverScript = firstNonEmptyString(payload.coverScript, payload.coverNarrationText) || "";
     const requestedVisualStoryAudioJob = payload.target === "visualStory" || visualStoryPages.length > 0 || Boolean(coverScript);
-    if (requestedVisualStoryAudioJob && bookId) {
-      const bookSnapshot = await getUserBookRef(uid, bookId).get();
-      if (bookSnapshot.exists) {
-        const bookPayload = bookSnapshot.data() as Record<string, unknown>;
-        const derivedAudioSource = buildVisualStoryAudioSourceFromBookPayload(bookPayload);
-        if (!coverScript && derivedAudioSource.coverScript) {
-          coverScript = derivedAudioSource.coverScript;
-        }
-        const derivedPagesByNodeId = new Map(
-          derivedAudioSource.pages.map((page) => [page.nodeId, page] as const)
-        );
-        if (visualStoryPages.length === 0) {
+    if (requestedVisualStoryAudioJob && boundBookPayload) {
+      const derivedAudioSource = buildVisualStoryAudioSourceFromBookPayload(boundBookPayload);
+      if (!coverScript && derivedAudioSource.coverScript) {
+        coverScript = derivedAudioSource.coverScript;
+      }
+      const derivedPagesByNodeId = new Map(
+        derivedAudioSource.pages.map((page) => [page.nodeId, page] as const)
+      );
+      if (visualStoryPages.length === 0) {
+        visualStoryPages = derivedAudioSource.pages;
+      } else {
+        visualStoryPages = visualStoryPages
+          .map((page) => {
+            const derivedPage = derivedPagesByNodeId.get(page.nodeId);
+            if (!derivedPage) return page;
+            return {
+              nodeId: page.nodeId,
+              title: firstNonEmptyString(page.title, derivedPage.title) || derivedPage.title,
+              script: firstNonEmptyString(page.script, derivedPage.script) || derivedPage.script,
+              pageSequence: page.pageSequence || derivedPage.pageSequence
+            };
+          })
+          .filter((page) => page.nodeId && page.script);
+        if (derivedAudioSource.pages.length > visualStoryPages.length) {
           visualStoryPages = derivedAudioSource.pages;
-        } else {
-          visualStoryPages = visualStoryPages
-            .map((page) => {
-              const derivedPage = derivedPagesByNodeId.get(page.nodeId);
-              if (!derivedPage) return page;
-              return {
-                nodeId: page.nodeId,
-                title: firstNonEmptyString(page.title, derivedPage.title) || derivedPage.title,
-                script: firstNonEmptyString(page.script, derivedPage.script) || derivedPage.script,
-                pageSequence: page.pageSequence || derivedPage.pageSequence
-              };
-            })
-            .filter((page) => page.nodeId && page.script);
-          if (derivedAudioSource.pages.length > visualStoryPages.length) {
-            visualStoryPages = derivedAudioSource.pages;
-          }
         }
       }
     }
@@ -17694,9 +17958,10 @@ export const startPodcastAudioJob = onCall(
     const activePodcastTtsModel = PODCAST_TTS_PROVIDER === "google"
       ? GEMINI_FLASH_TTS_MODEL
       : OPENAI_MINI_TTS_MODEL;
+    const effectiveTtsVoiceName = bookType === "story" ? WORKBOOK_PODCAST_VOICE_NAME : voiceName;
     const providerCacheSalt = `\n\n[tts-provider:${PODCAST_TTS_PROVIDER}|tts-model:${activePodcastTtsModel}]`;
     const bookModeCacheSalt = `\n\n[book-type:${bookType}]`;
-    const voiceCacheSalt = `\n\n[voice:${voiceName}]`;
+    const voiceCacheSalt = `\n\n[voice:${effectiveTtsVoiceName}]`;
     const visualStoryCacheSalt = isVisualStoryAudioJob
       ? `\n\n[visual-story:${JSON.stringify({
         cover: coverScript || "",
@@ -17854,6 +18119,28 @@ export const startPodcastAudioJob = onCall(
       throw new HttpsError("failed-precondition", "Podcast için seslendirilecek içerik bulunamadı.");
     }
 
+    const workbookNarrationQuote = bookType === "story" && !isVisualStoryAudioJob
+      ? buildWorkbookNarrationCreditQuote(script)
+      : null;
+    if (workbookNarrationQuote && workbookNarrationQuote.reservedCredits > MAX_CREDIT_COST_PER_ACTION) {
+      throw new HttpsError(
+        "failed-precondition",
+        `Seslendirme tahmini ${MAX_CREDIT_COST_PER_ACTION} kredi sınırını aşıyor.`
+      );
+    }
+    if (workbookNarrationQuote) {
+      const approvedMaxCreditCost = Number(payload.maxCreditCost);
+      if (
+        !Number.isFinite(approvedMaxCreditCost) ||
+        roundCreditAmount(approvedMaxCreditCost) < workbookNarrationQuote.reservedCredits
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Seslendirme kredi tahmini değişti. Güncel tahmini görüp yeniden onaylayın."
+        );
+      }
+    }
+
     await ensureQuotaAvailable(uid, "generatePodcastAudio", planTier);
 
     const manifestPath = await writePodcastJobManifest(uid, jobId, {
@@ -17864,17 +18151,33 @@ export const startPodcastAudioJob = onCall(
       visualStoryAudioTarget
     });
 
+    const narrationIncludedWithBook =
+      existingData?.narrationIncludedWithBook === true ||
+      (
+        bookType === "fairy_tale" &&
+        Boolean(bookId && boundBookPayload) &&
+        !bookPayloadHasReadyNarration(boundBookPayload as Record<string, unknown>)
+      );
     let consumeResult: CreditConsumeResult | null = null;
+    const requestedCreditCost = workbookNarrationQuote?.reservedCredits ?? PODCAST_CREATE_CREDIT_COST;
     try {
-      if (!existingReceiptId || existingData?.creditRefunded === true) {
-        consumeResult = await consumeCreditWithReceipt(uid, "create", PODCAST_CREATE_CREDIT_COST);
+      if (!narrationIncludedWithBook && (!existingReceiptId || existingData?.creditRefunded === true)) {
+        consumeResult = await consumeCreditWithReceipt(uid, "create", requestedCreditCost);
       }
+      const reservedCredits = narrationIncludedWithBook
+        ? 0
+        : consumeResult
+          ? requestedCreditCost
+          : roundCreditAmount(safeNumber(existingData?.reservedCredits ?? existingData?.creditCost) || requestedCreditCost);
       const attemptId = randomUUID().replace(/-/g, "");
       const nextData: Record<string, unknown> = {
         uid,
         topic,
         bookType: bookType || null,
         voiceName,
+        ttsProvider: PODCAST_TTS_PROVIDER,
+        ttsModel: activePodcastTtsModel,
+        ttsVoiceName: effectiveTtsVoiceName,
         target: isVisualStoryAudioJob ? "visualStory" : "podcast",
         status: "queued",
         totalChunks: chunks.length,
@@ -17893,6 +18196,14 @@ export const startPodcastAudioJob = onCall(
         attemptId,
         planTier,
         creditReceiptId: consumeResult?.receiptId || existingReceiptId || null,
+        creditCost: reservedCredits,
+        estimatedDurationSeconds: workbookNarrationQuote?.estimatedDurationSeconds || 0,
+        estimatedCredits: workbookNarrationQuote?.estimatedCredits || reservedCredits,
+        creditsPerMinute: workbookNarrationQuote ? WORKBOOK_NARRATION_CREDITS_PER_STARTED_MINUTE : 0,
+        reservedCredits,
+        chargedCredits: narrationIncludedWithBook ? 0 : reservedCredits,
+        refundedCredits: 0,
+        narrationIncludedWithBook,
         creditRefunded: false,
         nextChunkToEnqueue: getPodcastJobChunkConcurrency(chunks.length),
         finalizeTaskQueued: false,
@@ -18060,7 +18371,9 @@ async function processPodcastAudioJobChunkTask(
 	      throw new HttpsError("failed-precondition", "Podcast chunk index geçersiz.");
 	    }
 
-    const selectedVoiceName = normalizePodcastVoiceName(jobData.voiceName || "Kore");
+    const selectedVoiceName = jobBookType === "story"
+      ? WORKBOOK_PODCAST_VOICE_NAME
+      : normalizePodcastVoiceName(jobData.voiceName || "Kore");
     const voices = { speaker1: selectedVoiceName, speaker2: selectedVoiceName };
     const narratorLabel = "Anlatıcı";
     const speakerHint = `Use only speaker label "${narratorLabel}" if labels are present.`;
@@ -18296,6 +18609,8 @@ async function processPodcastAudioJobFinalizeTask(
 	}
 
 	const mergedAudio = mergeWavBuffers(buffers);
+	const actualDurationSecondsRaw = getWavDurationSeconds(mergedAudio);
+	const actualDurationSeconds = Math.max(1, Math.round(actualDurationSecondsRaw));
 	const finalPath = buildPodcastJobFinalPath(uid, jobRef.id);
   await bucket.file(finalPath).save(mergedAudio, {
     contentType: "audio/wav",
@@ -18307,78 +18622,93 @@ async function processPodcastAudioJobFinalizeTask(
     }
   });
 
-	const bookId = typeof jobData.bookId === "string" ? jobData.bookId.trim() : "";
-	const nodeId = typeof jobData.nodeId === "string" ? jobData.nodeId.trim() : "";
-	const manifestPath = typeof jobData.manifestPath === "string" ? jobData.manifestPath : "";
-	const manifest = manifestPath ? await readPodcastJobManifest(manifestPath).catch(() => null) : null;
-	const visualStoryAudioTarget = manifest?.visualStoryAudioTarget || null;
-	let republishedBundle: BookBundleDescriptor | null = null;
-	if (bookId && visualStoryAudioTarget) {
-	  try {
-	    const coverOffset = visualStoryAudioTarget.cover ? 1 : 0;
-	    republishedBundle = await republishBookBundleWithVisualStoryAudio({
-	      uid,
-	      bookId,
-	      coverAudioPath: visualStoryAudioTarget.cover ? buildPodcastJobChunkPath(uid, jobRef.id, 0) : undefined,
-	      pageAudioPaths: visualStoryAudioTarget.pages.map((page, index) => ({
-	        nodeId: page.nodeId,
-	        audioPath: buildPodcastJobChunkPath(uid, jobRef.id, index + coverOffset)
-	      }))
-	    });
-	  } catch (error) {
-	    logger.error("Book bundle republish after visual story audio failed", {
-	      jobId: jobRef.id,
-	      uid,
-	      bookId,
-	      error: toErrorMessage(error)
-	    });
-	  }
-	} else if (bookId) {
-	  try {
-	    republishedBundle = await republishBookBundleWithPodcastAudio({
-	      uid,
-        bookId,
-        nodeId: nodeId || undefined,
-        audioPath: finalPath
-      });
-    } catch (error) {
-      logger.error("Book bundle republish after podcast failed", {
-        jobId: jobRef.id,
-        uid,
-        bookId,
-        nodeId: nodeId || null,
-        error: toErrorMessage(error)
-      });
-    }
+  const bookId = typeof jobData.bookId === "string" ? jobData.bookId.trim() : "";
+  const nodeId = typeof jobData.nodeId === "string" ? jobData.nodeId.trim() : "";
+  const manifestPath = typeof jobData.manifestPath === "string" ? jobData.manifestPath : "";
+  const manifest = manifestPath ? await readPodcastJobManifest(manifestPath).catch(() => null) : null;
+  const visualStoryAudioTarget = manifest?.visualStoryAudioTarget || null;
+  let republishedBundle: BookBundleDescriptor | null = null;
+  if (bookId && visualStoryAudioTarget) {
+    const coverOffset = visualStoryAudioTarget.cover ? 1 : 0;
+    republishedBundle = await republishBookBundleWithVisualStoryAudio({
+      uid,
+      bookId,
+      coverAudioPath: visualStoryAudioTarget.cover ? buildPodcastJobChunkPath(uid, jobRef.id, 0) : undefined,
+      pageAudioPaths: visualStoryAudioTarget.pages.map((page, index) => ({
+        nodeId: page.nodeId,
+        audioPath: buildPodcastJobChunkPath(uid, jobRef.id, index + coverOffset)
+      }))
+    });
+  } else if (bookId) {
+    republishedBundle = await republishBookBundleWithPodcastAudio({
+      uid,
+      bookId,
+      nodeId: nodeId || undefined,
+      audioPath: finalPath
+    });
+  }
+  if (bookId && !republishedBundle) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Ses dosyası kitap paketine eklenemedi; işlem tamamlanmadı."
+    );
   }
 
-  await jobRef.set(
-    {
-      status: "completed",
-      completedChunks: totalChunks,
-      currentChunkIndex: totalChunks - 1,
-      currentChunkLabel: "Completed",
-      finalizeTaskQueued: false,
-      audioFilePath: finalPath,
-      audioFileBytes: mergedAudio.length,
-      bookId: bookId || FieldValue.delete(),
-      nodeId: nodeId || FieldValue.delete(),
-      bookBundlePath: republishedBundle?.path || FieldValue.delete(),
-      bookBundleVersion: republishedBundle?.version ?? FieldValue.delete(),
-      bookBundleIncludesPodcast: republishedBundle?.includesPodcast ?? FieldValue.delete(),
-      bookBundleGeneratedAt: republishedBundle?.generatedAt || FieldValue.delete(),
-      updatedAt: FieldValue.serverTimestamp(),
-      completedAt: FieldValue.serverTimestamp(),
-      errorMessage: FieldValue.delete()
-    },
-    { merge: true }
-  );
+  const isMeteredWorkbookNarration = String(jobData.bookType || "") === "story" && safeNumber(jobData.creditsPerMinute) > 0;
+  const reservedCredits = roundCreditAmount(Math.max(0, safeNumber(jobData.reservedCredits ?? jobData.creditCost)));
+  const uncappedActualCredits = isMeteredWorkbookNarration
+    ? calculateWorkbookNarrationActualCredits(actualDurationSecondsRaw)
+    : reservedCredits;
+  const chargedCredits = roundCreditAmount(Math.min(reservedCredits, uncappedActualCredits));
+  const refundedCredits = roundCreditAmount(Math.max(0, reservedCredits - chargedCredits));
+  const completionPatch: Record<string, unknown> = {
+    status: "completed",
+    completedChunks: totalChunks,
+    currentChunkIndex: totalChunks - 1,
+    currentChunkLabel: "Completed",
+    finalizeTaskQueued: false,
+    audioFilePath: finalPath,
+    audioFileBytes: mergedAudio.length,
+    actualDurationSeconds,
+    reservedCredits,
+    chargedCredits,
+    refundedCredits,
+    creditCapApplied: isMeteredWorkbookNarration && uncappedActualCredits > reservedCredits,
+    bookId: bookId || FieldValue.delete(),
+    nodeId: nodeId || FieldValue.delete(),
+    bookBundlePath: republishedBundle?.path || FieldValue.delete(),
+    bookBundleVersion: republishedBundle?.version ?? FieldValue.delete(),
+    bookBundleIncludesPodcast: republishedBundle?.includesPodcast ?? FieldValue.delete(),
+    bookBundleGeneratedAt: republishedBundle?.generatedAt || FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+    completedAt: FieldValue.serverTimestamp(),
+    errorMessage: FieldValue.delete()
+  };
+  const creditReceiptId = typeof jobData.creditReceiptId === "string" ? jobData.creditReceiptId.trim() : "";
+  if (isMeteredWorkbookNarration && reservedCredits > 0) {
+    if (!creditReceiptId) {
+      throw new HttpsError("failed-precondition", "Seslendirme kredi makbuzu bulunamadı.");
+    }
+    await settleCreditReceiptAndCompleteJob(
+      uid,
+      creditReceiptId,
+      chargedCredits,
+      jobRef,
+      completionPatch
+    );
+  } else {
+    await jobRef.set(completionPatch, { merge: true });
+  }
 
   logger.info("Podcast job finalized", {
     jobId: jobRef.id,
     totalChunks,
     audioFilePath: finalPath,
     audioFileBytes: mergedAudio.length,
+    actualDurationSeconds,
+    reservedCredits,
+    chargedCredits,
+    refundedCredits,
     republishedBookId: bookId || null,
     republishedBundlePath: republishedBundle?.path || null
   });
