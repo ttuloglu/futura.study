@@ -512,6 +512,31 @@ type VisualStoryPlan = {
   pages: VisualStoryPagePlan[];
 };
 
+type BookGenerationStage = "plan" | "content" | "assets" | "bundle";
+type BookGenerationPipeline = "standard" | "visual";
+
+type StandardBookGenerationState = {
+  pipeline: "standard";
+  courseMeta: CourseOutlineMeta;
+  lectureNodes: TimelineNode[];
+  generatedNodes: TimelineNode[];
+  nextContentIndex: number;
+  finalTargetPageCount?: number;
+  bookTitle: string;
+};
+
+type VisualBookGenerationState = {
+  pipeline: "visual";
+  plan: VisualStoryPlan;
+  courseMeta: CourseOutlineMeta;
+  generatedNodes: Array<TimelineNode | null>;
+  nextVisualPageIndex: number;
+  coverImageUrl?: string;
+  bookTitle: string;
+};
+
+type BookGenerationState = StandardBookGenerationState | VisualBookGenerationState;
+
 interface AiGatewayResponse {
   detectedTopic?: string;
   sourceContent?: string;
@@ -3937,6 +3962,32 @@ function waitFor(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function withStorageWriteRetry<T>(
+  operation: () => Promise<T>,
+  label: string,
+  maxAttempts: number = 2
+): Promise<T> {
+  const attempts = Math.max(1, Math.min(3, Math.floor(maxAttempts)));
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      logger.warn("Storage write attempt failed", {
+        label,
+        attempt,
+        maxAttempts: attempts,
+        error: toErrorMessage(error)
+      });
+      if (attempt < attempts) await waitFor(attempt * 750);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new HttpsError("unavailable", `${label} kaydedilemedi.`);
+}
+
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -5762,6 +5813,50 @@ function getBookJobRef(jobId: string) {
 
 function getBookJobTaskCollection() {
   return firestore.collection(BOOK_JOB_TASK_COLLECTION);
+}
+
+async function transitionBookJobStage(
+  jobRef: FirebaseFirestore.DocumentReference,
+  patch: Record<string, unknown>,
+  nextTaskType: BookGenerationStage,
+  nextTaskData: Record<string, unknown> = {}
+): Promise<void> {
+  const taskRef = getBookJobTaskCollection().doc();
+  const batch = firestore.batch();
+  batch.set(jobRef, {
+    ...patch,
+    generationStage: nextTaskType,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  batch.set(taskRef, {
+    jobId: jobRef.id,
+    type: nextTaskType,
+    ...nextTaskData,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  await batch.commit();
+}
+
+function resolveBookGenerationState(value: unknown): BookGenerationState | null {
+  if (!isRecord(value)) return null;
+  const pipeline = String(value.pipeline || "") as BookGenerationPipeline;
+  if (pipeline === "standard") {
+    if (!isRecord(value.courseMeta) || !Array.isArray(value.lectureNodes) || !Array.isArray(value.generatedNodes)) {
+      return null;
+    }
+    return value as unknown as StandardBookGenerationState;
+  }
+  if (pipeline === "visual") {
+    if (!isRecord(value.plan) || !isRecord(value.courseMeta) || !Array.isArray(value.generatedNodes)) {
+      return null;
+    }
+    return value as unknown as VisualBookGenerationState;
+  }
+  return null;
+}
+
+function serializeBookGenerationState(state: BookGenerationState): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
 }
 
 function getPodcastJobRef(jobId: string) {
@@ -9097,26 +9192,12 @@ async function generateValidatedVisualStoryImage(params: {
     label: `${params.label}: görsel üretim`
   });
 
-  if (!params.isCover) try {
-    const validation = await validateVisualStoryImage(
-      params.ai,
-      imageResult.imageUrl,
-      `${params.label} kalite kontrol`,
-      { isCover: false, audienceLevel: params.audienceLevel }
-    );
-    usageEntries.push(validation.usageEntry);
-    if (!validation.passed) {
-      logger.warn("Visual story image soft validation flagged the generated image; keeping first render for speed.", {
-        label: params.label,
-        reason: validation.reason
-      });
-    }
-  } catch (error) {
-    logger.warn("Visual story image validation crashed; keeping first render for speed.", {
-      label: params.label,
-      error: toErrorMessage(error)
-    });
-  }
+  // The former synchronous vision check never changed or regenerated the image,
+  // so it only delayed every visual-story page. Keep the exact first render that
+  // was already returned to users and leave quality sampling outside this path.
+  void params.ai;
+  void params.audienceLevel;
+  void params.isCover;
 
   return { imageUrl: imageResult.imageUrl, usageEntries };
 }
@@ -12046,6 +12127,88 @@ async function loadBinaryAssetFromSource(source: string): Promise<BinaryAsset> {
   };
 }
 
+async function persistGeneratedBookAsset(params: {
+  uid: string;
+  bookId: string;
+  key: string;
+  source: string;
+}): Promise<string> {
+  const source = String(params.source || "").trim();
+  if (!source) return source;
+  if (source.startsWith("smartbooks/")) return source;
+
+  const asset = await loadBinaryAssetFromSource(source);
+  const safeUid = sanitizeBundlePathPart(params.uid, "user");
+  const safeBookId = sanitizeBundlePathPart(params.bookId, "book");
+  const safeKey = sanitizeBundlePathPart(params.key, "asset");
+  const extension = inferExtensionFromContentType(asset.contentType, asset.extension || "bin");
+  const storagePath = `smartbooks/${safeUid}/${safeBookId}/generation-assets/${safeKey}.${extension}`;
+  await withStorageWriteRetry(
+    () => getStorage().bucket().file(storagePath).save(asset.buffer, {
+      contentType: asset.contentType,
+      metadata: {
+        metadata: {
+          uid: params.uid,
+          bookId: params.bookId,
+          generationAsset: "true"
+        }
+      }
+    }),
+    `Üretim varlığı ${safeKey}`
+  );
+  return storagePath;
+}
+
+async function persistGeneratedMarkdownImages(params: {
+  uid: string;
+  bookId: string;
+  nodeId: string;
+  markdown: string;
+}): Promise<string> {
+  const markdown = String(params.markdown || "");
+  if (!markdown.trim()) return markdown;
+
+  const regex = /!\[([^\]]*)\]\(\s*<?([^\)\s>]+)>?\s*\)/g;
+  let output = "";
+  let cursor = 0;
+  let imageIndex = 0;
+  let match: RegExpExecArray | null = regex.exec(markdown);
+  while (match) {
+    const source = String(match[2] || "").trim();
+    let replacement = match[0];
+    if (/^data:image\//i.test(source) || /^https?:\/\//i.test(source) || source.startsWith("smartbooks/")) {
+      try {
+        const storedPath = await persistGeneratedBookAsset({
+          uid: params.uid,
+          bookId: params.bookId,
+          key: `${params.nodeId}-image-${imageIndex + 1}`,
+          source
+        });
+        const safeAlt = String(match[1] || "").replace(/]/g, "\\]");
+        replacement = `![${safeAlt}](${storedPath})`;
+      } catch (error) {
+        logger.warn("Generated chapter image could not be staged; keeping original source.", {
+          bookId: params.bookId,
+          nodeId: params.nodeId,
+          error: toErrorMessage(error)
+        });
+      }
+    }
+    output += markdown.slice(cursor, match.index) + replacement;
+    cursor = match.index + match[0].length;
+    imageIndex += 1;
+    match = regex.exec(markdown);
+  }
+  return `${output}${markdown.slice(cursor)}`;
+}
+
+async function cleanupGeneratedBookAssets(uid: string, bookId: string): Promise<void> {
+  const safeUid = sanitizeBundlePathPart(uid, "user");
+  const safeBookId = sanitizeBundlePathPart(bookId, "book");
+  const prefix = `smartbooks/${safeUid}/${safeBookId}/generation-assets/`;
+  await getStorage().bucket().deleteFiles({ prefix });
+}
+
 async function rewriteMarkdownImageAssetsForBundle(
   markdown: string | undefined,
   nodeId: string,
@@ -12070,7 +12233,7 @@ async function rewriteMarkdownImageAssetsForBundle(
         const safeNodeId = sanitizeBundlePathPart(nodeId, "node");
         const extension = inferExtensionFromContentType(asset.contentType, asset.extension || "png");
         const assetPath = `assets/images/${safeNodeId}-${String(imageIndex + 1).padStart(2, "0")}.${extension}`;
-        zip.file(assetPath, asset.buffer);
+        zip.file(assetPath, asset.buffer, { compression: "STORE" });
         const safeAlt = String(alt || "").replace(/]/g, "\\]");
         replacement = `![${safeAlt}](${assetPath})`;
       } catch (error) {
@@ -12218,7 +12381,7 @@ async function buildAndPublishBookBundle(params: {
         const pageImageExt = inferExtensionFromContentType(pageImageAsset.contentType, pageImageAsset.extension || "png");
         const safeNodeId = sanitizeBundlePathPart(node.id, "page");
         const assetPath = `assets/pages/${safeNodeId}.${pageImageExt}`;
-        zip.file(assetPath, pageImageAsset.buffer);
+        zip.file(assetPath, pageImageAsset.buffer, { compression: "STORE" });
         node.pageImageUrl = assetPath;
       } catch (error) {
         logger.warn("Book bundle page image could not be materialized; keeping original page image URL.", {
@@ -12279,15 +12442,16 @@ async function buildAndPublishBookBundle(params: {
       const coverAsset = await loadBinaryAssetFromSource(coverSource);
       const coverExt = inferExtensionFromContentType(coverAsset.contentType, coverAsset.extension || "jpg");
       const coverPath = `assets/cover.${coverExt}`;
-      zip.file(coverPath, coverAsset.buffer);
+      zip.file(coverPath, coverAsset.buffer, { compression: "STORE" });
       cover = { path: coverPath };
       standaloneCoverAsset = coverAsset;
       standaloneCoverExtension = coverExt;
     } catch (error) {
-      logger.warn("Book bundle cover could not be materialized.", {
+      logger.error("Book bundle cover could not be materialized.", {
         bookId,
         error: error instanceof Error ? error.message : String(error)
       });
+      throw new HttpsError("internal", "Kitap kapağı pakete eklenemedi.");
     }
   }
 
@@ -12313,6 +12477,17 @@ async function buildAndPublishBookBundle(params: {
   const title = firstNonEmptyString(sourcePayload.topic, sourcePayload.title, sourcePayload.bookTitle) || "İsimsiz Kitap";
   const createdAtIso = toIsoStringIfPossible(sourcePayload.createdAt) || nowIso;
   const lastActivityIso = toIsoStringIfPossible(sourcePayload.lastActivity) || createdAtIso;
+  const visualStoryAudioStatus = firstNonEmptyString(sourcePayload.visualStoryAudioStatus) as BookBundleManifest["visualStoryAudioStatus"];
+  if (sourcePayload.visualStoryMode === true && visualStoryAudioStatus === "ready") {
+    const visualPages = bundleNodes.filter((node) => node.type === "lecture" && Boolean(node.pageImageUrl));
+    const hasBundledCoverAudio = Boolean(coverNarrationAudioUrl?.startsWith("assets/page-audio/"));
+    const hasAllBundledPageAudio = visualPages.length > 0 && visualPages.every(
+      (node) => typeof node.pageAudioUrl === "string" && node.pageAudioUrl.startsWith("assets/page-audio/")
+    );
+    if (!hasBundledCoverAudio || !hasAllBundledPageAudio) {
+      throw new HttpsError("internal", "Sesli masalın tüm sesleri cihaza indirilebilir pakete eklenemedi.");
+    }
+  }
 
   const manifest: BookBundleManifest = {
     schemaVersion: 1,
@@ -12334,7 +12509,7 @@ async function buildAndPublishBookBundle(params: {
       : undefined,
     totalDuration: firstNonEmptyString(sourcePayload.totalDuration),
     visualStoryMode: sourcePayload.visualStoryMode === true,
-    visualStoryAudioStatus: firstNonEmptyString(sourcePayload.visualStoryAudioStatus) as BookBundleManifest["visualStoryAudioStatus"],
+    visualStoryAudioStatus,
     coverNarrationText: firstNonEmptyString(sourcePayload.coverNarrationText),
     coverNarrationAudioUrl,
     coverNarrationAudioStoragePath: firstNonEmptyString(sourcePayload.coverNarrationAudioStoragePath),
@@ -12382,52 +12557,65 @@ async function buildAndPublishBookBundle(params: {
 
   logger.info("[Bundle] Uploading to Storage", { bookId, bundlePath, sizeBytes: zipBuffer.byteLength });
   const bucket = getStorage().bucket();
-  await withTimeout(
-    bucket.file(bundlePath).save(zipBuffer, {
-      contentType: "application/zip",
-      metadata: {
+  const bundleUploadPromise = withStorageWriteRetry(
+    () => withTimeout(
+      bucket.file(bundlePath).save(zipBuffer, {
+        contentType: "application/zip",
         metadata: {
-          uid,
-          bookId,
-          version: String(nextVersion),
-          checksumSha256,
-          firebaseStorageDownloadTokens: bundleDownloadToken
+          metadata: {
+            uid,
+            bookId,
+            version: String(nextVersion),
+            checksumSha256,
+            firebaseStorageDownloadTokens: bundleDownloadToken
+          }
         }
-      }
-    }),
-    300_000,
-    () => new HttpsError("deadline-exceeded", "Bundle Storage yükleme zaman aşımına uğradı.")
+      }),
+      300_000,
+      () => new HttpsError("deadline-exceeded", "Bundle Storage yükleme zaman aşımına uğradı.")
+    ),
+    "Kitap ZIP paketi"
   );
+  const standaloneCoverUploadPromise: Promise<string | undefined> = cover?.path && standaloneCoverAsset
+    ? (async () => {
+      const coverDownloadToken = randomUUID();
+      const coverStoragePath = `smartbooks/${safeUid}/${safeBookId}/v${nextVersion}/cover.${standaloneCoverExtension || "jpg"}`;
+      try {
+        await withStorageWriteRetry(
+          () => withTimeout(
+            bucket.file(coverStoragePath).save(standaloneCoverAsset.buffer, {
+              contentType: standaloneCoverAsset.contentType || "image/jpeg",
+              metadata: {
+                metadata: {
+                  uid,
+                  bookId,
+                  version: String(nextVersion),
+                  firebaseStorageDownloadTokens: coverDownloadToken
+                }
+              }
+            }),
+            120_000,
+            () => new HttpsError("deadline-exceeded", "Kapak Storage yükleme zaman aşımına uğradı.")
+          ),
+          "Kitaplık kapağı"
+        );
+        return buildFirebaseStorageDownloadUrl(bucket.name, coverStoragePath, coverDownloadToken);
+      } catch (error) {
+        logger.warn("Book bundle standalone cover could not be uploaded.", {
+          bookId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        const existingCover = existingBookPayload && isRecord(existingBookPayload.cover)
+          ? firstNonEmptyString(existingBookPayload.cover.url, existingBookPayload.coverImageUrl)
+          : firstNonEmptyString(existingBookPayload?.coverImageUrl);
+        if (!existingCover) throw error;
+        return undefined;
+      }
+    })()
+    : Promise.resolve(undefined);
+  const [, standaloneCoverUrl] = await Promise.all([bundleUploadPromise, standaloneCoverUploadPromise]);
   logger.info("[Bundle] Upload complete", { bookId, bundlePath });
   const contentPackageUrl = buildFirebaseStorageDownloadUrl(bucket.name, bundlePath, bundleDownloadToken);
-  let standaloneCoverUrl: string | undefined;
-  if (cover?.path && standaloneCoverAsset) {
-    const coverDownloadToken = randomUUID();
-    const coverStoragePath = `smartbooks/${safeUid}/${safeBookId}/v${nextVersion}/cover.${standaloneCoverExtension || "jpg"}`;
-    try {
-      await withTimeout(
-        bucket.file(coverStoragePath).save(standaloneCoverAsset.buffer, {
-          contentType: standaloneCoverAsset.contentType || "image/jpeg",
-          metadata: {
-            metadata: {
-              uid,
-              bookId,
-              version: String(nextVersion),
-              firebaseStorageDownloadTokens: coverDownloadToken
-            }
-          }
-        }),
-        120_000,
-        () => new HttpsError("deadline-exceeded", "Kapak Storage yükleme zaman aşımına uğradı.")
-      );
-      standaloneCoverUrl = buildFirebaseStorageDownloadUrl(bucket.name, coverStoragePath, coverDownloadToken);
-    } catch (error) {
-      logger.warn("Book bundle standalone cover could not be uploaded.", {
-        bookId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
   const publishedCover = cover
     ? {
       ...cover,
@@ -13216,6 +13404,9 @@ function buildCompletedBookJobPatchFromPublishedBook(
     bundleChecksumSha256: firstNonEmptyString(bundle?.checksumSha256) || FieldValue.delete(),
     bundleSizeBytes: Number.isFinite(Number(bundle?.sizeBytes)) ? Math.max(0, Math.floor(Number(bundle?.sizeBytes))) : FieldValue.delete(),
     bundleGeneratedAt: firstNonEmptyString(bundle?.generatedAt, bookPayload.contentPackageUpdatedAt) || FieldValue.delete(),
+    bundleSourcePath: FieldValue.delete(),
+    generationStage: FieldValue.delete(),
+    generationState: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
     completedAt: FieldValue.serverTimestamp(),
     errorMessage: FieldValue.delete(),
@@ -13249,6 +13440,7 @@ async function failBookJob(
         latestJobData,
         "published-book-recovered"
       );
+      await cleanupGeneratedBookAssets(uid, courseId).catch(() => undefined);
       logger.info("Book job failure ignored because book is already published", {
         jobId: jobRef.id,
         courseId,
@@ -13276,6 +13468,12 @@ async function failBookJob(
     { merge: true }
   );
   await cleanupVisualHeroPortraitReferenceForJob(jobRef, latestJobData, "failed");
+  if (uid && courseId) {
+    await Promise.all([
+      cleanupGeneratedBookAssets(uid, courseId).catch(() => undefined),
+      getStorage().bucket().file(`smartbooks/${uid}/${courseId}/pending-bundle.json`).delete().catch(() => undefined)
+    ]);
+  }
 
   if (!shouldAttemptRefund) {
     return;
@@ -15085,22 +15283,39 @@ export const retryStuckBookJob = onCall(
     if (!jobId) throw new HttpsError("invalid-argument", "jobId required.");
 
     const jobRef = getBookJobRef(jobId);
-    const queued = await firestore.runTransaction(async (tx) => {
+    const resume = await firestore.runTransaction(async (tx) => {
       const snap = await tx.get(jobRef);
-      if (!snap.exists) return false;
+      if (!snap.exists) return null;
       const data = snap.data() as Record<string, unknown>;
-      if (String(data.uid || "") !== uid) return false;
+      if (String(data.uid || "") !== uid) return null;
       const status = String(data.status || "");
-      if (status === "completed" || status === "failed") return false;
+      if (status === "completed" || status === "failed") return null;
+      const rawStage = String(data.generationStage || "plan");
+      const taskType: BookGenerationStage = rawStage === "content" || rawStage === "assets" || rawStage === "bundle"
+        ? rawStage
+        : "plan";
+      const state = resolveBookGenerationState(data.generationState);
+      const taskData: Record<string, unknown> = {};
+      if (taskType === "content" && state?.pipeline === "standard") {
+        taskData.contentIndex = state.nextContentIndex;
+      }
+      if (taskType === "assets" && state?.pipeline === "visual") {
+        taskData.visualPageStart = state.nextVisualPageIndex;
+      }
       tx.set(jobRef, { status: "queued", updatedAt: FieldValue.serverTimestamp(), errorMessage: FieldValue.delete() }, { merge: true });
-      return true;
+      return { taskType, taskData };
     });
 
-    if (queued) {
+    if (resume) {
       const taskRef = firestore.collection(BOOK_JOB_TASK_COLLECTION).doc();
-      await taskRef.set({ jobId, createdAt: FieldValue.serverTimestamp() });
+      await taskRef.set({
+        jobId,
+        type: resume.taskType,
+        ...resume.taskData,
+        createdAt: FieldValue.serverTimestamp()
+      });
     }
-    return { queued };
+    return { queued: Boolean(resume) };
   }
 );
 
@@ -15356,6 +15571,8 @@ export const startBookGenerationJob = onCall(
         resultPath,
         planTier,
         status: "queued",
+        generationStage: "plan",
+        generationState: FieldValue.delete(),
         totalSections,
         completedSections: 0,
         currentSectionIndex: null,
@@ -15378,7 +15595,7 @@ export const startBookGenerationJob = onCall(
       await consumeBookCreationWindow(uid, "generateCourseOutline");
       await getBookJobTaskCollection().add({
         jobId,
-        type: "generate",
+        type: "plan",
         createdAt: FieldValue.serverTimestamp()
       });
       return await buildBookJobResponse(jobId, nextData, await getOrCreateCreditWallet(uid));
@@ -15977,6 +16194,860 @@ async function sendBookReadyPushNotification(uid: string, bookTitle: string, lan
   }
 }
 
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrencyRaw: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: Array<R | undefined> = new Array(items.length);
+  const concurrency = Math.min(items.length, Math.max(1, Math.floor(concurrencyRaw)));
+  let nextIndex = 0;
+  const runWorker = async (): Promise<void> => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
+  return results.map((result, index) => {
+    if (result === undefined) {
+      throw new HttpsError("internal", `Paralel üretim sonucu eksik kaldı: ${index + 1}`);
+    }
+    return result;
+  });
+}
+
+type BookStageContext = {
+  jobData: Record<string, unknown>;
+  uid: string;
+  courseId: string;
+  resultPath: string;
+  planTier: PlanTier;
+  topic?: string;
+  sourceContent?: string;
+  creatorName?: string;
+  bookType: SmartBookBookType;
+  ageGroup: SmartBookAudienceLevel;
+  generationAgeGroup: SmartBookAudienceLevel;
+  subGenre?: string;
+  heroPortraitReference?: VisualStoryHeroPortraitReference;
+  heroPortraitName?: string;
+  allowAiBookTitleGeneration: boolean;
+  targetPageCountRaw: number;
+  creativeBrief: SmartBookCreativeBrief;
+};
+
+function resolveBookStageContext(jobData: Record<string, unknown>): BookStageContext {
+  const uid = typeof jobData.uid === "string" ? jobData.uid : "";
+  const courseId = typeof jobData.courseId === "string" ? jobData.courseId : "";
+  const resultPath = typeof jobData.resultPath === "string" ? jobData.resultPath : "";
+  if (!uid || !courseId || !resultPath) {
+    throw new HttpsError("failed-precondition", "Kitap job bilgisi eksik.");
+  }
+
+  const bookType = resolveSmartBookBookTypeFromPayload(jobData);
+  const requestedAgeGroup = normalizeSmartBookAudienceLevel(jobData.ageGroup);
+  const ageGroup = bookType === "fairy_tale"
+    ? normalizeFairyTaleStoredAudienceLevel(requestedAgeGroup)
+    : requestedAgeGroup;
+  const generationAgeGroup = bookType === "fairy_tale"
+    ? resolveFairyTaleLegacyAudienceLevel(ageGroup)
+    : ageGroup;
+  const subGenre = typeof jobData.subGenre === "string" ? jobData.subGenre : undefined;
+  const targetPageCountRaw = Number(jobData.targetPageCount);
+  const creativeBrief = normalizeSmartBookCreativeBrief(
+    jobData.creativeBrief,
+    bookType,
+    subGenre,
+    targetPageCountRaw
+  );
+  const context: BookStageContext = {
+    jobData,
+    uid,
+    courseId,
+    resultPath,
+    planTier: jobData.planTier === "free" ? "free" : "premium",
+    topic: typeof jobData.topic === "string" ? jobData.topic : undefined,
+    sourceContent: typeof jobData.sourceContent === "string" ? jobData.sourceContent : undefined,
+    creatorName: typeof jobData.creatorName === "string" ? jobData.creatorName : undefined,
+    bookType,
+    ageGroup,
+    generationAgeGroup,
+    subGenre,
+    heroPortraitReference: normalizeVisualHeroPortraitReference(jobData.visualHeroPortrait),
+    heroPortraitName: normalizeHeroPortraitName(jobData.heroPortraitName),
+    allowAiBookTitleGeneration: jobData.allowAiBookTitleGeneration === true,
+    targetPageCountRaw,
+    creativeBrief
+  };
+  assertSafeBookTexts([
+    { label: "topic", value: context.topic },
+    { label: "sourceContent", value: context.sourceContent },
+    { label: "subGenre", value: context.subGenre },
+    { label: "creatorName", value: context.creatorName },
+    { label: "heroPortraitName", value: context.heroPortraitName }
+  ]);
+  assertSafeBookBrief(context.creativeBrief);
+  return context;
+}
+
+async function readActiveBookStageContext(
+  jobRef: FirebaseFirestore.DocumentReference
+): Promise<BookStageContext | null> {
+  const snapshot = await jobRef.get();
+  if (!snapshot.exists) return null;
+  const jobData = snapshot.data() as Record<string, unknown>;
+  const status = String(jobData.status || "");
+  if (status === "completed" || status === "failed") return null;
+  return resolveBookStageContext(jobData);
+}
+
+async function markBookStageProcessing(
+  jobRef: FirebaseFirestore.DocumentReference,
+  expectedStage: BookGenerationStage
+): Promise<boolean> {
+  return firestore.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(jobRef);
+    if (!snapshot.exists) return false;
+    const data = snapshot.data() as Record<string, unknown>;
+    const status = String(data.status || "");
+    if (status === "completed" || status === "failed") return false;
+    const stage = typeof data.generationStage === "string"
+      ? data.generationStage
+      : (expectedStage === "bundle" && firstNonEmptyString(data.bundleSourcePath) ? "bundle" : "plan");
+    if (stage !== expectedStage) return false;
+    transaction.set(jobRef, {
+      status: "processing",
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    return true;
+  });
+}
+
+async function queueBookBundleFromCourse(params: {
+  jobRef: FirebaseFirestore.DocumentReference;
+  uid: string;
+  courseId: string;
+  bookTitle: string;
+  course: Record<string, unknown>;
+  usageEntries: UsageReportEntry[];
+  jobPatch?: Record<string, unknown>;
+}): Promise<void> {
+  const intermediateBundlePath = `smartbooks/${params.uid}/${params.courseId}/pending-bundle.json`;
+  const bucket = getStorage().bucket();
+  await withStorageWriteRetry(
+    () => withTimeout(
+      bucket.file(intermediateBundlePath).save(
+        Buffer.from(JSON.stringify(params.course)),
+        {
+          contentType: "application/json",
+          metadata: { metadata: { uid: params.uid, bookId: params.courseId } }
+        }
+      ),
+      120_000,
+      () => new HttpsError("deadline-exceeded", "Kitap verisi geçici olarak kaydedilemedi.")
+    ),
+    "Kitap paket kaynağı"
+  );
+  await transitionBookJobStage(
+    params.jobRef,
+    {
+      ...(params.jobPatch || {}),
+      currentSectionIndex: null,
+      currentSectionTitle: params.bookTitle,
+      currentStepLabel: "Kitabınız birleştiriliyor",
+      bundleSourcePath: intermediateBundlePath,
+      ...buildBookJobUsageSnapshot(params.usageEntries)
+    },
+    "bundle",
+    { bundleSourcePath: intermediateBundlePath }
+  );
+}
+
+async function runBookPlanningStage(jobRef: FirebaseFirestore.DocumentReference): Promise<void> {
+  const context = await readActiveBookStageContext(jobRef);
+  if (!context) return;
+  const currentStage = String(context.jobData.generationStage || "plan");
+  if (currentStage !== "plan") return;
+  if (!await markBookStageProcessing(jobRef, "plan")) return;
+
+  await jobRef.set({
+    generationStage: "plan",
+    currentStepLabel: "İçerik hazırlanıyor",
+    errorMessage: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  const ai = createGoogleGenAiClient();
+  const usageEntries = resolveUsageEntriesFromJobData(context.jobData.usageEntries);
+  const isVisualBook = context.bookType === "fairy_tale" && isVisualFairyTaleAudienceLevel(context.ageGroup);
+  if (isVisualBook) {
+    const planResult = await withTransientProviderRetry(
+      () => withTimeout(
+        generateVisualFairyTalePlan(
+          ai,
+          context.topic,
+          context.sourceContent,
+          context.creativeBrief,
+          context.allowAiBookTitleGeneration,
+          context.ageGroup,
+          { heroPortraitName: context.heroPortraitName }
+        ),
+        420_000,
+        () => new HttpsError("deadline-exceeded", "Görsel masal planı zaman aşımına uğradı.")
+      ),
+      {
+        stage: "visual-book-plan",
+        jobId: jobRef.id,
+        maxAttempts: 6,
+        minDelayMs: 2000,
+        maxDelayMs: 75_000
+      }
+    );
+    usageEntries.push(planResult.usageEntry);
+    const bookTitle = String(planResult.plan.bookTitle || context.topic || "Fortale")
+      .replace(/\s+/g, " ")
+      .trim() || "Fortale";
+    const state: VisualBookGenerationState = {
+      pipeline: "visual",
+      plan: planResult.plan,
+      courseMeta: planResult.courseMeta,
+      generatedNodes: new Array(planResult.plan.pages.length).fill(null),
+      nextVisualPageIndex: 0,
+      bookTitle
+    };
+    await transitionBookJobStage(
+      jobRef,
+      {
+        totalSections: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
+        completedSections: 1,
+        currentSectionIndex: null,
+        currentSectionTitle: bookTitle,
+        currentStepLabel: "Görseller hazırlanıyor",
+        generationState: serializeBookGenerationState(state),
+        ...buildBookJobUsageSnapshot(usageEntries)
+      },
+      "assets",
+      { visualPageStart: 0 }
+    );
+    return;
+  }
+
+  const outlineResult = await withTransientProviderRetry(
+    () => withTimeout(
+      generateCourseOutline(
+        ai,
+        context.topic,
+        context.sourceContent,
+        context.generationAgeGroup,
+        context.creativeBrief,
+        context.allowAiBookTitleGeneration
+      ),
+      420_000,
+      () => new HttpsError("deadline-exceeded", "Akış planı üretimi zaman aşımına uğradı.")
+    ),
+    {
+      stage: "book-outline",
+      jobId: jobRef.id,
+      maxAttempts: 6,
+      minDelayMs: 2000,
+      maxDelayMs: 75_000
+    }
+  );
+  usageEntries.push(outlineResult.usageEntry);
+  assertSafeBookOutline(outlineResult.outline);
+  assertSafeBookCourseMeta(outlineResult.courseMeta);
+  const lectureNodes: TimelineNode[] = outlineResult.outline
+    .filter((node) => node.type === "lecture")
+    .map((node, index) => ({
+      ...node,
+      status: (index === 0 ? "current" : "locked") as TimelineNode["status"],
+      duration: node.duration || defaultDurationForGeneratedBookSection(context.bookType)
+    }));
+  if (lectureNodes.length === 0) {
+    throw new HttpsError("internal", "Kitap akışında bölüm bulunamadı.");
+  }
+  const finalTargetPageCount = Number.isFinite(Number(outlineResult.courseMeta.targetPageCount))
+    ? Math.max(1, Math.floor(Number(outlineResult.courseMeta.targetPageCount)))
+    : (Number.isFinite(context.targetPageCountRaw) ? Math.max(1, Math.floor(context.targetPageCountRaw)) : undefined);
+  const bookTitle = String(outlineResult.courseMeta.bookTitle || context.topic || lectureNodes[0]?.title || "Fortale")
+    .replace(/\s+/g, " ")
+    .trim();
+  const state: StandardBookGenerationState = {
+    pipeline: "standard",
+    courseMeta: outlineResult.courseMeta,
+    lectureNodes,
+    generatedNodes: [],
+    nextContentIndex: 0,
+    finalTargetPageCount,
+    bookTitle
+  };
+  await transitionBookJobStage(
+    jobRef,
+    {
+      totalSections: lectureNodes.length + 2,
+      completedSections: 1,
+      currentSectionIndex: null,
+      currentSectionTitle: bookTitle,
+      currentStepLabel: "İçerik hazırlanıyor",
+      generationState: serializeBookGenerationState(state),
+      ...buildBookJobUsageSnapshot(usageEntries)
+    },
+    "content",
+    { contentIndex: 0 }
+  );
+}
+
+async function runBookContentStage(
+  jobRef: FirebaseFirestore.DocumentReference,
+  taskData: Record<string, unknown>
+): Promise<void> {
+  const context = await readActiveBookStageContext(jobRef);
+  if (!context) return;
+  if (String(context.jobData.generationStage || "") !== "content") return;
+  if (!await markBookStageProcessing(jobRef, "content")) return;
+  const state = resolveBookGenerationState(context.jobData.generationState);
+  if (!state || state.pipeline !== "standard") {
+    throw new HttpsError("failed-precondition", "Kitap içerik aşaması bulunamadı.");
+  }
+  const expectedIndex = Math.max(0, Math.floor(Number(taskData.contentIndex) || 0));
+  if (expectedIndex !== state.nextContentIndex) return;
+  if (state.nextContentIndex >= state.lectureNodes.length) {
+    await transitionBookJobStage(
+      jobRef,
+      {
+        currentSectionIndex: null,
+        currentSectionTitle: state.bookTitle,
+        currentStepLabel: "Görseller hazırlanıyor"
+      },
+      "assets"
+    );
+    return;
+  }
+
+  const ai = createGoogleGenAiClient();
+  const imageApiKey = resolveOpenAiApiKey() || "";
+  const usageEntries = resolveUsageEntriesFromJobData(context.jobData.usageEntries);
+  const generateOne = async (
+    node: TimelineNode,
+    index: number,
+    previousChapterContent?: string,
+    storySoFarContent?: string
+  ): Promise<{ node: TimelineNode; usageEntries: UsageReportEntry[] }> => {
+    const lectureResult = await withTransientProviderRetry(
+      () => withTimeout(
+        generateLectureContent(
+          ai,
+          state.bookTitle,
+          node.title,
+          imageApiKey,
+          context.generationAgeGroup,
+          context.creativeBrief,
+          state.finalTargetPageCount,
+          {
+            outlinePositions: { current: index + 1, total: state.lectureNodes.length },
+            previousChapterContent,
+            storySoFarContent
+          },
+          true,
+          undefined,
+          context.heroPortraitName
+        ),
+        420_000,
+        () => new HttpsError("deadline-exceeded", `Bölüm üretimi zaman aşımına uğradı: ${node.title}`)
+      ),
+      {
+        stage: "book-chapter",
+        jobId: jobRef.id,
+        maxAttempts: 2,
+        minDelayMs: 2000,
+        maxDelayMs: 30_000,
+        stepIndex: index + 1,
+        stepTotal: state.lectureNodes.length
+      }
+    );
+    const content = String(lectureResult.content || "").trim();
+    if (!content) {
+      throw new HttpsError("internal", `Bölüm içeriği üretilemedi: ${node.title}`);
+    }
+    return { node: { ...node, content }, usageEntries: lectureResult.usageEntries };
+  };
+
+  if (context.bookType === "story") {
+    const batchStart = state.nextContentIndex;
+    const batchNodes = state.lectureNodes.slice(batchStart, batchStart + 3);
+    await jobRef.set({
+      currentSectionIndex: batchStart + 1,
+      currentSectionTitle: batchNodes[0]?.title || state.bookTitle,
+      currentStepLabel: `İçerik ${batchStart + 1}/${state.lectureNodes.length} hazırlanıyor`,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    const results = await mapWithConcurrency(
+      batchNodes,
+      3,
+      (node, batchIndex) => generateOne(node, batchStart + batchIndex)
+    );
+    const generatedNodes = [...state.generatedNodes, ...results.map((result) => result.node)];
+    results.forEach((result) => usageEntries.push(...result.usageEntries));
+    const nextContentIndex = generatedNodes.length;
+    const nextState: StandardBookGenerationState = {
+      ...state,
+      generatedNodes,
+      nextContentIndex
+    };
+    if (nextContentIndex < state.lectureNodes.length) {
+      await transitionBookJobStage(
+        jobRef,
+        {
+          completedSections: nextContentIndex + 1,
+          currentSectionIndex: nextContentIndex,
+          currentSectionTitle: generatedNodes[generatedNodes.length - 1]?.title || state.bookTitle,
+          currentStepLabel: `İçerik ${nextContentIndex + 1}/${state.lectureNodes.length} hazırlanıyor`,
+          generationState: serializeBookGenerationState(nextState),
+          ...buildBookJobUsageSnapshot(usageEntries)
+        },
+        "content",
+        { contentIndex: nextContentIndex }
+      );
+      return;
+    }
+    await transitionBookJobStage(
+      jobRef,
+      {
+        completedSections: nextContentIndex + 1,
+        currentSectionIndex: nextContentIndex,
+        currentSectionTitle: state.lectureNodes[state.lectureNodes.length - 1]?.title || state.bookTitle,
+        currentStepLabel: "Görseller hazırlanıyor",
+        generationState: serializeBookGenerationState(nextState),
+        ...buildBookJobUsageSnapshot(usageEntries)
+      },
+      "assets"
+    );
+    return;
+  }
+
+  const index = state.nextContentIndex;
+  const node = state.lectureNodes[index];
+  const previousChapterContent = String(state.generatedNodes[index - 1]?.content || "").trim() || undefined;
+  const storySoFarContent = state.generatedNodes
+    .map((generatedNode) => String(generatedNode.content || "").trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim()
+    .slice(-24_000) || undefined;
+  await jobRef.set({
+    currentSectionIndex: index + 1,
+    currentSectionTitle: node.title,
+    currentStepLabel: `İçerik ${index + 1}/${state.lectureNodes.length} hazırlanıyor`,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  const result = await generateOne(node, index, previousChapterContent, storySoFarContent);
+  usageEntries.push(...result.usageEntries);
+  const generatedNodes = [...state.generatedNodes, result.node];
+  const nextContentIndex = index + 1;
+  const nextState: StandardBookGenerationState = {
+    ...state,
+    generatedNodes,
+    nextContentIndex
+  };
+  const commonPatch: Record<string, unknown> = {
+    completedSections: nextContentIndex + 1,
+    currentSectionIndex: nextContentIndex,
+    currentSectionTitle: node.title,
+    generationState: serializeBookGenerationState(nextState),
+    ...buildBookJobUsageSnapshot(usageEntries)
+  };
+  if (nextContentIndex < state.lectureNodes.length) {
+    await transitionBookJobStage(
+      jobRef,
+      {
+        ...commonPatch,
+        currentStepLabel: `İçerik ${nextContentIndex + 1}/${state.lectureNodes.length} hazırlanıyor`
+      },
+      "content",
+      { contentIndex: nextContentIndex }
+    );
+    return;
+  }
+  await transitionBookJobStage(
+    jobRef,
+    {
+      ...commonPatch,
+      currentSectionIndex: null,
+      currentSectionTitle: state.bookTitle,
+      currentStepLabel: "Görseller hazırlanıyor"
+    },
+    "assets"
+  );
+}
+
+async function runBookAssetsStage(
+  jobRef: FirebaseFirestore.DocumentReference,
+  taskData: Record<string, unknown>
+): Promise<void> {
+  const context = await readActiveBookStageContext(jobRef);
+  if (!context) return;
+  if (String(context.jobData.generationStage || "") !== "assets") return;
+  if (!await markBookStageProcessing(jobRef, "assets")) return;
+  const state = resolveBookGenerationState(context.jobData.generationState);
+  if (!state) {
+    throw new HttpsError("failed-precondition", "Kitap görsel aşaması bulunamadı.");
+  }
+  const imageApiKey = resolveOpenAiApiKey();
+  if (!imageApiKey) {
+    throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
+  }
+  const ai = createGoogleGenAiClient();
+  const usageEntries = resolveUsageEntriesFromJobData(context.jobData.usageEntries);
+  const heroPortraitImage = context.heroPortraitReference
+    ? await loadOpenAiHeroPortraitReference(context.heroPortraitReference)
+    : undefined;
+
+  if (state.pipeline === "visual") {
+    const expectedPageStart = Math.max(0, Math.floor(Number(taskData.visualPageStart) || 0));
+    if (expectedPageStart !== state.nextVisualPageIndex) return;
+    const pageBatch = state.plan.pages.slice(expectedPageStart, expectedPageStart + 4);
+    if (pageBatch.length === 0 && !state.coverImageUrl) {
+      throw new HttpsError("failed-precondition", "Görsel masal kapağı ve sayfaları bulunamadı.");
+    }
+    await jobRef.set({
+      currentSectionIndex: expectedPageStart + 1,
+      currentSectionTitle: state.bookTitle,
+      currentStepLabel: "Görseller hazırlanıyor",
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    const coverPromise = state.coverImageUrl
+      ? Promise.resolve(null)
+      : (async () => {
+        const coverPrompt = buildVisualStoryPageImagePrompt({
+          bookTitle: state.bookTitle,
+          pageTitle: "Kapak",
+          pageText: state.plan.coverText,
+          scenePrompt: `${state.plan.bookDescription} Kapak görseli; ana karakter ve hikaye atmosferi ilk bakışta anlaşılır.`,
+          characterBible: state.plan.characterBible,
+          styleAnchor: state.plan.styleAnchor,
+          creativeBrief: context.creativeBrief,
+          pageNumber: 0,
+          totalPages: VISUAL_FAIRY_TALE_PAGE_COUNT,
+          audienceLevel: context.ageGroup,
+          isCover: true
+        });
+        const result = await withTransientProviderRetry(
+          () => withTimeout(
+            generateValidatedVisualStoryImage({
+              ai,
+              openAiApiKey: imageApiKey,
+              prompt: coverPrompt,
+              label: "Görsel masal kapağı",
+              audienceLevel: context.ageGroup,
+              isCover: true,
+              heroPortraitImage,
+              heroPortraitName: context.heroPortraitName
+            }),
+            240_000,
+            () => new HttpsError("deadline-exceeded", "Görsel masal kapağı zaman aşımına uğradı.")
+          ),
+          {
+            stage: "visual-book-cover",
+            jobId: jobRef.id,
+            maxAttempts: 1,
+            minDelayMs: 1000,
+            maxDelayMs: 8_000
+          }
+        );
+        const storedImageUrl = await persistGeneratedBookAsset({
+          uid: context.uid,
+          bookId: context.courseId,
+          key: "cover",
+          source: result.imageUrl
+        });
+        return { imageUrl: storedImageUrl, usageEntries: result.usageEntries };
+      })();
+
+    const pagesPromise = mapWithConcurrency(pageBatch, 4, async (page, batchIndex) => {
+      const pageIndex = expectedPageStart + batchIndex;
+      const pagePrompt = buildVisualStoryPageImagePrompt({
+        bookTitle: state.bookTitle,
+        pageTitle: page.title,
+        pageText: page.pageText,
+        scenePrompt: page.scenePrompt,
+        characterBible: state.plan.characterBible,
+        styleAnchor: state.plan.styleAnchor,
+        creativeBrief: context.creativeBrief,
+        pageNumber: pageIndex + 1,
+        totalPages: state.plan.pages.length,
+        audienceLevel: context.ageGroup
+      });
+      const result = await withTransientProviderRetry(
+        () => withTimeout(
+          generateValidatedVisualStoryImage({
+            ai,
+            openAiApiKey: imageApiKey,
+            prompt: pagePrompt,
+            label: `${page.title}: Görsel masal sayfası`,
+            audienceLevel: context.ageGroup,
+            heroPortraitImage,
+            heroPortraitName: context.heroPortraitName
+          }),
+          240_000,
+          () => new HttpsError("deadline-exceeded", `Görsel masal sayfası zaman aşımına uğradı: ${page.title}`)
+        ),
+        {
+          stage: "visual-book-page",
+          jobId: jobRef.id,
+          maxAttempts: 2,
+          minDelayMs: 1000,
+          maxDelayMs: 8_000,
+          stepIndex: pageIndex + 1,
+          stepTotal: state.plan.pages.length
+        }
+      );
+      const storedImageUrl = await persistGeneratedBookAsset({
+        uid: context.uid,
+        bookId: context.courseId,
+        key: `page-${pageIndex + 1}-${page.id}`,
+        source: result.imageUrl
+      });
+      const preferredLanguage = resolvePreferredLanguageFromBrief(
+        context.creativeBrief,
+        context.topic,
+        context.sourceContent
+      );
+      const node: TimelineNode = {
+        id: page.id,
+        title: "",
+        description: "",
+        type: "lecture",
+        status: pageIndex === 0 ? "current" : "locked",
+        duration: preferredLanguage === "tr" ? "1 dk" : "1 min",
+        pageText: page.pageText,
+        pageImageUrl: storedImageUrl,
+        pageSequence: pageIndex + 1
+      };
+      return { pageIndex, node, usageEntries: result.usageEntries };
+    });
+
+    const [coverResult, pageResults] = await Promise.all([coverPromise, pagesPromise]);
+    if (coverResult) usageEntries.push(...coverResult.usageEntries);
+    pageResults.forEach((result) => usageEntries.push(...result.usageEntries));
+    const generatedNodes = [...state.generatedNodes];
+    pageResults.forEach((result) => {
+      generatedNodes[result.pageIndex] = result.node;
+    });
+    const nextVisualPageIndex = expectedPageStart + pageResults.length;
+    const nextState: VisualBookGenerationState = {
+      ...state,
+      generatedNodes,
+      nextVisualPageIndex,
+      coverImageUrl: coverResult?.imageUrl || state.coverImageUrl
+    };
+    if (nextVisualPageIndex < state.plan.pages.length) {
+      await transitionBookJobStage(
+        jobRef,
+        {
+          completedSections: 1 + nextVisualPageIndex,
+          currentSectionIndex: nextVisualPageIndex,
+          currentSectionTitle: state.plan.pages[nextVisualPageIndex - 1]?.title || state.bookTitle,
+          currentStepLabel: `Görsel ${nextVisualPageIndex}/${state.plan.pages.length} hazırlanıyor`,
+          generationState: serializeBookGenerationState(nextState),
+          ...buildBookJobUsageSnapshot(usageEntries)
+        },
+        "assets",
+        { visualPageStart: nextVisualPageIndex }
+      );
+      return;
+    }
+    if (!nextState.coverImageUrl) {
+      throw new HttpsError("internal", "Görsel masal kapağı üretilemedi.");
+    }
+    const finalizedNodes = generatedNodes.map((node, index) => {
+      if (node) return node;
+      throw new HttpsError("internal", `Görsel masal sayfası eksik kaldı: ${index + 1}`);
+    });
+    const coursePayload = buildGeneratedBookCoursePayload({
+      uid: context.uid,
+      courseId: context.courseId,
+      creatorName: context.creatorName,
+      ageGroup: context.ageGroup,
+      bookType: context.bookType,
+      subGenre: context.subGenre,
+      creativeBrief: context.creativeBrief,
+      targetPageCount: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
+      courseMeta: state.courseMeta,
+      coverImageUrl: nextState.coverImageUrl,
+      nodes: finalizedNodes,
+      contentPackagePath: context.resultPath,
+      visualStoryMode: true,
+      coverNarrationText: state.plan.coverText
+    });
+    const normalizedCourse = normalizeCoursePayloadForClient(
+      context.courseId,
+      coursePayload,
+      context.uid,
+      context.resultPath
+    );
+    await queueBookBundleFromCourse({
+      jobRef,
+      uid: context.uid,
+      courseId: context.courseId,
+      bookTitle: state.bookTitle,
+      course: normalizedCourse,
+      usageEntries,
+      jobPatch: {
+        completedSections: VISUAL_FAIRY_TALE_PAGE_COUNT + 1,
+        generationState: serializeBookGenerationState(nextState)
+      }
+    });
+    return;
+  }
+
+  if (state.nextContentIndex < state.lectureNodes.length || state.generatedNodes.length !== state.lectureNodes.length) {
+    throw new HttpsError("failed-precondition", "Kitap metinleri tamamlanmadan görsel aşamasına geçildi.");
+  }
+  await jobRef.set({
+    currentSectionIndex: null,
+    currentSectionTitle: state.bookTitle,
+    currentStepLabel: "Görseller hazırlanıyor",
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  const coverPromise = (async () => {
+    const result = await withTransientProviderRetry(
+      () => withTimeout(
+        generateCourseCover(
+          state.bookTitle,
+          context.bookType,
+          imageApiKey,
+          context.generationAgeGroup,
+          context.creativeBrief,
+          buildBookJobCoverContext(state.generatedNodes),
+          heroPortraitImage,
+          context.heroPortraitName
+        ),
+        240_000,
+        () => new HttpsError("deadline-exceeded", "Kitap kapağı üretimi zaman aşımına uğradı.")
+      ),
+      {
+        stage: "book-cover",
+        jobId: jobRef.id,
+        maxAttempts: 1,
+        minDelayMs: 2000,
+        maxDelayMs: 45_000
+      }
+    );
+    if (!result.coverImageUrl) {
+      throw new HttpsError("internal", "Kitap kapağı üretilemedi.");
+    }
+    const storedCoverUrl = await persistGeneratedBookAsset({
+      uid: context.uid,
+      bookId: context.courseId,
+      key: "cover",
+      source: result.coverImageUrl
+    });
+    return { coverImageUrl: storedCoverUrl, usageEntry: result.usageEntry };
+  })();
+
+  const nodesPromise = mapWithConcurrency(state.generatedNodes, 4, async (node, index) => {
+    const previousChapterContent = String(state.generatedNodes[index - 1]?.content || "").trim() || undefined;
+    const storySoFarContent = state.generatedNodes
+      .slice(0, index)
+      .map((generatedNode) => String(generatedNode.content || "").trim())
+      .filter(Boolean)
+      .join("\n\n")
+      .trim()
+      .slice(-24_000) || undefined;
+    try {
+      const imageResult = await withTransientProviderRetry(
+        () => withTimeout(
+          generateLectureImages(
+            state.bookTitle,
+            node.title,
+            String(node.content || ""),
+            imageApiKey,
+            context.generationAgeGroup,
+            context.creativeBrief,
+            state.finalTargetPageCount,
+            {
+              outlinePositions: { current: index + 1, total: state.generatedNodes.length },
+              previousChapterContent,
+              storySoFarContent
+            },
+            heroPortraitImage,
+            context.heroPortraitName
+          ),
+          180_000,
+          () => new HttpsError("deadline-exceeded", `Bölüm görseli zaman aşımına uğradı: ${node.title}`)
+        ),
+        {
+          stage: "book-chapter-image",
+          jobId: jobRef.id,
+          maxAttempts: 2,
+          minDelayMs: 1000,
+          maxDelayMs: 12_000,
+          stepIndex: index + 1,
+          stepTotal: state.generatedNodes.length
+        }
+      );
+      const stagedContent = await persistGeneratedMarkdownImages({
+        uid: context.uid,
+        bookId: context.courseId,
+        nodeId: node.id,
+        markdown: imageResult.content
+      });
+      return {
+        node: { ...node, content: stagedContent },
+        usageEntries: imageResult.usageEntries
+      };
+    } catch (error) {
+      logger.warn("Lecture image generation failed; keeping text-only chapter.", {
+        jobId: jobRef.id,
+        nodeId: node.id,
+        error: toErrorMessage(error)
+      });
+      return { node, usageEntries: [] as UsageReportEntry[] };
+    }
+  });
+
+  const [coverResult, nodeResults] = await Promise.all([coverPromise, nodesPromise]);
+  usageEntries.push(coverResult.usageEntry);
+  nodeResults.forEach((result) => usageEntries.push(...result.usageEntries));
+  const generatedNodes = nodeResults.map((result) => result.node);
+  const nextState: StandardBookGenerationState = { ...state, generatedNodes };
+  const coursePayload = buildGeneratedBookCoursePayload({
+    uid: context.uid,
+    courseId: context.courseId,
+    creatorName: context.creatorName,
+    ageGroup: context.ageGroup,
+    bookType: context.bookType,
+    subGenre: context.subGenre,
+    creativeBrief: context.creativeBrief,
+    targetPageCount: state.finalTargetPageCount,
+    courseMeta: state.courseMeta,
+    coverImageUrl: coverResult.coverImageUrl,
+    nodes: generatedNodes,
+    contentPackagePath: context.resultPath
+  });
+  const normalizedCourse = normalizeCoursePayloadForClient(
+    context.courseId,
+    coursePayload,
+    context.uid,
+    context.resultPath
+  );
+  await queueBookBundleFromCourse({
+    jobRef,
+    uid: context.uid,
+    courseId: context.courseId,
+    bookTitle: state.bookTitle,
+    course: normalizedCourse,
+    usageEntries,
+    jobPatch: { generationState: serializeBookGenerationState(nextState) }
+  });
+}
+
 async function runBookGenerationJobTask(
   jobRef: FirebaseFirestore.DocumentReference
 ): Promise<void> {
@@ -16339,6 +17410,7 @@ async function runBookBundleJobTask(
   if (!uid || !courseId || !bundleSourcePath) {
     throw new HttpsError("failed-precondition", "Bundle görev verisi eksik.");
   }
+  if (!await markBookStageProcessing(jobRef, "bundle")) return;
 
   await jobRef.set(
     { currentStepLabel: "Kitabınız birleştiriliyor", updatedAt: FieldValue.serverTimestamp() },
@@ -16362,8 +17434,17 @@ async function runBookBundleJobTask(
   });
   const finalResultPath = publishedBook.bundle.path;
 
-  // Clean up the intermediate file
-  await bucket.file(bundleSourcePath).delete().catch(() => undefined);
+  // The published ZIP owns all required assets now; generation-only files can be removed.
+  await Promise.all([
+    bucket.file(bundleSourcePath).delete().catch(() => undefined),
+    cleanupGeneratedBookAssets(uid, courseId).catch((error) => {
+      logger.warn("Generated book staging assets could not be cleaned up.", {
+        jobId: jobRef.id,
+        courseId,
+        error: toErrorMessage(error)
+      });
+    })
+  ]);
 
   // Read usage entries from job to restore them
   const usageEntries = resolveUsageEntriesFromJobData(jobData?.usageEntries);
@@ -16389,16 +17470,18 @@ async function runBookBundleJobTask(
   }
 
   const totalSections = Math.max(1, toNonNegativeInt(jobData?.totalSections));
-  const lectureNodeCount = Math.max(0, totalSections - 2);
+  const publishedNodeCount = Array.isArray(sourceCoursePayload.nodes)
+    ? sourceCoursePayload.nodes.length
+    : Math.max(0, totalSections - 2);
 
   await jobRef.set(
     {
       status: "completed",
       totalSections,
       completedSections: totalSections,
-      currentSectionIndex: lectureNodeCount,
+      currentSectionIndex: publishedNodeCount,
       currentSectionTitle: bookTitle,
-      currentStepLabel: "Kitap hazır",
+      currentStepLabel: sourceCoursePayload.visualStoryMode === true ? "Görsel masal hazır" : "Kitap hazır",
       resultPath: finalResultPath,
       bundleVersion: publishedBook.bundle.version,
       bundleIncludesPodcast: publishedBook.bundle.includesPodcast,
@@ -16406,6 +17489,8 @@ async function runBookBundleJobTask(
       bundleSizeBytes: publishedBook.bundle.sizeBytes,
       bundleGeneratedAt: publishedBook.bundle.generatedAt,
       bundleSourcePath: FieldValue.delete(),
+      generationStage: FieldValue.delete(),
+      generationState: FieldValue.delete(),
       inputTokens: usageTotals.inputTokens,
       outputTokens: usageTotals.outputTokens,
       totalTokens: usageTotals.totalTokens,
@@ -16458,6 +17543,7 @@ export const processBookGenerationJobTask = onDocumentCreated(
     cpu: 2,
     concurrency: 1,
     maxInstances: 10,
+    retry: true,
     secrets: [GEMINI_API_KEY, OPENAI_API_KEY]
   },
   async (event) => {
@@ -16483,15 +17569,28 @@ export const processBookGenerationJobTask = onDocumentCreated(
       return;
     }
 
-    const taskType = typeof taskData?.type === "string" ? taskData.type : "generate";
+    const rawTaskType = typeof taskData?.type === "string" ? taskData.type : "plan";
+    const taskType = rawTaskType === "generate" ? "plan" : rawTaskType;
+    const taskStartedAt = Date.now();
+    let taskOutcome: "completed" | "failed" = "completed";
+    logger.info("Book generation stage started", {
+      jobId,
+      taskType,
+      taskId: snapshot.id
+    });
 
     try {
       if (taskType === "bundle") {
         await runBookBundleJobTask(jobRef);
+      } else if (taskType === "content") {
+        await runBookContentStage(jobRef, taskData || {});
+      } else if (taskType === "assets") {
+        await runBookAssetsStage(jobRef, taskData || {});
       } else {
-        await runBookGenerationJobTask(jobRef);
+        await runBookPlanningStage(jobRef);
       }
     } catch (error) {
+      taskOutcome = "failed";
       logger.error("Book job task failed", {
         jobId,
         taskType,
@@ -16499,6 +17598,13 @@ export const processBookGenerationJobTask = onDocumentCreated(
       });
       await failBookJob(jobRef, jobData, error);
     } finally {
+      logger.info("Book generation stage finished", {
+        jobId,
+        taskType,
+        taskId: snapshot.id,
+        outcome: taskOutcome,
+        durationMs: Date.now() - taskStartedAt
+      });
       await snapshot.ref.delete().catch(() => undefined);
     }
   }
