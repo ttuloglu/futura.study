@@ -15,7 +15,6 @@ import { httpsCallable } from 'firebase/functions';
 import { appCheckReady, auth, functions } from '../firebaseConfig';
 import { useUiI18n } from '../i18n/uiI18n';
 import { ViewState } from '../types';
-import { FORTALE_BACKGROUND_GRADIENT } from '../theme';
 import {
   canUseNativeSocialSignIn,
   isNativeSocialRuntime,
@@ -482,12 +481,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
   };
 
   return (
-    <div
-      className="fixed inset-0 text-white"
-      style={{
-        background: FORTALE_BACKGROUND_GRADIENT
-      }}
-    >
+    <div className="fortale-login-view fixed inset-0 overflow-hidden text-white">
       <div
         className="pointer-events-none absolute left-1/2 z-[2] h-[160px] w-[300px] -translate-x-1/2"
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 86px)' }}
@@ -516,7 +510,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
       <div className="app-content-width flex h-full flex-col px-6 md:px-8">
         <div className="relative min-h-0 flex-1 overflow-y-auto">
           <div className="flex min-h-full items-start justify-center pb-8 pt-[calc(env(safe-area-inset-top,0px)+258px)]">
-            <div className="relative z-10 w-full max-w-[440px] mx-auto space-y-5">
+            <div className="fortale-login-card relative z-10 w-full max-w-[440px] mx-auto space-y-5">
             <div className="flex w-full items-center justify-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center">
                 <img src="/favicon-red.svg" alt="Fortale logo" className="h-9 w-9" />

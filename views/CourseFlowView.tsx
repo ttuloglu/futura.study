@@ -4785,19 +4785,7 @@ export default function CourseFlowView({
   const buildPodcastOpeningLine = (): string => {
     const bookTitle = String(courseData?.topic || '').trim();
     if (!bookTitle) return '';
-
-    const creatorName = String(courseData?.creatorName || '').trim();
-    const bookTypeLabel = courseData?.bookType === 'fairy_tale'
-      ? 'Masal'
-      : courseData?.bookType === 'story'
-        ? 'Çalışma Kitabı'
-        : 'Hikaye';
-
-    if (creatorName) {
-      return `${bookTypeLabel}: ${bookTitle}. Kurgulayan: ${creatorName}.`;
-    }
-
-    return `${bookTypeLabel}: ${bookTitle}.`;
+    return `${bookTitle}.`;
   };
 
   const buildPodcastSourceContent = (): string => {
@@ -5644,7 +5632,7 @@ export default function CourseFlowView({
       )}
       {iosPopupMessage && (
         <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+82px)] z-50 -translate-x-1/2 px-4">
-          <div className="rounded-2xl border border-white/55 bg-white/20 px-4 py-3 backdrop-blur-xl shadow-[0_18px_28px_-18px_rgba(0,0,0,0.85)]">
+          <div className="fortale-cosmos-notice rounded-2xl border px-4 py-3 backdrop-blur-xl shadow-[0_18px_28px_-18px_rgba(0,0,0,0.85)]">
             <p className="text-[12px] font-semibold text-white whitespace-nowrap">{iosPopupMessage}</p>
           </div>
         </div>
@@ -5779,7 +5767,7 @@ export default function CourseFlowView({
       </FloatIslandSheet>
       {coverPreviewImageUrl && (
         <div
-          className="fixed inset-0 z-[70] bg-black/78 backdrop-blur-[3px] flex items-center justify-center p-4"
+          className="fortale-cosmos-lightbox fixed inset-0 z-[70] backdrop-blur-[3px] flex items-center justify-center p-4"
           onClick={() => { if (coverPreviewScaleRef.current <= 1) setCoverPreviewImageUrl(null); }}
         >
           <div className="pointer-events-none absolute inset-x-0 z-[71]" style={{ top: 'var(--app-header-row-top)' }}>

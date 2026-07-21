@@ -17,14 +17,15 @@ import FloatIslandSheet from '../components/FloatIslandSheet';
 import CreditBalanceBreakdown from '../components/CreditBalanceBreakdown';
 import { useUiI18n } from '../i18n/uiI18n';
 import { normalizeAppLanguageCode } from '../data/appLanguages';
-import { FORTALE_BACKGROUND_GRADIENT } from '../theme';
 import { getCommunityBookSectionLabels } from '../utils/communityBookLanguage';
+import { getOwnedCommunityCourseId } from '../utils/communityOwnedCourse';
 
 interface CommunityViewProps {
   authUser: User | null;
   wallet: CreditWallet;
   onRequireCredit: (action: CreditActionType, costOverride?: number) => boolean;
   onNavigate: (view: ViewState) => void;
+  onCourseSelect: (courseId: string) => void;
   onOpenPaywall?: () => void;
 }
 
@@ -195,7 +196,7 @@ function BookCover({ book }: { book: CommunityBook }) {
   );
 }
 
-function BookCard({ book, onOpen, onLike, onShare }: { book: CommunityBook; onOpen: () => void; onLike: () => void; onShare: () => void }) {
+function BookCard({ book, onOpen, onRead, onLike, onShare }: { book: CommunityBook; onOpen: () => void; onRead: () => void; onLike: () => void; onShare: () => void }) {
   const { locale, t } = useUiI18n();
   const summary = getCommunityBookSummary(book);
   return (
@@ -214,7 +215,7 @@ function BookCard({ book, onOpen, onLike, onShare }: { book: CommunityBook; onOp
       <div className="fortale-book-list-info">
         <div className="fortale-book-list-topline">
           <span className="fortale-book-list-type" style={typeStyle(book.bookType)}>{t(typeLabel(book.bookType))}</span>
-          <button type="button" onClick={onOpen} className="fortale-book-list-read"><BookOpen size={12} /> {t('Oku')}</button>
+          <button type="button" onClick={onRead} className="fortale-book-list-read"><BookOpen size={12} /> {t('Oku')}</button>
         </div>
         <button type="button" onClick={onOpen} className="fortale-book-list-title">{book.title}</button>
         <div className="fortale-book-list-byline">
@@ -235,7 +236,7 @@ function BookCard({ book, onOpen, onLike, onShare }: { book: CommunityBook; onOp
   );
 }
 
-export default function CommunityView({ authUser, wallet, onRequireCredit, onNavigate, onOpenPaywall }: CommunityViewProps) {
+export default function CommunityView({ authUser, wallet, onRequireCredit, onNavigate, onCourseSelect, onOpenPaywall }: CommunityViewProps) {
   const { locale, t } = useUiI18n();
   const [tab, setTab] = useState<CommunityTab>('discover');
   const [books, setBooks] = useState<CommunityBook[]>([]);
@@ -342,6 +343,14 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
       setIsDetailLoading(false);
     }
   }, [showToast, t]);
+
+  const openOwnedBook = useCallback((book: CommunityBook): boolean => {
+    const courseId = getOwnedCommunityCourseId(book, authUser?.uid);
+    if (!courseId) return false;
+    setSelected(null);
+    onCourseSelect(courseId);
+    return true;
+  }, [authUser?.uid, onCourseSelect]);
 
   const updateBookEverywhere = useCallback((id: string, patch: Partial<CommunityBook>) => {
     setBooks((current) => current.map((book) => book.id === id ? { ...book, ...patch } : book));
@@ -532,6 +541,7 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     ...filters.categories.map((item) => ({ value: item, label: t(item) }))
   ];
   const canAccessSelectedComments = Boolean(authUser && selected && (selected.isOwned || selected.userId === authUser.uid));
+  const selectedOwnedCourseId = getOwnedCommunityCourseId(selected, authUser?.uid);
 
   return (
     <div className="view-container fortale-library-view">
@@ -572,7 +582,18 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
           <div className="fortale-library-panel rounded-2xl border p-8 text-center"><Library size={28} className="mx-auto text-white" /><p className="mt-3 text-[13px] font-bold text-white">{t('Bu filtrede kitap bulunamadı.')}</p><button type="button" onClick={() => onNavigate('AI_CHAT')} className="mt-4 rounded-xl bg-emerald-400 px-4 py-2 text-[11px] font-black text-[#102018]">{t('Kitaplarıma Git')}</button></div>
         ) : (
           <section className="fortale-library-cover-grid fortale-book-list-grid">
-            {books.map((book) => <BookCard key={book.id} book={book} onOpen={() => void openDetail(book)} onLike={() => void handleLike(book)} onShare={() => void shareBook(book)} />)}
+            {books.map((book) => (
+              <BookCard
+                key={book.id}
+                book={book}
+                onOpen={() => void openDetail(book)}
+                onRead={() => {
+                  if (!openOwnedBook(book)) void openDetail(book);
+                }}
+                onLike={() => void handleLike(book)}
+                onShare={() => void shareBook(book)}
+              />
+            ))}
           </section>
         )}
       </div>
@@ -668,11 +689,18 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
 
                 <button
                   type="button"
-                  onClick={() => void handleDownload()}
-                  disabled={busyAction === 'download' || selected.isOwned || selected.userId === authUser?.uid}
+                  onClick={() => {
+                    if (selectedOwnedCourseId) openOwnedBook(selected);
+                    else void handleDownload();
+                  }}
+                  disabled={busyAction === 'download'}
                   className="fortale-community-library-button inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 text-[13px] font-black"
                 >
-                  {busyAction === 'download' ? <FaviconSpinner size={14} /> : selected.isOwned || selected.userId === authUser?.uid ? <><Library size={14} /><span>{t('Kütüphanede')}</span></> : <><Library size={14} /><span>{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>}
+                  {busyAction === 'download'
+                    ? <FaviconSpinner size={14} />
+                    : selectedOwnedCourseId
+                      ? <><BookOpen size={14} /><span>{t('Oku')}</span></>
+                      : <><Library size={14} /><span>{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>}
                 </button>
               </div>
               );
@@ -682,8 +710,7 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
 
       {imageViewer && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 backdrop-blur-sm"
-          style={{ background: FORTALE_BACKGROUND_GRADIENT }}
+          className="fortale-cosmos-lightbox fixed inset-0 z-[110] flex items-center justify-center p-4 backdrop-blur-sm"
           onClick={() => setImageViewer(null)}
         >
           <div className="max-h-full max-w-full" onClick={(event) => event.stopPropagation()}>

@@ -42,11 +42,11 @@ export default function Sidebar({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 bg-[#1A1F26]/40 backdrop-blur-md animate-enter"
+        className="fortale-modal-backdrop fixed inset-0 z-50 backdrop-blur-md animate-enter"
         onClick={onClose}
       />
 
-      <aside className="fixed inset-x-0 top-0 z-[51] w-full max-h-[90vh] animate-slide-down border-b border-white/10 glass-panel bg-[#2C363F]/95 shadow-2xl rounded-b-[2rem] overflow-hidden">
+      <aside className="fortale-cosmos-panel fixed inset-x-0 top-0 z-[51] w-full max-h-[90vh] animate-slide-down border-b border-white/10 glass-panel shadow-2xl rounded-b-[2rem] overflow-hidden">
         <div className="app-content-width flex h-full flex-col">
           <div className="px-6 pb-6 pt-10">
             <div className="mb-6 flex items-center justify-between">

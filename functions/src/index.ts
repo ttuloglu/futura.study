@@ -2245,6 +2245,80 @@ function isNarrativeBookTitleTooGeneric(
   return false;
 }
 
+const GENERIC_WORKBOOK_TITLE_TOKENS = new Set([
+  "calisma", "kitabi", "kitap", "workbook", "book", "rehber", "guide", "handbook",
+  "konu", "topic", "giris", "introduction", "temeller", "basics", "fundamentals"
+]);
+
+function titleEditDistance(left: string, right: string): number {
+  if (left === right) return 0;
+  if (!left) return right.length;
+  if (!right) return left.length;
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + substitutionCost
+      );
+    }
+    previous = current;
+  }
+  return previous[right.length];
+}
+
+function normalizeWorkbookTitleKey(value: string): string {
+  return String(value || "")
+    .toLocaleLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isWorkbookBookTitleTooCloseToTopic(title: string, topic: string): boolean {
+  const normalizedTitle = normalizeWorkbookTitleKey(title);
+  const normalizedTopic = normalizeWorkbookTitleKey(topic);
+  if (!normalizedTitle || normalizedTitle.length < 3) return true;
+  if (/^(?:calisma kitabi|workbook|kitap|book|rehber|guide)$/u.test(normalizedTitle)) return true;
+  if (!normalizedTopic) return false;
+  if (normalizedTitle === normalizedTopic) return true;
+
+  const titleWithoutGenericTokens = normalizedTitle
+    .split(" ")
+    .filter((token) => !GENERIC_WORKBOOK_TITLE_TOKENS.has(token))
+    .join(" ")
+    .trim();
+  const topicWithoutGenericTokens = normalizedTopic
+    .split(" ")
+    .filter((token) => !GENERIC_WORKBOOK_TITLE_TOKENS.has(token))
+    .join(" ")
+    .trim();
+  if (
+    titleWithoutGenericTokens &&
+    topicWithoutGenericTokens &&
+    titleWithoutGenericTokens === topicWithoutGenericTokens
+  ) {
+    return true;
+  }
+
+  const compactTitle = normalizedTitle.replace(/\s+/g, "");
+  const compactTopic = normalizedTopic.replace(/\s+/g, "");
+  const maxLength = Math.max(compactTitle.length, compactTopic.length);
+  if (maxLength >= 6) {
+    const editRatio = titleEditDistance(compactTitle, compactTopic) / maxLength;
+    if (editRatio <= 0.16) return true;
+  }
+
+  return false;
+}
+
 function endingStyleLabelForPrompt(style: SmartBookEndingStyle | undefined, isEn: boolean): string {
   if (!style) return isEn ? "Not specified" : "Belirtilmedi";
   if (style === "happy") return isEn ? "Happy ending" : "Mutlu son";
@@ -7680,7 +7754,7 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
   const bookTitleRule = lockUserProvidedBookTitle
     ? "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını aynen koru."
     : isWorkbookPrompt
-      ? "11) bookTitle alanını AI üretmeli: konu girdisini kitap adı sanma veya aynen kopyalama. Konunun özünü taşıyan, özgün, doğal ve profesyonel bir çalışma kitabı adı yaz; kategori etiketi ya da 'Çalışma Kitabı' gibi jenerik ad kullanma."
+      ? "11) bookTitle alanını AI üretmeli: konu girdisini kitap adı sanma veya aynen kopyalama. Yalnızca yazım hatalarını düzeltip konu girdisini yeniden sunma. Konunun özünü taşıyan, özgün, doğal ve profesyonel bir eğitim kitabı adı yaz; kategori etiketi, 'Çalışma Kitabı', 'Rehber', 'Workbook' veya 'Guide' gibi jenerik eklerle yetinme."
     : isNarrativePrompt
       ? "11) bookTitle alanı, konu ve brief ile tutarlı, özgün, doğal ve profesyonel bir kitap adı üretmeli. Genelde 2-4 kelime olmalı; 5 kelime sadece gerçekten doğal ve güçlü ise kullanılabilir. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma. Kategori/alt tür etiketi, teknik etiket, hazır kalıp ve karakter adı listesi gibi mekanik kalıplar kullanma."
       : allowAiBookTitleGeneration
@@ -8025,12 +8099,12 @@ ${statusRules}
     rawTitle: string,
     bookType: SmartBookBookType
   ): string => buildNarrativeChapterTitle(index, rawTitle, bookType) || buildDeterministicNarrativeChapterTitle(index, bookType);
-  const repairNarrativeMetadataIfNeeded = async (
+  const repairBookMetadataIfNeeded = async (
     currentOutline: TimelineNode[],
     rawBookTitleValue: string,
     rawBookDescriptionValue: string
   ): Promise<{ outline: TimelineNode[]; bookTitle: string; bookDescription: string }> => {
-    if (!narrativeBrief) {
+    if (!narrativeBrief && !isWorkbookPrompt) {
       return {
         outline: currentOutline,
         bookTitle: rawBookTitleValue,
@@ -8047,11 +8121,15 @@ ${statusRules}
       }));
     const missingOrTechnicalTitleCount = rawTitleCandidates.filter((item) => !item.title.trim()).length;
     const shouldRepairBookTitle = !lockUserProvidedBookTitle && (
-      !rawBookTitleValue.trim() || isNarrativeBookTitleTooGeneric(rawBookTitleValue, {
-        topic: normalizedTopic,
-        subGenre: normalizedBrief.subGenre,
-        bookType: normalizedBrief.bookType
-      })
+      !rawBookTitleValue.trim() || (
+        isWorkbookPrompt
+          ? isWorkbookBookTitleTooCloseToTopic(rawBookTitleValue, normalizedTopic)
+          : isNarrativeBookTitleTooGeneric(rawBookTitleValue, {
+            topic: normalizedTopic,
+            subGenre: normalizedBrief.subGenre,
+            bookType: normalizedBrief.bookType
+          })
+      )
     );
     const shouldRepairBookDescription = !rawBookDescriptionValue.trim() || isGenericBookDescription(
       rawBookDescriptionValue,
@@ -8066,7 +8144,9 @@ ${statusRules}
     }
 
     const repairPrompt = `
-${normalizedTopic ? `"${normalizedTopic}" için yalnızca anlatı metadata onarımı yap.` : "Yalnızca anlatı metadata onarımı yap."}
+${normalizedTopic
+    ? `"${normalizedTopic}" için yalnızca ${isWorkbookPrompt ? "çalışma kitabı" : "anlatı"} metadata onarımı yap.`
+    : `Yalnızca ${isWorkbookPrompt ? "çalışma kitabı" : "anlatı"} metadata onarımı yap.`}
 
 Kitap brief:
 ${creativeBriefInstruction}
@@ -8075,14 +8155,18 @@ ${outlineAudienceInstruction}
 Kurallar:
 1) Yalnızca JSON döndür.
 2) Bu mevcut kitabı YENIDEN KURMA; sadece kitap adı, kısa kitap açıklaması ve bölüm adlarını üret/düzelt.
-3) bookTitle mutlaka özgün, edebi ve konuya/brief'e sadık olsun.
-4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket, karakter adı listesi veya hazır klişe kalıp olmasın.
+3) ${isWorkbookPrompt
+    ? "bookTitle mutlaka konuya sadık, özgün, doğal ve profesyonel bir eğitim kitabı adı olsun; kullanıcının konu girdisini kitap adı sanma."
+    : "bookTitle mutlaka özgün, edebi ve konuya/brief'e sadık olsun."}
+4) bookTitle ASLA kategori/alt tür etiketi, teknik etiket veya hazır klişe kalıp olmasın.
 4.1) bookTitle kısa ve gerçek bir kitap adı formatında olsun; örnek/tavsiye kelime kullanma.
-4.2) bookTitle genelde 2-4 kelime olmalı. 5 kelime sadece gerçekten doğal ve çok güçlü ise kabul edilir. "ve", "ile", "bir", "the/of/and" gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma.
+4.2) ${isWorkbookPrompt
+    ? "Konu girdisini aynen kopyalama, yalnızca yazım hatalarını düzeltip yeniden sunma ve sonuna 'Çalışma Kitabı', 'Rehber', 'Workbook' veya 'Guide' eklemekle yetinme. Konunun özünden yeni bir başlık üret."
+    : "bookTitle genelde 2-4 kelime olmalı. 5 kelime sadece gerçekten doğal ve çok güçlü ise kabul edilir. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimelerini başlığı uzatmak için kullanma."}
 5) bookDescription tam olarak 2-3 cümlelik, yaklaşık 160-320 karakter uzunluğunda, doğal, profesyonel ve kitabın tonuna uygun bir arka kapak metni gibi olmalı.
 6) bookDescription generic, öğretici şablon, uygulama içi placeholder veya "bu kitap ..." diye mekanik tanıtım metni gibi durmamalı.
 7) chapterTitles dizisi tam olarak ${rawTitleCandidates.length} öğe içermeli.
-8) Her chapter title doğal/edebi olmalı; "Giriş", "Bölüm 1", "Döşeme", "Serim", "Gelişme", "Sonuç", "Dilek", "Final", "Perde I" gibi teknik etiketler YASAK.
+8) Her chapter title ${isWorkbookPrompt ? "konuya özgü ve öğretici" : "doğal/edebi"} olmalı; "Giriş", "Bölüm 1", "Gelişme", "Sonuç" ve "Final" gibi teknik etiketler YASAK.
 9) Bütün chapterTitles aynı kitabın tek akışıyla tutarlı ve birbirinden farklı olmalı.
 10) Karakter adlarını anlamsız biçimde zorla başlığa doldurma.
 11) ${languageInstruction(preferredLanguage)}
@@ -8104,6 +8188,9 @@ JSON şeması:
 }
 `.trim();
 
+    const metadataRepairLabel = isWorkbookPrompt
+      ? "Calisma kitabi metadata onarimi"
+      : "Anlati metadata onarimi";
     const response = await ai.models.generateContent({
       model: GEMINI_PLANNER_MODEL,
       contents: repairPrompt,
@@ -8132,13 +8219,14 @@ JSON şeması:
       repaired = parseJsonObject(response.text, "Failed to parse narrative title repair response.");
     } catch (error) {
       titleRepairUsageEntries.push(buildGeminiUsageEntry(
-        "Anlati metadata onarimi",
+        metadataRepairLabel,
         GEMINI_PLANNER_MODEL,
         (response as unknown as { usageMetadata?: unknown }).usageMetadata,
         repairPrompt,
         response.text || ""
       ));
-      logger.warn("Narrative metadata repair parse failed; current metadata kept.", {
+      logger.warn("Book metadata repair parse failed; current metadata kept.", {
+        bookType: normalizedBrief.bookType,
         error: error instanceof Error ? error.message : String(error),
         responsePreview: String(response.text || "").slice(0, 320)
       });
@@ -8161,7 +8249,7 @@ JSON şeması:
       : [];
 
     titleRepairUsageEntries.push(buildGeminiUsageEntry(
-      "Anlati metadata onarimi",
+      metadataRepairLabel,
       GEMINI_PLANNER_MODEL,
       (response as unknown as { usageMetadata?: unknown }).usageMetadata,
       repairPrompt,
@@ -8340,7 +8428,7 @@ JSON şeması:
 
   const rawBookTitle = parsed && typeof parsed.bookTitle === "string" ? parsed.bookTitle.replace(/\s+/g, " ").trim() : "";
   const rawBookDescription = parsed && typeof parsed.bookDescription === "string" ? parsed.bookDescription.replace(/\s+/g, " ").trim() : "";
-  const repairedMetadataState = await repairNarrativeMetadataIfNeeded(outline, rawBookTitle, rawBookDescription);
+  const repairedMetadataState = await repairBookMetadataIfNeeded(outline, rawBookTitle, rawBookDescription);
   outline = repairedMetadataState.outline;
   const generatedBookTitle = repairedMetadataState.bookTitle
     .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
@@ -8356,7 +8444,11 @@ JSON şeması:
     generatedBookTitle.length <= 96 &&
     (!isNarrativeBookType
       ? (
-        (normalizedBrief.bookType === "story" || generatedBookTitle.toLocaleLowerCase("tr-TR") !== normalizedTopic.toLocaleLowerCase("tr-TR")) &&
+        (
+          normalizedBrief.bookType === "story"
+            ? !isWorkbookBookTitleTooCloseToTopic(generatedBookTitle, normalizedTopic)
+            : generatedBookTitle.toLocaleLowerCase("tr-TR") !== normalizedTopic.toLocaleLowerCase("tr-TR")
+        ) &&
         !/^(?:masal|hikaye|öykü|roman|kitap|book)$/iu.test(generatedBookTitle)
       )
       : !isNarrativeBookTitleTooGeneric(generatedBookTitle, {
@@ -8408,6 +8500,15 @@ JSON şeması:
         : deterministicNarrativeBookTitle
     )
     : normalizedTopic;
+  const workbookFallbackTitleFromOutline = normalizedBrief.bookType === "story"
+    ? outline
+      .filter((node) => node.type === "lecture")
+      .map((node) => String(node.title || "").replace(/\s+/g, " ").trim())
+      .find((title) => title && !isWorkbookBookTitleTooCloseToTopic(title, normalizedTopic))
+    : undefined;
+  const workbookFallbackTitle = normalizedBrief.bookType === "story"
+    ? (workbookFallbackTitleFromOutline || (useEnglishScaffold ? "Concepts in Focus" : "Kavramların İzinde"))
+    : normalizedTopic;
   const finalBookTitle = lockUserProvidedBookTitle
     ? normalizedTopic
     : isNarrativeBookType
@@ -8416,7 +8517,9 @@ JSON şeması:
         ? (
           generatedBookTitleLooksUsable
             ? generatedBookTitle
-            : (topicLooksUsableForNarrative ? normalizedTopic : safeNarrativeFallbackTitle)
+            : (normalizedBrief.bookType === "story"
+              ? workbookFallbackTitle
+              : (topicLooksUsableForNarrative ? normalizedTopic : safeNarrativeFallbackTitle))
         )
         : normalizedTopic;
   if (isNarrativeBookType) {
@@ -8488,7 +8591,7 @@ JSON şeması:
     finalBookType,
     finalSubGenre
   );
-  const safeBookDescription = isNarrativeBookType
+  const safeBookDescription = isNarrativeBookType || isWorkbookPrompt
     ? (
       !repairedBookDescription || isGenericBookDescription(repairedBookDescription, normalizedTopic || finalBookTitle)
         ? fallbackBookDescription

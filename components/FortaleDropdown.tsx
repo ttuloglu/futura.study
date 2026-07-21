@@ -106,7 +106,7 @@ export default function FortaleDropdown<T extends string>({
           ref={menuRef}
           role="listbox"
           aria-label={label}
-          className="fixed z-[1000] overflow-y-auto rounded-xl border border-white/30 bg-[#091827] p-1.5 shadow-[0_22px_60px_rgba(0,0,0,0.72)]"
+          className="fortale-cosmos-menu fixed z-[1000] overflow-y-auto rounded-xl border p-1.5 shadow-[0_22px_60px_rgba(0,0,0,0.72)]"
           style={{
             top: menuPosition.top,
             left: menuPosition.left,

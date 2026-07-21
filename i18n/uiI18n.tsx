@@ -3015,7 +3015,7 @@ export function UiI18nProvider({
     <UiI18nContext.Provider value={value}>
       {isTranslationReady ? children : (
         <div
-          className="fixed inset-0 bg-[#061224]"
+          className="fortale-loading-screen fixed inset-0"
           aria-hidden="true"
           data-no-ui-translate="true"
         />

@@ -45,6 +45,7 @@ import { App } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { functions } from '../firebaseConfig';
 import { getCommunityBookSectionLabels } from '../utils/communityBookLanguage';
+import { getOwnedCommunityCourseId } from '../utils/communityOwnedCourse';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
@@ -201,7 +202,6 @@ const stickyTintPalette: StickyTint[] = [
 
 const STICKY_MODAL_TOP_INSET = 'calc(env(safe-area-inset-top, 0px) + 78px)';
 const STICKY_MODAL_BOTTOM_INSET = 'calc(env(safe-area-inset-bottom, 0px) + 84px)';
-const APP_SURFACE_COLOR = '#1A1F26';
 const MAX_SOURCE_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const MAX_HERO_PORTRAIT_SOURCE_FILE_SIZE_BYTES = 16 * 1024 * 1024;
 const HERO_PORTRAIT_OUTPUT_SIZE = 768;
@@ -996,6 +996,19 @@ const HOME_SPLIT_BOOK_TYPES: Array<{
     icon: Telescope
   }
 ];
+
+const WIZARD_BLACK_HOLE_TILES = Array.from({ length: 20 }, (_, index) => ({
+  angle: index * 18 + (index % 2 === 0 ? 4 : -3),
+  radius: 124 + (index % 4) * 13,
+  delay: -((index * 0.37) % 5.8),
+  duration: 4.8 + (index % 5) * 0.42,
+  size: 3 + (index % 4) * 1.25,
+  color: index % 3 === 0
+    ? 'rgba(103,232,249,0.9)'
+    : index % 3 === 1
+      ? 'rgba(196,181,253,0.82)'
+      : 'rgba(253,224,71,0.78)'
+}));
 
 const HERO_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 const CUSTOM_WIZARD_OPTION = '__custom__';
@@ -1882,6 +1895,14 @@ export default function HomeView({
     } finally {
       setIsHomeCommunityDownloading(false);
     }
+  };
+
+  const openOwnedHomeCommunityBook = (book: CommunityBook): boolean => {
+    const courseId = getOwnedCommunityCourseId(book, authUserId);
+    if (!courseId) return false;
+    setSelectedHomeCommunityBook(null);
+    onCourseSelect(courseId);
+    return true;
   };
 
   const resetGenerationProgress = (next: number) => {
@@ -3745,7 +3766,7 @@ export default function HomeView({
   return (
     <div className={`view-container fortale-home-view ${isCreationIntroOnly ? 'is-intro' : ''}`}>
       {/* Yıldız ve peri tozu — header altından tüm sayfayı kaplar */}
-      <div className="fixed inset-0 z-[300] overflow-hidden pointer-events-none" aria-hidden>
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden>
         {homeStars.map((star, idx) => (
           <span
             key={`hs-${idx}`}
@@ -3831,7 +3852,7 @@ export default function HomeView({
 
         {isCreationIntroOnly && (
           <div ref={homeRailStackRef} className="fortale-home-rail-stack">
-            <section className="fortale-home-book-rail" aria-label={t('Son Kitaplarım')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
+            <section className="fortale-home-book-rail is-library-rail" aria-label={t('Son Kitaplarım')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
               <h2 className="fortale-home-rail-label" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{t('Son Kitaplarım')}</h2>
               <div ref={homeShelfScrollRef} className="fortale-home-rail-scroll touch-scroll-x" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
                 {homeShelfCourses.length > 0
@@ -3842,7 +3863,7 @@ export default function HomeView({
               </div>
             </section>
 
-            <section className="fortale-home-book-rail" aria-label={t('Toplulukta Popüler')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
+            <section className="fortale-home-book-rail is-community-rail" aria-label={t('Toplulukta Popüler')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
               <h2 className="fortale-home-rail-label" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{t('Toplulukta Popüler')}</h2>
               <div className="fortale-home-rail-scroll touch-scroll-x" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
                 {isHomeCommunityLoading
@@ -3937,6 +3958,24 @@ export default function HomeView({
               {/* TYPE ORB: intro ve wizard adım 1'de göster */}
               {(isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1)) && (
                 <div className="fortale-type-step">
+                  <div className="fortale-black-hole-field" aria-hidden="true">
+                    {WIZARD_BLACK_HOLE_TILES.map((tile, index) => (
+                      <span
+                        key={index}
+                        className="fortale-black-hole-track"
+                        style={{
+                          '--tile-angle': `${tile.angle}deg`,
+                          '--tile-radius': `${tile.radius}px`,
+                          '--tile-delay': `${tile.delay}s`,
+                          '--tile-duration': `${tile.duration}s`,
+                          '--tile-size': `${tile.size}px`,
+                          '--tile-color': tile.color
+                        } as React.CSSProperties}
+                      >
+                        <i />
+                      </span>
+                    ))}
+                  </div>
                   {!isCreationIntroOnly && (
                     <div className="fortale-type-copy">
                       <span>{t('Kitap Türünü Seç')}</span>
@@ -4746,7 +4785,7 @@ export default function HomeView({
 
         {sourceNotice && (
           <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+80px)] z-[126] -translate-x-1/2 px-4">
-            <div className="rounded-2xl border border-white/45 bg-white/20 px-4 py-3 backdrop-blur-xl shadow-[0_18px_28px_-18px_rgba(0,0,0,0.85)]">
+            <div className="fortale-cosmos-notice rounded-2xl border px-4 py-3 backdrop-blur-xl shadow-[0_18px_28px_-18px_rgba(0,0,0,0.85)]">
               <p className="text-[12px] font-semibold text-white">{sourceNotice}</p>
             </div>
           </div>
@@ -4861,14 +4900,16 @@ export default function HomeView({
               </button>
               <button
                 type="button"
-                onClick={() => void handleHomeCommunityDownload()}
-                disabled={isHomeCommunityDownloading || selectedHomeCommunityBook.isOwned || selectedHomeCommunityBook.userId === authUserId}
+                onClick={() => {
+                  if (!openOwnedHomeCommunityBook(selectedHomeCommunityBook)) void handleHomeCommunityDownload();
+                }}
+                disabled={isHomeCommunityDownloading}
                 className="fortale-community-library-button inline-flex items-center justify-center gap-1.5 rounded-2xl px-2 text-[10px] font-normal whitespace-nowrap"
               >
                 {isHomeCommunityDownloading ? (
                   <FaviconSpinner size={14} />
-                ) : selectedHomeCommunityBook.isOwned || selectedHomeCommunityBook.userId === authUserId ? (
-                  <><BookOpen size={13} /><span className="whitespace-nowrap">{t('Kütüphanede')}</span></>
+                ) : getOwnedCommunityCourseId(selectedHomeCommunityBook, authUserId) ? (
+                  <><BookOpen size={13} /><span className="whitespace-nowrap">{t('Oku')}</span></>
                 ) : (
                   <><Library size={13} /><span className="whitespace-nowrap">{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST} {t('kredi')}</span></>
                 )}
@@ -5005,17 +5046,15 @@ export default function HomeView({
             }}
           >
             <div
-              className="fortale-floatisland-sheet-panel h-full rounded-2xl border shadow-[0_24px_36px_-24px_rgba(0,0,0,0.78)] overflow-hidden flex flex-col"
+              className="fortale-floatisland-sheet-panel fortale-sheet-surface fortale-sticky-modal-surface h-full rounded-2xl border shadow-[0_24px_36px_-24px_rgba(0,0,0,0.78)] overflow-hidden flex flex-col"
               style={{
-                borderColor: activeStickyTint.border,
-                backgroundColor: APP_SURFACE_COLOR
+                borderColor: activeStickyTint.border
               }}
             >
               <div
-                className="px-4 py-3 border-b flex items-center gap-3"
+                className="fortale-cosmos-modal-section px-4 py-3 border-b flex items-center gap-3"
                 style={{
-                  borderColor: activeStickyTint.border,
-                  backgroundColor: APP_SURFACE_COLOR
+                  borderColor: activeStickyTint.border
                 }}
               >
                 <input
@@ -5043,7 +5082,7 @@ export default function HomeView({
                 </button>
               </div>
 
-              <div className="flex-1 px-4 pb-4 pt-0" style={{ backgroundColor: APP_SURFACE_COLOR }}>
+              <div className="fortale-cosmos-modal-section flex-1 px-4 pb-4 pt-0">
                 <textarea
                   value={stickyModal.text}
                   onChange={(event) => setStickyModal((prev) => ({ ...prev, text: event.target.value }))}
@@ -5054,10 +5093,9 @@ export default function HomeView({
 
               {isReminderPickerOpen && (
                 <div
-                  className="px-3 py-3 border-t"
+                  className="fortale-cosmos-modal-section px-3 py-3 border-t"
                   style={{
-                    borderColor: activeStickyTint.border,
-                    backgroundColor: APP_SURFACE_COLOR
+                    borderColor: activeStickyTint.border
                   }}
                 >
                   <label className="block text-[11px] text-white mb-2">{t('Hatırlatıcı zamanı')}</label>
@@ -5093,10 +5131,9 @@ export default function HomeView({
               )}
 
               <div
-                className="px-3 py-2 border-t flex items-center justify-between gap-2"
+                className="fortale-cosmos-modal-section px-3 py-2 border-t flex items-center justify-between gap-2"
                 style={{
-                  borderColor: activeStickyTint.border,
-                  backgroundColor: APP_SURFACE_COLOR
+                  borderColor: activeStickyTint.border
                 }}
               >
                 <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar pr-1">

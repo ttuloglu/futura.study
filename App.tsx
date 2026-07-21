@@ -7932,6 +7932,7 @@ export default function App() {
             courseOpenStates={courseOpenStateById}
             isLoggedIn={Boolean(authUser && !isGuestSession)}
             onRequestLogin={handleOpenLoginScreen}
+            authUserId={authUser?.uid}
           />
         );
       case 'COMMUNITY':
@@ -7941,6 +7942,7 @@ export default function App() {
             wallet={creditWallet}
             onRequireCredit={requireCreditForAction}
             onNavigate={handleViewChange}
+            onCourseSelect={handleCourseSelect}
             onOpenPaywall={() => openCreditPaywall('community_download')}
           />
         );
@@ -7982,6 +7984,7 @@ export default function App() {
             defaultBookLanguage={getAppLanguageLabel(appLanguage)}
             isLoggedIn={Boolean(authUser && !isGuestSession)}
             onRequestLogin={handleOpenLoginScreen}
+            authUserId={authUser?.uid}
           />
         );
     }
@@ -8006,7 +8009,10 @@ export default function App() {
       return (
         <UiI18nProvider key={appLanguage} language={appLanguage}>
           <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
-            <OnboardingView onFinish={handleOnboardingFinish} />
+            <OnboardingView
+              onFinish={handleOnboardingFinish}
+              onExplore={handleContinueWithoutLogin}
+            />
           </Suspense>
         </UiI18nProvider>
       );
@@ -8034,7 +8040,7 @@ export default function App() {
   return (
     <UiI18nProvider key={appLanguage} language={appLanguage}>
       <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
-        <div className="fixed inset-0 bg-[#1A1F26] text-text-primary font-sans antialiased flex justify-center">
+        <div className="fortale-app-frame fixed inset-0 text-text-primary font-sans antialiased flex justify-center">
           <div className="app-shell-width relative h-full overflow-hidden bg-transparent flex flex-col md:border-x md:border-white/5">
             <LoginPromptModal
               isOpen={isLoginPromptOpen}

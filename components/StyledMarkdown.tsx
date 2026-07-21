@@ -1387,7 +1387,7 @@ export default function StyledMarkdown({
       {markdownContent}
       {enableImageLightbox && lightboxImage && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[1200] backdrop-blur-xl flex items-center justify-center p-2 sm:p-4"
+          className="fortale-cosmos-lightbox fixed inset-0 z-[1200] backdrop-blur-xl flex items-center justify-center p-2 sm:p-4"
           onClick={() => setLightboxImage(null)}
           style={{
             backgroundColor: `rgba(0, 0, 0, ${lightboxBackdropOpacity})`
