@@ -1,1 +1,1 @@
-tale,story,novel,portrait,character,ai,book,create,cover,visual,podcast,epub,pdf,write,author,artss
+tale,story,novel,workbook,AI,write,create,audiobook,podcast,pdf,epub,cover,author,publish,library

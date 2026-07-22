@@ -2677,17 +2677,7 @@ function VisualStoryReader({
 
   if (!pages.length) {
     return (
-      <div
-        className="relative min-h-dvh overflow-hidden text-white"
-        style={{ background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)' }}
-      >
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: 'radial-gradient(circle at 17% 0%, rgba(80,118,172,0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74,112,168,0.18), transparent 34%), linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(76,128,190,0.18) 100%)'
-          }}
-          aria-hidden
-        />
+      <div className="fortale-cosmos-page relative min-h-dvh overflow-hidden text-white">
         <FairyTaleStarsOverlay seed={courseData.topic || 'visual-story-loading'} />
         <button
           type="button"
@@ -2766,19 +2756,7 @@ function VisualStoryReader({
   }
 
   return (
-    <div
-      className="relative min-h-dvh overflow-hidden text-white"
-      style={{
-        background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background: 'radial-gradient(circle at 17% 0%, rgba(80,118,172,0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74,112,168,0.18), transparent 34%), linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(76,128,190,0.18) 100%)'
-        }}
-        aria-hidden
-      />
+    <div className="fortale-cosmos-page relative min-h-dvh overflow-hidden text-white">
       <FairyTaleStarsOverlay seed={currentPage?.id || courseData.topic || 'visual-story'} />
 	      <audio
 	        ref={backgroundAudioRef}
@@ -2809,10 +2787,7 @@ function VisualStoryReader({
 		      />
       {visualFullscreenPage && (
         <div
-          className="fixed inset-0 z-[140]"
-          style={{
-            background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)'
-          }}
+          className="fortale-cosmos-page fixed inset-0 z-[140]"
           onClick={() => {
             if (isDownloadMenuOpen) {
               setIsDownloadMenuOpen(false);
@@ -2822,12 +2797,6 @@ function VisualStoryReader({
             setVisualImageFullscreenPageIndex(null);
           }}
         >
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background: 'radial-gradient(circle at 17% 0%, rgba(80,118,172,0.22), transparent 34%), radial-gradient(circle at 84% 9%, rgba(74,112,168,0.18), transparent 34%), linear-gradient(180deg, rgba(148,180,220,0.12) 0%, rgba(76,128,190,0.18) 100%)'
-            }}
-          />
           <div
             className="absolute inset-0 overflow-hidden"
             onClick={(event) => event.stopPropagation()}
@@ -5421,9 +5390,8 @@ export default function CourseFlowView({
   return (
     <div
       ref={fullscreenReaderScrollRef}
-      className={isReadingFullscreen ? 'overflow-y-auto px-4 pb-24' : 'view-container'}
+      className={isReadingFullscreen ? 'fortale-cosmos-page overflow-y-auto px-4 pb-24' : 'view-container'}
       style={{
-        background: 'linear-gradient(180deg, #061224 0%, #0b2342 46%, #214c7a 100%)',
         height: isReadingFullscreen ? '100dvh' : undefined,
         paddingTop: isReadingFullscreen ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : undefined
       }}

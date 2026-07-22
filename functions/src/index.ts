@@ -855,7 +855,7 @@ function resolvePreferredLanguageAlias(value: unknown): PreferredLanguage | null
     .replace(/_/g, "-")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("tr-TR");
+    .toLowerCase();
   if (!normalized) return null;
 
   const aliasMap: Record<string, PreferredLanguage> = {
@@ -1263,62 +1263,8 @@ function resolvePreferredLanguage(...parts: Array<string | undefined>): Preferre
     .join(" ")
     .trim();
   if (!raw) return "tr";
-
-  const text = raw
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("tr-TR");
-
-  const explicitRules: Array<{ language: PreferredLanguage; pattern: RegExp }> = [
-    { language: "ar", pattern: /\b(ar|arabic|arapca|العربية)\b/u },
-    { language: "da", pattern: /\b(da|danish|danca)\b/u },
-    { language: "de", pattern: /\b(de|german|almanca|deutsch)\b/u },
-    { language: "el", pattern: /\b(el|greek|yunanca|ellinika)\b/u },
-    { language: "en", pattern: /\b(en|english|ingilizce)\b/u },
-    { language: "es", pattern: /\b(es|spanish|ispanyolca|espanol)\b/u },
-    { language: "fi", pattern: /\b(fi|finnish|fince|suomi)\b/u },
-    { language: "fr", pattern: /\b(fr|french|fransizca|francais)\b/u },
-    { language: "hi", pattern: /\b(hi|hindi)\b/u },
-    { language: "id", pattern: /\b(id|indonesian|endonezce|bahasa indonesia)\b/u },
-    { language: "it", pattern: /\b(it|italian|italyanca|italiano)\b/u },
-    { language: "ja", pattern: /\b(ja|japanese|japonca|nihongo)\b/u },
-    { language: "ko", pattern: /\b(ko|korean|korece|hanguk-eo)\b/u },
-    { language: "nl", pattern: /\b(nl|dutch|hollandaca|flamanca|nederlands)\b/u },
-    { language: "no", pattern: /\b(no|norwegian|norvecce|norsk)\b/u },
-    { language: "pl", pattern: /\b(pl|polish|lehce|polski)\b/u },
-    { language: "pt-BR", pattern: /\b(pt|pt-br|portuguese|portekizce|brazilian portuguese|brazil portuguese|brazil|brasil)\b/u },
-    { language: "sv", pattern: /\b(sv|swedish|isvecce|svenska)\b/u },
-    { language: "th", pattern: /\b(th|thai|tayca)\b/u },
-    { language: "tr", pattern: /\b(tr|turkish|turkce|turkce|türkçe)\b/u }
-  ];
-
-  for (const rule of explicitRules) {
-    if (rule.pattern.test(text)) return rule.language;
-  }
-
-  if (/[\u0600-\u06FF]/.test(raw)) return "ar";
-  if (/[\u3040-\u30FF]/.test(raw)) return "ja";
-  if (/[\uAC00-\uD7AF]/.test(raw)) return "ko";
-  if (/[\u0E00-\u0E7F]/.test(raw)) return "th";
-  if (/[\u0370-\u03FF]/.test(raw)) return "el";
-  if (/[\u0900-\u097F]/.test(raw)) return "hi";
-
-  const trChars = (text.match(/[cgiosuıçğıöşü]/g) || []).length;
-  const trHits = (text.match(/\b(ve|ile|icin|konu|ogrenci|ders|giris|pekistirme|sinav|ornek|onemli)\b/g) || []).length;
-  const esHits = (text.match(/\b(de|la|el|los|las|para|con|como|que|introduccion)\b/g) || []).length;
-  const frHits = (text.match(/\b(le|la|les|des|pour|avec|introduction)\b/g) || []).length;
-  const deHits = (text.match(/\b(und|mit|fur|einfuhrung|grundlagen)\b/g) || []).length;
-  const ptHits = (text.match(/\b(de|para|com|introducao|fundamentos)\b/g) || []).length;
-  const itHits = (text.match(/\b(di|con|per|introduzione|fondamenti)\b/g) || []).length;
-  const enHits = (text.match(/\b(and|with|for|topic|student|lesson|introduction|reinforcement|exam|example|important)\b/g) || []).length;
-
-  if (trChars > 0 || trHits > Math.max(enHits, esHits, frHits, deHits, ptHits, itHits)) return "tr";
-  if (esHits > Math.max(enHits, trHits, frHits, deHits, ptHits, itHits)) return "es";
-  if (frHits > Math.max(enHits, trHits, esHits, deHits, ptHits, itHits)) return "fr";
-  if (deHits > Math.max(enHits, trHits, esHits, frHits, ptHits, itHits)) return "de";
-  if (ptHits > Math.max(enHits, trHits, esHits, frHits, deHits, itHits)) return "pt-BR";
-  if (itHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits)) return "it";
-  return "en";
+  const detected = detectContentLanguageCode(raw);
+  return detected === "unknown" ? "en" : detected;
 }
 
 function resolvePreferredLanguageFromBrief(
@@ -1330,6 +1276,24 @@ function resolvePreferredLanguageFromBrief(
     return resolvePreferredLanguage(languageHint);
   }
   return resolvePreferredLanguage(...parts);
+}
+
+/**
+ * Visuals belong to the generated book, so generated prose is the primary
+ * language source. The requested language remains a fallback for short or
+ * text-free evidence.
+ */
+function resolveVisualContentLanguage(
+  brief: SmartBookCreativeBrief | undefined,
+  generatedContent: string | undefined,
+  ...fallbackParts: Array<string | undefined>
+): PreferredLanguage {
+  const content = String(generatedContent || "").trim();
+  if (content) {
+    const detected = detectContentLanguageCode(content);
+    if (detected !== "unknown") return detected;
+  }
+  return resolvePreferredLanguageFromBrief(brief, ...fallbackParts);
 }
 
 function detectContentLanguageCode(...parts: Array<string | undefined>): ContentLanguageCode {
@@ -1354,15 +1318,18 @@ function detectContentLanguageCode(...parts: Array<string | undefined>): Content
   const text = raw.toLocaleLowerCase("tr-TR");
   if (!text) return "tr";
 
-  const trChars = (text.match(/[çğıöşüı]/g) || []).length;
+  const trDistinctChars = (text.match(/[ğış]/g) || []).length;
+  const trSharedChars = (text.match(/[çöü]/g) || []).length;
   const trHits = (text.match(/\b(ve|ile|için|konu|ders|öğrenme|temelleri|nedir|nasıl|özeti)\b/g) || []).length;
-  const esChars = (text.match(/[ñáéíóúü]/g) || []).length;
+  const esDistinctChars = (text.match(/[ñ¿¡]/g) || []).length;
+  const esAccentChars = (text.match(/[áéíóú]/g) || []).length;
   const esHits = (text.match(/\b(de|la|el|los|las|para|con|como|qué|introduccion|fundamentos|servicios|datos)\b/g) || []).length;
-  const frChars = (text.match(/[àâçéèêëîïôûùüÿœ]/g) || []).length;
+  const frChars = (text.match(/[àâçèêëîïôûùÿœ]/g) || []).length;
   const frHits = (text.match(/\b(le|la|les|des|pour|avec|bonjour|introduction|bases)\b/g) || []).length;
   const deChars = (text.match(/[äöüß]/g) || []).length;
   const deHits = (text.match(/\b(und|mit|für|einführung|grundlagen|daten)\b/g) || []).length;
-  const ptChars = (text.match(/[ãõáàâêéíóôúç]/g) || []).length;
+  const ptDistinctChars = (text.match(/[ãõ]/g) || []).length;
+  const ptAccentChars = (text.match(/[áàâêéíóôúç]/g) || []).length;
   const ptHits = (text.match(/\b(de|para|com|introducao|fundamentos|dados)\b/g) || []).length;
   const itHits = (text.match(/\b(di|con|per|introduzione|fondamenti|dati)\b/g) || []).length;
   const nlHits = (text.match(/\b(de|het|een|met|voor|onderwerp|les)\b/g) || []).length;
@@ -1374,19 +1341,24 @@ function detectContentLanguageCode(...parts: Array<string | undefined>): Content
   const idHits = (text.match(/\b(dan|dengan|untuk|topik|pelajaran|dasar)\b/g) || []).length;
   const enHits = (text.match(/\b(and|with|for|topic|lesson|learning|basics|what|how|introduction|data)\b/g) || []).length;
 
-  if (trChars > 0 || trHits > Math.max(enHits, esHits, frHits, deHits, ptHits, itHits, nlHits, svHits, noHits, daHits, fiHits, plHits, idHits)) return "tr";
-  if (esChars > 0 || esHits > Math.max(enHits, trHits, frHits, deHits, ptHits, itHits, nlHits, svHits, noHits, daHits, fiHits, plHits, idHits)) return "es";
-  if (frChars > 0 || frHits > Math.max(enHits, trHits, esHits, deHits, ptHits, itHits, nlHits, svHits, noHits, daHits, fiHits, plHits, idHits)) return "fr";
-  if (deChars > 0 || deHits > Math.max(enHits, trHits, esHits, frHits, ptHits, itHits, nlHits, svHits, noHits, daHits, fiHits, plHits, idHits)) return "de";
-  if (ptChars > 0 || ptHits > Math.max(enHits, trHits, esHits, frHits, deHits, itHits, nlHits, svHits, noHits, daHits, fiHits, plHits, idHits)) return "pt-BR";
-  if (itHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, nlHits, svHits, noHits, daHits, fiHits, plHits, idHits) && itHits > 0) return "it";
-  if (nlHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, svHits, noHits, daHits, fiHits, plHits, idHits)) return "nl";
-  if (svHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, nlHits, noHits, daHits, fiHits, plHits, idHits)) return "sv";
-  if (noHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, nlHits, svHits, daHits, fiHits, plHits, idHits)) return "no";
-  if (daHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, nlHits, svHits, noHits, fiHits, plHits, idHits)) return "da";
-  if (fiHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, nlHits, svHits, noHits, daHits, plHits, idHits)) return "fi";
-  if (plHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, nlHits, svHits, noHits, daHits, fiHits, idHits)) return "pl";
-  if (idHits > Math.max(enHits, trHits, esHits, frHits, deHits, ptHits, itHits, nlHits, svHits, noHits, daHits, fiHits, plHits)) return "id";
+  const languageScores: Array<{ language: PreferredLanguage; score: number }> = [
+    { language: "tr", score: trHits * 3 + trDistinctChars * 2 + trSharedChars * 0.15 },
+    { language: "es", score: esHits * 2 + esDistinctChars * 4 + esAccentChars * 0.35 },
+    { language: "fr", score: frHits * 2.5 + frChars * 0.8 },
+    { language: "de", score: deHits * 3 + deChars * 0.8 },
+    { language: "pt-BR", score: ptHits * 2 + ptDistinctChars * 4 + ptAccentChars * 0.25 },
+    { language: "it", score: itHits * 3 },
+    { language: "nl", score: nlHits * 3 },
+    { language: "sv", score: svHits * 3 },
+    { language: "no", score: noHits * 3 },
+    { language: "da", score: daHits * 3 },
+    { language: "fi", score: fiHits * 3 },
+    { language: "pl", score: plHits * 3 },
+    { language: "id", score: idHits * 3 },
+    { language: "en", score: enHits * 3 }
+  ];
+  languageScores.sort((left, right) => right.score - left.score);
+  if (languageScores[0]?.score > 0) return languageScores[0].language;
   if (/[a-z]/.test(text)) return "en";
   return "unknown";
 }
@@ -4779,7 +4751,7 @@ async function generateLessonImages(
   } else if (normalizedForcedImageCount) {
     imageCount = normalizedForcedImageCount;
   }
-  const contentLanguage = resolvePreferredLanguageFromBrief(
+  const contentLanguage = resolveVisualContentLanguage(
     creativeBrief,
     languageEvidenceText,
     topic,
@@ -5290,7 +5262,7 @@ async function generateRemedialImagesWithOpenAi(
 ): Promise<{ images: LessonImageAsset[]; usageEntry: UsageReportEntry }> {
   const imagePlan = getImageCountPlanByBookType(bookType);
   const imageCount = Math.max(1, imagePlan.remedial);
-  const contentLanguage = resolvePreferredLanguageFromBrief(
+  const contentLanguage = resolveVisualContentLanguage(
     creativeBrief,
     languageEvidenceText,
     topic,
@@ -5487,7 +5459,7 @@ async function generateCourseCover(
 
   const brainAllowed = isBrainRelatedTopic(topic);
   const titleText = String(topic || "").replace(/\s+/g, " ").trim();
-  const requestedLanguage = resolvePreferredLanguageFromBrief(creativeBrief, titleText, coverContext);
+  const requestedLanguage = resolveVisualContentLanguage(creativeBrief, coverContext, titleText);
   const titleLanguage = contentLanguageLabel(requestedLanguage);
   const isFairyTale = bookType === "fairy_tale";
   const isWorkbook = bookType === "story";
@@ -12562,6 +12534,10 @@ function normalizeBookMetadataForClient(
     coverNarrationText: firstNonEmptyString(payload.coverNarrationText),
     coverNarrationAudioUrl: firstNonEmptyString(payload.coverNarrationAudioUrl),
     coverNarrationAudioStoragePath: firstNonEmptyString(payload.coverNarrationAudioStoragePath),
+    sourceType: firstNonEmptyString(payload.sourceType),
+    sourceCommunityBookId: firstNonEmptyString(payload.sourceCommunityBookId),
+    communityLicense: firstNonEmptyString(payload.communityLicense),
+    communityPublishingDisabled: payload.communityPublishingDisabled === true,
     status: firstNonEmptyString(payload.status) || "ready",
     communityPublication: isRecord(payload.communityPublication)
       ? {
@@ -21304,6 +21280,21 @@ export const publishToCommunity = onCall(
     if (!autoPublish && data.hasPersonalLikeness === true && data.likenessAccepted !== true) {
       throw new HttpsError("failed-precondition", "Kişisel benzerliğin toplulukta yayınlanması için ayrıca onay gereklidir.");
     }
+    const bookRef = firestore.collection("users").doc(uid).collection("books").doc(bookId);
+    const bookSnap = await bookRef.get();
+    if (!bookSnap.exists) throw new HttpsError("not-found", "Kitap bulunamadı.");
+
+    const book = bookSnap.data() as Record<string, unknown>;
+    if (
+      bookId.startsWith("community_") ||
+      communityText(book.sourceType, 40) === "community" ||
+      communityText(book.sourceCommunityBookId, 80) ||
+      communityText(book.communityLicense, 80) === "personal-use" ||
+      book.communityPublishingDisabled === true
+    ) {
+      throw new HttpsError("failed-precondition", "Topluluktan edinilen kişisel lisanslı kitaplar yeniden yayınlanamaz.");
+    }
+
     const profile = autoPublish
       ? await ensureAutomaticCommunityProfile(uid)
       : await upsertCommunityProfileForUser({
@@ -21314,11 +21305,6 @@ export const publishToCommunity = onCall(
         termsAccepted: data.termsAccepted === true
       });
 
-    const bookRef = firestore.collection("users").doc(uid).collection("books").doc(bookId);
-    const bookSnap = await bookRef.get();
-    if (!bookSnap.exists) throw new HttpsError("not-found", "Kitap bulunamadı.");
-
-    const book = bookSnap.data() as Record<string, unknown>;
     const communitySnap = await communityRef.get();
     const existing = communitySnap.exists ? communitySnap.data() as CommunityBookDoc : null;
     if (existing && existing.userId !== uid) throw new HttpsError("permission-denied", "Bu yayın size ait değil.");
@@ -21482,7 +21468,7 @@ export const listCommunityBooks = onCall(
       .orderBy(sortField, "desc")
       .limit(Math.max(80, limit * 4))
       .get();
-    const candidates = candidateSnap.docs
+    const filteredCandidates = candidateSnap.docs
       .map((doc) => ({ id: doc.id, book: doc.data() as CommunityBookDoc }))
       .filter(({ book }) => !blockedUserIds.has(book.userId))
       .filter(({ book }) => tab !== "following" || followingUserIds.has(book.userId))
@@ -21490,8 +21476,41 @@ export const listCommunityBooks = onCall(
       .filter(({ book }) => !language || language === "all" || normalizeCommunitySearch(book.language) === language)
       .filter(({ book }) => !ageGroup || ageGroup === "all" || normalizeCommunitySearch(book.ageGroup) === ageGroup)
       .filter(({ book }) => !category || category === "all" || normalizeCommunitySearch(book.category || book.subGenre) === category)
-      .filter(({ book }) => !search || search.split(" ").every((token) => book.searchText.includes(token)))
-      .slice(0, limit);
+      .filter(({ book }) => !search || search.split(" ").every((token) => book.searchText.includes(token)));
+
+    // Older automatic publishing and a later explicit profile publish could
+    // leave two catalogue documents for the same user's exact content. Keep a
+    // single canonical row and prefer the user's chosen alias over the
+    // generated Fortale-xxxxxxxxxxxx alias.
+    const candidates: Array<{ id: string; book: CommunityBookDoc }> = [];
+    const candidateIndexByFingerprint = new Map<string, number>();
+    for (const candidate of filteredCandidates) {
+      const sourceCommunityId = candidate.book.bookId.match(/^community_([a-f0-9]{40})$/i)?.[1] || "";
+      const fingerprints = [
+        `lineage:${sourceCommunityId || candidate.id}`,
+        `content:${[
+          candidate.book.userId,
+          normalizeCommunitySearch(candidate.book.title),
+          normalizeCommunitySearch(communityDescriptionForDisplay(candidate.book))
+        ].join("|")}`
+      ];
+      const existingIndex = fingerprints
+        .map((fingerprint) => candidateIndexByFingerprint.get(fingerprint))
+        .find((index): index is number => index !== undefined);
+      if (existingIndex === undefined) {
+        fingerprints.forEach((fingerprint) => candidateIndexByFingerprint.set(fingerprint, candidates.length));
+        candidates.push(candidate);
+        continue;
+      }
+      const existing = candidates[existingIndex];
+      const existingUsesAutomaticAlias = /^fortale-[a-f0-9]{12}$/i.test(existing.book.publisherAlias || "");
+      const candidateUsesAutomaticAlias = /^fortale-[a-f0-9]{12}$/i.test(candidate.book.publisherAlias || "");
+      if (existingUsesAutomaticAlias && !candidateUsesAutomaticAlias) {
+        candidates[existingIndex] = candidate;
+      }
+      fingerprints.forEach((fingerprint) => candidateIndexByFingerprint.set(fingerprint, existingIndex));
+    }
+    candidates.splice(limit);
 
     let likedIds = new Set<string>();
     let ownedIds = new Set<string>();
@@ -21512,7 +21531,10 @@ export const listCommunityBooks = onCall(
     };
     await addCommunityAnalytics({ catalogLoads: 1 }).catch(() => undefined);
     return {
-      books: candidates.map(({ id, book }) => serializeCommunityBook(id, book, { liked: likedIds.has(id), owned: ownedIds.has(id) })),
+      books: candidates.map(({ id, book }) => serializeCommunityBook(id, book, {
+        liked: likedIds.has(id),
+        owned: ownedIds.has(id) || book.userId === uid
+      })),
       filters
     };
   }

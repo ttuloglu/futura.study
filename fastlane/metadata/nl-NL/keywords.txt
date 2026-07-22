@@ -1,1 +1,1 @@
-verhaal,sprookje,roman,boek,portret,karakter,ai,schrijven,cover,afbeelding,podcast,epub,pdf,creatie
+sprookje,verhaal,boek,werkboek,AI boek,schrijven,creëren,luisterboek,podcast,pdf,epub,kaft

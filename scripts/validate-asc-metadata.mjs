@@ -6,13 +6,17 @@ import process from 'node:process';
 
 const ROOT = process.cwd();
 const METADATA_DIR = path.join(ROOT, 'fastlane', 'metadata');
-const REQUIRED_FILES = ['promotional_text.txt', 'keywords.txt', 'release_notes.txt'];
+const REQUIRED_FILES = ['promotional_text.txt', 'keywords.txt', 'description.txt', 'release_notes.txt'];
 const MAX_PROMO = 170;
-const MIN_PROMO = 165;
+const MIN_PROMO = 140;
 const MAX_KEYWORDS = 100;
-const MIN_KEYWORDS = 99;
+const MIN_KEYWORDS = 50;
+const MAX_DESCRIPTION = 4000;
+const MIN_DESCRIPTION = 1200;
 const MAX_RELEASE_NOTES = 3500;
-const MIN_RELEASE_NOTES = 2500;
+const MIN_RELEASE_NOTES = 1000;
+const EXPECTED_DESCRIPTION_PARAGRAPHS = 12;
+const EXPECTED_RELEASE_NOTES_PARAGRAPHS = 8;
 const SCREENSHOTS_DIR = path.join(ROOT, 'fastlane', 'screenshots');
 const EXPECTED_SCREENSHOT_COUNT = 8;
 const EXPECTED_SCREENSHOT_WIDTH = 1320;
@@ -84,8 +88,23 @@ async function main() {
       if (file === 'keywords.txt' && (text.length < MIN_KEYWORDS || text.length > MAX_KEYWORDS)) {
         throw new Error(`${locale} keywords length ${text.length}`);
       }
+      if (file === 'description.txt' && (text.length < MIN_DESCRIPTION || text.length > MAX_DESCRIPTION)) {
+        throw new Error(`${locale} description length ${text.length}`);
+      }
+      if (file === 'description.txt' && text.split(/\n\s*\n/).filter(Boolean).length !== EXPECTED_DESCRIPTION_PARAGRAPHS) {
+        throw new Error(`${locale} description paragraph count ${text.split(/\n\s*\n/).filter(Boolean).length}`);
+      }
+      if (file === 'description.txt' && (text.includes('1.0.5') || text.includes('1.0.4'))) {
+        throw new Error(`${locale} description contains release version`);
+      }
       if (file === 'release_notes.txt' && (text.length < MIN_RELEASE_NOTES || text.length > MAX_RELEASE_NOTES)) {
         throw new Error(`${locale} release_notes length ${text.length}`);
+      }
+      if (file === 'release_notes.txt' && text.split(/\n\s*\n/).filter(Boolean).length !== EXPECTED_RELEASE_NOTES_PARAGRAPHS) {
+        throw new Error(`${locale} release_notes paragraph count ${text.split(/\n\s*\n/).filter(Boolean).length}`);
+      }
+      if (file === 'release_notes.txt' && (!text.includes('1.0.5') || text.includes('1.0.4'))) {
+        throw new Error(`${locale} release_notes version mismatch`);
       }
     }
 

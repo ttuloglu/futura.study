@@ -1,1 +1,1 @@
-cuento,historia,novela,relato,retrato,personaje,ia,libro,crear,portada,imagen,podcast,epub,pdf,autor
+masal,historia,relato,novela,ejercicios,IA,escribir,crear,audiolibro,podcast,pdf,epub,portada

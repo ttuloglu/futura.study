@@ -1,1 +1,1 @@
-satu,tarina,romaani,muotokuva,hahmo,tekoäly,kirja,kuvitus,kansi,podcast,epub,pdf,luovuus,ai,apptttt
+satu,tarina,kertomus,romaani,työkirja,AI kirja,kirjoita,luo,äänikirja,podcast,pdf,epub,kansi

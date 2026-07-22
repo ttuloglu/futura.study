@@ -1,116 +1,138 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "model": "gemini-3.1-flash-lite",
   "summary": {
-    "ar-SA": {
+    "tr": {
       "promotionalTextLength": 170,
-      "keywordsLength": 99,
-      "releaseNotesLength": 2966
+      "keywordsLength": 100,
+      "descriptionLength": 3961,
+      "releaseNotesLength": 3305
+    },
+    "ar-SA": {
+      "promotionalTextLength": 163,
+      "keywordsLength": 96,
+      "descriptionLength": 3047,
+      "releaseNotesLength": 2615
     },
     "da": {
-      "promotionalTextLength": 168,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3031
+      "promotionalTextLength": 164,
+      "keywordsLength": 97,
+      "descriptionLength": 3970,
+      "releaseNotesLength": 3327
     },
     "de-DE": {
-      "promotionalTextLength": 168,
-      "keywordsLength": 100,
-      "releaseNotesLength": 3244
+      "promotionalTextLength": 146,
+      "keywordsLength": 98,
+      "descriptionLength": 3633,
+      "releaseNotesLength": 3195
     },
     "el": {
-      "promotionalTextLength": 170,
+      "promotionalTextLength": 156,
       "keywordsLength": 99,
-      "releaseNotesLength": 3492
+      "descriptionLength": 3516,
+      "releaseNotesLength": 3197
     },
     "en-GB": {
-      "promotionalTextLength": 169,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3402
+      "promotionalTextLength": 165,
+      "keywordsLength": 97,
+      "descriptionLength": 3906,
+      "releaseNotesLength": 3481
     },
     "en-US": {
-      "promotionalTextLength": 167,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3346
+      "promotionalTextLength": 152,
+      "keywordsLength": 92,
+      "descriptionLength": 3326,
+      "releaseNotesLength": 3480
     },
     "es-ES": {
-      "promotionalTextLength": 169,
-      "keywordsLength": 100,
-      "releaseNotesLength": 3349
-    },
-    "fi": {
-      "promotionalTextLength": 170,
-      "keywordsLength": 99,
+      "promotionalTextLength": 165,
+      "keywordsLength": 93,
+      "descriptionLength": 3987,
       "releaseNotesLength": 3331
     },
+    "fi": {
+      "promotionalTextLength": 161,
+      "keywordsLength": 92,
+      "descriptionLength": 3855,
+      "releaseNotesLength": 3342
+    },
     "fr-FR": {
-      "promotionalTextLength": 167,
-      "keywordsLength": 100,
-      "releaseNotesLength": 3439
+      "promotionalTextLength": 152,
+      "keywordsLength": 89,
+      "descriptionLength": 3303,
+      "releaseNotesLength": 3289
     },
     "hi": {
-      "promotionalTextLength": 170,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3470
+      "promotionalTextLength": 150,
+      "keywordsLength": 73,
+      "descriptionLength": 3390,
+      "releaseNotesLength": 2373
     },
     "id": {
-      "promotionalTextLength": 169,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3079
+      "promotionalTextLength": 156,
+      "keywordsLength": 94,
+      "descriptionLength": 3482,
+      "releaseNotesLength": 3424
     },
     "it": {
-      "promotionalTextLength": 170,
-      "keywordsLength": 100,
-      "releaseNotesLength": 3263
+      "promotionalTextLength": 152,
+      "keywordsLength": 96,
+      "descriptionLength": 3414,
+      "releaseNotesLength": 3317
     },
     "ja": {
-      "promotionalTextLength": 166,
-      "keywordsLength": 99,
-      "releaseNotesLength": 2549
+      "promotionalTextLength": 154,
+      "keywordsLength": 68,
+      "descriptionLength": 1707,
+      "releaseNotesLength": 1474
     },
     "ko": {
-      "promotionalTextLength": 168,
-      "keywordsLength": 99,
-      "releaseNotesLength": 2568
+      "promotionalTextLength": 144,
+      "keywordsLength": 76,
+      "descriptionLength": 1885,
+      "releaseNotesLength": 1570
     },
     "nl-NL": {
-      "promotionalTextLength": 167,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3152
+      "promotionalTextLength": 158,
+      "keywordsLength": 90,
+      "descriptionLength": 3921,
+      "releaseNotesLength": 2687
     },
     "no": {
-      "promotionalTextLength": 167,
-      "keywordsLength": 100,
-      "releaseNotesLength": 3485
+      "promotionalTextLength": 157,
+      "keywordsLength": 96,
+      "descriptionLength": 3987,
+      "releaseNotesLength": 3301
     },
     "pl": {
-      "promotionalTextLength": 169,
+      "promotionalTextLength": 155,
       "keywordsLength": 99,
-      "releaseNotesLength": 3274
+      "descriptionLength": 3732,
+      "releaseNotesLength": 3326
     },
     "pt-BR": {
-      "promotionalTextLength": 169,
-      "keywordsLength": 100,
-      "releaseNotesLength": 3253
+      "promotionalTextLength": 164,
+      "keywordsLength": 89,
+      "descriptionLength": 3132,
+      "releaseNotesLength": 3498
     },
     "ru": {
-      "promotionalTextLength": 170,
-      "keywordsLength": 99,
-      "releaseNotesLength": 3120
+      "promotionalTextLength": 156,
+      "keywordsLength": 96,
+      "descriptionLength": 3846,
+      "releaseNotesLength": 2701
     },
     "sv": {
-      "promotionalTextLength": 166,
-      "keywordsLength": 100,
-      "releaseNotesLength": 2997
+      "promotionalTextLength": 152,
+      "keywordsLength": 86,
+      "descriptionLength": 3815,
+      "releaseNotesLength": 3306
     },
     "th": {
-      "promotionalTextLength": 169,
-      "keywordsLength": 99,
-      "releaseNotesLength": 2941
-    },
-    "tr": {
-      "promotionalTextLength": 168,
-      "keywordsLength": 99,
-      "releaseNotesLength": 2907
+      "promotionalTextLength": 158,
+      "keywordsLength": 97,
+      "descriptionLength": 3550,
+      "releaseNotesLength": 3109
     }
   }
 }

@@ -36,7 +36,7 @@ interface OnboardingViewProps {
 }
 
 const STAGE_COUNT = 4;
-const FORTALE_AI_LABEL = 'Fortale AI';
+const FORTALE_AI_LABEL = 'Fortale';
 const FORTALE_ORIGINAL_LABEL = 'Fortale Original';
 
 const DEMO_BOOKS: DemoBook[] = [
@@ -282,14 +282,6 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                     </div>
                   </div>
                 ))}
-                <div className="absolute bottom-[-1%] left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-1.5 rounded-2xl border border-white/15 bg-[#061221]/80 px-5 py-2.5 text-[11px] font-bold text-white/80 shadow-xl backdrop-blur-xl sm:bottom-[-2%] sm:text-xs">
-                  <span className="whitespace-nowrap">{labels.completeBook}</span>
-                  <span className="flex items-center justify-center gap-3" aria-hidden="true">
-                    <BookOpen className="h-4 w-4 text-cyan-300" />
-                    <Headphones className="h-4 w-4 text-violet-300" />
-                    <Download className="h-4 w-4 text-amber-300" />
-                  </span>
-                </div>
               </div>
             </section>
           )}
@@ -349,21 +341,6 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                   <div className="absolute inset-3 rounded-[28px] blur-3xl" style={{ background: selectedBook.accentSoft }} />
                   <div className={`relative overflow-hidden rounded-[26px] border border-white/25 bg-slate-900 shadow-[0_32px_80px_rgba(0,0,0,.55)] transition duration-700 ${demoPhase >= 2 ? 'onboarding-v2-cover-ready' : 'scale-[0.92] opacity-70'}`}>
                     <img className="aspect-[2/3] w-full object-cover" src={selectedBook.image} alt={getCoverTitle(copy, selectedKind)} />
-                    {demoPhase >= 4 && (
-                      <div className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-cyan-100/20 bg-[#061421]/86 px-2.5 py-2 shadow-2xl backdrop-blur-xl sm:top-4 sm:px-3">
-                        <img src="/favicon-red.svg" alt="" className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
-                        <span className="whitespace-nowrap text-[7px] font-black uppercase tracking-[0.1em] text-cyan-100 sm:text-[8px] sm:tracking-[0.16em]">{FORTALE_AI_LABEL}</span>
-                        <span className="flex items-end gap-0.5" aria-hidden="true">
-                          {Array.from({ length: 9 }, (_, index) => (
-                            <span
-                              key={index}
-                              className="onboarding-v2-wave-bar block w-0.5 rounded-full bg-cyan-300 sm:w-[3px]"
-                              style={{ '--wave-index': index, height: `${5 + (index % 5) * 1.5}px` } as React.CSSProperties}
-                            />
-                          ))}
-                        </span>
-                      </div>
-                    )}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#020712] via-[#020712]/92 to-transparent px-3 pb-3 pt-14 sm:px-5 sm:pb-5 sm:pt-20">
                       <p className="text-base font-black leading-[1.05] tracking-[-0.025em] sm:text-xl">{getCoverTitle(copy, selectedKind)}</p>
                       <p className="mt-2 hidden text-[10px] font-bold uppercase tracking-[0.18em] text-white/55 sm:block">{FORTALE_ORIGINAL_LABEL}</p>

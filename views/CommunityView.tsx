@@ -25,7 +25,7 @@ interface CommunityViewProps {
   wallet: CreditWallet;
   onRequireCredit: (action: CreditActionType, costOverride?: number) => boolean;
   onNavigate: (view: ViewState) => void;
-  onCourseSelect: (courseId: string) => void;
+  onCourseSelect: (courseId: string) => boolean | Promise<boolean>;
   onOpenPaywall?: () => void;
 }
 
@@ -65,6 +65,11 @@ function isGenericVisualSectionTitle(value: string | undefined): boolean {
 interface CommunityListResult {
   books: CommunityBookDto[];
   filters: { languages: string[]; categories: string[]; ageGroups: string[] };
+}
+
+interface CommunityListCacheEntry {
+  books: CommunityBook[];
+  filters: CommunityListResult['filters'];
 }
 
 interface DownloadResult {
@@ -112,6 +117,88 @@ const listNotificationsFn = httpsCallable<Record<string, never>, { notifications
 const markNotificationsReadFn = httpsCallable<Record<string, never>, { updated: number }>(functions, 'markCommunityNotificationsRead');
 const listModerationQueueFn = httpsCallable<Record<string, never>, { items: ModerationQueueItem[] }>(functions, 'listCommunityModerationQueue');
 const moderateItemFn = httpsCallable<Record<string, unknown>, { ok: boolean }>(functions, 'moderateCommunityItem');
+
+// This cache intentionally lives for the lifetime of the running app bundle.
+// Navigating between tabs unmounts CommunityView, but must not refetch the
+// catalogue until the user closes/restarts the app.
+const communityListSessionCache = new Map<string, CommunityListCacheEntry>();
+
+function communityListCacheKey(params: {
+  viewerId?: string | null;
+  tab: CommunityTab;
+  bookType: BookTypeFilter;
+  language: string;
+  category: string;
+  ageGroup: string;
+  search: string;
+}): string {
+  return [
+    params.viewerId || 'guest',
+    params.tab,
+    params.bookType,
+    params.language,
+    params.category,
+    params.ageGroup,
+    params.search
+  ].map((part) => encodeURIComponent(String(part || '').trim().toLocaleLowerCase('tr-TR'))).join('|');
+}
+
+function normalizeCommunityIdentity(value: unknown): string {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isAutomaticCommunityAlias(value: unknown): boolean {
+  return /^fortale-[a-f0-9]{12}$/i.test(String(value || '').trim());
+}
+
+function dedupeCommunityBooks(books: CommunityBook[]): CommunityBook[] {
+  const deduped: CommunityBook[] = [];
+  const indexByFingerprint = new Map<string, number>();
+
+  for (const book of books) {
+    const sourceCommunityId = String(book.bookId || '').trim().match(/^community_([a-f0-9]{40})$/i)?.[1] || '';
+    const fingerprints = [
+      `lineage:${sourceCommunityId || book.id}`,
+      `content:${[
+      book.userId,
+      normalizeCommunityIdentity(book.title),
+      normalizeCommunityIdentity(book.description)
+      ].join('|')}`
+    ];
+    const existingIndex = fingerprints
+      .map((fingerprint) => indexByFingerprint.get(fingerprint))
+      .find((index): index is number => index !== undefined);
+    if (existingIndex === undefined) {
+      fingerprints.forEach((fingerprint) => indexByFingerprint.set(fingerprint, deduped.length));
+      deduped.push(book);
+      continue;
+    }
+
+    const existing = deduped[existingIndex];
+    if (isAutomaticCommunityAlias(existing.publisherAlias) && !isAutomaticCommunityAlias(book.publisherAlias)) {
+      deduped[existingIndex] = book;
+    }
+    fingerprints.forEach((fingerprint) => indexByFingerprint.set(fingerprint, existingIndex));
+  }
+
+  return deduped;
+}
+
+function updateCommunityBookInSessionCache(id: string, patch: Partial<CommunityBook>): void {
+  for (const [key, entry] of communityListSessionCache.entries()) {
+    if (!entry.books.some((book) => book.id === id)) continue;
+    communityListSessionCache.set(key, {
+      ...entry,
+      books: entry.books.map((book) => book.id === id ? { ...book, ...patch } : book)
+    });
+  }
+}
 
 function parseBook(dto: CommunityBookDto): CommunityBook {
   return {
@@ -196,7 +283,23 @@ function BookCover({ book }: { book: CommunityBook }) {
   );
 }
 
-function BookCard({ book, onOpen, onRead, onLike, onShare }: { book: CommunityBook; onOpen: () => void; onRead: () => void; onLike: () => void; onShare: () => void }) {
+function BookCard({
+  book,
+  canRead,
+  isActionBusy,
+  onOpen,
+  onAction,
+  onLike,
+  onShare
+}: {
+  book: CommunityBook;
+  canRead: boolean;
+  isActionBusy: boolean;
+  onOpen: () => void;
+  onAction: () => void;
+  onLike: () => void;
+  onShare: () => void;
+}) {
   const { locale, t } = useUiI18n();
   const summary = getCommunityBookSummary(book);
   return (
@@ -215,7 +318,13 @@ function BookCard({ book, onOpen, onRead, onLike, onShare }: { book: CommunityBo
       <div className="fortale-book-list-info">
         <div className="fortale-book-list-topline">
           <span className="fortale-book-list-type" style={typeStyle(book.bookType)}>{t(typeLabel(book.bookType))}</span>
-          <button type="button" onClick={onRead} className="fortale-book-list-read"><BookOpen size={12} /> {t('Oku')}</button>
+          <button type="button" onClick={onAction} disabled={isActionBusy} className="fortale-book-list-read disabled:cursor-wait disabled:opacity-70">
+            {isActionBusy
+              ? <FaviconSpinner size={12} />
+              : canRead
+                ? <><BookOpen size={12} /> {t('Oku')}</>
+                : <><Library size={12} /> {t('Ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</>}
+          </button>
         </div>
         <button type="button" onClick={onOpen} className="fortale-book-list-title">{book.title}</button>
         <div className="fortale-book-list-byline">
@@ -239,8 +348,6 @@ function BookCard({ book, onOpen, onRead, onLike, onShare }: { book: CommunityBo
 export default function CommunityView({ authUser, wallet, onRequireCredit, onNavigate, onCourseSelect, onOpenPaywall }: CommunityViewProps) {
   const { locale, t } = useUiI18n();
   const [tab, setTab] = useState<CommunityTab>('discover');
-  const [books, setBooks] = useState<CommunityBook[]>([]);
-  const [filters, setFilters] = useState({ languages: [] as string[], categories: [] as string[], ageGroups: [] as string[] });
   const [bookType, setBookType] = useState<BookTypeFilter>('all');
   const [language, setLanguage] = useState('all');
   const [category, setCategory] = useState('all');
@@ -248,7 +355,18 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const initialCacheRef = useRef<CommunityListCacheEntry | null>(communityListSessionCache.get(communityListCacheKey({
+    viewerId: authUser?.uid,
+    tab: 'discover',
+    bookType: 'all',
+    language: 'all',
+    category: 'all',
+    ageGroup: 'all',
+    search: ''
+  })) || null);
+  const [books, setBooks] = useState<CommunityBook[]>(() => initialCacheRef.current?.books || []);
+  const [filters, setFilters] = useState<CommunityListResult['filters']>(() => initialCacheRef.current?.filters || { languages: [], categories: [], ageGroups: [] });
+  const [isLoading, setIsLoading] = useState(() => !initialCacheRef.current);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<CommunityBook | null>(null);
   const [imageViewer, setImageViewer] = useState<CommunityPreviewImage | null>(null);
@@ -296,21 +414,42 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const loadBooks = useCallback(async () => {
+  const loadBooks = useCallback(async (force = false) => {
+    const cacheKey = communityListCacheKey({
+      viewerId: authUser?.uid,
+      tab,
+      bookType,
+      language,
+      category,
+      ageGroup,
+      search: debouncedSearch
+    });
+    const cached = communityListSessionCache.get(cacheKey);
+    if (!force && cached) {
+      setBooks(cached.books);
+      setFilters(cached.filters);
+      setError('');
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError('');
     try {
       const result = await listBooksFn({ tab, bookType, language, category, ageGroup, search: debouncedSearch, limit: 36 });
-      setBooks(result.data.books.map(parseBook));
-      setFilters(result.data.filters);
+      const nextBooks = dedupeCommunityBooks(result.data.books.map(parseBook));
+      const nextEntry = { books: nextBooks, filters: result.data.filters };
+      communityListSessionCache.set(cacheKey, nextEntry);
+      setBooks(nextEntry.books);
+      setFilters(nextEntry.filters);
     } catch {
       setError(t('Kitaplar yüklenemedi.'));
     } finally {
       setIsLoading(false);
     }
-  }, [ageGroup, bookType, category, debouncedSearch, language, tab, t]);
+  }, [ageGroup, authUser?.uid, bookType, category, debouncedSearch, language, tab, t]);
 
-  useEffect(() => { void loadBooks(); }, [loadBooks]);
+  useEffect(() => { void loadBooks(false); }, [loadBooks]);
 
   const requireAccount = useCallback(() => {
     if (authUser) return true;
@@ -344,18 +483,29 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     }
   }, [showToast, t]);
 
-  const openOwnedBook = useCallback((book: CommunityBook): boolean => {
+  const openOwnedBook = useCallback(async (book: CommunityBook): Promise<boolean> => {
     const courseId = getOwnedCommunityCourseId(book, authUser?.uid);
     if (!courseId) return false;
-    setSelected(null);
-    onCourseSelect(courseId);
-    return true;
+    return await onCourseSelect(courseId);
   }, [authUser?.uid, onCourseSelect]);
 
   const updateBookEverywhere = useCallback((id: string, patch: Partial<CommunityBook>) => {
+    updateCommunityBookInSessionCache(id, patch);
     setBooks((current) => current.map((book) => book.id === id ? { ...book, ...patch } : book));
     setSelected((current) => current?.id === id ? { ...current, ...patch } : current);
   }, []);
+
+  const handleRead = useCallback(async (book: CommunityBook) => {
+    if (busyAction) return;
+    const actionKey = `read:${book.id}`;
+    setBusyAction(actionKey);
+    try {
+      const opened = await openOwnedBook(book);
+      if (!opened) showToast(t('Kitap şu anda açılamadı. Lütfen tekrar deneyin.'));
+    } finally {
+      setBusyAction((current) => current === actionKey ? '' : current);
+    }
+  }, [busyAction, openOwnedBook, showToast, t]);
 
   const handleLike = useCallback(async (book: CommunityBook) => {
     if (!requireAccount() || busyAction) return;
@@ -412,29 +562,30 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
     }
   }, [busyAction, selected, showToast, t, updateBookEverywhere]);
 
-  const handleDownload = useCallback(async () => {
-    if (!selected || !requireAccount() || busyAction) return;
-    if (selected.userId === authUser?.uid) return showToast(t('Kendi kitabınız zaten kitaplığınızda.'));
-    if (!selected.isOwned && (!onRequireCredit('community_download', COMMUNITY_DOWNLOAD_CREDIT_COST) || wallet.createCredits < COMMUNITY_DOWNLOAD_CREDIT_COST)) {
+  const handleDownload = useCallback(async (book: CommunityBook) => {
+    if (!requireAccount() || busyAction) return;
+    if (book.userId === authUser?.uid) return showToast(t('Kendi kitabınız zaten kitaplığınızda.'));
+    if (!book.isOwned && (!onRequireCredit('community_download', COMMUNITY_DOWNLOAD_CREDIT_COST) || wallet.createCredits < COMMUNITY_DOWNLOAD_CREDIT_COST)) {
       onOpenPaywall?.();
       return;
     }
-    setBusyAction('download');
+    const actionKey = `download:${book.id}`;
+    setBusyAction(actionKey);
     try {
-      const result = await downloadFn({ communityBookId: selected.id });
+      const result = await downloadFn({ communityBookId: book.id });
       window.dispatchEvent(new CustomEvent(CREDIT_WALLET_UPDATED_EVENT, { detail: result.data.wallet }));
-      updateBookEverywhere(selected.id, {
+      updateBookEverywhere(book.id, {
         isOwned: true,
-        downloadCount: selected.downloadCount + (result.data.alreadyOwned ? 0 : 1)
+        downloadCount: book.downloadCount + (result.data.alreadyOwned ? 0 : 1)
       });
       showToast(result.data.alreadyOwned ? t('Kitap zaten kitaplığınızda.') : t('Kitap kitaplığınıza eklendi!'));
     } catch (error) {
       if (errorCode(error).includes('resource-exhausted')) onOpenPaywall?.();
       else if (!maybeOpenProfile(error)) showToast(t('İndirme başarısız oldu.'));
     } finally {
-      setBusyAction('');
+      setBusyAction((current) => current === actionKey ? '' : current);
     }
-  }, [authUser?.uid, busyAction, maybeOpenProfile, onOpenPaywall, onRequireCredit, requireAccount, selected, showToast, t, updateBookEverywhere, wallet.createCredits]);
+  }, [authUser?.uid, busyAction, maybeOpenProfile, onOpenPaywall, onRequireCredit, requireAccount, showToast, t, updateBookEverywhere, wallet.createCredits]);
 
   const handleReport = useCallback((entityType: 'book' | 'comment' | 'profile', targetId: string, communityBookId?: string) => {
     if (!requireAccount() || busyAction) return;
@@ -542,6 +693,8 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
   ];
   const canAccessSelectedComments = Boolean(authUser && selected && (selected.isOwned || selected.userId === authUser.uid));
   const selectedOwnedCourseId = getOwnedCommunityCourseId(selected, authUser?.uid);
+  const selectedReadBusy = Boolean(selected && busyAction === `read:${selected.id}`);
+  const selectedDownloadBusy = Boolean(selected && busyAction === `download:${selected.id}`);
 
   return (
     <div className="view-container fortale-library-view">
@@ -577,7 +730,7 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
         {isLoading ? (
           <div className="flex items-center justify-center p-10"><FaviconSpinner size={26} /></div>
         ) : error ? (
-          <div className="fortale-library-panel rounded-2xl border p-8 text-center"><p className="text-[12px] text-red-300">{error}</p><button type="button" onClick={() => void loadBooks()} className="mt-3 text-[11px] font-bold text-white underline">{t('Tekrar dene')}</button></div>
+          <div className="fortale-library-panel rounded-2xl border p-8 text-center"><p className="text-[12px] text-red-300">{error}</p><button type="button" onClick={() => void loadBooks(true)} className="mt-3 text-[11px] font-bold text-white underline">{t('Tekrar dene')}</button></div>
         ) : books.length === 0 ? (
           <div className="fortale-library-panel rounded-2xl border p-8 text-center"><Library size={28} className="mx-auto text-white" /><p className="mt-3 text-[13px] font-bold text-white">{t('Bu filtrede kitap bulunamadı.')}</p><button type="button" onClick={() => onNavigate('AI_CHAT')} className="mt-4 rounded-xl bg-emerald-400 px-4 py-2 text-[11px] font-black text-[#102018]">{t('Kitaplarıma Git')}</button></div>
         ) : (
@@ -586,10 +739,10 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
               <BookCard
                 key={book.id}
                 book={book}
+                canRead={Boolean(getOwnedCommunityCourseId(book, authUser?.uid))}
+                isActionBusy={busyAction === `read:${book.id}` || busyAction === `download:${book.id}`}
                 onOpen={() => void openDetail(book)}
-                onRead={() => {
-                  if (!openOwnedBook(book)) void openDetail(book);
-                }}
+                onAction={() => getOwnedCommunityCourseId(book, authUser?.uid) ? void handleRead(book) : void handleDownload(book)}
                 onLike={() => void handleLike(book)}
                 onShare={() => void shareBook(book)}
               />
@@ -619,13 +772,17 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
                       <span className="fortale-community-type-chip inline-flex h-7 shrink-0 items-center rounded-full border px-2 text-[9px] font-black" data-book-type={selected.bookType} style={typeStyle(selected.bookType)}>{t(typeLabel(selected.bookType))}</span>
                       <button
                         type="button"
-                        onClick={() => void handleDownload()}
-                        disabled={busyAction === 'download' || selected.isOwned || selected.userId === authUser?.uid}
+                        onClick={() => selectedOwnedCourseId ? void handleRead(selected) : void handleDownload(selected)}
+                        disabled={selectedReadBusy || selectedDownloadBusy}
                         className="fortale-community-library-button !m-0 inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[9px] font-black"
-                        title={selected.isOwned || selected.userId === authUser?.uid ? t('Kütüphanede') : `${t('Kitaplığıma ekle')} ${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}
-                        aria-label={selected.isOwned || selected.userId === authUser?.uid ? t('Kütüphanede') : `${t('Kitaplığıma ekle')} ${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}
+                        title={selectedOwnedCourseId ? t('Oku') : `${t('Ekle')} ${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}
+                        aria-label={selectedOwnedCourseId ? t('Oku') : `${t('Ekle')} ${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}
                       >
-                        {busyAction === 'download' ? <FaviconSpinner size={12} /> : selected.isOwned || selected.userId === authUser?.uid ? <><Library size={11} /><span className="truncate">{t('Kütüphanede')}</span></> : <><Library size={11} /><span className="truncate">{t('Kitaplığıma ekle')} {`${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}</span></>}
+                        {selectedReadBusy || selectedDownloadBusy
+                          ? <FaviconSpinner size={12} />
+                          : selectedOwnedCourseId
+                            ? <><BookOpen size={11} /><span className="truncate">{t('Oku')}</span></>
+                            : <><Library size={11} /><span className="truncate">{t('Ekle')} {`${COMMUNITY_DOWNLOAD_CREDIT_COST}C`}</span></>}
                       </button>
                     </div>
                     <div className="mt-2 flex items-center gap-1.5">
@@ -689,18 +846,15 @@ export default function CommunityView({ authUser, wallet, onRequireCredit, onNav
 
                 <button
                   type="button"
-                  onClick={() => {
-                    if (selectedOwnedCourseId) openOwnedBook(selected);
-                    else void handleDownload();
-                  }}
-                  disabled={busyAction === 'download'}
+                  onClick={() => selectedOwnedCourseId ? void handleRead(selected) : void handleDownload(selected)}
+                  disabled={selectedReadBusy || selectedDownloadBusy}
                   className="fortale-community-library-button inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 text-[13px] font-black"
                 >
-                  {busyAction === 'download'
+                  {selectedReadBusy || selectedDownloadBusy
                     ? <FaviconSpinner size={14} />
                     : selectedOwnedCourseId
                       ? <><BookOpen size={14} /><span>{t('Oku')}</span></>
-                      : <><Library size={14} /><span>{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>}
+                      : <><Library size={14} /><span>{t('Kütüphaneme Ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>}
                 </button>
               </div>
               );

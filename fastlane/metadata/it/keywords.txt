@@ -1,1 +1,1 @@
-fiaba,storia,romanzo,ritratto,personaggio,libro,creazione,copertina,immagine,podcast,epub,pdf,ai,app
+favola,storia,racconto,romanzo,libro,esercizi,IA,scrittura,podcast,audiolibro,pdf,epub,copertina

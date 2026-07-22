@@ -104,7 +104,7 @@ export const ONBOARDING_V2_COPY: Record<AppLanguageCode, OnboardingV2Copy> = {
   },
   en: {
     heroTitle: 'One idea. A living book.',
-    heroBody: 'Fortale turns your idea into an illustrated, narrated and shareable book.',
+    heroBody: 'Fortale is an AI-powered creative app that turns ideas into illustrated and narrated books, stories, fairy tales and workbooks you can read, listen to, download and share.',
     prompt: 'Why does time sometimes slow down?',
     chooseTitle: 'What do you want to create today?',
     fairyChoice: 'A tale for my child',
@@ -374,7 +374,7 @@ export const ONBOARDING_V2_COPY: Record<AppLanguageCode, OnboardingV2Copy> = {
   },
   tr: {
     heroTitle: 'Bir fikir. Yaşayan bir kitap.',
-    heroBody: 'Fortale fikrini resimli, sesli ve paylaşılabilir bir kitaba dönüştürür.',
+    heroBody: 'Fortale; fikirleri resimli ve sesli kitaplara, hikâyelere, masallara ve çalışma kitaplarına dönüştüren yapay zekâ destekli yaratıcı bir uygulamadır. Oku, dinle, indir ve paylaş.',
     prompt: 'Zaman neden bazen yavaşlar?',
     chooseTitle: 'Bugün ne oluşturmak istiyorsun?',
     fairyChoice: 'Çocuğum için masal',

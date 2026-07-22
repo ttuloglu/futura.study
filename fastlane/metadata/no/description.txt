@@ -1,44 +1,23 @@
-Fortale er ditt alt-i-ett AI-bokstudio for familier, studenter, lærere og skapere. På få minutter kan du generere originale eventyr, noveller og hele romaner basert på aldersgruppe, sjanger og undersjanger. Enten du ønsker en beroligende godnatthistorie, et lekent eventyr eller et lengre historieunivers med tilbakevendende karakterer, hjelper Fortale deg med å gå fra idé til ferdig bok raskt og trygt.
+Fortale er et AI-drevet kreativt bokstudio designet for at du skal kunne forvandle ideene dine til illustrerte, hørbare og delbare digitale bøker. Start med et emne, en karakter eller et nysgjerrig spørsmål, og lag eventyr, historier eller arbeidsbøker i løpet av få trinn. Fortale hjelper deg med å forvandle den første gnisten til en personlig bokopplevelse som strekker seg fra omslag til kapitler, og fra lesing til lytting.
 
-Lag bøker på din måte:
-- Velg aldersgruppe slik at språk, tone og tempo føles riktig.
-- Velg hovedsjanger og undersjanger for nøyaktig den stilen du ønsker.
-- Definer karakterer, temaer, setting, stemning og lesenivå.
-- Bygg enkeltstående historier eller serier i flere deler med kontinuitet.
-- Regenerer deler til historien føles perfekt for målgruppen din.
+Bygg din egen historieverden. Velg aldersgruppe, sjanger, undersjanger, tema, fortellertone, tid og sted; beskriv karakterene dine og historiens kjerneidé. Enten du vil lage et varmt godnatteventyr for barnet ditt, en lang historie med dype karakterer og verdener, eller en strukturert arbeidsbok for et emne du vil lære, former dine instruksjoner bokens språk, rytme og atmosfære.
 
-Gjør tekst om til tale med podcast-stil fortelling:
-- Konverter historien din til naturlig talt lyd.
-- Hold barn engasjert med en lytt-først-fortellingsmodus.
-- Hør på favorittbøker som lyd under reiser, lek eller ved leggetid.
-- Kombiner lesing og lytting for bedre forståelse.
+Du bestemmer retningen i skapelsesprosessen. Du kan utdype en kort idé, beskrive din egen undersjanger og unike verden, og definere grunnleggende informasjon for flere karakterer. Etter hvert som boken skrider frem, formes omslaget, kapitlene og fortellerverdenen rundt den samme ideen. Du kan åpne det ferdige verket og lese det på nytt, eller fortsette å skape med nye ideer helt til du fanger den rette følelsen i historien.
 
-Eksporter og behold bøkene dine i profesjonelle formater:
-- Last ned polert PDF for enkel lesing, utskrift og deling.
-- Eksporter EPUB for e-lesere og fleksible digitale biblioteker.
-- Hold biblioteket ditt organisert slik at hver historie forblir tilgjengelig.
-- Åpne, revider og publiser bøkene dine på nytt når som helst.
+Du kan legge til et valgfritt portrett for å gjøre karakteren din mer personlig. Portrettet er kun en kreativ referanse som hjelper deg med å fremstille hovedkarakteren i boken mer konsekvent. Slik kan du skape en mer gjenkjennelig forbindelse mellom omslaget, kapittelbildene og historiens verden.
 
-Hvorfor lesere og skapere velger Fortale:
-- Rask arbeidsflyt fra idé til bok uten kompliserte verktøy.
-- Aldersbevisste resultater for barn, ungdom og voksne lesere.
-- Fleksibel stilkontroll for fantasy, mysterier, sci-fi, drama og mer.
-- Lyd + tekst sammen for rikere historiefortelling.
-- Flott for foreldre, lærere, språkelever og indie-forfattere.
+Fortale begrenser ikke bokopplevelsen til bare tekst. Se historiens verden med omslags- og kapittelbilder; lytt til boken din med sideopplesing, podkast og bakgrunnslyd. Bytt mellom lesing og lytting som du vil; fortsett historien din der du slapp, enten du er på reise, slapper av eller vil dele et øyeblikk.
 
-Bruk Fortale til virkelige øyeblikk hver dag:
-- Foreldre: Lag personlige godnatthistorier i barnets favorittstil.
-- Lærere: Generer lesemateriell til klasserommet tilpasset nivå og emne.
-- Studenter: Øv på skrivestruktur, narrativ flyt og kreativ tenkning.
-- Forfattere: Test konsepter, utforsk toner og prototype historieideer raskere.
+Hver bok har sin egen vei. I et eventyr kan du fremheve fantasi og en varm fortellerstil, i en historie kan du utdype karakterenes valg og verdens detaljer, mens du i en arbeidsbok kan utforske konsepter du er nysgjerrig på i en forståelig rekkefølge. Fortale tilbyr et fleksibelt rom for å produsere bøker i ulike sjangre og for ulike formål fra én enkelt idé.
 
-Bygget for iterativ kreativitet:
-Fortale er designet for å støtte eksperimentering. Start med et enkelt konsept, avgrens retningen, endre aldersinnstillinger, bytt sjanger og bygg om kapitler til alt høres ut og leses slik du så for deg. Du beholder kontrollen mens AI akselererer prosessen din.
+Det tilbyr også et sterkt utgangspunkt for læring. Når du forvandler et emne til en arbeidsbok, kan du velge nivå; du kan skape en mer strukturert læringsflyt med forklaringer, eksempler, repetisjonsseksjoner, quizer og relevante bokanbefalinger. Du kan gå frem i henhold til ulike læringsbehov fra barneskole til universitetsnivå, og lese eller lytte i ditt eget tempo.
 
-Pålitelig arbeidsflyt fra utkast til ferdig bok:
-Bruk Fortale som en repeterbar innholdspipeline: idé, utkast, revisjon, fortelling, eksport. Fortsett å avgrense stil og struktur over tid, og bygg et rikere bibliotek med hver nye tittel. Enten du lager innhold for familieopplesning, klasseromsøvelser eller personlig publisering, hjelper Fortale deg med å opprettholde konsistens samtidig som kreativiteten bevares.
+Bøkene dine forblir samlet i ditt personlige bibliotek. Søk, filtrer og organiser verkene du har laget; åpne relevante bøker på nytt, fortsett å lese, og hold tilgangen flytende takket være hurtigbufferen på enheten din. Gjør bøker du liker klare for nedlasting som PDF for lesing, utskrift eller deling, eller eksporter dem som EPUB for bruk på din e-bokleser.
 
-Ditt voksende historiebibliotek:
-Etter hvert som du lager flere bøker, blir Fortale din personlige historiekatalog. Oppbevar eventyr, noveller og romaner på ett sted, lytt til fortalte versjoner, og eksporter favorittene dine som PDF eller EPUB når du trenger dem.
+Oppdag nye historier i Fortale-fellesskapet, del bøkene du velger å publisere med lesere, lik og del. Utforsk verk i ulike sjangre når du søker inspirasjon; utvid ditt eget bibliotek med bøker du liker. Du kan gå direkte tilbake til bøkene du har publisert selv eller lagt til i biblioteket ditt fra leseflyten.
 
-Lag, fortell, eksporter og del historier som føles helt dine egne. Start din neste bok i Fortale i dag.
+Du kan lage, lese og lytte til bøker i Fortale med støttede grensesnittspråk. Lag et fargerikt eventyr for barn, en arbeidsbok for et emne du vil lære, eller en ny historie for ditt eget fiktive univers.
+
+Fortale er et fleksibelt kreativt rom for foreldre, studenter, lærere, språklærere og alle som ønsker å skrive. Lag et spesielt eventyr for barnet ditt, lag en emneforklaring for klasserommet, prøv et nytt fiktivt univers eller bring ideen i hodet ditt nærmere en bok klar for publisering. Du bestemmer retningen i hver bok; Fortale følger deg for å bringe ideen din til live med tekst, bilde og lyd.
+
+Skriv ned ideen din. Bygg din verden. Les, lytt, last ned og del boken din. La din neste historie begynne i Fortale.

@@ -1,1 +1,1 @@
-baśń,opowieść,powieść,portret,postać,ai,książka,tworzenie,okładka,grafika,podcast,epub,pdf,pisaniei
+bajka,opowiadanie,historia,powieść,podręcznik,AI,książka,pisanie,audiobook,podcast,pdf,epub,okładka

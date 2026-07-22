@@ -29,23 +29,28 @@ export default function BottomNav({
   const isChatActive = currentView === 'AI_CHAT' && !isSettingsOpen;
   const isSettingsActive = isSettingsOpen;
 
+  const scrollTopControl = showCourseScrollTop ? (
+    <div
+      className="fortale-course-scroll-top-root fixed left-0 right-0 pointer-events-none flex justify-center px-4"
+      style={{ zIndex: 50 }}
+    >
+      <button
+        type="button"
+        onClick={onCourseScrollTop}
+        className="pointer-events-auto w-10 h-10 rounded-full flex items-center justify-center bg-stone-900/90 text-white border border-white/10 shadow-lg hover:scale-110 active:scale-90 transition-all duration-200"
+        aria-label={t('Başa dön')}
+        title={t('Başa dön')}
+      >
+        <ArrowUp size={18} strokeWidth={2.5} />
+      </button>
+    </div>
+  ) : null;
+
   const navigation = (
     <div
-      className="fortale-floatisland-root fixed left-0 right-0 pointer-events-none flex flex-col items-center gap-2 px-4"
+      className="fortale-floatisland-root fixed left-0 right-0 pointer-events-none flex items-center justify-center px-4"
       style={{ zIndex: 20000 }}
     >
-      {showCourseScrollTop && (
-        <button
-          type="button"
-          onClick={onCourseScrollTop}
-          className="pointer-events-auto w-10 h-10 rounded-full flex items-center justify-center bg-stone-900/90 text-white border border-white/10 shadow-lg hover:scale-110 active:scale-90 transition-all duration-200"
-          aria-label={t('Başa dön')}
-          title={t('Başa dön')}
-        >
-          <ArrowUp size={18} strokeWidth={2.5} />
-        </button>
-      )}
-
       <div className="floatisland-nav">
         {/* HOME BUTTON */}
         <button
@@ -105,5 +110,14 @@ export default function BottomNav({
     </div>
   );
 
-  return typeof document === 'undefined' ? navigation : createPortal(navigation, document.body);
+  if (typeof document === 'undefined') {
+    return <>{scrollTopControl}{navigation}</>;
+  }
+
+  return (
+    <>
+      {scrollTopControl && createPortal(scrollTopControl, document.body)}
+      {createPortal(navigation, document.body)}
+    </>
+  );
 }

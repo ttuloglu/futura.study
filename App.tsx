@@ -715,6 +715,10 @@ function buildBookDocumentPayload(
     status,
     cover: Object.keys(nextCover).length > 0 ? nextCover : undefined,
     bundle,
+    sourceType: course.sourceType,
+    sourceCommunityBookId: course.sourceCommunityBookId,
+    communityLicense: course.communityLicense,
+    communityPublishingDisabled: course.communityPublishingDisabled,
     createdAt: course.createdAt,
     updatedAt: now,
     lastActivity: course.lastActivity
@@ -3094,6 +3098,10 @@ function fromStoredCourse(raw: unknown): CourseData | null {
     bundle: normalizedBundle,
     cover: normalizedCover,
     status: normalizeCourseStatus(item.status),
+    sourceType: typeof item.sourceType === 'string' ? item.sourceType : undefined,
+    sourceCommunityBookId: typeof item.sourceCommunityBookId === 'string' ? item.sourceCommunityBookId : undefined,
+    communityLicense: typeof item.communityLicense === 'string' ? item.communityLicense : undefined,
+    communityPublishingDisabled: item.communityPublishingDisabled === true,
     userId: typeof item.userId === 'string' ? item.userId : undefined,
     nodes: normalizedNodes,
     createdAt: new Date(item.createdAt),
@@ -3777,6 +3785,7 @@ function shouldRetryCreditGatewayError(error: unknown): boolean {
 export default function App() {
   const initialAppLanguageSetupRef = useRef<InitialAppLanguageSetup>(resolveInitialAppLanguageSetup());
   const [currentView, setCurrentView] = useState<ViewState>(() => readInitialViewFromUrl());
+  const courseOpenRequestIdRef = useRef(0);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | ''>('');
   const [animationKey, setAnimationKey] = useState(0);
 
@@ -3790,6 +3799,7 @@ export default function App() {
 
   const handleViewChange = (nextView: ViewState) => {
     if (nextView === currentView) return;
+    courseOpenRequestIdRef.current += 1;
     const currentIdx = getTabVal(currentView);
     const nextIdx = getTabVal(nextView);
     setSlideDirection(nextIdx > currentIdx ? 'right' : 'left');
@@ -5361,6 +5371,7 @@ export default function App() {
 
     const eligibleCourses = savedCourses.filter((course) => {
       if (!course.id || course.id.startsWith('community_')) return false;
+      if (course.sourceType === 'community' || course.sourceCommunityBookId || course.communityLicense === 'personal-use' || course.communityPublishingDisabled) return false;
       if (course.communityPublication?.status === 'published') return false;
       return Boolean(
         resolvePreferredBookZipStoragePath(course.bundle?.path, course.contentPackagePath)
@@ -6800,11 +6811,12 @@ export default function App() {
         {
           bookType: latestCourse.bookType,
           subGenre: latestCourse.subGenre || undefined,
-          creativeBrief: latestCourse.creativeBrief,
+          creativeBrief: {
+            ...(latestCourse.creativeBrief || { bookType: latestCourse.bookType }),
+            languageText: latestCourse.language || latestCourse.creativeBrief?.languageText
+          },
           coverContext: [
-            latestCourse.bookType ? `Tür: ${latestCourse.bookType}` : '',
-            latestCourse.subGenre ? `Alt Tür: ${latestCourse.subGenre}` : '',
-            latestCourse.description ? `Özet: ${latestCourse.description}` : '',
+            latestCourse.description || '',
             coverContext
           ]
             .filter(Boolean)
@@ -7428,59 +7440,91 @@ export default function App() {
     })();
   };
 
-  const handleCourseSelect = (courseId: string) => {
-    void (async () => {
-      const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
-      if (!localUserId) return;
-      const existing = savedCoursesRef.current.find((course) => course.id === courseId)
-        || savedCourses.find((course) => course.id === courseId)
-        || null;
+  const handleCourseSelect = async (courseId: string): Promise<boolean> => {
+    if (!courseId) return false;
+    const requestId = ++courseOpenRequestIdRef.current;
+    const isRequestCurrent = () => courseOpenRequestIdRef.current === requestId;
+    const openIfCurrent = () => {
+      if (!isRequestCurrent()) return false;
+      openCourseFlow(courseId);
+      return true;
+    };
 
-      if (!existing) return;
-      const versionHint = extractBundleVersionFromPath(existing.contentPackagePath) || existing.bundle?.version;
-      const installedCourse = await readInstalledBook(localUserId, courseId, versionHint);
-      if (installedCourse && hasPersistableCourseContent(installedCourse)) {
-        applyInstalledCourseForOpen(localUserId, courseId, installedCourse, existing);
-        updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
-        openCourseFlow(courseId);
-        queueBookPackageUpdate(localUserId, existing);
-        return;
-      }
+    const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
+    if (!localUserId) return false;
+    let existing = savedCoursesRef.current.find((course) => course.id === courseId)
+      || savedCourses.find((course) => course.id === courseId)
+      || null;
 
-      const hasInstallablePackage = Boolean(
-        resolvePreferredBookZipStoragePath(existing.contentPackagePath, existing.bundle?.path) ||
-        String(existing.contentPackageUrl || '').trim()
-      );
-      if (hasInstallablePackage) {
-        updateCourseOpenState(courseId, { status: 'downloading', progress: 8 });
-        try {
-          const newlyInstalledCourse = await installBookPackage(localUserId, existing);
-          if (!newlyInstalledCourse || !hasPersistableCourseContent(newlyInstalledCourse)) {
-            updateCourseOpenState(courseId, { status: 'failed', progress: 8 });
-            return;
+    // A community download can finish a fraction before the realtime books
+    // listener publishes the new private copy locally. Resolve that race by
+    // reading the just-created book metadata directly once.
+    if (!existing && authUser?.uid) {
+      try {
+        const bookSnapshot = await getDoc(doc(db, 'users', authUser.uid, 'books', courseId));
+        if (bookSnapshot.exists()) {
+          const cloudCourse = fromUserBookDocument(
+            bookSnapshot.id,
+            (bookSnapshot.data() as Record<string, unknown>) || {},
+            authUser.uid
+          );
+          if (cloudCourse) {
+            existing = cloudCourse;
+            const nextCourses = sortCoursesByLastActivity([
+              cloudCourse,
+              ...savedCoursesRef.current.filter((course) => course.id !== cloudCourse.id)
+            ]);
+            savedCoursesRef.current = nextCourses;
+            setSavedCourses(nextCourses);
+            writeCoursesToLocal(localUserId, nextCourses);
+            writeFullCoursesToLocal(localUserId, nextCourses);
           }
-          applyInstalledCourseForOpen(localUserId, courseId, newlyInstalledCourse, existing);
-          updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
-          openCourseFlow(courseId);
-        } catch (error) {
-          console.warn(`Book package installation failed (${courseId}):`, error);
-          updateCourseOpenState(courseId, { status: 'failed', progress: 8 });
         }
-        return;
+      } catch (error) {
+        console.warn(`Book metadata lookup failed (${courseId}):`, error);
       }
+    }
 
-      // Legacy books without a package keep their existing reader path.
-      if (existing.nodes.length > 0 && !courseNeedsContentHydration(existing)) {
+    if (!existing) return false;
+    const versionHint = extractBundleVersionFromPath(existing.contentPackagePath) || existing.bundle?.version;
+    const installedCourse = await readInstalledBook(localUserId, courseId, versionHint);
+    if (installedCourse && hasPersistableCourseContent(installedCourse)) {
+      applyInstalledCourseForOpen(localUserId, courseId, installedCourse, existing);
+      updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+      queueBookPackageUpdate(localUserId, existing);
+      return openIfCurrent();
+    }
+
+    const hasInstallablePackage = Boolean(
+      resolvePreferredBookZipStoragePath(existing.contentPackagePath, existing.bundle?.path) ||
+      String(existing.contentPackageUrl || '').trim()
+    );
+    if (hasInstallablePackage) {
+      updateCourseOpenState(courseId, { status: 'downloading', progress: 8 });
+      try {
+        const newlyInstalledCourse = await installBookPackage(localUserId, existing);
+        if (!newlyInstalledCourse || !hasPersistableCourseContent(newlyInstalledCourse)) {
+          updateCourseOpenState(courseId, { status: 'failed', progress: 8 });
+          return false;
+        }
+        applyInstalledCourseForOpen(localUserId, courseId, newlyInstalledCourse, existing);
         updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
-        openCourseFlow(courseId);
-        return;
+        return openIfCurrent();
+      } catch (error) {
+        console.warn(`Book package installation failed (${courseId}):`, error);
+        updateCourseOpenState(courseId, { status: 'failed', progress: 8 });
+        return false;
       }
+    }
 
-      const isReady = await ensureCourseReadyForOpen(courseId, existing);
-      if (isReady) {
-        openCourseFlow(courseId);
-      }
-    })();
+    // Legacy books without a package keep their existing reader path.
+    if (existing.nodes.length > 0 && !courseNeedsContentHydration(existing)) {
+      updateCourseOpenState(courseId, { status: 'ready', progress: 100 });
+      return openIfCurrent();
+    }
+
+    const isReady = await ensureCourseReadyForOpen(courseId, existing);
+    return isReady ? openIfCurrent() : false;
   };
 
   useEffect(() => {
@@ -7536,6 +7580,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    courseOpenRequestIdRef.current += 1;
     setSettingsOpen(false);
 
     if (!authUser) {
@@ -8076,7 +8121,7 @@ export default function App() {
               credits={creditWallet}
               appLanguage={appLanguage}
               onOpenPaywall={() => openCreditPaywall()}
-              onNavigate={setCurrentView}
+              onNavigate={handleViewChange}
               onContact={handleContactSupport}
               onAppLanguageChange={handleAppLanguageChange}
               onAuthAction={authUser ? handleLogout : handleOpenLoginScreen}

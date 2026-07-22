@@ -7,6 +7,10 @@
   --app-safe-top: max(env(safe-area-inset-top, 0px), 28px);
   --app-header-row-top: calc(var(--app-safe-top) + 1px);
   --color-background: #061224;
+  --fortale-floatisland-surface: rgba(236, 248, 246, 0.14);
+  --fortale-wizard-surface: var(--fortale-floatisland-surface);
+  --fortale-wizard-surface-glass: transparent;
+  --fortale-wizard-ring: rgba(103, 232, 249, 0.22);
   --color-surface-card: rgba(34, 37, 42, 0.46);
   --color-surface-glass: rgba(39, 42, 47, 0.58);
 
@@ -1838,11 +1842,11 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 /* Cards stay in horizontal rows; only the row heading is vertical. */
 .fortale-home-book-rail {
   display: flex;
-  height: 184px;
+  height: 154px;
   min-width: 0;
-  flex: 0 0 184px;
+  flex: 0 0 154px;
   align-items: flex-start;
-  gap: 8px;
+  gap: 4px;
 }
 
 .fortale-home-rail-label {
@@ -1869,10 +1873,10 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
   min-width: 0;
   flex: 1 1 auto;
   align-items: flex-start;
-  gap: 9px;
+  gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 2px 3px 5px;
+  padding: 0 2px;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
@@ -1887,7 +1891,9 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
   width: min(300px, calc(100vw - 76px));
   min-width: min(300px, calc(100vw - 76px));
   flex: 0 0 min(300px, calc(100vw - 76px));
-  padding: 2px 10px 10px 0;
+  gap: 10px;
+  padding: 0 6px 0 0;
+  border-bottom: 0;
   height: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -1898,6 +1904,7 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  padding: 0;
 }
 
 .fortale-home-list-card .fortale-shelf-download-overlay {
@@ -2161,10 +2168,12 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 }
 
 .fortale-home-create-dock .fortale-type-step {
-  min-height: 224px;
-  height: 224px;
+  min-height: 202px;
+  height: 202px;
   padding: 0;
   gap: 0;
+  transform: scale(0.9);
+  transform-origin: center center;
 }
 
 .fortale-home-create-dock .fortale-type-orb,
@@ -2367,16 +2376,13 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
   isolation: isolate;
   transform-style: preserve-3d;
   border: none;
-  outline: 1px solid rgba(244, 252, 248, 0.34);
+  outline: 1px solid var(--fortale-wizard-ring);
   outline-offset: 6px;
-  background: #071a33;
+  background: transparent;
   background-clip: padding-box;
-  box-shadow:
-    inset 0 2px 4px rgba(255,255,255,0.34),
-    inset 0 -18px 34px rgba(1,8,18,0.34),
-    inset 18px 0 34px rgba(255,255,255,0.06),
-    0 18px 44px -26px rgba(0,0,0,0.92),
-    0 34px 74px -42px rgba(2, 10, 22, 0.96);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 14px 30px -22px rgba(10,24,30,0.72);
   animation: fortale-orb-breathe 7.2s ease-in-out infinite;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -2384,11 +2390,8 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 
 .fortale-type-orb::before,
 .fortale-type-orb::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  pointer-events: none;
+  content: none;
+  display: none;
 }
 
 .fortale-type-orb::before {
@@ -2397,16 +2400,14 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
     radial-gradient(ellipse at 34% 16%, rgba(255,255,255,0.3), rgba(255,255,255,0.07) 28%, transparent 48%),
     radial-gradient(circle at 50% 50%, transparent 52%, rgba(255,255,255,0.08) 78%, rgba(0,0,0,0.12) 100%);
   mix-blend-mode: screen;
-  opacity: 0.46;
+  opacity: 0.08;
 }
 
 .fortale-type-orb::after {
   z-index: 7;
   box-sizing: border-box;
   border: none;
-  box-shadow:
-    inset 0 26px 42px rgba(255,255,255,0.08),
-    inset 0 -30px 48px rgba(0,0,0,0.28);
+  box-shadow: inset 0 -22px 38px rgba(0,0,0,0.12);
 }
 
 .fortale-type-ring {
@@ -2481,13 +2482,11 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
   height: 206px;
   box-sizing: border-box;
   border-radius: 50%;
-  background: rgba(30, 69, 116, 0.9);
+  background: var(--fortale-floatisland-surface);
   border: 3.5px solid transparent;
-  box-shadow:
-    inset 0 2px 2px rgba(255,255,255,0.18),
-    inset 0 -22px 34px rgba(0,0,0,0.18);
-  backdrop-filter: blur(34px) saturate(185%);
-  -webkit-backdrop-filter: blur(34px) saturate(185%);
+  box-shadow: none;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
   transition: background 360ms ease, filter 360ms ease, box-shadow 360ms ease, transform 360ms ease;
 }
 
@@ -2506,8 +2505,8 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 .fortale-type-choice.bottom-left {
   bottom: 0;
   left: 0;
-  width: 50%;
-  height: 50%;
+  width: calc(50% - 5px);
+  height: calc(50% - 5px);
   padding-bottom: 5px;
 }
 
@@ -2524,8 +2523,8 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 .fortale-type-choice.bottom-right {
   bottom: 0;
   right: 0;
-  width: 50%;
-  height: 50%;
+  width: calc(50% - 5px);
+  height: calc(50% - 5px);
   padding-left: 10px;
   padding-bottom: 5px;
 }
@@ -2665,11 +2664,9 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 }
 
 .fortale-type-divider {
-  background: rgba(10, 36, 70, 0.92);
-  box-shadow:
-    0 0 0 1px rgba(190, 220, 255, 0.08),
-    inset 0 1px 0 rgba(190, 220, 255, 0.12),
-    0 0 18px rgba(31, 76, 125, 0.28);
+  display: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .fortale-type-divider.horizontal {
@@ -2697,21 +2694,19 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 .fortale-type-core {
   left: 50%;
   top: 50%;
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: 0;
   color: #fff;
-  background: rgba(8, 36, 70, 0.96);
-  border: 1px solid rgba(247,252,249,0.12);
-  box-shadow:
-    inset 0 1px 2px rgba(255,255,255,0.12),
-    0 8px 18px rgba(0,0,0,0.42);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   transform: translate(-50%, -50%);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .fortale-action-button,
@@ -3402,9 +3397,9 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-book-list-title {
-  display: -webkit-box;
+  display: block;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   margin-top: 9px;
   padding: 0;
   border: 0;
@@ -3414,8 +3409,7 @@ button.fortale-hero-inline-field {
   font-weight: 840;
   line-height: 1.25;
   text-align: left;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-wrap: pretty;
 }
 
 .fortale-book-list-byline {
@@ -3470,12 +3464,21 @@ button.fortale-hero-inline-field {
   background: transparent;
   font-size: 13px;
   line-height: 1.5;
+  max-height: 4.5em;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  text-wrap: pretty;
 }
 
 .fortale-home-list-card .fortale-book-list-description {
-  -webkit-line-clamp: 4;
+  margin-top: 4px;
+  max-height: 4.5em;
+  -webkit-line-clamp: 3;
+}
+
+.fortale-home-list-card .fortale-book-list-stats {
+  margin-top: 4px;
+  padding-top: 0;
 }
 
 .fortale-book-list-meta {
@@ -4356,7 +4359,7 @@ button.fortale-hero-inline-field {
   align-items: center;
   justify-content: space-between;
   border: 1px solid rgba(236, 248, 242, 0.22) !important;
-  background: rgba(236, 248, 246, 0.14) !important;
+  background: var(--fortale-floatisland-surface) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.25),
     0 14px 30px -22px rgba(10,24,30,0.72) !important;
@@ -4376,16 +4379,24 @@ button.fortale-hero-inline-field {
    vertical center of the island, so both surfaces read as one component. */
 :root {
   --fortale-floatisland-height: 50px;
-  --fortale-floatisland-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  --fortale-floatisland-bottom: max(4px, calc(env(safe-area-inset-bottom, 0px) - 18px));
   --fortale-floatisland-half-height: 25px;
   --fortale-floatisland-clearance: calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-half-height));
   --fortale-modal-top-clearance: calc(var(--app-header-row-top) + 56px);
-  --fortale-modal-surface: #16446f;
+  --fortale-modal-surface: var(--fortale-wizard-surface);
   --fortale-sheet-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .fortale-floatisland-root {
   bottom: var(--fortale-floatisland-bottom);
+}
+
+.fortale-course-scroll-top-root {
+  bottom: calc(
+    var(--fortale-floatisland-bottom) +
+    var(--fortale-floatisland-height) +
+    8px
+  );
 }
 
 .fortale-modal-backdrop,
@@ -4775,6 +4786,7 @@ button.fortale-hero-inline-field {
 }
 
 #root,
+.fortale-cosmos-page,
 .fortale-app-frame,
 .fortale-app-frame .view-container,
 .fortale-loading-screen,
@@ -4822,41 +4834,28 @@ button.fortale-hero-inline-field {
 .fortale-home-rail-stack::before {
   content: '';
   position: absolute;
-  inset: -24px -30px;
+  inset: -34px -42px -50px;
   z-index: -1;
   pointer-events: none;
-  filter: blur(16px);
-  opacity: 0.96;
+  filter: blur(26px);
+  opacity: 0.9;
   background:
-    radial-gradient(ellipse at 28% 30%, rgba(34, 211, 238, 0.16), transparent 48%),
-    radial-gradient(ellipse at 72% 74%, rgba(168, 85, 247, 0.15), transparent 52%),
-    radial-gradient(ellipse at 24% 100%, rgba(251, 191, 36, 0.1), transparent 44%),
-    linear-gradient(
-      180deg,
-      transparent 0%,
-      rgba(14, 116, 144, 0.055) 18%,
-      rgba(14, 116, 144, 0.1) 28%,
-      rgba(70, 79, 151, 0.105) 36%,
-      rgba(103, 72, 164, 0.13) 58%,
-      rgba(88, 28, 135, 0.08) 72%,
-      rgba(49, 21, 78, 0.19) 100%
-    );
+    radial-gradient(ellipse at 28% 24%, rgba(34, 211, 238, 0.16), transparent 64%),
+    radial-gradient(ellipse at 72% 78%, rgba(168, 85, 247, 0.16), transparent 70%),
+    radial-gradient(ellipse at 24% 110%, rgba(251, 191, 36, 0.08), transparent 62%);
 }
 
 .fortale-home-rail-stack::after {
   content: '';
   position: absolute;
-  left: -28px;
-  right: -28px;
-  top: 32%;
-  height: 38%;
+  inset: -30px -38px -42px;
   z-index: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent, rgba(96, 87, 178, 0.19) 48%, rgba(103, 72, 164, 0.17) 58%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  mask-image: linear-gradient(180deg, transparent, #000 26%, #000 74%, transparent);
-  -webkit-mask-image: linear-gradient(180deg, transparent, #000 26%, #000 74%, transparent);
+  background: radial-gradient(ellipse at 68% 70%, rgba(112, 77, 178, 0.12), transparent 72%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
 }
 
 .fortale-home-rail-stack > .fortale-home-book-rail {
@@ -4878,11 +4877,8 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-home-book-rail::after {
-  left: 28px;
-  right: 4px;
-  bottom: -3px;
-  height: 1px;
-  opacity: 0.72;
+  content: none;
+  display: none;
 }
 
 .fortale-home-book-rail.is-library-rail::before {
@@ -4890,7 +4886,8 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-home-book-rail.is-library-rail::after {
-  opacity: 0;
+  content: none;
+  display: none;
 }
 
 .fortale-home-book-rail.is-community-rail::before {
@@ -4898,8 +4895,8 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-home-book-rail.is-community-rail::after {
-  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.48) 16%, rgba(196, 181, 253, 0.68) 56%, transparent);
-  box-shadow: 0 -8px 24px rgba(168, 85, 247, 0.15);
+  content: none;
+  display: none;
 }
 
 /* Square particles fall from the outer accretion field into the type orb. */
@@ -5045,8 +5042,8 @@ button.fortale-hero-inline-field {
 .fortale-sheet-surface,
 .fortale-cosmos-panel {
   border-color: rgba(186, 225, 255, 0.22) !important;
-  background-color: rgba(3, 9, 20, 0.97) !important;
-  background-image: var(--fortale-modal-cosmos-image) !important;
+  background-color: var(--fortale-wizard-surface) !important;
+  background-image: none !important;
   background-position: center top !important;
   background-size: var(--fortale-modal-cosmos-size) !important;
   box-shadow:
@@ -5054,15 +5051,17 @@ button.fortale-hero-inline-field {
     inset 0 -1px 0 rgba(103, 232, 249, 0.08),
     0 -24px 72px rgba(0, 0, 0, 0.56),
     0 0 44px rgba(34, 211, 238, 0.055) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
 }
 
 .fortale-sheet-header {
   border-bottom-color: rgba(148, 210, 255, 0.13);
-  background: linear-gradient(180deg, rgba(16, 51, 78, 0.3), rgba(5, 16, 31, 0.08));
+  background: transparent !important;
 }
 
 .fortale-sheet-footer {
-  background: linear-gradient(180deg, rgba(3, 9, 20, 0), rgba(3, 9, 20, 0.38));
+  background: transparent !important;
 }
 
 .fortale-sheet-handle {
@@ -5080,17 +5079,18 @@ button.fortale-hero-inline-field {
 .fortale-paywall-balance,
 .fortale-paywall-pack,
 .fortale-settings-surface,
-.fortale-settings-menu {
+.fortale-settings-menu,
+.fortale-cosmos-modal-section,
+.fortale-cosmos-notice {
   border-color: rgba(148, 210, 255, 0.18) !important;
-  background-color: rgba(5, 20, 38, 0.74) !important;
-  background-image:
-    radial-gradient(circle at 8% 0%, rgba(34, 211, 238, 0.075), transparent 42%),
-    linear-gradient(145deg, rgba(17, 48, 75, 0.34), rgba(5, 14, 29, 0.64)) !important;
+  background: var(--fortale-wizard-surface) !important;
+  background-color: var(--fortale-wizard-surface) !important;
+  background-image: none !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
 }
 
 .fortale-cosmos-modal-section {
-  background: rgba(3, 12, 25, 0.46);
+  background: transparent !important;
 }
 
 .fortale-cosmos-lightbox {
@@ -5106,9 +5106,7 @@ button.fortale-hero-inline-field {
 
 .fortale-cosmos-notice {
   border-color: rgba(148, 210, 255, 0.28) !important;
-  background:
-    radial-gradient(circle at 12% 0%, rgba(34, 211, 238, 0.14), transparent 48%),
-    linear-gradient(145deg, rgba(11, 38, 66, 0.94), rgba(4, 13, 27, 0.96)) !important;
+  background: var(--fortale-wizard-surface) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 18px 36px rgba(0, 0, 0, 0.38) !important;

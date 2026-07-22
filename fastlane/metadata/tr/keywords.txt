@@ -1,1 +1,1 @@
-masal,hikaye,öykü,roman,portre,karakter,ai kitap,kitap oluştur,kapak,görsel,podcast,epub,pdf,kitabı
+masal,hikâye,öykü,roman,çalışma kitabı,AI kitap,kitap yaz,oluştur,sesli kitap,podcast,pdf,epub,kapak

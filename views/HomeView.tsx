@@ -52,7 +52,7 @@ interface HomeViewProps {
   onCourseCreate: (data: CourseData) => Promise<void>;
   onDeleteCourse: (courseId: string) => Promise<void>;
   savedCourses: CourseData[];
-  onCourseSelect: (id: string) => void;
+  onCourseSelect: (id: string) => boolean | Promise<boolean>;
   canDeleteCourse?: (course: CourseData) => boolean;
   stickyNotes: StickyNoteData[];
   onCreateStickyNote: (payload: { title?: string; text: string; reminderAt?: string | null }) => Promise<StickyNoteData | undefined>;
@@ -108,6 +108,11 @@ function isGenericHomeCommunityVisualTitle(value: string | undefined): boolean {
 const listHomeCommunityBooks = httpsCallable<Record<string, unknown>, HomeCommunityListResult>(functions, 'listCommunityBooks');
 const getHomeCommunityBook = httpsCallable<{ communityBookId: string }, HomeCommunityDetailResult>(functions, 'getCommunityBook');
 const downloadHomeCommunityBook = httpsCallable<{ communityBookId: string }, HomeCommunityDownloadResult>(functions, 'downloadCommunityBook');
+const homeCommunitySessionCache = new Map<string, CommunityBook[]>();
+
+function homeCommunitySessionCacheKey(userId?: string): string {
+  return userId || '__guest__';
+}
 
 function parseHomeCommunityBook(dto: HomeCommunityBookDto): CommunityBook {
   return {
@@ -1821,11 +1826,16 @@ export default function HomeView({
   });
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
-  const [homeCommunityBooks, setHomeCommunityBooks] = useState<CommunityBook[]>([]);
-  const [isHomeCommunityLoading, setIsHomeCommunityLoading] = useState(true);
+  const [homeCommunityBooks, setHomeCommunityBooks] = useState<CommunityBook[]>(
+    () => homeCommunitySessionCache.get(homeCommunitySessionCacheKey(authUserId)) || []
+  );
+  const [isHomeCommunityLoading, setIsHomeCommunityLoading] = useState(
+    () => !homeCommunitySessionCache.has(homeCommunitySessionCacheKey(authUserId))
+  );
   const [selectedHomeCommunityBook, setSelectedHomeCommunityBook] = useState<CommunityBook | null>(null);
   const [isHomeCommunityDetailLoading, setIsHomeCommunityDetailLoading] = useState(false);
   const [isHomeCommunityDownloading, setIsHomeCommunityDownloading] = useState(false);
+  const [isHomeCommunityReading, setIsHomeCommunityReading] = useState(false);
   const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
   const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
   const generationDisplayLanguage = isGenerating
@@ -1839,6 +1849,14 @@ export default function HomeView({
   };
 
   useEffect(() => {
+    const cacheKey = homeCommunitySessionCacheKey(authUserId);
+    const cachedBooks = homeCommunitySessionCache.get(cacheKey);
+    if (cachedBooks) {
+      setHomeCommunityBooks(cachedBooks);
+      setIsHomeCommunityLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setIsHomeCommunityLoading(true);
 
@@ -1849,7 +1867,9 @@ export default function HomeView({
       if (cancelled) return;
       const popular = popularResult.data.books.map(parseHomeCommunityBook);
       const discovery = discoveryResult.data.books.map(parseHomeCommunityBook);
-      setHomeCommunityBooks(shuffledUniqueCommunityBooks(popular, discovery));
+      const selectedBooks = shuffledUniqueCommunityBooks(popular, discovery);
+      homeCommunitySessionCache.set(cacheKey, selectedBooks);
+      setHomeCommunityBooks(selectedBooks);
     }).catch(() => {
       if (!cancelled) setHomeCommunityBooks([]);
     }).finally(() => {
@@ -1857,7 +1877,7 @@ export default function HomeView({
     });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [authUserId]);
 
   const openHomeCommunityBook = async (book: CommunityBook) => {
     setSelectedHomeCommunityBook(book);
@@ -1888,7 +1908,11 @@ export default function HomeView({
       window.dispatchEvent(new CustomEvent(CREDIT_WALLET_UPDATED_EVENT, { detail: result.data.wallet }));
       const downloadCount = book.downloadCount + (result.data.alreadyOwned ? 0 : 1);
       setSelectedHomeCommunityBook((current) => current?.id === book.id ? { ...current, isOwned: true, downloadCount } : current);
-      setHomeCommunityBooks((current) => current.map((item) => item.id === book.id ? { ...item, isOwned: true, downloadCount } : item));
+      setHomeCommunityBooks((current) => {
+        const updated = current.map((item) => item.id === book.id ? { ...item, isOwned: true, downloadCount } : item);
+        homeCommunitySessionCache.set(homeCommunitySessionCacheKey(authUserId), updated);
+        return updated;
+      });
       setSourceNotice(result.data.alreadyOwned ? t('Kitap zaten kitaplığınızda.') : t('Kitap kitaplığınıza eklendi!'));
     } catch {
       setSourceNotice(t('İndirme başarısız oldu.'));
@@ -1897,12 +1921,25 @@ export default function HomeView({
     }
   };
 
-  const openOwnedHomeCommunityBook = (book: CommunityBook): boolean => {
+  const openOwnedHomeCommunityBook = async (book: CommunityBook): Promise<boolean> => {
     const courseId = getOwnedCommunityCourseId(book, authUserId);
     if (!courseId) return false;
-    setSelectedHomeCommunityBook(null);
-    onCourseSelect(courseId);
-    return true;
+    if (isHomeCommunityReading) return false;
+
+    setIsHomeCommunityReading(true);
+    try {
+      const opened = await onCourseSelect(courseId);
+      if (opened === false) {
+        setSourceNotice(t('Kitap şu anda açılamadı. Lütfen tekrar deneyin.'));
+        return false;
+      }
+      return true;
+    } catch {
+      setSourceNotice(t('Kitap şu anda açılamadı. Lütfen tekrar deneyin.'));
+      return false;
+    } finally {
+      setIsHomeCommunityReading(false);
+    }
   };
 
   const resetGenerationProgress = (next: number) => {
@@ -2908,6 +2945,7 @@ export default function HomeView({
     const normalizedTime = settingTimeLabel ? compactInlineText(settingTimeLabel) : '';
     const normalizedPremise = compactInlineText(selectedStoryPremise);
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
+    const canonicalBookLanguage = normalizeAppLanguageCode(normalizedLanguageText) || undefined;
     if (selectedBookType === 'story') {
       const workbookCategory = effectiveSubGenre || 'Bilimsel';
       const workbookLevel = selectedWorkbookLevel || 'Ortaokul';
@@ -2943,7 +2981,7 @@ export default function HomeView({
       return {
         bookType: selectedBookType,
         subGenre: workbookCategory,
-        languageText: normalizedLanguageText || undefined,
+        languageText: canonicalBookLanguage || normalizedLanguageText || undefined,
         workbookLevel,
         workbookCategory,
         includeExamples: includeWorkbookExamples,
@@ -3005,7 +3043,7 @@ export default function HomeView({
     return {
       bookType: selectedBookType,
       subGenre: effectiveSubGenre || undefined,
-      languageText: normalizedLanguageText || undefined,
+      languageText: canonicalBookLanguage || normalizedLanguageText || undefined,
       characters: characterHints.join(' ').trim() || undefined,
       settingPlace: normalizedPlace || undefined,
       settingTime: normalizedTime || undefined,
@@ -3298,7 +3336,7 @@ export default function HomeView({
         if (!railStack || !floatIsland) return;
         const top = Math.ceil(railStack.getBoundingClientRect().bottom);
         const bottom = Math.floor(floatIsland.getBoundingClientRect().top);
-        const height = Math.max(224, bottom - top);
+        const height = Math.max(202, bottom - top);
         setHomeCreateDockBounds((current) => current?.top === top && current.height === height ? current : { top, height });
       });
     };
@@ -3880,7 +3918,7 @@ export default function HomeView({
           className={`relative ${isCreationIntroOnly ? 'fortale-home-create-dock' : ''}`}
           style={isCreationIntroOnly ? {
             top: homeCreateDockBounds?.top ?? 0,
-            height: homeCreateDockBounds?.height ?? 224,
+            height: homeCreateDockBounds?.height ?? 202,
             visibility: homeCreateDockBounds ? 'visible' : 'hidden'
           } : undefined}
         >
@@ -3905,11 +3943,11 @@ export default function HomeView({
             className="flex flex-col rounded-[18px]"
             style={{
               height: isCreationIntroOnly
-                ? '224px'
+                ? '202px'
                 : creationStep === 1
                   ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
                   : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
-              minHeight: isCreationIntroOnly ? '224px' : '320px',
+              minHeight: isCreationIntroOnly ? '202px' : '320px',
             }}
           >
             {/* TOP BAR: generating'de gizle, intro'da invisible (layout tutmak için) */}
@@ -4901,17 +4939,21 @@ export default function HomeView({
               <button
                 type="button"
                 onClick={() => {
-                  if (!openOwnedHomeCommunityBook(selectedHomeCommunityBook)) void handleHomeCommunityDownload();
+                  if (getOwnedCommunityCourseId(selectedHomeCommunityBook, authUserId)) {
+                    void openOwnedHomeCommunityBook(selectedHomeCommunityBook);
+                  } else {
+                    void handleHomeCommunityDownload();
+                  }
                 }}
-                disabled={isHomeCommunityDownloading}
+                disabled={isHomeCommunityDownloading || isHomeCommunityReading}
                 className="fortale-community-library-button inline-flex items-center justify-center gap-1.5 rounded-2xl px-2 text-[10px] font-normal whitespace-nowrap"
               >
-                {isHomeCommunityDownloading ? (
+                {isHomeCommunityDownloading || isHomeCommunityReading ? (
                   <FaviconSpinner size={14} />
                 ) : getOwnedCommunityCourseId(selectedHomeCommunityBook, authUserId) ? (
                   <><BookOpen size={13} /><span className="whitespace-nowrap">{t('Oku')}</span></>
                 ) : (
-                  <><Library size={13} /><span className="whitespace-nowrap">{t('Kitaplığıma ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST} {t('kredi')}</span></>
+                  <><Library size={13} /><span className="whitespace-nowrap">{t('Kütüphaneme Ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>
                 )}
               </button>
             </div>

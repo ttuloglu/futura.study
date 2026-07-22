@@ -260,6 +260,10 @@ export interface CourseData {
   bundle?: BookBundleDescriptor;
   cover?: BookCoverDescriptor;
   status?: 'processing' | 'ready' | 'failed';
+  sourceType?: 'community' | string;
+  sourceCommunityBookId?: string;
+  communityLicense?: string;
+  communityPublishingDisabled?: boolean;
   communityPublication?: {
     id: string;
     status: 'published' | 'unpublished' | 'hidden' | 'removed';

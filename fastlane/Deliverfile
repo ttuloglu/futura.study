@@ -1,6 +1,6 @@
 app_identifier(ENV['APP_IDENTIFIER']) if ENV['APP_IDENTIFIER']
 platform('ios')
-app_version('1.0.4')
+app_version('1.0.5')
 
 metadata_path('fastlane/metadata')
 screenshots_path('fastlane/screenshots')
