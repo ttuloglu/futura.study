@@ -17,7 +17,7 @@ function AssistantAvatar() {
     <div className="chat-avatar">
       <span className="chat-avatar-aura" />
       <span className="chat-avatar-ring" />
-      <img src="/favicon-red.svg" alt={t('Asistan')} className="chat-avatar-icon" />
+      <img src="/favicon.svg" alt={t('Asistan')} className="chat-avatar-icon" />
     </div>
   );
 }

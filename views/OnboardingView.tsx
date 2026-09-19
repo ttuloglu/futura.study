@@ -10,9 +10,8 @@ import {
   Headphones,
   Languages,
   Library,
-  Sparkles,
-  Users,
-  WandSparkles
+  Lightbulb,
+  PenLine
 } from 'lucide-react';
 import {
   ONBOARDING_V2_COPY,
@@ -32,6 +31,7 @@ type DemoBook = {
 
 interface OnboardingViewProps {
   onFinish: () => void;
+  onContinueWithoutLogin?: () => void;
   onExplore?: () => void;
 }
 
@@ -95,7 +95,7 @@ function getCoverTitle(copy: OnboardingV2Copy, kind: DemoKind) {
   return copy.workbookCoverTitle;
 }
 
-export default function OnboardingView({ onFinish, onExplore }: OnboardingViewProps) {
+export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExplore }: OnboardingViewProps) {
   const { language, t } = useUiI18n();
   const copy = ONBOARDING_V2_COPY[language];
   const labels = ONBOARDING_V2_LABELS[language];
@@ -186,8 +186,8 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
   };
 
   const demoPhases = [
-    { label: labels.idea, icon: Sparkles },
-    { label: labels.title, icon: WandSparkles },
+    { label: labels.idea, icon: Lightbulb },
+    { label: labels.title, icon: PenLine },
     { label: t('Kapak'), icon: BookOpen },
     { label: labels.sectionsAndVisuals, icon: FileText },
     { label: t('Seslendirme'), icon: Headphones }
@@ -217,7 +217,7 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
               <span className="block h-1 overflow-hidden rounded-full bg-white/15">
                 <span
                   className={`block h-full origin-left rounded-full transition-transform duration-500 ${
-                    index <= stage ? 'scale-x-100 bg-gradient-to-r from-cyan-300 to-amber-300' : 'scale-x-0'
+                    index <= stage ? 'scale-x-100 bg-white' : 'scale-x-0'
                   }`}
                 />
               </span>
@@ -227,7 +227,7 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
         <button
           type="button"
           onClick={onFinish}
-          className="rounded-full border border-white/15 bg-white/[0.07] px-3 py-1.5 text-[12px] font-bold text-white/80 backdrop-blur-xl transition hover:bg-white/[0.12] active:scale-95"
+          className="rounded-full border border-white/15 bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-xl transition hover:bg-white/[0.12] active:scale-95"
         >
           {t('Atla')}
         </button>
@@ -238,26 +238,23 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
           {stage === 0 && (
             <section className="grid w-full items-center gap-7 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
               <div className="mx-auto max-w-xl text-center lg:mx-0 lg:text-start">
-                <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/[0.08] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                  <img src="/favicon-red.svg" alt="" className="h-4 w-4" /> {FORTALE_AI_LABEL}
+                <div className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-cyan-300">
+                  <img src="/favicon.svg" alt="" className="h-4 w-4" />
+                  <span>{FORTALE_AI_LABEL}</span>
                 </div>
-                <h1 className="text-[clamp(2.55rem,10vw,5.8rem)] font-black leading-[0.94] tracking-[-0.055em]">
+                <h1 className="text-[clamp(2.4rem,8vw,5rem)] font-bold leading-tight">
                   {copy.heroTitle}
                 </h1>
-                <p className="mx-auto mt-5 max-w-lg text-[15px] font-medium leading-7 text-slate-300 sm:text-lg lg:mx-0">
+                <p className="mx-auto mt-4 max-w-lg text-base font-normal leading-relaxed text-slate-300 lg:mx-0">
                   {copy.heroBody}
                 </p>
-                <div className="mx-auto mt-6 flex max-w-md items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.07] p-3 text-start shadow-2xl backdrop-blur-xl lg:mx-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-300 to-orange-500 text-slate-950 shadow-lg shadow-orange-500/20">
-                    <Feather className="h-5 w-5" />
+                <div className="mx-auto mt-6 flex max-w-md items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.07] p-3 text-start backdrop-blur-xl lg:mx-0">
+                  <Feather className="h-6 w-6 shrink-0 text-amber-400" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-normal text-white/50">{labels.writeYourIdea}</p>
+                    <p className="truncate text-sm font-medium text-white sm:text-base">{copy.prompt}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">{labels.writeYourIdea}</p>
-                    <p className="truncate text-sm font-bold text-white sm:text-base">{copy.prompt}</p>
-                  </div>
-                  <span className="ms-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-slate-950">
-                    <ArrowRight className={`h-4 w-4 ${isRtl ? 'rotate-180' : ''}`} />
-                  </span>
+                  <ArrowRight className={`ms-auto h-5 w-5 shrink-0 text-white/50 ${isRtl ? 'rotate-180' : ''}`} />
                 </div>
               </div>
 
@@ -278,7 +275,7 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                   >
                     <img className="aspect-[2/3] w-full object-cover" src={book.image} alt="" />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/82 to-transparent px-3 pb-3 pt-10">
-                      <p className="line-clamp-2 text-[11px] font-black leading-tight sm:text-sm">{getCoverTitle(copy, book.id)}</p>
+                      <p className="line-clamp-2 text-xs font-semibold leading-tight text-white sm:text-sm">{getCoverTitle(copy, book.id)}</p>
                     </div>
                   </div>
                 ))}
@@ -289,8 +286,8 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
           {stage === 1 && (
             <section className="w-full max-w-5xl">
               <div className="mx-auto max-w-2xl text-center">
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-300">{labels.youChoose}</p>
-                <h1 className="mt-2 text-[clamp(2rem,8vw,4rem)] font-black leading-[1.02] tracking-[-0.045em]">{copy.chooseTitle}</h1>
+                <p className="text-xs font-semibold text-cyan-300 sm:text-sm">{labels.youChoose}</p>
+                <h1 className="mt-2 text-[clamp(2rem,7vw,3.6rem)] font-bold leading-tight">{copy.chooseTitle}</h1>
               </div>
 
               <div className="mx-auto mt-7 grid max-w-[860px] grid-cols-3 gap-2.5 sm:mt-10 sm:gap-5">
@@ -317,15 +314,13 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#030914] via-transparent to-transparent" />
                         {selected && (
-                          <span className="absolute end-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-950 shadow-xl sm:end-3 sm:top-3 sm:h-9 sm:w-9">
-                            <Check className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={3} />
-                          </span>
+                          <Check className="absolute end-3 top-3 h-6 w-6 text-white drop-shadow-md sm:h-7 sm:w-7" strokeWidth={3} />
                         )}
                       </div>
                       <div className="relative -mt-8 p-2.5 pt-0 sm:-mt-12 sm:p-5 sm:pt-0">
                         <span className="mb-1.5 block h-1 w-6 rounded-full sm:w-9" style={{ backgroundColor: book.accent }} />
-                        <p className="text-[11px] font-black leading-tight text-white sm:text-[17px]">{getChoiceLabel(copy, book.id)}</p>
-                        <p className="mt-1 hidden text-xs font-medium text-white/50 sm:line-clamp-2 sm:block">{getCoverTitle(copy, book.id)}</p>
+                        <p className="text-xs font-semibold leading-tight text-white sm:text-base">{getChoiceLabel(copy, book.id)}</p>
+                        <p className="mt-1 hidden text-xs font-normal text-white/60 sm:line-clamp-2 sm:block">{getCoverTitle(copy, book.id)}</p>
                       </div>
                     </button>
                   );
@@ -342,16 +337,16 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                   <div className={`relative overflow-hidden rounded-[26px] border border-white/25 bg-slate-900 shadow-[0_32px_80px_rgba(0,0,0,.55)] transition duration-700 ${demoPhase >= 2 ? 'onboarding-v2-cover-ready' : 'scale-[0.92] opacity-70'}`}>
                     <img className="aspect-[2/3] w-full object-cover" src={selectedBook.image} alt={getCoverTitle(copy, selectedKind)} />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#020712] via-[#020712]/92 to-transparent px-3 pb-3 pt-14 sm:px-5 sm:pb-5 sm:pt-20">
-                      <p className="text-base font-black leading-[1.05] tracking-[-0.025em] sm:text-xl">{getCoverTitle(copy, selectedKind)}</p>
-                      <p className="mt-2 hidden text-[10px] font-bold uppercase tracking-[0.18em] text-white/55 sm:block">{FORTALE_ORIGINAL_LABEL}</p>
+                      <p className="text-base font-bold leading-tight sm:text-lg">{getCoverTitle(copy, selectedKind)}</p>
+                      <p className="mt-1 hidden text-xs font-medium text-white/60 sm:block">{FORTALE_ORIGINAL_LABEL}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="mx-auto w-full max-w-xl text-center md:text-start">
-                <h1 className="text-[clamp(2rem,8vw,4.6rem)] font-black leading-[0.98] tracking-[-0.05em]">{copy.transformationTitle}</h1>
-                <p className="mt-2 text-xs font-medium leading-5 text-slate-300 sm:mt-4 sm:text-base sm:leading-6">“{copy.prompt}”</p>
+                <h1 className="text-[clamp(2rem,7vw,4rem)] font-bold leading-tight">{copy.transformationTitle}</h1>
+                <p className="mt-2 text-sm font-normal leading-relaxed text-slate-300 sm:mt-4 sm:text-base">“{copy.prompt}”</p>
 
                 <div className="mt-3 space-y-1.5 sm:mt-6 sm:space-y-2.5">
                   {demoPhases.map(({ label, icon: Icon }, index) => {
@@ -359,19 +354,19 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                     return (
                       <div
                         key={label}
-                        className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-start transition-all duration-500 sm:gap-3 sm:rounded-2xl sm:px-3.5 sm:py-3 ${
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-start transition-all duration-500 sm:rounded-2xl sm:px-3.5 sm:py-3 ${
                           complete
                             ? 'translate-x-0 border-white/15 bg-white/[0.08] opacity-100'
                             : 'translate-x-4 border-transparent bg-white/[0.025] opacity-30'
                         }`}
                       >
                         <span
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 sm:rounded-xl"
-                          style={{ background: complete ? selectedBook.accentSoft : 'rgba(255,255,255,.04)', color: complete ? selectedBook.accent : 'rgba(255,255,255,.45)' }}
+                          className="flex shrink-0 items-center justify-center"
+                          style={{ color: complete ? selectedBook.accent : 'rgba(255,255,255,.4)' }}
                         >
-                          {complete ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={3} /> : <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                          {complete ? <Check className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.5} /> : <Icon className="h-5 w-5 sm:h-6 sm:w-6" />}
                         </span>
-                        <span className="min-w-0 flex-1 text-sm font-extrabold">{label}</span>
+                        <span className="min-w-0 flex-1 text-sm font-medium">{label}</span>
                         {complete && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: selectedBook.accent }} />}
                       </div>
                     );
@@ -383,17 +378,15 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
 
           {stage === 3 && (
             <section className="w-full max-w-5xl text-center">
-              <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10 text-cyan-200 shadow-[0_0_45px_rgba(34,211,238,.17)] sm:h-14 sm:w-14">
-                <Languages className="h-6 w-6 sm:h-7 sm:w-7" />
-              </div>
-              <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-cyan-300">{copy.languageTitle}</p>
-              <h1 className="mx-auto mt-2 max-w-3xl text-[clamp(2.25rem,8.5vw,5.1rem)] font-black leading-[0.96] tracking-[-0.055em]">{copy.finalTitle}</h1>
-              <p className="mx-auto mt-4 max-w-xl text-sm font-medium leading-6 text-slate-300 sm:text-base">{copy.finalBody}</p>
+              <Languages className="mx-auto h-10 w-10 text-cyan-300 sm:h-12 sm:w-12" />
+              <p className="mt-4 text-xs font-semibold text-cyan-300 sm:text-sm">{copy.languageTitle}</p>
+              <h1 className="mx-auto mt-2 max-w-3xl text-[clamp(2.2rem,7.5vw,4.5rem)] font-bold leading-tight">{copy.finalTitle}</h1>
+              <p className="mx-auto mt-3 max-w-xl text-sm font-normal leading-relaxed text-slate-300 sm:text-base">{copy.finalBody}</p>
 
               <div className="relative mx-auto mt-6 max-w-4xl overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_10%,#000_90%,transparent)]">
                 <div className="onboarding-v2-marquee flex w-max gap-2 py-2">
                   {[...LANGUAGE_NAMES, ...LANGUAGE_NAMES].map((name, index) => (
-                    <span key={`${name}-${index}`} className="whitespace-nowrap rounded-full border border-white/12 bg-white/[0.055] px-3 py-1.5 text-xs font-bold text-white/72">
+                    <span key={`${name}-${index}`} className="whitespace-nowrap rounded-full border border-white/12 bg-white/[0.055] px-3 py-1.5 text-xs font-medium text-white/80">
                       {name}
                     </span>
                   ))}
@@ -405,10 +398,9 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                   { label: t('Oku'), icon: BookOpen },
                   { label: t('Dinle'), icon: Headphones },
                   { label: 'PDF / ePub', icon: Download },
-                  { label: labels.library, icon: Library },
-                  { label: t('Topluluk'), icon: Users }
+                  { label: labels.library, icon: Library }
                 ].map(({ label, icon: Icon }) => (
-                  <span key={label} className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-[#071421]/80 px-3 py-2 text-xs font-extrabold text-white/78">
+                  <span key={label} className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-[#071421]/80 px-3 py-2 text-xs font-medium text-white/80">
                     <Icon className="h-3.5 w-3.5 text-amber-300" /> {label}
                   </span>
                 ))}
@@ -424,7 +416,7 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
                     aria-label={getCoverTitle(copy, book.id)}
                   >
                     <img className="aspect-[2/3] w-full object-cover" src={book.image} alt="" />
-                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 px-2 pb-2 pt-8 text-[9px] font-black leading-tight sm:text-[11px]">
+                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 px-2 pb-2 pt-8 text-[10px] font-medium leading-tight sm:text-xs">
                       {getCoverTitle(copy, book.id)}
                     </span>
                   </button>
@@ -450,28 +442,34 @@ export default function OnboardingView({ onFinish, onExplore }: OnboardingViewPr
             <button
               type="button"
               onClick={goNext}
-              className="inline-flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-300 to-amber-300 px-5 text-sm font-black text-slate-950 shadow-[0_10px_35px_rgba(56,189,248,.2)] transition hover:brightness-105 active:scale-[0.985]"
+              className="onboarding-v2-primary-btn inline-flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl px-5 text-sm font-semibold transition active:scale-[0.985]"
+              style={{ backgroundColor: '#ffffff', color: '#030816' }}
             >
-              {stage === 0 ? copy.chooseTitle : stage === 1 ? copy.transformationTitle : copy.finalTitle}
-              <ArrowRight className={`h-4 w-4 shrink-0 ${isRtl ? 'rotate-180' : ''}`} />
+              <span style={{ color: '#030816', WebkitTextFillColor: '#030816' }}>
+                {stage === 0 ? copy.chooseTitle : stage === 1 ? copy.transformationTitle : copy.finalTitle}
+              </span>
+              <ArrowRight className={`h-4 w-4 shrink-0 ${isRtl ? 'rotate-180' : ''}`} style={{ color: '#030816', stroke: '#030816' }} />
             </button>
           </div>
         ) : (
           <div className="mx-auto flex max-w-xl gap-2 rounded-[22px] border border-white/12 bg-[#06111e]/86 p-2 shadow-[0_20px_70px_rgba(0,0,0,.5)] backdrop-blur-2xl">
             <button
               type="button"
-              onClick={onExplore || onFinish}
-              className="h-12 min-w-0 flex-[0.82] rounded-2xl border border-white/14 bg-white/[0.065] px-3 text-xs font-black text-white/85 transition hover:bg-white/10 active:scale-[0.985] sm:text-sm"
+              onClick={onContinueWithoutLogin || onExplore || onFinish}
+              className="h-12 min-w-0 flex-[0.82] rounded-2xl border border-white/14 bg-white/[0.065] px-3 text-xs font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.985] sm:text-sm"
             >
               {copy.secondaryCta}
             </button>
             <button
               type="button"
               onClick={onFinish}
-              className="inline-flex h-12 min-w-0 flex-[1.18] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-sky-300 to-amber-300 px-3 text-xs font-black text-slate-950 shadow-[0_10px_35px_rgba(56,189,248,.22)] transition hover:brightness-105 active:scale-[0.985] sm:text-sm"
+              className="onboarding-v2-primary-btn inline-flex h-12 min-w-0 flex-[1.18] items-center justify-center gap-2 rounded-2xl px-3 text-xs font-semibold transition active:scale-[0.985] sm:text-sm"
+              style={{ backgroundColor: '#ffffff', color: '#030816' }}
             >
-              {copy.primaryCta}
-              <ArrowRight className={`h-4 w-4 shrink-0 ${isRtl ? 'rotate-180' : ''}`} />
+              <span style={{ color: '#030816', WebkitTextFillColor: '#030816' }}>
+                {copy.primaryCta}
+              </span>
+              <ArrowRight className={`h-4 w-4 shrink-0 ${isRtl ? 'rotate-180' : ''}`} style={{ color: '#030816', stroke: '#030816' }} />
             </button>
           </div>
         )}

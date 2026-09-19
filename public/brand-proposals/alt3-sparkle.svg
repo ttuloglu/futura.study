@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="224" fill="#000000"/>
+  <rect x="230" y="382" width="70" height="260" rx="35" fill="#FFFFFF"/>
+  <rect x="360" y="277" width="70" height="470" rx="35" fill="#FFFFFF"/>
+  <rect x="490" y="172" width="70" height="680" rx="35" fill="#FFFFFF"/>
+  <!-- Masal ve Yaratıcılık Yıldızı (Sparkle) -->
+  <path d="M 730 200 Q 730 350 580 350 Q 730 350 730 500 Q 730 350 880 350 Q 730 350 730 200 Z" fill="#F59E0B"/>
+</svg>

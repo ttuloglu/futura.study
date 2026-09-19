@@ -4,7 +4,6 @@ export type ViewState =
   | 'PROFILE'
   | 'MEMBERSHIP'
   | 'AI_CHAT'
-  | 'EXPLORE'
   | 'PRIVACY'
   | 'TERMS';
 

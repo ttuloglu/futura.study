@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="80" fill="#000000"/>
+  <!-- Dikey omurga -->
+  <rect x="230" y="172" width="60" height="680" rx="30" fill="#FFFFFF"/>
+  <!-- Üst kol -->
+  <rect x="330" y="172" width="460" height="60" rx="30" fill="#FFFFFF"/>
+  <!-- Orta kol (Amber ses/masal dalgası) -->
+  <rect x="330" y="452" width="300" height="60" rx="30" fill="#F59E0B"/>
+</svg>

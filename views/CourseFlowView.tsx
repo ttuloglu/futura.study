@@ -53,6 +53,7 @@ import {
   type WorkbookNarrationCreditQuote
 } from '../utils/creditCosts';
 import { downloadFile } from '../utils/fileDownload';
+import { openNativeBookReader, isNativeBookReaderAvailable } from '../utils/nativeBookReader';
 import StyledMarkdown, { extractMarkdownImageSections } from '../components/StyledMarkdown';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
@@ -2581,7 +2582,7 @@ function VisualStoryReader({
           title={t('Fortale PDF')}
         >
           {isPdfDownloading ? (
-            <FaviconSpinner size={16} />
+            <FaviconSpinner size={20} />
           ) : (
             <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
           )}
@@ -2604,7 +2605,7 @@ function VisualStoryReader({
           title={t('Fortale ePub')}
         >
           {isEpubDownloading ? (
-            <FaviconSpinner size={16} />
+            <FaviconSpinner size={20} />
           ) : (
             <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
           )}
@@ -2908,7 +2909,7 @@ function VisualStoryReader({
                   )}
                   <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
                     {isNarrationGenerating ? (
-                      <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
+                      <><FaviconSpinner size={18} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
                     ) : showsAsHavingAudio ? (
                       isNarrationPlaying
                         ? <PauseCircle size={18} />
@@ -3087,7 +3088,7 @@ function VisualStoryReader({
               )}
               <span className="relative flex items-center gap-1.5 text-[13px] font-bold text-white">
                 {isNarrationGenerating ? (
-                  <><FaviconSpinner size={14} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
+                  <><FaviconSpinner size={18} /><span className="tabular-nums text-white">%{Math.round(narrationGenerationProgress)}</span></>
                 ) : showsAsHavingAudio ? (
                   isNarrationPlaying
                     ? <PauseCircle size={18} />
@@ -4032,6 +4033,23 @@ export default function CourseFlowView({
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  const handleOpenFullscreenReader = useCallback(() => {
+    const isTargetNativeBook = courseData?.bookType === 'story' || courseData?.bookType === 'novel';
+
+    if (isTargetNativeBook && isNativeBookReaderAvailable() && courseData) {
+      openNativeBookReader(courseData, orderedTabNodes, {
+        initialPageIndex: 0,
+        theme: 'sepia',
+        onFallback: () => {
+          setIsReadingFullscreen(true);
+        }
+      });
+      return;
+    }
+
+    setIsReadingFullscreen(true);
+  }, [courseData, orderedTabNodes]);
 
   useEffect(() => {
     if (!shouldShowFullscreenImagesInContentFlow) return;
@@ -5538,7 +5556,7 @@ export default function CourseFlowView({
                     </>
                   )}
                   <FLogo
-                    size={18}
+                    size={24}
                     className={
                       activeMilestone.tone === 'completion'
                         ? 'text-white'
@@ -5843,7 +5861,7 @@ export default function CourseFlowView({
                       <>
                         <div className="absolute left-0 top-0 bottom-0 w-[4px] opacity-50" style={{ background: `hsl(${hue},60%,55%)` }} />
                         <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                          <FLogo size={32} />
+                          <FLogo size={42} />
                         </div>
                       </>
                     )}
@@ -5898,7 +5916,7 @@ export default function CourseFlowView({
                           aria-label={canDownloadFullSmartBook ? t('Fortale PDF') : t('Fortale PDF kilitli')}
                         >
                           {isFullPdfExporting ? (
-                            <FaviconSpinner size={16} />
+                            <FaviconSpinner size={20} />
                           ) : canDownloadFullSmartBook ? (
                             <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                           ) : (
@@ -5927,7 +5945,7 @@ export default function CourseFlowView({
                           aria-label={canDownloadFullSmartBook ? t('Fortale ePub') : t('Fortale ePub kilitli')}
                         >
                           {isFullEpubExporting ? (
-                            <FaviconSpinner size={16} />
+                            <FaviconSpinner size={20} />
                           ) : canDownloadFullSmartBook ? (
                             <Download size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                           ) : (
@@ -5967,7 +5985,7 @@ export default function CourseFlowView({
                                 : t('Masalı Seslendir')}
                           >
                             {isPodcastExporting ? (
-                              <FaviconSpinner size={16} />
+                              <FaviconSpinner size={20} />
                             ) : hasHeaderNarrationAudio ? (
                               <PlayCircle size={14} className="text-white transition-transform duration-200 group-hover:scale-110" />
                             ) : (
@@ -6164,7 +6182,7 @@ export default function CourseFlowView({
                                       background: 'rgba(56,189,248,0.12)'
                                     }}
                                   >
-                                    {isExportBusy ? <FaviconSpinner size={13} /> : <AudioLines size={13} className="text-white" />}
+                                    {isExportBusy ? <FaviconSpinner size={18} /> : <AudioLines size={14} className="text-white" />}
                                   </span>
                                     <span className="min-w-0 text-left leading-tight">
                                     <span className="block text-[13px] font-black tracking-[0.01em] truncate text-white">
@@ -6286,7 +6304,7 @@ export default function CourseFlowView({
                                             }}
                                           >
                                             {isLoadingPreview ? (
-                                              <FaviconSpinner size={12} />
+                                              <FaviconSpinner size={16} />
                                             ) : isPlayingPreview ? (
                                               <PauseCircle size={13} className="text-white" />
                                             ) : (
@@ -6314,7 +6332,7 @@ export default function CourseFlowView({
                                         : '0 8px 16px rgba(0,0,0,0.14)'
                                     }}
                                   >
-                                    {isExportBusy ? <FaviconSpinner size={14} /> : <AudioLines size={14} className="text-white" />}
+                                    {isExportBusy ? <FaviconSpinner size={20} /> : <AudioLines size={14} className="text-white" />}
                                     <span className="text-[12px] font-black text-white">{t('Seçili sesle podcast oluştur')}</span>
                                   </button>
                                 </div>
@@ -6418,7 +6436,7 @@ export default function CourseFlowView({
             ) : (
               <button
                 type="button"
-                onClick={() => setIsReadingFullscreen(true)}
+                onClick={handleOpenFullscreenReader}
                 className="absolute right-0 z-20 h-9 rounded-xl border inline-flex items-center justify-center gap-1.5 px-3 text-white transition-all duration-200 active:scale-95"
                 style={{
                   top: '18px',
@@ -6896,7 +6914,7 @@ function PodcastInlinePlayer({
           aria-label={t('Podcast indir')}
           title={t('Podcast indir')}
         >
-          {isDownloadBusy ? <FaviconSpinner size={13} /> : <Download size={13} />}
+          {isDownloadBusy ? <FaviconSpinner size={16} /> : <Download size={13} />}
           {t('Podcast indir')}
         </button>
       </div>

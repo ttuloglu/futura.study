@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Sparkles } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
 import FloatIslandSheet from './FloatIslandSheet';
 
@@ -33,7 +33,7 @@ export default function LoginPromptModal({ isOpen, onClose, onLogin }: LoginProm
               </div>
 
               <div className="mt-3 flex items-center gap-2 rounded-xl border border-sky-300/25 bg-sky-500/10 px-3 py-2">
-                <Sparkles size={13} className="shrink-0 text-sky-200" />
+                <BookOpen size={13} className="shrink-0 text-sky-200" />
                 <p className="text-[11px] font-semibold text-sky-100">
                   {t('Masallar, hikayeler, romanlar — hepsi birkaç dakikada hazır.')}
                 </p>

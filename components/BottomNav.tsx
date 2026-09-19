@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Home, Library, Settings, Users } from 'lucide-react';
+import { ArrowUp, Home, Library, Settings } from 'lucide-react';
 import { ViewState } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
 
@@ -9,6 +9,7 @@ interface BottomNavProps {
   onViewChange: (view: ViewState) => void;
   onToggleSettings: () => void;
   isSettingsOpen: boolean;
+  unreadNotificationCount?: number;
   showCourseScrollTop?: boolean;
   onCourseScrollTop?: () => void;
 }
@@ -18,6 +19,7 @@ export default function BottomNav({
   onViewChange,
   onToggleSettings,
   isSettingsOpen,
+  unreadNotificationCount = 0,
   showCourseScrollTop = false,
   onCourseScrollTop
 }: BottomNavProps) {
@@ -25,7 +27,6 @@ export default function BottomNav({
 
   // Determine active states
   const isHomeActive = currentView === 'HOME' && !isSettingsOpen;
-  const isCommunityActive = currentView === 'COMMUNITY' && !isSettingsOpen;
   const isChatActive = currentView === 'AI_CHAT' && !isSettingsOpen;
   const isSettingsActive = isSettingsOpen;
 
@@ -65,21 +66,6 @@ export default function BottomNav({
           {isHomeActive && <span className="floatisland-label">{t('Anasayfa')}</span>}
         </button>
 
-        {/* COMMUNITY BUTTON */}
-        <button
-          type="button"
-          onClick={() => {
-            if (isSettingsOpen) onToggleSettings();
-            onViewChange('COMMUNITY');
-          }}
-          className={`floatisland-item tab-community ${isCommunityActive ? 'active' : ''}`}
-          aria-label={t('Topluluk')}
-          title={t('Topluluk')}
-        >
-          <Users size={18} strokeWidth={isCommunityActive ? 2.5 : 2} />
-          {isCommunityActive && <span className="floatisland-label">{t('Topluluk')}</span>}
-        </button>
-
         {/* AI CHAT / MY BOOKS BUTTON */}
         <button
           type="button"
@@ -103,7 +89,14 @@ export default function BottomNav({
           aria-label={t('Ayarlar')}
           title={t('Ayarlar')}
         >
-          <Settings size={18} strokeWidth={isSettingsActive ? 2.5 : 2} />
+          <span className="relative flex items-center justify-center">
+            <Settings size={18} strokeWidth={isSettingsActive ? 2.5 : 2} />
+            {unreadNotificationCount > 0 ? (
+              <span className="absolute -right-2.5 -top-2.5 flex min-h-4 min-w-4 items-center justify-center rounded-full border border-[#111820] bg-red-500 px-1 text-[8px] font-bold leading-none text-white shadow-md">
+                {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+              </span>
+            ) : null}
+          </span>
           {isSettingsActive && <span className="floatisland-label">{t('Ayarlar')}</span>}
         </button>
       </div>

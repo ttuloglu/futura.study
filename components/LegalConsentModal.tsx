@@ -52,7 +52,7 @@ export default function LegalConsentModal({
               className="mt-0.5 h-4 w-4 rounded border-white/20 bg-transparent text-accent-green"
             />
             <span className="text-[10px] leading-5 text-white sm:text-[11px]">
-              {t('Kullanım Şartlarını ve Gizlilik Politikasını; Topluluk Kuralları ve otomatik İçerik Hakları Beyanı dahil olmak üzere okudum, anladım ve kabul ediyorum.')}
+              {t('Kullanım Şartlarını ve Gizlilik Politikasını okudum, anladım ve kabul ediyorum.')}
             </span>
           </label>
 

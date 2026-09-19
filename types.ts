@@ -3,8 +3,6 @@ export type ViewState =
   | 'COURSE_FLOW'
   | 'PROFILE'
   | 'AI_CHAT'
-  | 'EXPLORE'
-  | 'COMMUNITY'
   | 'PRIVACY'
   | 'TERMS';
 

@@ -18,9 +18,11 @@ const MIN_RELEASE_NOTES = 1000;
 const EXPECTED_DESCRIPTION_PARAGRAPHS = 12;
 const EXPECTED_RELEASE_NOTES_PARAGRAPHS = 8;
 const SCREENSHOTS_DIR = path.join(ROOT, 'fastlane', 'screenshots');
-const EXPECTED_SCREENSHOT_COUNT = 8;
-const EXPECTED_SCREENSHOT_WIDTH = 1320;
-const EXPECTED_SCREENSHOT_HEIGHT = 2868;
+const EXPECTED_SCREENSHOT_COUNT = 10;
+const EXPECTED_IPHONE_WIDTH = 1320;
+const EXPECTED_IPHONE_HEIGHT = 2868;
+const EXPECTED_IPAD_WIDTH = 2048;
+const EXPECTED_IPAD_HEIGHT = 2732;
 const REQUIRED_LOCALES = [
   'ar-SA',
   'da',
@@ -46,21 +48,40 @@ const REQUIRED_LOCALES = [
   'tr'
 ];
 
-async function pngDimensions(filePath) {
-  const handle = await fs.open(filePath, 'r');
-  try {
-    const buffer = Buffer.alloc(24);
-    await handle.read(buffer, 0, buffer.length, 0);
-    if (buffer.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
-      throw new Error(`${filePath} is not a PNG file`);
-    }
+async function imageDimensions(filePath) {
+  const buffer = await fs.readFile(filePath);
+  if (buffer.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') {
     return {
       width: buffer.readUInt32BE(16),
       height: buffer.readUInt32BE(20)
     };
-  } finally {
-    await handle.close();
   }
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 8 < buffer.length) {
+      if (buffer[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+      const marker = buffer[offset + 1];
+      if (marker === 0xd8 || marker === 0xd9) {
+        offset += 2;
+        continue;
+      }
+      const segmentLength = buffer.readUInt16BE(offset + 2);
+      if (segmentLength < 2) break;
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+        return {
+          width: buffer.readUInt16BE(offset + 7),
+          height: buffer.readUInt16BE(offset + 5)
+        };
+      }
+      offset += segmentLength + 2;
+    }
+  }
+
+  throw new Error(`${filePath} is not a supported PNG or JPEG file`);
 }
 
 async function main() {
@@ -110,22 +131,33 @@ async function main() {
 
     const screenshotDir = path.join(SCREENSHOTS_DIR, locale);
     const screenshots = (await fs.readdir(screenshotDir))
-      .filter((fileName) => fileName.toLowerCase().endsWith('.png'))
+      .filter((fileName) => /\.(?:png|jpe?g)$/i.test(fileName))
       .sort();
     const iphoneScreenshots = screenshots.filter((fileName) => fileName.includes('iPhone_6_9') || fileName.includes('APP_IPHONE_67'));
+    const ipadScreenshots = screenshots.filter((fileName) => fileName.includes('iPad_12_9'));
     if (iphoneScreenshots.length !== EXPECTED_SCREENSHOT_COUNT) {
       throw new Error(`${locale} iPhone screenshots count ${iphoneScreenshots.length}`);
     }
     for (const screenshot of iphoneScreenshots) {
       const screenshotPath = path.join(screenshotDir, screenshot);
-      const dimensions = await pngDimensions(screenshotPath);
-      if (dimensions.width !== EXPECTED_SCREENSHOT_WIDTH || dimensions.height !== EXPECTED_SCREENSHOT_HEIGHT) {
+      const dimensions = await imageDimensions(screenshotPath);
+      if (dimensions.width !== EXPECTED_IPHONE_WIDTH || dimensions.height !== EXPECTED_IPHONE_HEIGHT) {
+        throw new Error(`${locale} ${screenshot} dimensions ${dimensions.width}x${dimensions.height}`);
+      }
+    }
+    if (ipadScreenshots.length !== EXPECTED_SCREENSHOT_COUNT) {
+      throw new Error(`${locale} iPad screenshots count ${ipadScreenshots.length}`);
+    }
+    for (const screenshot of ipadScreenshots) {
+      const screenshotPath = path.join(screenshotDir, screenshot);
+      const dimensions = await imageDimensions(screenshotPath);
+      if (dimensions.width !== EXPECTED_IPAD_WIDTH || dimensions.height !== EXPECTED_IPAD_HEIGHT) {
         throw new Error(`${locale} ${screenshot} dimensions ${dimensions.width}x${dimensions.height}`);
       }
     }
   }
 
-  console.log(`asc-metadata-ok locales=${REQUIRED_LOCALES.length} screenshots=${REQUIRED_LOCALES.length * EXPECTED_SCREENSHOT_COUNT}`);
+  console.log(`asc-metadata-ok locales=${REQUIRED_LOCALES.length} screenshots=${REQUIRED_LOCALES.length * EXPECTED_SCREENSHOT_COUNT * 2}`);
 }
 
 main().catch((error) => {

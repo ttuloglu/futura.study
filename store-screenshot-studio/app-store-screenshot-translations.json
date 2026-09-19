@@ -1,0 +1,1941 @@
+{
+  "model": "gemini-3.1-flash-lite",
+  "locales": [
+    "ar-SA",
+    "da",
+    "de-DE",
+    "el",
+    "en-GB",
+    "en-US",
+    "es-ES",
+    "fi",
+    "fr-FR",
+    "hi",
+    "id",
+    "it",
+    "ja",
+    "ko",
+    "nl-NL",
+    "no",
+    "pl",
+    "pt-BR",
+    "ru",
+    "sv",
+    "th",
+    "tr"
+  ],
+  "translations": {
+    "tr": {
+      "iphone": [
+        {
+          "id": "01",
+          "label": "FORTALE AI",
+          "headline": "Bir fikir yaz.\nKitabın canlansın."
+        },
+        {
+          "id": "02",
+          "label": "KİTAP TÜRÜN",
+          "headline": "Masal, hikâye,\nçalışma kitabı."
+        },
+        {
+          "id": "03",
+          "label": "İKİ FARKLI DÜNYA",
+          "headline": "Masallar, hikâyeler.\nHer sayfa canlansın."
+        },
+        {
+          "id": "04",
+          "label": "OKU VE DİNLE",
+          "headline": "Her kitabı\nkendi ritminde yaşa."
+        },
+        {
+          "id": "05",
+          "label": "ODAKLI OKUMA",
+          "headline": "Kelimelere odaklan.\nDünyayı unut."
+        },
+        {
+          "id": "06",
+          "label": "FORTALE TOPLULUĞU",
+          "headline": "Kitabını paylaş.\nYeni yazarları keşfet."
+        },
+        {
+          "id": "07",
+          "label": "KİTAP DETAYI",
+          "headline": "Başlamadan önce\nkitabını yakından tanı."
+        },
+        {
+          "id": "08",
+          "label": "KİTAPLIĞIN",
+          "headline": "Tüm kitapların\nhep yanında."
+        },
+        {
+          "id": "09",
+          "label": "HER SAYFA BİR SAHNE",
+          "headline": "Okudukların\ngözünde canlansın."
+        },
+        {
+          "id": "10",
+          "label": "20 DİL",
+          "headline": "Dilediğin dilde üret.\nSınırları aş."
+        }
+      ],
+      "ipad": [
+        {
+          "id": "01",
+          "label": "FORTALE AI",
+          "headline": "Bir fikir yaz.\nKitabın canlansın."
+        },
+        {
+          "id": "02",
+          "label": "KİTAP TÜRÜN",
+          "headline": "Masal, hikâye,\nçalışma kitabı."
+        },
+        {
+          "id": "03",
+          "label": "SENİN TARZIN",
+          "headline": "Türünü seç.\nTonunu belirle."
+        },
+        {
+          "id": "04",
+          "label": "GÖRSEL HİKÂYELER",
+          "headline": "Hikâyen gözlerinin\nönünde canlansın."
+        },
+        {
+          "id": "05",
+          "label": "OKU VE DİNLE",
+          "headline": "Bilgiyi keşfet.\nDerinleş. Hatırla."
+        },
+        {
+          "id": "06",
+          "label": "FORTALE TOPLULUĞU",
+          "headline": "Kitabını paylaş.\nYeni yazarları keşfet."
+        },
+        {
+          "id": "07",
+          "label": "KİTAP DETAYI",
+          "headline": "Başlamadan önce\nkitabını yakından tanı."
+        },
+        {
+          "id": "08",
+          "label": "KİTAPLIĞIN",
+          "headline": "Tüm kitapların\nhep yanında."
+        },
+        {
+          "id": "09",
+          "label": "ANLATIM",
+          "headline": "Dinle, izle,\nhikâyeye kapıl."
+        },
+        {
+          "id": "10",
+          "label": "20 DİL",
+          "headline": "Dilediğin dilde üret.\nSınırları aş."
+        }
+      ]
+    },
+    "ar-SA": {
+      "iphone": [
+        {
+          "label": "تقنية Fortale للذكاء الاصطناعي",
+          "headline": "اكتب فكرتك\nواجعل كتابك ينبض بالحياة"
+        },
+        {
+          "label": "نوع كتابك",
+          "headline": "قصص خيالية، حكايات،\nوكتب تعليمية"
+        },
+        {
+          "label": "عالمين مختلفين",
+          "headline": "قصص وحكايات\nتتجسد في كل صفحة"
+        },
+        {
+          "label": "اقرأ واستمع",
+          "headline": "عش تجربة الكتاب\nبإيقاعك الخاص"
+        },
+        {
+          "label": "قراءة بتركيز",
+          "headline": "ركز في الكلمات\nوانسَ العالم من حولك"
+        },
+        {
+          "label": "مجتمع Fortale",
+          "headline": "شارك كتابك\nواكتشف مؤلفين جدد"
+        },
+        {
+          "label": "تفاصيل الكتاب",
+          "headline": "تعرّف على كتابك\nقبل أن تبدأ"
+        },
+        {
+          "label": "مكتبتك الخاصة",
+          "headline": "جميع كتبك\nمعك في أي مكان"
+        },
+        {
+          "label": "كل صفحة مشهد",
+          "headline": "اجعل ما تقرأه\nيتجسد أمام عينيك"
+        },
+        {
+          "label": "20 لغة",
+          "headline": "أبدع بأي لغة\nوتجاوز كل الحدود"
+        }
+      ],
+      "ipad": [
+        {
+          "label": "تقنية Fortale للذكاء الاصطناعي",
+          "headline": "اكتب فكرتك\nواجعل كتابك ينبض بالحياة"
+        },
+        {
+          "label": "نوع كتابك",
+          "headline": "قصص خيالية، حكايات،\nوكتب تعليمية"
+        },
+        {
+          "label": "أسلوبك الخاص",
+          "headline": "اختر النوع\nوحدد أسلوبك"
+        },
+        {
+          "label": "قصص مصورة",
+          "headline": "اجعل قصتك\nتنبض أمام عينيك"
+        },
+        {
+          "label": "اقرأ واستمع",
+          "headline": "اكتشف المعرفة\nتعمق وتذكر"
+        },
+        {
+          "label": "مجتمع Fortale",
+          "headline": "شارك كتابك\nواكتشف مؤلفين جدد"
+        },
+        {
+          "label": "تفاصيل الكتاب",
+          "headline": "تعرّف على كتابك\nقبل أن تبدأ"
+        },
+        {
+          "label": "مكتبتك الخاصة",
+          "headline": "جميع كتبك\nمعك في أي مكان"
+        },
+        {
+          "label": "السرد القصصي",
+          "headline": "استمع، شاهد،\nوانغمس في القصة"
+        },
+        {
+          "label": "20 لغة",
+          "headline": "أبدع بأي لغة\nوتجاوز كل الحدود"
+        }
+      ]
+    },
+    "da": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Skriv en idé.\nSe bogen blive til."
+        },
+        {
+          "label": "DIN BOGTYPE",
+          "headline": "Eventyr, historier,\neller arbejdsbøger."
+        },
+        {
+          "label": "TO FORSKELLIGE VERDENER",
+          "headline": "Eventyr og historier.\nSe hver side leve."
+        },
+        {
+          "label": "LÆS OG LYT",
+          "headline": "Oplev hver bog\ni dit eget tempo."
+        },
+        {
+          "label": "FOKUSERET LÆSNING",
+          "headline": "Fokus på ordene.\nGlem alt omkring dig."
+        },
+        {
+          "label": "FORTALE FÆLLESSKAB",
+          "headline": "Del din bog.\nFind nye forfattere."
+        },
+        {
+          "label": "BOGDETALJER",
+          "headline": "Lær din bog at kende\nfør du starter."
+        },
+        {
+          "label": "DIT BIBLIOTEK",
+          "headline": "Alle dine bøger\ner altid med dig."
+        },
+        {
+          "label": "HVER SIDE EN SCENE",
+          "headline": "Se historien\nfor dit indre blik."
+        },
+        {
+          "label": "20 SPROG",
+          "headline": "Skab på 20 sprog.\nBryd alle grænser."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Skriv en idé.\nSe bogen blive til."
+        },
+        {
+          "label": "DIN BOGTYPE",
+          "headline": "Eventyr, historier,\neller arbejdsbøger."
+        },
+        {
+          "label": "DIN STIL",
+          "headline": "Vælg din genre.\nBestem din tone."
+        },
+        {
+          "label": "VISUELLE HISTORIER",
+          "headline": "Se din historie\nblive levende."
+        },
+        {
+          "label": "LÆS OG LYT",
+          "headline": "Udforsk viden.\nFordyb dig og husk."
+        },
+        {
+          "label": "FORTALE FÆLLESSKAB",
+          "headline": "Del din bog.\nFind nye forfattere."
+        },
+        {
+          "label": "BOGDETALJER",
+          "headline": "Lær din bog at kende\nfør du starter."
+        },
+        {
+          "label": "DIT BIBLIOTEK",
+          "headline": "Alle dine bøger\ner altid med dig."
+        },
+        {
+          "label": "FORTÆLLING",
+          "headline": "Lyt, se og bliv\nfanget af historien."
+        },
+        {
+          "label": "20 SPROG",
+          "headline": "Skab på 20 sprog.\nBryd alle grænser."
+        }
+      ]
+    },
+    "de-DE": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Schreibe eine Idee.\nErwecke sie zum Leben."
+        },
+        {
+          "label": "DEIN BUCHTYP",
+          "headline": "Märchen, Geschichten,\nArbeitshefte."
+        },
+        {
+          "label": "ZWEI WELTEN",
+          "headline": "Märchen und Stories.\nJede Seite erwacht."
+        },
+        {
+          "label": "LESEN UND HÖREN",
+          "headline": "Erlebe jedes Buch\nin deinem Rhythmus."
+        },
+        {
+          "label": "FOKUSSIERTES LESEN",
+          "headline": "Konzentriert lesen.\nDie Welt vergessen."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Teile dein Buch.\nEntdecke neue Autoren."
+        },
+        {
+          "label": "BUCHDETAILS",
+          "headline": "Lerne dein Buch\nvorab genau kennen."
+        },
+        {
+          "label": "DEINE BIBLIOTHEK",
+          "headline": "Alle deine Bücher\nimmer dabei."
+        },
+        {
+          "label": "JEDE SEITE EINE SZENE",
+          "headline": "Was du liest,\nwird lebendig."
+        },
+        {
+          "label": "20 SPRACHEN",
+          "headline": "Erstelle in 20 Sprachen.\nGrenzenlos kreativ."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Schreibe eine Idee.\nErwecke sie zum Leben."
+        },
+        {
+          "label": "DEIN BUCHTYP",
+          "headline": "Märchen, Geschichten,\nArbeitshefte."
+        },
+        {
+          "label": "DEIN STIL",
+          "headline": "Wähle das Genre.\nBestimme den Ton."
+        },
+        {
+          "label": "VISUELLE GESCHICHTEN",
+          "headline": "Deine Geschichte\nvor deinen Augen."
+        },
+        {
+          "label": "LESEN UND HÖREN",
+          "headline": "Wissen entdecken.\nVertiefen. Erinnern."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Teile dein Buch.\nEntdecke neue Autoren."
+        },
+        {
+          "label": "BUCHDETAILS",
+          "headline": "Lerne dein Buch\nvorab genau kennen."
+        },
+        {
+          "label": "DEINE BIBLIOTHEK",
+          "headline": "Alle deine Bücher\nimmer dabei."
+        },
+        {
+          "label": "ERZÄHLKUNST",
+          "headline": "Hören, sehen,\nin Geschichten eintauchen."
+        },
+        {
+          "label": "20 SPRACHEN",
+          "headline": "Erstelle in 20 Sprachen.\nGrenzenlos kreativ."
+        }
+      ]
+    },
+    "el": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Γράψε μια ιδέα.\nΖωντάνεψε το βιβλίο."
+        },
+        {
+          "label": "ΕΙΔΟΣ ΒΙΒΛΙΟΥ",
+          "headline": "Παραμύθια, ιστορίες,\nβιβλία εργασίας."
+        },
+        {
+          "label": "ΔΥΟ ΚΟΣΜΟΙ",
+          "headline": "Παραμύθια και ιστορίες.\nΚάθε σελίδα ζωντανεύει."
+        },
+        {
+          "label": "ΔΙΑΒΑΣΕ ΚΑΙ ΑΚΟΥΣΕ",
+          "headline": "Ζήσε κάθε βιβλίο\nστον δικό σου ρυθμό."
+        },
+        {
+          "label": "ΕΣΤΙΑΣΜΕΝΗ ΑΝΑΓΝΩΣΗ",
+          "headline": "Εστίασε στις λέξεις.\nΞέχασε τον κόσμο."
+        },
+        {
+          "label": "ΚΟΙΝΟΤΗΤΑ FORTALE",
+          "headline": "Μοιράσου το βιβλίο σου.\nΑνακάλυψε συγγραφείς."
+        },
+        {
+          "label": "ΛΕΠΤΟΜΕΡΕΙΕΣ ΒΙΒΛΙΟΥ",
+          "headline": "Γνώρισε το βιβλίο σου\nπριν ξεκινήσεις."
+        },
+        {
+          "label": "Η ΒΙΒΛΙΟΘΗΚΗ ΣΟΥ",
+          "headline": "Όλα τα βιβλία σου\nπάντα μαζί σου."
+        },
+        {
+          "label": "ΚΑΘΕ ΣΕΛΙΔΑ ΜΙΑ ΣΚΗΝΗ",
+          "headline": "Όσα διαβάζεις\nπαίρνουν μορφή."
+        },
+        {
+          "label": "20 ΓΛΩΣΣΕΣ",
+          "headline": "Δημιούργησε παντού.\nΞεπέρασε τα όρια."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Γράψε μια ιδέα.\nΖωντάνεψε το βιβλίο."
+        },
+        {
+          "label": "ΕΙΔΟΣ ΒΙΒΛΙΟΥ",
+          "headline": "Παραμύθια, ιστορίες,\nβιβλία εργασίας."
+        },
+        {
+          "label": "ΤΟ ΣΤΥΛ ΣΟΥ",
+          "headline": "Επίλεξε το είδος.\nΌρισε το ύφος."
+        },
+        {
+          "label": "ΟΠΤΙΚΕΣ ΙΣΤΟΡΙΕΣ",
+          "headline": "Η ιστορία σου\nζωντανεύει μπροστά σου."
+        },
+        {
+          "label": "ΔΙΑΒΑΣΕ ΚΑΙ ΑΚΟΥΣΕ",
+          "headline": "Ανακάλυψε τη γνώση.\nΜάθε και θυμήσου."
+        },
+        {
+          "label": "ΚΟΙΝΟΤΗΤΑ FORTALE",
+          "headline": "Μοιράσου το βιβλίο σου.\nΑνακάλυψε συγγραφείς."
+        },
+        {
+          "label": "ΛΕΠΤΟΜΕΡΕΙΕΣ ΒΙΒΛΙΟΥ",
+          "headline": "Γνώρισε το βιβλίο σου\nπριν ξεκινήσεις."
+        },
+        {
+          "label": "Η ΒΙΒΛΙΟΘΗΚΗ ΣΟΥ",
+          "headline": "Όλα τα βιβλία σου\nπάντα μαζί σου."
+        },
+        {
+          "label": "ΑΦΗΓΗΣΗ",
+          "headline": "Άκουσε, δες,\nζήσε την ιστορία."
+        },
+        {
+          "label": "20 ΓΛΩΣΣΕΣ",
+          "headline": "Δημιούργησε παντού.\nΞεπέρασε τα όρια."
+        }
+      ]
+    },
+    "en-GB": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Type your idea.\nBring books to life."
+        },
+        {
+          "label": "CHOOSE YOUR FORMAT",
+          "headline": "Fairy tales, stories,\nor workbooks."
+        },
+        {
+          "label": "TWO DISTINCT WORLDS",
+          "headline": "Tales and stories.\nEvery page comes alive."
+        },
+        {
+          "label": "READ AND LISTEN",
+          "headline": "Experience books\nat your own pace."
+        },
+        {
+          "label": "FOCUSED READING",
+          "headline": "Focus on the words.\nForget the world."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Share your book.\nDiscover new authors."
+        },
+        {
+          "label": "BOOK DETAILS",
+          "headline": "Get to know your book\nbefore you start."
+        },
+        {
+          "label": "YOUR LIBRARY",
+          "headline": "All your books\nalways with you."
+        },
+        {
+          "label": "A SCENE ON EVERY PAGE",
+          "headline": "Visualise everything\nyou read."
+        },
+        {
+          "label": "20 LANGUAGES",
+          "headline": "Create in any language.\nBreak all boundaries."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Type your idea.\nBring books to life."
+        },
+        {
+          "label": "CHOOSE YOUR FORMAT",
+          "headline": "Fairy tales, stories,\nor workbooks."
+        },
+        {
+          "label": "YOUR STYLE",
+          "headline": "Select your genre.\nSet the tone."
+        },
+        {
+          "label": "VISUAL STORIES",
+          "headline": "Watch your story\ncome to life."
+        },
+        {
+          "label": "READ AND LISTEN",
+          "headline": "Explore knowledge.\nDeepen, remember."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Share your book.\nDiscover new authors."
+        },
+        {
+          "label": "BOOK DETAILS",
+          "headline": "Get to know your book\nbefore you start."
+        },
+        {
+          "label": "YOUR LIBRARY",
+          "headline": "All your books\nalways with you."
+        },
+        {
+          "label": "NARRATION",
+          "headline": "Listen, watch,\nget lost in stories."
+        },
+        {
+          "label": "20 LANGUAGES",
+          "headline": "Create in any language.\nBreak all boundaries."
+        }
+      ]
+    },
+    "en-US": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Type your idea.\nBring books to life."
+        },
+        {
+          "label": "CHOOSE YOUR FORMAT",
+          "headline": "Fairy tales, stories,\nand workbooks."
+        },
+        {
+          "label": "TWO UNIQUE WORLDS",
+          "headline": "Tales and stories.\nEvery page comes alive."
+        },
+        {
+          "label": "READ AND LISTEN",
+          "headline": "Experience books\nat your own pace."
+        },
+        {
+          "label": "FOCUSED READING",
+          "headline": "Focus on the words.\nForget the world."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Share your books.\nDiscover new authors."
+        },
+        {
+          "label": "BOOK DETAILS",
+          "headline": "Get to know your book\nbefore you start."
+        },
+        {
+          "label": "YOUR LIBRARY",
+          "headline": "All your books\nright by your side."
+        },
+        {
+          "label": "SCENES ON EVERY PAGE",
+          "headline": "Watch your stories\nunfold visually."
+        },
+        {
+          "label": "20 LANGUAGES",
+          "headline": "Create in any language.\nBreak all boundaries."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Type your idea.\nBring books to life."
+        },
+        {
+          "label": "CHOOSE YOUR FORMAT",
+          "headline": "Fairy tales, stories,\nand workbooks."
+        },
+        {
+          "label": "YOUR STYLE",
+          "headline": "Choose your genre.\nSet your tone."
+        },
+        {
+          "label": "VISUAL STORIES",
+          "headline": "Watch your story\ncome to life."
+        },
+        {
+          "label": "READ AND LISTEN",
+          "headline": "Explore knowledge.\nDeepen your memory."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Share your books.\nDiscover new authors."
+        },
+        {
+          "label": "BOOK DETAILS",
+          "headline": "Get to know your book\nbefore you start."
+        },
+        {
+          "label": "YOUR LIBRARY",
+          "headline": "All your books\nright by your side."
+        },
+        {
+          "label": "NARRATION",
+          "headline": "Listen, watch,\nand get lost."
+        },
+        {
+          "label": "20 LANGUAGES",
+          "headline": "Create in any language.\nBreak all boundaries."
+        }
+      ]
+    },
+    "es-ES": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Escribe una idea.\nTu libro cobra vida."
+        },
+        {
+          "label": "TU TIPO DE LIBRO",
+          "headline": "Cuentos, historias,\ncuadernos de trabajo."
+        },
+        {
+          "label": "DOS MUNDOS DIFERENTES",
+          "headline": "Cuentos e historias.\nCada página cobra vida."
+        },
+        {
+          "label": "LEE Y ESCUCHA",
+          "headline": "Vive cada libro\na tu propio ritmo."
+        },
+        {
+          "label": "LECTURA ENFOCADA",
+          "headline": "Céntrate en las palabras.\nOlvida el mundo."
+        },
+        {
+          "label": "COMUNIDAD FORTALE",
+          "headline": "Comparte tu libro.\nDescubre nuevos autores."
+        },
+        {
+          "label": "DETALLES DEL LIBRO",
+          "headline": "Conoce tu libro\nantes de empezar."
+        },
+        {
+          "label": "TU BIBLIOTECA",
+          "headline": "Todos tus libros\nsiempre contigo."
+        },
+        {
+          "label": "CADA PÁGINA UNA ESCENA",
+          "headline": "Lo que lees\ncobra vida ante ti."
+        },
+        {
+          "label": "20 IDIOMAS",
+          "headline": "Crea en tu idioma.\nSupera los límites."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Escribe una idea.\nTu libro cobra vida."
+        },
+        {
+          "label": "TU TIPO DE LIBRO",
+          "headline": "Cuentos, historias,\ncuadernos de trabajo."
+        },
+        {
+          "label": "TU ESTILO",
+          "headline": "Elige el género.\nDefine tu tono."
+        },
+        {
+          "label": "HISTORIAS VISUALES",
+          "headline": "Tu historia cobra\nvida ante tus ojos."
+        },
+        {
+          "label": "LEE Y ESCUCHA",
+          "headline": "Explora el saber.\nProfundiza y recuerda."
+        },
+        {
+          "label": "COMUNIDAD FORTALE",
+          "headline": "Comparte tu libro.\nDescubre nuevos autores."
+        },
+        {
+          "label": "DETALLES DEL LIBRO",
+          "headline": "Conoce tu libro\nantes de empezar."
+        },
+        {
+          "label": "TU BIBLIOTECA",
+          "headline": "Todos tus libros\nsiempre contigo."
+        },
+        {
+          "label": "NARRACIÓN",
+          "headline": "Escucha, mira,\ny vive la historia."
+        },
+        {
+          "label": "20 IDIOMAS",
+          "headline": "Crea en tu idioma.\nSupera los límites."
+        }
+      ]
+    },
+    "fi": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Kirjoita idea.\nHerätä kirja eloon."
+        },
+        {
+          "label": "KIRJATYYPPI",
+          "headline": "Satuja, tarinoita,\ntyökirjoja."
+        },
+        {
+          "label": "KAHDELLA TAVALLA",
+          "headline": "Satuja ja tarinoita.\nSivut heräävät eloon."
+        },
+        {
+          "label": "LUE JA KUUNTELE",
+          "headline": "Koe jokainen kirja\nomassa tahdissasi."
+        },
+        {
+          "label": "KESKITTYNYT LUKEMINEN",
+          "headline": "Keskity sanoihin.\nUnohda muu maailma."
+        },
+        {
+          "label": "FORTALE-YHTEISÖ",
+          "headline": "Jaa kirjasi.\nLöydä uusia tekijöitä."
+        },
+        {
+          "label": "KIRJAN TIEDOT",
+          "headline": "Tutustu kirjaan\nennen aloitusta."
+        },
+        {
+          "label": "KIRJASTOSI",
+          "headline": "Kaikki kirjasi\naina mukanasi."
+        },
+        {
+          "label": "SIVU ON NÄYTTÄMÖ",
+          "headline": "Anna lukemasi\nherätä eloon."
+        },
+        {
+          "label": "20 KIELTÄ",
+          "headline": "Luo millä kielellä.\nYlitä rajat."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Kirjoita idea.\nHerätä kirja eloon."
+        },
+        {
+          "label": "KIRJATYYPPI",
+          "headline": "Satuja, tarinoita,\ntyökirjoja."
+        },
+        {
+          "label": "OMA TYYLISI",
+          "headline": "Valitse lajityyppi.\nMääritä sävy."
+        },
+        {
+          "label": "VISUAALISET TARINAT",
+          "headline": "Anna tarinasi\nherätä eloon."
+        },
+        {
+          "label": "LUE JA KUUNTELE",
+          "headline": "Tutki tietoa.\nSyvenny ja muista."
+        },
+        {
+          "label": "FORTALE-YHTEISÖ",
+          "headline": "Jaa kirjasi.\nLöydä uusia tekijöitä."
+        },
+        {
+          "label": "KIRJAN TIEDOT",
+          "headline": "Tutustu kirjaan\nennen aloitusta."
+        },
+        {
+          "label": "KIRJASTOSI",
+          "headline": "Kaikki kirjasi\naina mukanasi."
+        },
+        {
+          "label": "KERRONTA",
+          "headline": "Kuuntele, katso,\nuppoa tarinaan."
+        },
+        {
+          "label": "20 KIELTÄ",
+          "headline": "Luo millä kielellä.\nYlitä rajat."
+        }
+      ]
+    },
+    "fr-FR": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Saisissez une idée.\nDonnez vie au livre."
+        },
+        {
+          "label": "VOTRE TYPE DE LIVRE",
+          "headline": "Contes, histoires,\ncahiers d'exercices."
+        },
+        {
+          "label": "DEUX MONDES DIFFÉRENTS",
+          "headline": "Contes et histoires.\nChaque page s'anime."
+        },
+        {
+          "label": "LIRE ET ÉCOUTER",
+          "headline": "Vivez chaque livre\nà votre rythme."
+        },
+        {
+          "label": "LECTURE IMMERSIVE",
+          "headline": "Focus sur les mots.\nOubliez le monde."
+        },
+        {
+          "label": "COMMUNAUTÉ FORTALE",
+          "headline": "Partagez vos livres.\nDécouvrez des auteurs."
+        },
+        {
+          "label": "DÉTAILS DU LIVRE",
+          "headline": "Découvrez le livre\navant de commencer."
+        },
+        {
+          "label": "VOTRE BIBLIOTHÈQUE",
+          "headline": "Tous vos livres\ntoujours avec vous."
+        },
+        {
+          "label": "CHAQUE PAGE UNE SCÈNE",
+          "headline": "Visualisez tout\nce que vous lisez."
+        },
+        {
+          "label": "20 LANGUES",
+          "headline": "Créez en toute langue.\nBrisez les barrières."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Saisissez une idée.\nDonnez vie au livre."
+        },
+        {
+          "label": "VOTRE TYPE DE LIVRE",
+          "headline": "Contes, histoires,\ncahiers d'exercices."
+        },
+        {
+          "label": "VOTRE STYLE",
+          "headline": "Choisissez le genre.\nDéfinissez le ton."
+        },
+        {
+          "label": "HISTOIRES VISUELLES",
+          "headline": "Votre histoire prend\nvie sous vos yeux."
+        },
+        {
+          "label": "LIRE ET ÉCOUTER",
+          "headline": "Explorez le savoir.\nApprofondissez."
+        },
+        {
+          "label": "COMMUNAUTÉ FORTALE",
+          "headline": "Partagez vos livres.\nDécouvrez des auteurs."
+        },
+        {
+          "label": "DÉTAILS DU LIVRE",
+          "headline": "Découvrez le livre\navant de commencer."
+        },
+        {
+          "label": "VOTRE BIBLIOTHÈQUE",
+          "headline": "Tous vos livres\ntoujours avec vous."
+        },
+        {
+          "label": "NARRATION",
+          "headline": "Écoutez, regardez,\nplongez au cœur."
+        },
+        {
+          "label": "20 LANGUES",
+          "headline": "Créez en toute langue.\nBrisez les barrières."
+        }
+      ]
+    },
+    "hi": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "एक विचार लिखें\nकिताब जीवंत करें"
+        },
+        {
+          "label": "किताब के प्रकार",
+          "headline": "परियों की कहानियां\nऔर वर्कबुक"
+        },
+        {
+          "label": "दो अलग दुनिया",
+          "headline": "हर पन्ना बोले\nहर कहानी जिए"
+        },
+        {
+          "label": "पढ़ें और सुनें",
+          "headline": "अपनी गति से\nकिताब का आनंद लें"
+        },
+        {
+          "label": "एकाग्रता से पढ़ें",
+          "headline": "शब्दों पर ध्यान दें\nदुनिया भूल जाएं"
+        },
+        {
+          "label": "FORTALE समुदाय",
+          "headline": "अपनी किताब साझा करें\nनए लेखक खोजें"
+        },
+        {
+          "label": "किताब का विवरण",
+          "headline": "शुरू करने से पहले\nकिताब को जानें"
+        },
+        {
+          "label": "आपकी लाइब्रेरी",
+          "headline": "आपकी सभी किताबें\nहमेशा साथ रहें"
+        },
+        {
+          "label": "हर पन्ना एक दृश्य",
+          "headline": "जो आप पढ़ते हैं\nवह आंखों में दिखे"
+        },
+        {
+          "label": "20 भाषाएं",
+          "headline": "20 भाषाओं में लिखें\nसीमाओं को तोड़ें"
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "एक विचार लिखें\nकिताब जीवंत करें"
+        },
+        {
+          "label": "किताब के प्रकार",
+          "headline": "परियों की कहानियां\nऔर वर्कबुक"
+        },
+        {
+          "label": "आपकी शैली",
+          "headline": "अपना प्रकार चुनें\nअपना लहजा तय करें"
+        },
+        {
+          "label": "दृश्य कहानियां",
+          "headline": "आपकी कहानी\nआंखों के सामने जिए"
+        },
+        {
+          "label": "पढ़ें और सुनें",
+          "headline": "ज्ञान खोजें\nगहराई से समझें"
+        },
+        {
+          "label": "FORTALE समुदाय",
+          "headline": "अपनी किताब साझा करें\nनए लेखक खोजें"
+        },
+        {
+          "label": "किताब का विवरण",
+          "headline": "शुरू करने से पहले\nकिताब को जानें"
+        },
+        {
+          "label": "आपकी लाइब्रेरी",
+          "headline": "आपकी सभी किताबें\nहमेशा साथ रहें"
+        },
+        {
+          "label": "कहानी का वर्णन",
+          "headline": "सुनें और देखें\nकहानी में खो जाएं"
+        },
+        {
+          "label": "20 भाषाएं",
+          "headline": "20 भाषाओं में लिखें\nसीमाओं को तोड़ें"
+        }
+      ]
+    },
+    "id": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Tuliskan ide Anda.\nBuku jadi nyata."
+        },
+        {
+          "label": "JENIS BUKU",
+          "headline": "Dongeng, cerita,\natau buku kerja."
+        },
+        {
+          "label": "DUA DUNIA BERBEDA",
+          "headline": "Dongeng dan cerita.\nHidupkan tiap halaman."
+        },
+        {
+          "label": "BACA DAN DENGAR",
+          "headline": "Nikmati buku\nsesuai ritmemu."
+        },
+        {
+          "label": "BACA DENGAN FOKUS",
+          "headline": "Fokus pada kata.\nLupakan dunia."
+        },
+        {
+          "label": "KOMUNITAS FORTALE",
+          "headline": "Bagikan bukumu.\nTemukan penulis baru."
+        },
+        {
+          "label": "DETAIL BUKU",
+          "headline": "Kenali bukumu\nsebelum memulai."
+        },
+        {
+          "label": "PERPUSTAKAAN ANDA",
+          "headline": "Semua bukumu\nselalu bersama."
+        },
+        {
+          "label": "TIAP HALAMAN ADALAH ADEGAN",
+          "headline": "Visualisasikan\napa yang dibaca."
+        },
+        {
+          "label": "20 BAHASA",
+          "headline": "Buat dalam bahasa apa pun.\nLampaui batas."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Tuliskan ide Anda.\nBuku jadi nyata."
+        },
+        {
+          "label": "JENIS BUKU",
+          "headline": "Dongeng, cerita,\natau buku kerja."
+        },
+        {
+          "label": "GAYA ANDA",
+          "headline": "Pilih genrenya.\nTentukan nadanya."
+        },
+        {
+          "label": "CERITA VISUAL",
+          "headline": "Biarkan cerita\nhidup di depan mata."
+        },
+        {
+          "label": "BACA DAN DENGAR",
+          "headline": "Jelajahi ilmu.\nDalami dan ingat."
+        },
+        {
+          "label": "KOMUNITAS FORTALE",
+          "headline": "Bagikan bukumu.\nTemukan penulis baru."
+        },
+        {
+          "label": "DETAIL BUKU",
+          "headline": "Kenali bukumu\nsebelum memulai."
+        },
+        {
+          "label": "PERPUSTAKAAN ANDA",
+          "headline": "Semua bukumu\nselalu bersama."
+        },
+        {
+          "label": "NARASI",
+          "headline": "Dengar, tonton,\ndan hayati cerita."
+        },
+        {
+          "label": "20 BAHASA",
+          "headline": "Buat dalam bahasa apa pun.\nLampaui batas."
+        }
+      ]
+    },
+    "it": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Scrivi un'idea.\nIl libro prende vita."
+        },
+        {
+          "label": "IL TUO GENERE",
+          "headline": "Fiabe, racconti,\nlibri di esercizi."
+        },
+        {
+          "label": "DUE MONDI DIVERSI",
+          "headline": "Fiabe e storie.\nOgni pagina vive."
+        },
+        {
+          "label": "LEGGI E ASCOLTA",
+          "headline": "Vivi ogni libro\nal tuo ritmo."
+        },
+        {
+          "label": "LETTURA FOCALIZZATA",
+          "headline": "Concentrati sulle parole.\nDimentica il mondo."
+        },
+        {
+          "label": "COMMUNITY FORTALE",
+          "headline": "Condividi il libro.\nScopri nuovi autori."
+        },
+        {
+          "label": "DETTAGLI DEL LIBRO",
+          "headline": "Esplora il libro\nprima di iniziare."
+        },
+        {
+          "label": "LA TUA LIBRERIA",
+          "headline": "Tutti i tuoi libri\nsempre con te."
+        },
+        {
+          "label": "OGNI PAGINA UNA SCENA",
+          "headline": "Ciò che leggi\nprende forma."
+        },
+        {
+          "label": "20 LINGUE",
+          "headline": "Crea in ogni lingua.\nOltre i confini."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Scrivi un'idea.\nIl libro prende vita."
+        },
+        {
+          "label": "IL TUO GENERE",
+          "headline": "Fiabe, racconti,\nlibri di esercizi."
+        },
+        {
+          "label": "IL TUO STILE",
+          "headline": "Scegli il genere.\nDefinisci il tono."
+        },
+        {
+          "label": "STORIE ILLUSTRATE",
+          "headline": "La tua storia\nprende vita."
+        },
+        {
+          "label": "LEGGI E ASCOLTA",
+          "headline": "Esplora, approfondisci\ne ricorda."
+        },
+        {
+          "label": "COMMUNITY FORTALE",
+          "headline": "Condividi il libro.\nScopri nuovi autori."
+        },
+        {
+          "label": "DETTAGLI DEL LIBRO",
+          "headline": "Esplora il libro\nprima di iniziare."
+        },
+        {
+          "label": "LA TUA LIBRERIA",
+          "headline": "Tutti i tuoi libri\nsempre con te."
+        },
+        {
+          "label": "NARRAZIONE",
+          "headline": "Ascolta, guarda,\nlasciati ispirare."
+        },
+        {
+          "label": "20 LINGUE",
+          "headline": "Crea in ogni lingua.\nOltre i confini."
+        }
+      ]
+    },
+    "ja": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "アイデアを入力するだけ。\n物語が動き出す。"
+        },
+        {
+          "label": "多彩なジャンル",
+          "headline": "童話や物語、\nワークブックも。"
+        },
+        {
+          "label": "二つの世界",
+          "headline": "物語と絵本。\n全ページが鮮やかに。"
+        },
+        {
+          "label": "読んで聴く",
+          "headline": "自分だけのペースで\n物語を楽しむ。"
+        },
+        {
+          "label": "読書に集中",
+          "headline": "言葉に没頭して、\n日常を忘れる。"
+        },
+        {
+          "label": "Fortaleコミュニティ",
+          "headline": "作品を共有して、\n新しい才能に出会う。"
+        },
+        {
+          "label": "本の詳細",
+          "headline": "読み始める前に、\n内容をチェック。"
+        },
+        {
+          "label": "マイライブラリ",
+          "headline": "お気に入りの本を\nいつでも手元に。"
+        },
+        {
+          "label": "ページは舞台",
+          "headline": "読んでいる内容が\n目の前に広がる。"
+        },
+        {
+          "label": "20言語対応",
+          "headline": "好きな言語で作成。\n境界線を越えよう。"
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "アイデアを入力するだけ。\n物語が動き出す。"
+        },
+        {
+          "label": "多彩なジャンル",
+          "headline": "童話や物語、\nワークブックも。"
+        },
+        {
+          "label": "あなたのスタイル",
+          "headline": "ジャンルを選び、\nトーンを決めよう。"
+        },
+        {
+          "label": "ビジュアルストーリー",
+          "headline": "物語が目の前で\n鮮やかに動き出す。"
+        },
+        {
+          "label": "読んで聴く",
+          "headline": "知識を深め、\n記憶に刻む。"
+        },
+        {
+          "label": "Fortaleコミュニティ",
+          "headline": "作品を共有して、\n新しい才能に出会う。"
+        },
+        {
+          "label": "本の詳細",
+          "headline": "読み始める前に、\n内容をチェック。"
+        },
+        {
+          "label": "マイライブラリ",
+          "headline": "お気に入りの本を\nいつでも手元に。"
+        },
+        {
+          "label": "ナレーション",
+          "headline": "聴いて、見て、\n物語に浸る。"
+        },
+        {
+          "label": "20言語対応",
+          "headline": "好きな言語で作成。\n境界線を越えよう。"
+        }
+      ]
+    },
+    "ko": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "아이디어를 입력하세요.\n책이 생생하게 펼쳐집니다."
+        },
+        {
+          "label": "다양한 책 종류",
+          "headline": "동화부터 이야기,\n워크북까지 모두 가능합니다."
+        },
+        {
+          "label": "두 가지 세계",
+          "headline": "동화와 이야기 속에서\n모든 페이지를 생동감 있게."
+        },
+        {
+          "label": "읽고 듣기",
+          "headline": "나만의 속도로\n책을 온전히 즐기세요."
+        },
+        {
+          "label": "집중 독서",
+          "headline": "글자에 집중하며\n세상을 잊어보세요."
+        },
+        {
+          "label": "FORTALE 커뮤니티",
+          "headline": "작품을 공유하고\n새로운 작가를 만나보세요."
+        },
+        {
+          "label": "책 상세 정보",
+          "headline": "시작하기 전에\n책의 내용을 확인하세요."
+        },
+        {
+          "label": "나만의 서재",
+          "headline": "당신의 모든 책을\n언제 어디서나 함께."
+        },
+        {
+          "label": "생생한 장면",
+          "headline": "읽는 내용이\n눈앞에 그려집니다."
+        },
+        {
+          "label": "20개 언어 지원",
+          "headline": "원하는 언어로 제작하고\n한계를 뛰어넘으세요."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "아이디어를 입력하세요.\n책이 생생하게 펼쳐집니다."
+        },
+        {
+          "label": "다양한 책 종류",
+          "headline": "동화부터 이야기,\n워크북까지 모두 가능합니다."
+        },
+        {
+          "label": "나만의 스타일",
+          "headline": "장르를 선택하고\n분위기를 결정하세요."
+        },
+        {
+          "label": "시각적 이야기",
+          "headline": "당신의 이야기가\n눈앞에서 생생하게."
+        },
+        {
+          "label": "읽고 듣기",
+          "headline": "지식을 탐구하고\n더 깊이 기억하세요."
+        },
+        {
+          "label": "FORTALE 커뮤니티",
+          "headline": "작품을 공유하고\n새로운 작가를 만나보세요."
+        },
+        {
+          "label": "책 상세 정보",
+          "headline": "시작하기 전에\n책의 내용을 확인하세요."
+        },
+        {
+          "label": "나만의 서재",
+          "headline": "당신의 모든 책을\n언제 어디서나 함께."
+        },
+        {
+          "label": "스토리텔링",
+          "headline": "듣고 보고 즐기며\n이야기에 빠져보세요."
+        },
+        {
+          "label": "20개 언어 지원",
+          "headline": "원하는 언어로 제작하고\n한계를 뛰어넘으세요."
+        }
+      ]
+    },
+    "nl-NL": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Typ een idee.\nLaat je boek leven."
+        },
+        {
+          "label": "JOUW BOEKTYPE",
+          "headline": "Sprookjes, verhalen,\nof werkboeken."
+        },
+        {
+          "label": "TWEE WERELDEN",
+          "headline": "Sprookjes en verhalen.\nElke pagina leeft."
+        },
+        {
+          "label": "LEZEN EN LUISTEREN",
+          "headline": "Beleef elk boek\nop jouw eigen tempo."
+        },
+        {
+          "label": "GEFOCUST LEZEN",
+          "headline": "Focus op de woorden.\nVergeet de wereld."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Deel jouw boek.\nOntdek nieuwe auteurs."
+        },
+        {
+          "label": "BOEKDETAILS",
+          "headline": "Leer je boek\ngoed kennen."
+        },
+        {
+          "label": "JOUW BIBLIOTHEEK",
+          "headline": "Al je boeken\naltijd bij de hand."
+        },
+        {
+          "label": "ELKE PAGINA EEN SCÈNE",
+          "headline": "Zie je verhaal\nvoor je ogen tot leven."
+        },
+        {
+          "label": "20 TALEN",
+          "headline": "Creëer in elke taal.\nVerleg je grenzen."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Typ een idee.\nLaat je boek leven."
+        },
+        {
+          "label": "JOUW BOEKTYPE",
+          "headline": "Sprookjes, verhalen,\nof werkboeken."
+        },
+        {
+          "label": "JOUW STIJL",
+          "headline": "Kies het genre.\nBepaal de toon."
+        },
+        {
+          "label": "VISUELE VERHALEN",
+          "headline": "Laat je verhaal\nvoor je ogen leven."
+        },
+        {
+          "label": "LEZEN EN LUISTEREN",
+          "headline": "Ontdek de kennis.\nVerdiep en onthoud."
+        },
+        {
+          "label": "FORTALE COMMUNITY",
+          "headline": "Deel jouw boek.\nOntdek nieuwe auteurs."
+        },
+        {
+          "label": "BOEKDETAILS",
+          "headline": "Leer je boek\ngoed kennen."
+        },
+        {
+          "label": "JOUW BIBLIOTHEEK",
+          "headline": "Al je boeken\naltijd bij de hand."
+        },
+        {
+          "label": "VERTELKUNST",
+          "headline": "Luister, kijk,\nen geniet."
+        },
+        {
+          "label": "20 TALEN",
+          "headline": "Creëer in elke taal.\nVerleg je grenzen."
+        }
+      ]
+    },
+    "no": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Skriv en idé.\nSe boken bli til."
+        },
+        {
+          "label": "DIN BOKTYPE",
+          "headline": "Eventyr, historier,\neller arbeidsbøker."
+        },
+        {
+          "label": "TO FORSKJELLIGE VERDENER",
+          "headline": "Eventyr og historier.\nLa hver side leve."
+        },
+        {
+          "label": "LES OG LYTT",
+          "headline": "Opplev hver bok\ni ditt eget tempo."
+        },
+        {
+          "label": "FOKUSERT LESING",
+          "headline": "Fokuser på ordene.\nGlem verden rundt."
+        },
+        {
+          "label": "FORTALE-FELLESSKAPET",
+          "headline": "Del din bok.\nFinn nye forfattere."
+        },
+        {
+          "label": "BOKDETALJER",
+          "headline": "Bli kjent med boken\nfør du begynner."
+        },
+        {
+          "label": "DITT BIBLIOTEK",
+          "headline": "Alle dine bøker\nalltid med deg."
+        },
+        {
+          "label": "HVER SIDE EN SCENE",
+          "headline": "Se historien\nfor deg mens du leser."
+        },
+        {
+          "label": "20 SPRÅK",
+          "headline": "Skap på 20 språk.\nBryt alle grenser."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Skriv en idé.\nSe boken bli til."
+        },
+        {
+          "label": "DIN BOKTYPE",
+          "headline": "Eventyr, historier,\neller arbeidsbøker."
+        },
+        {
+          "label": "DIN STIL",
+          "headline": "Velg din sjanger.\nBestem tonen."
+        },
+        {
+          "label": "VISUELLE HISTORIER",
+          "headline": "Se historien\nvekkes til live."
+        },
+        {
+          "label": "LES OG LYTT",
+          "headline": "Utforsk kunnskap.\nFordyp deg og lær."
+        },
+        {
+          "label": "FORTALE-FELLESSKAPET",
+          "headline": "Del din bok.\nFinn nye forfattere."
+        },
+        {
+          "label": "BOKDETALJER",
+          "headline": "Bli kjent med boken\nfør du begynner."
+        },
+        {
+          "label": "DITT BIBLIOTEK",
+          "headline": "Alle dine bøker\nalltid med deg."
+        },
+        {
+          "label": "FORTELLESYSTEM",
+          "headline": "Lytt, se på,\nog bli revet med."
+        },
+        {
+          "label": "20 SPRÅK",
+          "headline": "Skap på 20 språk.\nBryt alle grenser."
+        }
+      ]
+    },
+    "pl": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Wpisz swój pomysł.\nOżyw swoją książkę."
+        },
+        {
+          "label": "TWÓJ GATUNEK",
+          "headline": "Bajki, opowieści,\nzeszyty ćwiczeń."
+        },
+        {
+          "label": "DWA RÓŻNE ŚWIATY",
+          "headline": "Bajki i historie.\nOżyw każdą stronę."
+        },
+        {
+          "label": "CZYTAJ I SŁUCHAJ",
+          "headline": "Przeżywaj książki\nwe własnym rytmie."
+        },
+        {
+          "label": "SKUPIONE CZYTANIE",
+          "headline": "Skup się na słowach.\nZapomnij o świecie."
+        },
+        {
+          "label": "SPOŁECZNOŚĆ FORTALE",
+          "headline": "Udostępnij książkę.\nOdkryj nowych autorów."
+        },
+        {
+          "label": "SZCZEGÓŁY KSIĄŻKI",
+          "headline": "Poznaj książkę\nzanim zaczniesz."
+        },
+        {
+          "label": "TWOJA BIBLIOTEKA",
+          "headline": "Wszystkie książki\nzawsze pod ręką."
+        },
+        {
+          "label": "STRONA JAK SCENA",
+          "headline": "Niech czytane treści\nożyją w wyobraźni."
+        },
+        {
+          "label": "20 JĘZYKÓW",
+          "headline": "Twórz w każdym języku.\nPrzekraczaj granice."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Wpisz swój pomysł.\nOżyw swoją książkę."
+        },
+        {
+          "label": "TWÓJ GATUNEK",
+          "headline": "Bajki, opowieści,\nzeszyty ćwiczeń."
+        },
+        {
+          "label": "TWÓJ STYL",
+          "headline": "Wybierz gatunek.\nUstal swój ton."
+        },
+        {
+          "label": "WIZUALNE HISTORIE",
+          "headline": "Niech historia\nożyje na oczach."
+        },
+        {
+          "label": "CZYTAJ I SŁUCHAJ",
+          "headline": "Odkrywaj wiedzę.\nZanurz się i pamiętaj."
+        },
+        {
+          "label": "SPOŁECZNOŚĆ FORTALE",
+          "headline": "Udostępnij książkę.\nOdkryj nowych autorów."
+        },
+        {
+          "label": "SZCZEGÓŁY KSIĄŻKI",
+          "headline": "Poznaj książkę\nzanim zaczniesz."
+        },
+        {
+          "label": "TWOJA BIBLIOTEKA",
+          "headline": "Wszystkie książki\nzawsze pod ręką."
+        },
+        {
+          "label": "NARRACJA",
+          "headline": "Słuchaj i oglądaj.\nDaj się porwać."
+        },
+        {
+          "label": "20 JĘZYKÓW",
+          "headline": "Twórz w każdym języku.\nPrzekraczaj granice."
+        }
+      ]
+    },
+    "pt-BR": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Escreva uma ideia.\nVeja o livro nascer."
+        },
+        {
+          "label": "SEU TIPO DE LIVRO",
+          "headline": "Contos, histórias,\nou cadernos."
+        },
+        {
+          "label": "DOIS MUNDOS",
+          "headline": "Contos e histórias.\nCada página ganha vida."
+        },
+        {
+          "label": "LEIA E OUÇA",
+          "headline": "Viva cada livro\nno seu próprio ritmo."
+        },
+        {
+          "label": "LEITURA FOCADA",
+          "headline": "Foque nas palavras.\nEsqueça o mundo."
+        },
+        {
+          "label": "COMUNIDADE FORTALE",
+          "headline": "Compartilhe seu livro.\nDescubra novos autores."
+        },
+        {
+          "label": "DETALHES DO LIVRO",
+          "headline": "Conheça seu livro\nantes de começar."
+        },
+        {
+          "label": "SUA BIBLIOTECA",
+          "headline": "Todos os seus livros\nsempre com você."
+        },
+        {
+          "label": "CADA PÁGINA UMA CENA",
+          "headline": "O que você lê\nganha vida visual."
+        },
+        {
+          "label": "20 IDIOMAS",
+          "headline": "Crie no idioma que\ndesejar. Sem limites."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Escreva uma ideia.\nVeja o livro nascer."
+        },
+        {
+          "label": "SEU TIPO DE LIVRO",
+          "headline": "Contos, histórias,\nou cadernos."
+        },
+        {
+          "label": "SEU ESTILO",
+          "headline": "Escolha o gênero.\nDefina o seu tom."
+        },
+        {
+          "label": "HISTÓRIAS VISUAIS",
+          "headline": "Sua história ganha\nvida diante de você."
+        },
+        {
+          "label": "LEIA E OUÇA",
+          "headline": "Explore o saber.\nProfunde-se. Lembre-se."
+        },
+        {
+          "label": "COMUNIDADE FORTALE",
+          "headline": "Compartilhe seu livro.\nDescubra novos autores."
+        },
+        {
+          "label": "DETALHES DO LIVRO",
+          "headline": "Conheça seu livro\nantes de começar."
+        },
+        {
+          "label": "SUA BIBLIOTECA",
+          "headline": "Todos os seus livros\nsempre com você."
+        },
+        {
+          "label": "NARRATIVA",
+          "headline": "Ouça, assista,\ne mergulhe na trama."
+        },
+        {
+          "label": "20 IDIOMAS",
+          "headline": "Crie no idioma que\ndesejar. Sem limites."
+        }
+      ]
+    },
+    "ru": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Опиши идею.\nКнига оживет."
+        },
+        {
+          "label": "ЖАНРЫ КНИГ",
+          "headline": "Сказки, истории,\nрабочие тетради."
+        },
+        {
+          "label": "ДВА МИРА",
+          "headline": "Сказки и истории.\nОживите страницы."
+        },
+        {
+          "label": "ЧИТАЙ И СЛУШАЙ",
+          "headline": "Живите книгой\nв своем ритме."
+        },
+        {
+          "label": "ПОГРУЖЕНИЕ",
+          "headline": "Сфокусируйтесь.\nЗабудьте о мире."
+        },
+        {
+          "label": "СООБЩЕСТВО FORTALE",
+          "headline": "Делитесь книгами.\nИщите авторов."
+        },
+        {
+          "label": "ДЕТАЛИ КНИГИ",
+          "headline": "Изучите книгу\nперед началом."
+        },
+        {
+          "label": "ВАША БИБЛИОТЕКА",
+          "headline": "Все книги\nвсегда под рукой."
+        },
+        {
+          "label": "КАЖДАЯ СТРАНИЦА",
+          "headline": "Пусть прочитанное\nоживет в воображении."
+        },
+        {
+          "label": "20 ЯЗЫКОВ",
+          "headline": "Творите на любом.\nБез границ."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Опиши идею.\nКнига оживет."
+        },
+        {
+          "label": "ЖАНРЫ КНИГ",
+          "headline": "Сказки, истории,\nрабочие тетради."
+        },
+        {
+          "label": "ВАШ СТИЛЬ",
+          "headline": "Выберите жанр.\nЗадайте тон."
+        },
+        {
+          "label": "ВИЗУАЛЬНЫЕ ИСТОРИИ",
+          "headline": "История оживает\nна ваших глазах."
+        },
+        {
+          "label": "ЧИТАЙ И СЛУШАЙ",
+          "headline": "Изучайте, углубляйтесь,\nзапоминайте."
+        },
+        {
+          "label": "СООБЩЕСТВО FORTALE",
+          "headline": "Делитесь книгами.\nИщите авторов."
+        },
+        {
+          "label": "ДЕТАЛИ КНИГИ",
+          "headline": "Изучите книгу\nперед началом."
+        },
+        {
+          "label": "ВАША БИБЛИОТЕКА",
+          "headline": "Все книги\nвсегда под рукой."
+        },
+        {
+          "label": "ПОВЕСТВОВАНИЕ",
+          "headline": "Слушайте, смотрите,\nпогружайтесь."
+        },
+        {
+          "label": "20 ЯЗЫКОВ",
+          "headline": "Творите на любом.\nБез границ."
+        }
+      ]
+    },
+    "sv": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Skriv en idé.\nSe boken vakna."
+        },
+        {
+          "label": "DIN BOKTYP",
+          "headline": "Sagor, berättelser,\narbetsböcker."
+        },
+        {
+          "label": "TVÅ OLIKA VÄRLDAR",
+          "headline": "Sagor och historier.\nVarje sida lever."
+        },
+        {
+          "label": "LÄS OCH LYSSNA",
+          "headline": "Upplev boken\ni din egen takt."
+        },
+        {
+          "label": "FOKUSERAD LÄSNING",
+          "headline": "Fokusera på orden.\nGlöm omvärlden."
+        },
+        {
+          "label": "FORTALE-GEMENSKAPEN",
+          "headline": "Dela din bok.\nUpptäck nya författare."
+        },
+        {
+          "label": "BOKDETALJER",
+          "headline": "Lär känna boken\ninnan du börjar."
+        },
+        {
+          "label": "DITT BIBLIOTEK",
+          "headline": "Alla dina böcker\nalltid med dig."
+        },
+        {
+          "label": "VARJE SIDA EN SCEN",
+          "headline": "Se berättelsen\nkomma till liv."
+        },
+        {
+          "label": "20 SPRÅK",
+          "headline": "Skapa på valfritt språk.\nÖverskrid gränser."
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "Skriv en idé.\nSe boken vakna."
+        },
+        {
+          "label": "DIN BOKTYP",
+          "headline": "Sagor, berättelser,\narbetsböcker."
+        },
+        {
+          "label": "DIN STIL",
+          "headline": "Välj din genre.\nSätt din ton."
+        },
+        {
+          "label": "VISUELLA BERÄTTELSER",
+          "headline": "Se historien\nvakna till liv."
+        },
+        {
+          "label": "LÄS OCH LYSSNA",
+          "headline": "Utforska kunskap.\nFördjupa och minns."
+        },
+        {
+          "label": "FORTALE-GEMENSKAPEN",
+          "headline": "Dela din bok.\nUpptäck nya författare."
+        },
+        {
+          "label": "BOKDETALJER",
+          "headline": "Lär känna boken\ninnan du börjar."
+        },
+        {
+          "label": "DITT BIBLIOTEK",
+          "headline": "Alla dina böcker\nalltid med dig."
+        },
+        {
+          "label": "BERÄTTANDE",
+          "headline": "Lyssna, titta,\nfastna i historien."
+        },
+        {
+          "label": "20 SPRÅK",
+          "headline": "Skapa på valfritt språk.\nÖverskrid gränser."
+        }
+      ]
+    },
+    "th": {
+      "iphone": [
+        {
+          "label": "FORTALE AI",
+          "headline": "พิมพ์ไอเดียของคุณ\nให้หนังสือมีชีวิต"
+        },
+        {
+          "label": "ประเภทหนังสือ",
+          "headline": "นิทาน เรื่องเล่า\nหรือแบบฝึกหัด"
+        },
+        {
+          "label": "สองโลกที่แตกต่าง",
+          "headline": "นิทานและเรื่องเล่า\nให้ทุกหน้ามีชีวิต"
+        },
+        {
+          "label": "อ่านและฟัง",
+          "headline": "สัมผัสหนังสือ\nในจังหวะของคุณ"
+        },
+        {
+          "label": "การอ่านที่จดจ่อ",
+          "headline": "โฟกัสที่คำอ่าน\nลืมโลกภายนอก"
+        },
+        {
+          "label": "ชุมชน FORTALE",
+          "headline": "แบ่งปันหนังสือคุณ\nพบนักเขียนใหม่ๆ"
+        },
+        {
+          "label": "รายละเอียดหนังสือ",
+          "headline": "ทำความรู้จัก\nหนังสือก่อนเริ่ม"
+        },
+        {
+          "label": "ชั้นหนังสือของคุณ",
+          "headline": "หนังสือทุกเล่ม\nติดตัวคุณไปทุกที่"
+        },
+        {
+          "label": "ทุกหน้าคือฉาก",
+          "headline": "สิ่งที่อ่าน\nเห็นภาพชัดเจน"
+        },
+        {
+          "label": "20 ภาษา",
+          "headline": "สร้างสรรค์ทุกภาษา\nไร้ขีดจำกัด"
+        }
+      ],
+      "ipad": [
+        {
+          "label": "FORTALE AI",
+          "headline": "พิมพ์ไอเดียของคุณ\nให้หนังสือมีชีวิต"
+        },
+        {
+          "label": "ประเภทหนังสือ",
+          "headline": "นิทาน เรื่องเล่า\nหรือแบบฝึกหัด"
+        },
+        {
+          "label": "สไตล์ของคุณ",
+          "headline": "เลือกประเภท\nกำหนดโทนเรื่อง"
+        },
+        {
+          "label": "เรื่องเล่าภาพสวย",
+          "headline": "ให้เรื่องราว\nโลดแล่นตรงหน้า"
+        },
+        {
+          "label": "อ่านและฟัง",
+          "headline": "ค้นพบความรู้\nจดจำได้ลึกซึ้ง"
+        },
+        {
+          "label": "ชุมชน FORTALE",
+          "headline": "แบ่งปันหนังสือคุณ\nพบนักเขียนใหม่ๆ"
+        },
+        {
+          "label": "รายละเอียดหนังสือ",
+          "headline": "ทำความรู้จัก\nหนังสือก่อนเริ่ม"
+        },
+        {
+          "label": "ชั้นหนังสือของคุณ",
+          "headline": "หนังสือทุกเล่ม\nติดตัวคุณไปทุกที่"
+        },
+        {
+          "label": "การเล่าเรื่อง",
+          "headline": "ฟัง ดู และ\nอินไปกับเรื่องราว"
+        },
+        {
+          "label": "20 ภาษา",
+          "headline": "สร้างสรรค์ทุกภาษา\nไร้ขีดจำกัด"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@fortale/native-book-reader",
+  "version": "1.0.0",
+  "description": "Native 3D Page Curl Book Reader Plugin for Fortale",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "scripts": {},
+  "peerDependencies": {
+    "@capacitor/core": ">=6.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

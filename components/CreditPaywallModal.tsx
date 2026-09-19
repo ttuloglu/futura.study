@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Coins } from 'lucide-react';
 import FaviconSpinner from './FaviconSpinner';
-import CreditBalanceBreakdown from './CreditBalanceBreakdown';
 import { CreditActionType, CreditWallet } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
 import { useModalDismiss } from '../utils/useModalDismiss';
@@ -16,7 +16,7 @@ export interface CreditPackOption {
 interface CreditPaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
-  wallet: CreditWallet;
+  wallet?: CreditWallet;
   packs: CreditPackOption[];
   isPurchasing?: boolean;
   waitForStorePrices?: boolean;
@@ -58,11 +58,6 @@ const PACK_ACCENTS: PackAccent[] = [
   }
 ];
 
-function getHintByAction(action: CreditActionType | null | undefined): string {
-  if (action === 'create') return 'Kredi bakiyenizi yükselterek kesintisiz devam edebilirsiniz.';
-  return 'Kredi bakiyenizi yükselterek kesintisiz devam edebilirsiniz.';
-}
-
 export default function CreditPaywallModal({
   isOpen,
   onClose,
@@ -70,7 +65,6 @@ export default function CreditPaywallModal({
   packs,
   isPurchasing = false,
   waitForStorePrices = false,
-  insufficientAction = null,
   onPurchase
 }: CreditPaywallModalProps) {
   const { t } = useUiI18n();
@@ -110,68 +104,95 @@ export default function CreditPaywallModal({
   };
 
   return (
-    <FloatIslandSheet isOpen onClose={onClose} title={t('Satın Al')} subtitle={t(getHintByAction(insufficientAction))} layer={11001} maxWidth={520} panelRef={panelRef} closeDisabled={isPurchasing} panelClassName="fortale-paywall-panel">
-            <div
-              className="mb-3 h-1.5 w-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, #dcecff 0%, #8eb9ee 50%, #3b82f6 100%)' }}
-            />
-            <div className="fortale-paywall-balance mt-3 rounded-2xl border border-sky-300/65 bg-slate-800/45 p-3 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.18)]">
-              <p className="text-sm font-bold text-white">{t('Kredi Bakiyesi')}</p>
-              <p className="mt-1 text-[11px] text-white">{t(getHintByAction(insufficientAction))}</p>
-              <CreditBalanceBreakdown wallet={wallet} className="mt-3" />
-            </div>
+    <FloatIslandSheet
+      isOpen
+      onClose={onClose}
+      title={t('Fortale Kredi Paketleri')}
+      subtitle={t('Kişisel kütüphaneniz için kitap üretim kredileri')}
+      layer={11001}
+      maxWidth={520}
+      panelRef={panelRef}
+      closeDisabled={isPurchasing}
+      panelClassName="fortale-paywall-panel"
+    >
+      <div
+        className="mb-3 h-1.5 w-full rounded-full"
+        style={{ background: 'linear-gradient(90deg, #dcecff 0%, #8eb9ee 50%, #3b82f6 100%)' }}
+      />
+      <div className="fortale-paywall-balance mt-3 rounded-2xl border border-sky-300/35 bg-slate-800/60 p-4 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]">
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <Coins size={16} className="text-amber-400" />
+            <p className="text-[13px] font-bold text-white">{t('Mevcut Krediniz')}</p>
+          </div>
+          <span className="text-[14px] font-black text-amber-300">
+            {wallet?.createCredits ?? 0} {t('Kredi')}
+          </span>
+        </div>
+        <ul className="space-y-1.5 text-[11px] text-white/80">
+          <li className="flex items-center gap-2">
+            <span className="text-emerald-400">✓</span> {t('Kişisel kütüphanenize özel kitap üretimi')}
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="text-emerald-400">✓</span> {t('Yapay zeka ile görsel illüstrasyonlar')}
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="text-emerald-400">✓</span> {t('Sesli dinleme, ePub & PDF dışa aktarım')}
+          </li>
+        </ul>
+      </div>
 
-            {waitForStorePrices ? (
-              <div className="mt-3 flex min-h-[168px] items-center justify-center rounded-2xl border border-sky-200/35 bg-slate-900/35">
-                <span className="inline-flex items-center gap-2 text-[12px] font-bold text-sky-50">
-                  <FaviconSpinner size={18} />
-                  {t('Hazırlanıyor...')}
-                </span>
-              </div>
-            ) : (
-              <div className="mt-3 space-y-2.5">
-                {packs.map((pack, index) => {
-                  const accent = PACK_ACCENTS[index % PACK_ACCENTS.length];
-                  const isPackBusy = isPurchasing && activePackId === pack.id;
-                  return (
-                    <div
-                      key={pack.id}
-                      className={`fortale-paywall-pack rounded-2xl border p-3 backdrop-blur-sm ${accent.panelClass}`}
+      {waitForStorePrices ? (
+        <div className="mt-3 flex min-h-[168px] items-center justify-center rounded-2xl border border-sky-200/35 bg-slate-900/35">
+          <span className="inline-flex items-center gap-2 text-[12px] font-bold text-sky-50">
+            <FaviconSpinner size={18} />
+            {t('Hazırlanıyor...')}
+          </span>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2.5">
+          {packs.map((pack, index) => {
+            const accent = PACK_ACCENTS[index % PACK_ACCENTS.length];
+            const isPackBusy = isPurchasing && activePackId === pack.id;
+            return (
+              <div
+                key={pack.id}
+                className={`fortale-paywall-pack rounded-2xl border p-3 backdrop-blur-sm ${accent.panelClass}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${accent.chipClass}`}>
+                      {t('Kredi Paketi')}
+                    </span>
+                    <p className="truncate text-[15px] font-extrabold text-white">
+                      +{pack.createCredits} {t('Kredi')}
+                    </p>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-1">
+                    <p className={`text-[13px] font-black ${accent.priceClass}`}>
+                      {pack.displayPrice || `$${pack.priceUsd.toFixed(2)}`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handlePurchaseClick(pack.id)}
+                      disabled={isPurchasing}
+                      className={`fortale-paywall-buy inline-flex items-center rounded-xl border border-white/35 px-3 py-2 text-[12px] font-extrabold text-slate-900 shadow-[0_8px_20px_rgba(0,0,0,0.25)] transition-transform active:scale-[0.98] disabled:opacity-60 ${accent.buyButtonClass}`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 flex items-center gap-2">
-                          <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${accent.chipClass}`}>
-                            {t('Kredi')}
-                          </span>
-                          <p className="truncate text-[15px] font-extrabold text-white">
-                            +{pack.createCredits}
-                          </p>
-                        </div>
-
-                        <div className="shrink-0 flex items-center gap-1">
-                          <p className={`text-[13px] font-black ${accent.priceClass}`}>
-                            {pack.displayPrice || `$${pack.priceUsd.toFixed(2)}`}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => void handlePurchaseClick(pack.id)}
-                            disabled={isPurchasing}
-                            className={`fortale-paywall-buy inline-flex items-center rounded-xl border border-white/35 px-3 py-2 text-[12px] font-extrabold text-slate-900 shadow-[0_8px_20px_rgba(0,0,0,0.25)] transition-transform active:scale-[0.98] disabled:opacity-60 ${accent.buyButtonClass}`}
-                          >
-                            {isPackBusy ? (
-                              <span className="inline-flex items-center gap-1.5 text-white">
-                                <FaviconSpinner size={14} />
-                                <span>{t('İşleniyor')}</span>
-                              </span>
-                            ) : t('Satın Al')}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      {isPackBusy ? (
+                        <span className="inline-flex items-center gap-1.5 text-slate-900">
+                          <FaviconSpinner size={18} dark={true} />
+                          <span>{t('İşleniyor')}</span>
+                        </span>
+                      ) : t('Satın Al')}
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
+            );
+          })}
+        </div>
+      )}
     </FloatIslandSheet>
   );
 }

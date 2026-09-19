@@ -10,6 +10,7 @@ import { HOME_SHELF_UI_TRANSLATIONS } from '../data/homeShelfUiTranslations';
 import { COMMUNITY_ACTION_UI_TRANSLATIONS } from '../data/communityActionUiTranslations';
 import { CREDIT_UI_TRANSLATIONS } from '../data/creditUiTranslations';
 import { NARRATION_BILLING_UI_TRANSLATIONS } from '../data/narrationBillingUiTranslations';
+import { NOTIFICATION_CENTER_UI_TRANSLATIONS } from '../data/notificationCenterUiTranslations';
 
 const translationMaps = new Map<AppLanguageCode, Map<string, string>>();
 const translationLoadPromises = new Map<AppLanguageCode, Promise<Map<string, string>>>();
@@ -2901,6 +2902,9 @@ function translateText(language: AppLanguageCode, value: string): string {
 
   const narrationBillingTranslation = NARRATION_BILLING_UI_TRANSLATIONS[language]?.[value as keyof (typeof NARRATION_BILLING_UI_TRANSLATIONS)[AppLanguageCode]];
   if (narrationBillingTranslation) return narrationBillingTranslation;
+
+  const notificationCenterTranslation = NOTIFICATION_CENTER_UI_TRANSLATIONS[language]?.[value as keyof (typeof NOTIFICATION_CENTER_UI_TRANSLATIONS)[AppLanguageCode]];
+  if (notificationCenterTranslation) return notificationCenterTranslation;
 
   const communityTranslation = COMMUNITY_UI_TRANSLATIONS[language]?.[value];
   if (communityTranslation) return communityTranslation;

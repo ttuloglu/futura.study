@@ -1,33 +1,31 @@
 import React from 'react';
+import FortaleMark from './FortaleMark';
 
 interface FLogoProps {
   className?: string;
   size?: number;
+  animated?: boolean;
+  withBackground?: boolean;
+  dark?: boolean;
+  monochrome?: boolean;
 }
 
-const FORTALE_LOGO_BLUE = '#9BC7FF';
-
-export default function FLogo({ className = "", size = 24 }: FLogoProps) {
+export default function FLogo({
+  className = '',
+  size = 24,
+  animated = false,
+  withBackground = false,
+  dark = false,
+  monochrome = false
+}: FLogoProps) {
   return (
-    <svg
+    <FortaleMark
       className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={FORTALE_LOGO_BLUE}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <line x1="14.31" y1="8" x2="20.05" y2="17.94" />
-      <line x1="9.69" y1="8" x2="21.17" y2="8" />
-      <line x1="7.38" y1="12" x2="13.12" y2="2.06" />
-      <line x1="9.69" y1="16" x2="3.95" y2="6.06" />
-      <line x1="14.31" y1="16" x2="2.83" y2="16" />
-      <line x1="16.62" y1="12" x2="10.88" y2="21.94" />
-    </svg>
+      size={size}
+      animated={animated}
+      withBackground={withBackground}
+      dark={dark}
+      monochrome={monochrome}
+    />
   );
 }

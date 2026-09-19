@@ -1,11 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Bell, Download, LogOut, Save, ShieldCheck, Trash2, User, UserRoundPen } from 'lucide-react';
-import { httpsCallable } from 'firebase/functions';
+import { AlertTriangle, Bell, BookOpen, Coins, LogOut, Save, ShieldCheck, Trash2, User, UserRoundPen } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
-import { functions } from '../firebaseConfig';
-import FaviconSpinner from '../components/FaviconSpinner';
 import FloatIslandSheet from '../components/FloatIslandSheet';
-import CreditBalanceBreakdown from '../components/CreditBalanceBreakdown';
 import type { CreditWallet } from '../types';
 
 interface ProfileViewProps {
@@ -13,7 +9,8 @@ interface ProfileViewProps {
   userEmail?: string;
   isGuestSession?: boolean;
   savedBookCount?: number;
-  wallet: CreditWallet;
+  wallet?: CreditWallet;
+  onOpenPaywall?: () => void;
   onLogout: () => void | Promise<void>;
   onUpdateProfileName?: (nextName: string) => void | Promise<void>;
   onDeleteMyData?: () => void | Promise<void>;
@@ -22,26 +19,13 @@ interface ProfileViewProps {
 
 type ProfileDangerAction = 'delete-data' | 'delete-account' | null;
 
-type CommunityProfileResult = {
-  profile: {
-    userId: string;
-    alias?: string;
-    followerCount: number;
-    followingCount: number;
-    publicationCount: number;
-    totalLikeCount: number;
-    totalDownloadCount: number;
-  };
-};
-
-const getCommunityProfileFn = httpsCallable<Record<string, unknown>, CommunityProfileResult>(functions, 'getCommunityProfile');
-
 export default function ProfileView({
   userName,
   userEmail,
   isGuestSession = false,
   savedBookCount = 0,
   wallet,
+  onOpenPaywall,
   onLogout,
   onUpdateProfileName,
   onDeleteMyData,
@@ -55,8 +39,6 @@ export default function ProfileView({
   const [isDangerActionBusy, setDangerActionBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [communityDashboard, setCommunityDashboard] = useState<CommunityProfileResult | null>(null);
-  const [isCommunityDashboardLoading, setIsCommunityDashboardLoading] = useState(false);
   const statusToastTimerRef = useRef<number | null>(null);
   const canManageAccount = !isGuestSession;
 
@@ -79,29 +61,6 @@ export default function ProfileView({
   useEffect(() => {
     setNameInput(userName);
   }, [userName]);
-
-  useEffect(() => {
-    if (isGuestSession) {
-      setCommunityDashboard(null);
-      setIsCommunityDashboardLoading(false);
-      return;
-    }
-    let isCancelled = false;
-    setIsCommunityDashboardLoading(true);
-    getCommunityProfileFn({})
-      .then((result) => {
-        if (!isCancelled) setCommunityDashboard(result.data);
-      })
-      .catch(() => {
-        if (!isCancelled) setCommunityDashboard(null);
-      })
-      .finally(() => {
-        if (!isCancelled) setIsCommunityDashboardLoading(false);
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, [isGuestSession]);
 
   const dangerModalMeta = useMemo(() => {
     if (pendingDangerAction === 'delete-data') {
@@ -188,8 +147,6 @@ export default function ProfileView({
     };
   }, []);
 
-  const dashboardProfile = communityDashboard?.profile;
-
   return (
     <div className="view-container">
       <FloatIslandSheet
@@ -255,53 +212,47 @@ export default function ProfileView({
         <section className="rounded-3xl border border-white/10 bg-[#071d34]/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white">{t('Topluluk Profili')}</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-400">{t('Krediler & Kitaplık')}</p>
               <h2 className="mt-1 truncate text-[18px] font-black text-white">
-                {dashboardProfile?.alias || t('Fortale')}
+                {t('Kişisel Kitaplık')}
               </h2>
-              <p className="mt-1 text-[11px] font-semibold text-white">
-                {isCommunityDashboardLoading
-                  ? t('Topluluk istatistikleri yükleniyor...')
-                  : `${dashboardProfile?.publicationCount ?? 0} ${t('yayında')}`}
+              <p className="mt-1 text-[11px] font-semibold text-white/70">
+                {savedBookCount} {t('kitap üretildi ve kaydedildi')}
               </p>
             </div>
-            {isCommunityDashboardLoading && <FaviconSpinner size={18} />}
+            {onOpenPaywall && (
+              <button
+                type="button"
+                onClick={onOpenPaywall}
+                className="flex items-center gap-1.5 rounded-2xl bg-amber-400/15 border border-amber-400/30 px-3.5 py-2 text-[12px] font-bold text-amber-300 hover:bg-amber-400/25 transition-colors"
+              >
+                <Coins size={14} />
+                {t('Kredi Satın Al')}
+              </button>
+            )}
           </div>
-
-          <div className="mt-4 space-y-2 text-[12px] font-bold text-white">
-            <div className="grid grid-cols-2 gap-x-4">
-              <p>{t('Takipçi')}: <span className="text-white">{dashboardProfile?.followerCount ?? 0}</span></p>
-              <p>{t('Takip')}: <span className="text-white">{dashboardProfile?.followingCount ?? 0}</span></p>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4">
-              <p>{t('Üretilen')}: <span className="text-white">{savedBookCount}</span></p>
-              <p>{t('İndirilen')}: <span className="text-white">{dashboardProfile?.totalDownloadCount ?? 0}</span></p>
-            </div>
-          </div>
-
-          <CreditBalanceBreakdown wallet={wallet} className="mt-4" compact />
 
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl bg-white/[0.06] px-3 py-2">
-              <div className="flex items-center gap-1.5 text-[#ff8aa8]">
-                <Activity size={13} />
-                <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('Kalp')}</span>
+            <div className="rounded-2xl bg-white/[0.06] px-3.5 py-3">
+              <div className="flex items-center gap-1.5 text-sky-300">
+                <BookOpen size={14} />
+                <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('Kitap Sayısı')}</span>
               </div>
-              <p className="mt-1 text-[18px] font-black text-white">{dashboardProfile?.totalLikeCount ?? 0}</p>
+              <p className="mt-1 text-[20px] font-black text-white">{savedBookCount}</p>
             </div>
-            <div className="rounded-2xl bg-white/[0.06] px-3 py-2">
-              <div className="flex items-center gap-1.5 text-white">
-                <Download size={13} />
-                <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('İndirilme')}</span>
+            <div className="rounded-2xl bg-white/[0.06] px-3.5 py-3">
+              <div className="flex items-center gap-1.5 text-amber-400">
+                <Coins size={14} />
+                <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('Kredi Bakiyesi')}</span>
               </div>
-              <p className="mt-1 text-[18px] font-black text-white">{dashboardProfile?.totalDownloadCount ?? 0}</p>
+              <p className="mt-1 text-[20px] font-black text-white">{wallet?.createCredits ?? 0}C</p>
             </div>
           </div>
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
           <div className="mb-4 flex items-center gap-2">
-            <Activity size={13} className="text-white" />
+            <UserRoundPen size={13} className="text-white" />
             <h2 className="text-[12px] font-black uppercase tracking-[0.14em] text-white">{t('Profil Bilgileri')}</h2>
           </div>
 

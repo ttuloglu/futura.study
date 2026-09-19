@@ -52,7 +52,7 @@ export default function Sidebar({
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 glass-icon border-white/10 text-accent-green">
-                  <FLogo size={20} />
+                  <FLogo size={28} />
                 </div>
                 <div>
                   <div className="text-[10px] font-black text-white tracking-widest">{t('Global Space')}</div>

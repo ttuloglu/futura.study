@@ -41,6 +41,16 @@ export function supportsLandscape(device: Device): boolean {
 }
 
 export function getExportSizes(device: Device, orientation: Orientation): ExportSize[] {
+  // App Store Connect only needs one current portrait size per Apple device.
+  // `?fastlane=1` keeps multilingual upload bundles small while leaving the
+  // normal editor export (all required sizes) unchanged.
+  const fastlaneOnly =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("fastlane") === "1";
+  if (fastlaneOnly && orientation === "portrait") {
+    if (device === "iphone") return EXPORT_SIZES.iphone.filter((size) => size.w === 1320);
+    if (device === "ipad") return EXPORT_SIZES.ipad.filter((size) => size.w === 2048);
+  }
   if (orientation === "landscape") {
     return EXPORT_SIZES_LANDSCAPE[device] || EXPORT_SIZES[device];
   }

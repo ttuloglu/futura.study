@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Check,
+  Bell,
+  BookOpen,
   ChevronDown,
   Coins,
   Globe2,
@@ -10,13 +12,14 @@ import {
   Mail,
   Scale,
   ShieldCheck,
+  Trash2,
   User as UserIcon
 } from 'lucide-react';
 import { CreditWallet, ViewState } from '../types';
 import { APP_LANGUAGE_OPTIONS, getAppLanguageLabel, type AppLanguageCode } from '../data/appLanguages';
 import { useUiI18n } from '../i18n/uiI18n';
 import FloatIslandSheet from './FloatIslandSheet';
-import CreditBalanceBreakdown from './CreditBalanceBreakdown';
+import type { AppNotificationItem } from '../utils/appNotificationCenter';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -26,11 +29,15 @@ interface SettingsModalProps {
   isLoggedIn: boolean;
   credits: CreditWallet;
   appLanguage: AppLanguageCode;
+  notifications: AppNotificationItem[];
+  unreadNotificationCount: number;
   onOpenPaywall: () => void;
   onNavigate: (view: ViewState) => void;
   onContact: () => void;
   onAppLanguageChange: (language: AppLanguageCode) => void | Promise<void>;
   onAuthAction: () => void | Promise<void>;
+  onMarkNotificationsRead: () => void;
+  onClearNotifications: () => void;
 }
 
 const tileButtonClass =
@@ -47,18 +54,27 @@ export default function SettingsModal({
   isLoggedIn,
   credits,
   appLanguage,
+  notifications,
+  unreadNotificationCount,
   onOpenPaywall,
   onNavigate,
   onContact,
   onAppLanguageChange,
-  onAuthAction
+  onAuthAction,
+  onMarkNotificationsRead,
+  onClearNotifications
 }: SettingsModalProps) {
   const { locale, t } = useUiI18n();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const languageMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [languageMenuStyle, setLanguageMenuStyle] = useState<React.CSSProperties>({});
+  const notificationDateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }), [locale]);
   const smartbookSurfaceStyle: React.CSSProperties = {
     backgroundColor: SMARTBOOK_SURFACE_BG,
     borderColor: SMARTBOOK_SURFACE_BORDER
@@ -99,6 +115,7 @@ export default function SettingsModal({
   useEffect(() => {
     if (!isOpen) {
       setIsLanguageMenuOpen(false);
+      setIsNotificationsOpen(false);
     }
   }, [isOpen]);
 
@@ -154,15 +171,117 @@ export default function SettingsModal({
           <div className="w-full space-y-4">
             <button
               onClick={() => { onOpenPaywall(); onClose(); }}
-              className="fortale-settings-surface w-full rounded-2xl border px-3 py-2.5 text-left transition-all hover:bg-[rgba(23,28,36,0.52)]"
+              className="fortale-settings-surface w-full rounded-2xl border px-3.5 py-3 text-left transition-all hover:bg-[rgba(23,28,36,0.52)] flex items-center justify-between"
               style={smartbookSurfaceStyle}
             >
-              <div className="flex items-center gap-2">
-                <Coins size={14} className="text-accent-green" />
-                <p className="text-[12px] font-semibold text-white">{t('Kredi Bakiyesi')}</p>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/15 border border-amber-400/30 text-amber-300">
+                  <Coins size={16} />
+                </div>
+                <div>
+                  <p className="text-[13px] font-bold text-white">{t('Kredi Paketleri')}</p>
+                  <p className="text-[11px] text-white/60">{t('Kitap üretimi için kredi satın al')}</p>
+                </div>
               </div>
-              <CreditBalanceBreakdown wallet={credits} className="mt-3" compact />
+              <span className="text-[11px] font-bold text-amber-300 rounded-xl bg-amber-400/10 border border-amber-400/20 px-3 py-1.5 flex items-center gap-1">
+                <Coins size={12} />
+                <span>{credits?.createCredits ?? 0}C</span>
+              </span>
             </button>
+
+            <section className="overflow-hidden rounded-2xl border" style={smartbookSurfaceStyle}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationsOpen((current) => {
+                    const next = !current;
+                    if (next && unreadNotificationCount > 0) onMarkNotificationsRead();
+                    return next;
+                  });
+                }}
+                className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-white transition-all hover:bg-[rgba(23,28,36,0.52)]"
+                aria-expanded={isNotificationsOpen}
+                aria-label={t('Bildirimleri aç')}
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[rgba(230,245,238,0.18)] bg-[rgba(19,48,40,0.82)]">
+                    <Bell size={16} className="text-accent-green" />
+                    {unreadNotificationCount > 0 ? (
+                      <span className="absolute -right-1.5 -top-1.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white shadow-md">
+                        {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-semibold text-white">{t('Bildirimler')}</p>
+                    <p className="truncate text-[10px] text-white/65">
+                      {unreadNotificationCount > 0
+                        ? `${unreadNotificationCount} ${t('okunmamış')}`
+                        : t('Yeni bildirimleri ve kitap güncellemelerini burada gör.')}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown
+                  size={16}
+                  className={`shrink-0 text-white/75 transition-transform ${isNotificationsOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {isNotificationsOpen ? (
+                <div className="border-t border-[rgba(230,245,238,0.12)] px-3 pb-3 pt-2.5">
+                  <div className="mb-2.5 flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-semibold text-white/60">{t('Bildirimler')}</p>
+                    <button
+                      type="button"
+                      onClick={onClearNotifications}
+                      disabled={notifications.length === 0}
+                      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-semibold text-red-200 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-35"
+                      aria-label={t('Bildirim geçmişini temizle')}
+                    >
+                      <Trash2 size={12} />
+                      {t('Tümünü temizle')}
+                    </button>
+                  </div>
+
+                  {notifications.length === 0 ? (
+                    <div className="flex flex-col items-center px-4 py-5 text-center">
+                      <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.06] text-white/55">
+                        <Bell size={18} />
+                      </div>
+                      <p className="text-[11px] font-semibold text-white">{t('Henüz bildirim yok')}</p>
+                      <p className="mt-1 max-w-[290px] text-[10px] leading-relaxed text-white/55">
+                        {t('Kitabın hazır olduğunda bildirimin burada görünecek.')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-[min(36vh,280px)] space-y-2 overflow-y-auto pr-0.5">
+                      {notifications.map((notification) => (
+                        <article
+                          key={notification.id}
+                          className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5"
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[rgba(25,60,48,0.9)] text-accent-green">
+                              <BookOpen size={14} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-[11px] font-semibold leading-snug text-white">{notification.title}</p>
+                                {!notification.readAt ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent-green" /> : null}
+                              </div>
+                              <p className="mt-1 text-[10px] leading-relaxed text-white/65">{notification.body}</p>
+                              <time className="mt-1.5 block text-[9px] text-white/40" dateTime={notification.createdAt}>
+                                {notificationDateFormatter.format(new Date(notification.createdAt))}
+                              </time>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </section>
 
             <div className="grid w-full grid-cols-2 gap-3">
               <button onClick={() => { onNavigate('TERMS'); onClose(); }} className={`${tileButtonClass} hover:bg-[rgba(23,28,36,0.52)]`} style={smartbookSurfaceStyle}>

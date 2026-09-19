@@ -2,6 +2,7 @@ import React, { useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
+import FLogo from './FLogo';
 
 interface FloatIslandSheetProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface FloatIslandSheetProps {
   closeOnBackdrop?: boolean;
   showHeader?: boolean;
   showCloseButton?: boolean;
+  showLogo?: boolean;
   panelClassName?: string;
   bodyClassName?: string;
   panelRef?: React.RefObject<HTMLDivElement | null>;
@@ -34,6 +36,7 @@ export default function FloatIslandSheet({
   closeOnBackdrop = true,
   showHeader = true,
   showCloseButton = true,
+  showLogo = true,
   panelClassName = '',
   bodyClassName = 'p-4 sm:p-5',
   panelRef
@@ -78,10 +81,17 @@ export default function FloatIslandSheet({
       >
         <div className="fortale-sheet-handle" aria-hidden />
         {showHeader && (
-          <header className="fortale-sheet-header">
-            <div className="min-w-0 flex-1">
-              {title && <h2 id={titleId} className="truncate text-[17px] font-black text-white">{title}</h2>}
-              {subtitle && <div className="mt-1 text-[11px] leading-4 text-white">{subtitle}</div>}
+          <header className="fortale-sheet-header items-center">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              {showLogo && (
+                <div className="shrink-0 flex items-center justify-center">
+                  <FLogo size={28} />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                {title && <h2 id={titleId} className="truncate text-[17px] font-black text-white">{title}</h2>}
+                {subtitle && <div className="mt-0.5 text-[11px] leading-4 text-slate-300">{subtitle}</div>}
+              </div>
             </div>
             {showCloseButton && (
               <button

@@ -2694,8 +2694,8 @@ body:has(.community-detail-overlay) .fortale-global-header-status {
 .fortale-type-core {
   left: 50%;
   top: 50%;
-  width: 22px;
-  height: 22px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4443,12 +4443,13 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-sheet-handle {
-  width: 38px;
-  height: 4px;
+  width: 44px;
+  height: 4.5px;
   flex: 0 0 auto;
-  margin: 8px auto 2px;
+  margin: 10px auto 4px;
   border-radius: 999px;
-  background: rgba(214,235,255,0.24);
+  background: #F59E0B !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
 }
 
 .fortale-sheet-header {
@@ -4762,6 +4763,140 @@ button.fortale-hero-inline-field {
   }
 }
 
+.onboarding-v2-primary-btn,
+#root .onboarding-v2-primary-btn {
+  background-color: #ffffff !important;
+  color: #030816 !important;
+  -webkit-text-fill-color: #030816 !important;
+}
+
+.onboarding-v2-primary-btn *,
+.onboarding-v2-primary-btn span,
+#root .onboarding-v2-primary-btn *,
+#root .onboarding-v2-primary-btn span {
+  color: #030816 !important;
+  -webkit-text-fill-color: #030816 !important;
+}
+
+.onboarding-v2-primary-btn svg,
+#root .onboarding-v2-primary-btn svg {
+  color: #030816 !important;
+  stroke: #030816 !important;
+}
+
+.onboarding-v2-primary-btn:hover,
+#root .onboarding-v2-primary-btn:hover {
+  background-color: #f3f4f6 !important;
+  color: #030816 !important;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* FORTALE MARK — WAVE ANIMATION (VOCESYO / VOXNELA STYLE)                    */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fortale-mark {
+  overflow: visible !important;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.fortale-mark__piece {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
+}
+
+.fortale-mark__piece--animated {
+  animation: fortale-bar-wave 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* White / Light background support: Turn white bars into black so they don't disappear */
+.bg-white .fortale-mark__piece--1,
+.bg-white .fortale-mark__piece--2,
+.bg-white .fortale-mark__piece--4,
+.bg-white .fortale-mark__piece--5,
+[class*="bg-white"] .fortale-mark__piece--1,
+[class*="bg-white"] .fortale-mark__piece--2,
+[class*="bg-white"] .fortale-mark__piece--4,
+[class*="bg-white"] .fortale-mark__piece--5,
+.btn-white .fortale-mark__piece--1,
+.btn-white .fortale-mark__piece--2,
+.btn-white .fortale-mark__piece--4,
+.btn-white .fortale-mark__piece--5,
+.fortale-mark--dark .fortale-mark__piece--1,
+.fortale-mark--dark .fortale-mark__piece--2,
+.fortale-mark--dark .fortale-mark__piece--4,
+.fortale-mark--dark .fortale-mark__piece--5,
+.is-dark-bars .fortale-mark__piece--1,
+.is-dark-bars .fortale-mark__piece--2,
+.is-dark-bars .fortale-mark__piece--4,
+.is-dark-bars .fortale-mark__piece--5,
+.fortale-community-library-button .fortale-mark__piece--1,
+.fortale-community-library-button .fortale-mark__piece--2,
+.fortale-community-library-button .fortale-mark__piece--4,
+.fortale-community-library-button .fortale-mark__piece--5,
+.fortale-book-list-read .fortale-mark__piece--1,
+.fortale-book-list-read .fortale-mark__piece--2,
+.fortale-book-list-read .fortale-mark__piece--4,
+.fortale-book-list-read .fortale-mark__piece--5,
+.fortale-community-comment-send-button .fortale-mark__piece--1,
+.fortale-community-comment-send-button .fortale-mark__piece--2,
+.fortale-community-comment-send-button .fortale-mark__piece--4,
+.fortale-community-comment-send-button .fortale-mark__piece--5,
+.fortale-paywall-buy .fortale-mark__piece--1,
+.fortale-paywall-buy .fortale-mark__piece--2,
+.fortale-paywall-buy .fortale-mark__piece--4,
+.fortale-paywall-buy .fortale-mark__piece--5,
+[class*="bg-[#7eb79b]"] .fortale-mark__piece--1,
+[class*="bg-[#7eb79b]"] .fortale-mark__piece--2,
+[class*="bg-[#7eb79b]"] .fortale-mark__piece--4,
+[class*="bg-[#7eb79b]"] .fortale-mark__piece--5,
+[class*="bg-[#dcecff]"] .fortale-mark__piece--1,
+[class*="bg-[#dcecff]"] .fortale-mark__piece--2,
+[class*="bg-[#dcecff]"] .fortale-mark__piece--4,
+[class*="bg-[#dcecff]"] .fortale-mark__piece--5 {
+  fill: #000000 !important;
+}
+
+/* Central amber bar always remains vibrant amber */
+.bg-white .fortale-mark__piece--3,
+[class*="bg-white"] .fortale-mark__piece--3,
+.btn-white .fortale-mark__piece--3,
+.fortale-mark--dark .fortale-mark__piece--3,
+.is-dark-bars .fortale-mark__piece--3,
+.fortale-community-library-button .fortale-mark__piece--3,
+.fortale-book-list-read .fortale-mark__piece--3,
+.fortale-community-comment-send-button .fortale-mark__piece--3,
+.fortale-paywall-buy .fortale-mark__piece--3,
+[class*="bg-[#7eb79b]"] .fortale-mark__piece--3,
+[class*="bg-[#dcecff]"] .fortale-mark__piece--3 {
+  fill: #F59E0B !important;
+}
+
+/* 5 kolonlu soldan sağa akıcı ekolayzır / ses dalgası animasyonu (Vocesyo tarzı) */
+.fortale-mark__piece--1 { animation-delay: 0s; }
+.fortale-mark__piece--2 { animation-delay: 0.15s; }
+.fortale-mark__piece--3 { animation-delay: 0.30s; }
+.fortale-mark__piece--4 { animation-delay: 0.45s; }
+.fortale-mark__piece--5 { animation-delay: 0.60s; }
+
+@keyframes fortale-bar-wave {
+  0%, 45%, 100% {
+    transform: translateY(0);
+    opacity: 0.92;
+  }
+  22% {
+    transform: translateY(-40px) scale(1.04);
+    opacity: 1;
+    filter: brightness(1.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fortale-mark__piece--animated {
+    animation: none !important;
+  }
+}
+
 /* ────────────────────────────────────────────────────────────────────────── */
 /* FORTALE COSMOS — APP-WIDE BACKGROUND + HOME DEPTH                          */
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -4819,84 +4954,22 @@ button.fortale-hero-inline-field {
   z-index: 1;
 }
 
-/* The rail gradients live behind the books, so cover colors stay untouched. */
 .fortale-home-book-rail {
   position: relative;
-  isolation: isolate;
 }
 
 .fortale-home-rail-stack {
   position: relative;
-  isolation: isolate;
   gap: 0;
+  background: transparent !important;
 }
 
-.fortale-home-rail-stack::before {
-  content: '';
-  position: absolute;
-  inset: -34px -42px -50px;
-  z-index: -1;
-  pointer-events: none;
-  filter: blur(26px);
-  opacity: 0.9;
-  background:
-    radial-gradient(ellipse at 28% 24%, rgba(34, 211, 238, 0.16), transparent 64%),
-    radial-gradient(ellipse at 72% 78%, rgba(168, 85, 247, 0.16), transparent 70%),
-    radial-gradient(ellipse at 24% 110%, rgba(251, 191, 36, 0.08), transparent 62%);
-}
-
-.fortale-home-rail-stack::after {
-  content: '';
-  position: absolute;
-  inset: -30px -38px -42px;
-  z-index: 0;
-  pointer-events: none;
-  background: radial-gradient(ellipse at 68% 70%, rgba(112, 77, 178, 0.12), transparent 72%);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
-}
-
-.fortale-home-rail-stack > .fortale-home-book-rail {
-  z-index: 1;
-}
-
+.fortale-home-rail-stack::before,
+.fortale-home-rail-stack::after,
 .fortale-home-book-rail::before,
 .fortale-home-book-rail::after {
-  content: '';
-  position: absolute;
-  pointer-events: none;
-  z-index: -1;
-}
-
-.fortale-home-book-rail::before {
-  inset: -8px -14px;
-  border-radius: 0;
-  opacity: 0.92;
-}
-
-.fortale-home-book-rail::after {
-  content: none;
-  display: none;
-}
-
-.fortale-home-book-rail.is-library-rail::before {
-  background: transparent;
-}
-
-.fortale-home-book-rail.is-library-rail::after {
-  content: none;
-  display: none;
-}
-
-.fortale-home-book-rail.is-community-rail::before {
-  background: transparent;
-}
-
-.fortale-home-book-rail.is-community-rail::after {
-  content: none;
-  display: none;
+  content: none !important;
+  display: none !important;
 }
 
 /* Square particles fall from the outer accretion field into the type orb. */
@@ -5065,8 +5138,8 @@ button.fortale-hero-inline-field {
 }
 
 .fortale-sheet-handle {
-  background: linear-gradient(90deg, rgba(103, 232, 249, 0.7), rgba(196, 181, 253, 0.68), rgba(251, 191, 36, 0.62));
-  box-shadow: 0 0 14px rgba(103, 232, 249, 0.18);
+  background: #F59E0B !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4) !important;
 }
 
 .fortale-paywall-inner {

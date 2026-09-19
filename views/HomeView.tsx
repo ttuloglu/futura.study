@@ -2,21 +2,18 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import Cropper, { type Area, type Point } from 'react-easy-crop';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { httpsCallable } from 'firebase/functions';
 import {
   ViewState,
   CourseData,
-  CommunityBook,
   TimelineNode,
   StickyNoteData,
   SmartBookAgeGroup,
   CreditActionType,
   SmartBookBookType,
   SmartBookCreativeBrief,
-  CourseOpenUiState,
-  CreditWallet
+  CourseOpenUiState
 } from '../types';
-import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Heart, MessageCircle, Library } from 'lucide-react';
+import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Library } from 'lucide-react';
 import { cancelBookGenerationJob, CREDIT_WALLET_UPDATED_EVENT, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
@@ -37,15 +34,13 @@ import {
   getSmartBookAgeGroupOptionsForBookType,
   isSmartBookAgeGroupAllowedForBookType
 } from '../utils/smartbookAgeGroup';
-import { COMMUNITY_DOWNLOAD_CREDIT_COST, getBookTypeCreateCreditCost } from '../utils/creditCosts';
+import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
 import { useUiI18n } from '../i18n/uiI18n';
 import { normalizeAppLanguageCode, type AppLanguageCode } from '../data/appLanguages';
 import { LITERARY_FACTS } from '../data/literaryFacts';
 import { App } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { functions } from '../firebaseConfig';
-import { getCommunityBookSectionLabels } from '../utils/communityBookLanguage';
-import { getOwnedCommunityCourseId } from '../utils/communityOwnedCourse';
+import { addAppNotification } from '../utils/appNotificationCenter';
 
 interface HomeViewProps {
   onNavigate: (view: ViewState) => void;
@@ -77,89 +72,6 @@ type StickyModalState = {
   reminderAt: string | null;
   createdAt: string;
 };
-
-interface HomeCommunityBookDto extends Omit<CommunityBook, 'publishedAt'> {
-  publishedAt: number;
-  updatedAt?: number;
-}
-
-interface HomeCommunityListResult {
-  books: HomeCommunityBookDto[];
-  filters: { languages: string[]; categories: string[]; ageGroups: string[] };
-}
-
-interface HomeCommunityDetailResult {
-  book: HomeCommunityBookDto;
-  isFollowing: boolean;
-  comments: unknown[];
-}
-
-interface HomeCommunityDownloadResult {
-  wallet: CreditWallet;
-  communityBook: HomeCommunityBookDto;
-  bookId: string;
-  alreadyOwned: boolean;
-}
-
-function isGenericHomeCommunityVisualTitle(value: string | undefined): boolean {
-  return /^(?:g[öo]rsel|image|visual|illustration|page|sayfa)\s*(?:#|no\.?)?\s*\d+(?:\s*\/\s*\d+)?$/iu.test(String(value || '').trim());
-}
-
-const listHomeCommunityBooks = httpsCallable<Record<string, unknown>, HomeCommunityListResult>(functions, 'listCommunityBooks');
-const getHomeCommunityBook = httpsCallable<{ communityBookId: string }, HomeCommunityDetailResult>(functions, 'getCommunityBook');
-const downloadHomeCommunityBook = httpsCallable<{ communityBookId: string }, HomeCommunityDownloadResult>(functions, 'downloadCommunityBook');
-const homeCommunitySessionCache = new Map<string, CommunityBook[]>();
-
-function homeCommunitySessionCacheKey(userId?: string): string {
-  return userId || '__guest__';
-}
-
-function parseHomeCommunityBook(dto: HomeCommunityBookDto): CommunityBook {
-  return {
-    ...dto,
-    outline: dto.outline?.filter((title) => !isGenericHomeCommunityVisualTitle(title)),
-    preview: dto.preview?.map((item) => ({ ...item, title: isGenericHomeCommunityVisualTitle(item.title) ? '' : item.title })),
-    previewImages: dto.previewImages?.map((item) => ({ ...item, title: isGenericHomeCommunityVisualTitle(item.title) ? '' : item.title })),
-    publishedAt: new Date(dto.publishedAt || Date.now())
-  };
-}
-
-function shuffledUniqueCommunityBooks(popular: CommunityBook[], discovery: CommunityBook[]): CommunityBook[] {
-  const popularSelection = popular.slice(0, 8);
-  const popularIds = new Set(popularSelection.map((book) => book.id));
-  const randomSelection = discovery
-    .filter((book) => !popularIds.has(book.id))
-    .sort(() => Math.random() - 0.5)
-    .slice(0, Math.max(0, 15 - popularSelection.length));
-  const selectedIds = new Set([...popularSelection, ...randomSelection].map((book) => book.id));
-  const popularFill = popular.filter((book) => !selectedIds.has(book.id));
-
-  return [...popularSelection, ...randomSelection, ...popularFill]
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 15);
-}
-
-function homeCommunityTypeLabel(type: SmartBookBookType): string {
-  if (type === 'fairy_tale') return 'Masal';
-  if (type === 'novel') return 'Hikaye';
-  return 'Çalışma Kitabı';
-}
-
-function extractHomeCommunityPreview(markdown: string): string {
-  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n').filter((line) => {
-    const heading = line.trim().match(/^#{1,6}\s+(.+)$/);
-    return !heading || !isGenericHomeCommunityVisualTitle(heading[1]);
-  });
-  const headingIndex = lines.findIndex((line) => /^#{1,6}\s+\S/.test(line.trim()));
-  if (headingIndex >= 0) {
-    const nextHeadingIndex = lines.findIndex((line, index) => index > headingIndex && /^#{1,6}\s+\S/.test(line.trim()));
-    return lines.slice(headingIndex, nextHeadingIndex >= 0 ? nextHeadingIndex : lines.length).join('\n').trim();
-  }
-  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
-  if (firstContentIndex < 0) return '';
-  const nextBlankIndex = lines.findIndex((line, index) => index > firstContentIndex && line.trim().length === 0);
-  return lines.slice(firstContentIndex, nextBlankIndex >= 0 ? nextBlankIndex : lines.length).join('\n').trim();
-}
 
 function courseHasReadableContent(course: CourseData): boolean {
   const lectureNodes = course.nodes.filter((node) => node.type === 'lecture');
@@ -1826,16 +1738,6 @@ export default function HomeView({
   });
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
-  const [homeCommunityBooks, setHomeCommunityBooks] = useState<CommunityBook[]>(
-    () => homeCommunitySessionCache.get(homeCommunitySessionCacheKey(authUserId)) || []
-  );
-  const [isHomeCommunityLoading, setIsHomeCommunityLoading] = useState(
-    () => !homeCommunitySessionCache.has(homeCommunitySessionCacheKey(authUserId))
-  );
-  const [selectedHomeCommunityBook, setSelectedHomeCommunityBook] = useState<CommunityBook | null>(null);
-  const [isHomeCommunityDetailLoading, setIsHomeCommunityDetailLoading] = useState(false);
-  const [isHomeCommunityDownloading, setIsHomeCommunityDownloading] = useState(false);
-  const [isHomeCommunityReading, setIsHomeCommunityReading] = useState(false);
   const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
   const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
   const generationDisplayLanguage = isGenerating
@@ -1846,100 +1748,6 @@ export default function HomeView({
     if (isLoggedIn) return false;
     setLoginRequiredModalOpen(true);
     return true;
-  };
-
-  useEffect(() => {
-    const cacheKey = homeCommunitySessionCacheKey(authUserId);
-    const cachedBooks = homeCommunitySessionCache.get(cacheKey);
-    if (cachedBooks) {
-      setHomeCommunityBooks(cachedBooks);
-      setIsHomeCommunityLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsHomeCommunityLoading(true);
-
-    void Promise.all([
-      listHomeCommunityBooks({ tab: 'popular', bookType: 'all', language: 'all', category: 'all', ageGroup: 'all', search: '', limit: 15 }),
-      listHomeCommunityBooks({ tab: 'discover', bookType: 'all', language: 'all', category: 'all', ageGroup: 'all', search: '', limit: 30 })
-    ]).then(([popularResult, discoveryResult]) => {
-      if (cancelled) return;
-      const popular = popularResult.data.books.map(parseHomeCommunityBook);
-      const discovery = discoveryResult.data.books.map(parseHomeCommunityBook);
-      const selectedBooks = shuffledUniqueCommunityBooks(popular, discovery);
-      homeCommunitySessionCache.set(cacheKey, selectedBooks);
-      setHomeCommunityBooks(selectedBooks);
-    }).catch(() => {
-      if (!cancelled) setHomeCommunityBooks([]);
-    }).finally(() => {
-      if (!cancelled) setIsHomeCommunityLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [authUserId]);
-
-  const openHomeCommunityBook = async (book: CommunityBook) => {
-    setSelectedHomeCommunityBook(book);
-    setIsHomeCommunityDetailLoading(true);
-    try {
-      const result = await getHomeCommunityBook({ communityBookId: book.id });
-      setSelectedHomeCommunityBook(parseHomeCommunityBook(result.data.book));
-    } catch {
-      setSelectedHomeCommunityBook(null);
-    } finally {
-      setIsHomeCommunityDetailLoading(false);
-    }
-  };
-
-  const handleHomeCommunityDownload = async () => {
-    const book = selectedHomeCommunityBook;
-    if (!book || isHomeCommunityDownloading) return;
-    if (!isLoggedIn) {
-      onRequestLogin?.();
-      return;
-    }
-    if (book.isOwned || book.userId === authUserId) return;
-    if (!onRequireCredit('community_download', COMMUNITY_DOWNLOAD_CREDIT_COST)) return;
-
-    setIsHomeCommunityDownloading(true);
-    try {
-      const result = await downloadHomeCommunityBook({ communityBookId: book.id });
-      window.dispatchEvent(new CustomEvent(CREDIT_WALLET_UPDATED_EVENT, { detail: result.data.wallet }));
-      const downloadCount = book.downloadCount + (result.data.alreadyOwned ? 0 : 1);
-      setSelectedHomeCommunityBook((current) => current?.id === book.id ? { ...current, isOwned: true, downloadCount } : current);
-      setHomeCommunityBooks((current) => {
-        const updated = current.map((item) => item.id === book.id ? { ...item, isOwned: true, downloadCount } : item);
-        homeCommunitySessionCache.set(homeCommunitySessionCacheKey(authUserId), updated);
-        return updated;
-      });
-      setSourceNotice(result.data.alreadyOwned ? t('Kitap zaten kitaplığınızda.') : t('Kitap kitaplığınıza eklendi!'));
-    } catch {
-      setSourceNotice(t('İndirme başarısız oldu.'));
-    } finally {
-      setIsHomeCommunityDownloading(false);
-    }
-  };
-
-  const openOwnedHomeCommunityBook = async (book: CommunityBook): Promise<boolean> => {
-    const courseId = getOwnedCommunityCourseId(book, authUserId);
-    if (!courseId) return false;
-    if (isHomeCommunityReading) return false;
-
-    setIsHomeCommunityReading(true);
-    try {
-      const opened = await onCourseSelect(courseId);
-      if (opened === false) {
-        setSourceNotice(t('Kitap şu anda açılamadı. Lütfen tekrar deneyin.'));
-        return false;
-      }
-      return true;
-    } catch {
-      setSourceNotice(t('Kitap şu anda açılamadı. Lütfen tekrar deneyin.'));
-      return false;
-    } finally {
-      setIsHomeCommunityReading(false);
-    }
   };
 
   const resetGenerationProgress = (next: number) => {
@@ -2125,6 +1933,13 @@ export default function HomeView({
       return;
     }
     const notificationCopy = buildBookReadyNotificationCopy(course, language);
+    addAppNotification({
+      id: `book-ready:${course.id}`,
+      type: 'book_ready',
+      title: notificationCopy.title,
+      body: notificationCopy.body,
+      courseId: course.id
+    });
     LocalNotifications.schedule({
       notifications: [{
         id: Date.now() & 0x7fffffff,
@@ -3271,34 +3086,6 @@ export default function HomeView({
     );
   };
 
-  const renderHomeCommunityCard = (book: CommunityBook) => {
-    const cardDescription = String(book.description || '').trim()
-      || String(book.preview?.[0]?.content || '')
-        .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
-        .replace(/^#{1,6}\s+.+$/gm, ' ')
-        .replace(/[*_`>#-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-      || (book.outline || []).filter(Boolean).slice(0, 3).join(' · ');
-    return (
-    <article key={book.id} className="fortale-book-list-item fortale-home-list-card">
-      <button type="button" onClick={() => void openHomeCommunityBook(book)} className="fortale-book-list-cover" aria-label={book.title}>
-        <span className="fortale-book-list-cover-media">
-          {book.coverImageUrl ? <img src={book.coverImageUrl} alt={book.title} loading="lazy" /> : <span className="fortale-home-rail-cover-empty"><BookOpen size={22} /></span>}
-        </span>
-      </button>
-      <div className="fortale-book-list-info">
-        <button type="button" onClick={() => void openHomeCommunityBook(book)} className="fortale-book-list-title !mt-0">{book.title}</button>
-        <button type="button" onClick={() => void openHomeCommunityBook(book)} className="fortale-book-list-description w-full text-left">{cardDescription}</button>
-        <div className="fortale-book-list-stats">
-          <span title={t('Kalp')}><Heart size={12} /> {book.likeCount || 0}</span>
-          <span title={t('İndirilme')}><Download size={12} /> {book.downloadCount || 0}</span>
-        </div>
-      </div>
-    </article>
-    );
-  };
-
   const hasStickyContent = Boolean(stickyModal.title.trim() || stickyModal.text.trim());
   const isCreationIntroOnly = !isCreationWizardOpen && !isGenerating;
   const themeStep = 3;
@@ -3353,7 +3140,7 @@ export default function HomeView({
       resizeObserver?.disconnect();
       window.removeEventListener('resize', syncDockBounds);
     };
-  }, [homeCommunityBooks.length, isCreationIntroOnly]);
+  }, [isCreationIntroOnly]);
 
   useEffect(() => {
     if (currentVisibleStepIndexRaw !== -1) return;
@@ -3509,10 +3296,6 @@ export default function HomeView({
           : t('Portre eklenmedi')
       }
     ];
-  const createCreditUseSentence = translateTemplate(
-    'Bu işlem için {{creditCount}} kredi kullanılacaktır.',
-    { creditCount: selectedCreateCreditCost }
-  );
   const WIZARD_FIELD_HEIGHT_PX = 54;
   const wizardFieldClass = 'fortale-wizard-glass-control fortale-wizard-field fortale-wizard-keyboard-input mt-1 w-full px-3 text-[13px] text-white placeholder:text-white focus:outline-none';
   const wizardFieldStyle = (options: { fixedHeight?: boolean } = {}): React.CSSProperties => ({
@@ -3608,14 +3391,14 @@ export default function HomeView({
             </div>
             <div className="min-w-0">
               <p className="text-[15px] font-extrabold leading-tight text-white">{t('Kitabın Kahramanı Sen Ol')}</p>
-              <p className="mt-0.5 text-[11px]" style={{ color: 'rgba(155, 199, 255, 0.55)' }}>{t('İsteğe bağlıdır · +1 kredi')}</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: 'rgba(155, 199, 255, 0.55)' }}>{t('İsteğe bağlıdır')}</p>
             </div>
           </div>
 
           {/* Benefit */}
           <div className="mb-4">
             <div className="flex items-start gap-2">
-              <span className="mt-[3px] shrink-0 text-[9px]" style={{ color: 'rgba(155, 199, 255, 0.45)' }}>✦</span>
+              <span className="mt-[3px] shrink-0 text-[9px]" style={{ color: 'rgba(155, 199, 255, 0.45)' }}>•</span>
               <p className="text-[12px] leading-snug" style={{ color: 'rgba(190, 220, 255, 0.76)' }}>{t('Kendi fotoğrafını yükle — kitaptaki kahraman her sayfada sana benzsin')}</p>
             </div>
           </div>
@@ -3900,17 +3683,6 @@ export default function HomeView({
                     : <div className="fortale-home-rail-empty">{t('Henüz hiç kitap yok.')}</div>}
               </div>
             </section>
-
-            <section className="fortale-home-book-rail is-community-rail" aria-label={t('Toplulukta Popüler')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
-              <h2 className="fortale-home-rail-label" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{t('Toplulukta Popüler')}</h2>
-              <div className="fortale-home-rail-scroll touch-scroll-x" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
-                {isHomeCommunityLoading
-                  ? <div className="fortale-home-rail-loading"><FaviconSpinner size={22} /><span>{t('Kitaplar yükleniyor...')}</span></div>
-                  : homeCommunityBooks.length > 0
-                    ? homeCommunityBooks.map((book) => renderHomeCommunityCard(book))
-                    : <div className="fortale-home-rail-empty">{t('Henüz veri yok')}</div>}
-              </div>
-            </section>
           </div>
         )}
 
@@ -4023,7 +3795,7 @@ export default function HomeView({
                     <span className="fortale-type-divider horizontal" aria-hidden="true" />
                     <span className="fortale-type-divider left" aria-hidden="true" />
                     <span className="fortale-type-core" aria-hidden="true">
-                      <FLogo size={22} />
+                      <FLogo size={32} />
                     </span>
                     {HOME_SPLIT_BOOK_TYPES.map((option) => {
                       const isSelected = isCreationWizardOpen && selectedBookType === option.value;
@@ -4663,10 +4435,12 @@ export default function HomeView({
 
                       <div className="fortale-library-panel rounded-2xl border px-3.5 py-3">
                         <div className="flex items-center justify-between gap-4">
-                          <span className="text-[13px] font-bold text-white">{t('Maliyet')}</span>
-                          <span className="text-[15px] font-extrabold text-white">{selectedCreateCreditCost} {t('kredi')}</span>
+                          <span className="text-[13px] font-bold text-white">{t('Gereken Kredi')}</span>
+                          <span className="text-[14px] font-black text-amber-400">{selectedCreateCreditCost} {t('Kredi')}</span>
                         </div>
-                        <p className="mt-1 text-[11px] leading-snug text-white">{createCreditUseSentence}</p>
+                        <p className="mt-1 text-[11px] leading-snug text-white/80">
+                          {t('Bu işlem için {{creditCount}} kredi kullanılacaktır.').replace('{{creditCount}}', String(selectedCreateCreditCost))}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -4686,7 +4460,7 @@ export default function HomeView({
                   className="mx-4 mb-1 rounded-[16px] border px-3 py-2 text-center text-[11px] font-semibold leading-snug pointer-events-auto"
                   style={{ borderColor: 'rgba(139,187,244,0.18)', background: 'rgba(8,36,70,0.72)', color: 'rgba(207,228,255,0.78)' }}
                 >
-                  {t('Fotoğrafın AI tarafından kitabın görsel stiline uyarlanır. İsteğe bağlıdır, eklenirse +1 kredi kullanır.')}
+                  {t('Fotoğrafın AI tarafından kitabın görsel stiline uyarlanır. İsteğe bağlıdır.')}
                 </p>
               )}
               <div className={`wizard-footer-controls gap-2 px-4 pointer-events-auto ${currentVisibleStepIndex > 0 ? 'has-back' : 'only-primary'}`}>
@@ -4880,7 +4654,7 @@ export default function HomeView({
                   disabled={selectedIsDownloading}
                   className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white text-[12px] font-black text-[#102018] disabled:opacity-55"
                 >
-                  {selectedIsDownloading ? <FaviconSpinner size={14} /> : selectedIsReady ? <BookOpen size={14} /> : <Download size={14} />}
+                  {selectedIsDownloading ? <FaviconSpinner size={24} dark={true} /> : selectedIsReady ? <BookOpen size={16} /> : <Download size={16} />}
                   {selectedActionLabel}
                 </button>
               </div>
@@ -4914,130 +4688,6 @@ export default function HomeView({
           </FloatIslandSheet>
         );
       })()}
-
-      {selectedHomeCommunityBook && (
-        <FloatIslandSheet
-          isOpen
-          onClose={() => setSelectedHomeCommunityBook(null)}
-          title={selectedHomeCommunityBook.title}
-          subtitle={`@${selectedHomeCommunityBook.publisherAlias || t('Fortale üreticisi')}`}
-          maxWidth={560}
-          layer={980}
-          bodyClassName="p-0"
-          footer={(
-            <div className="fortale-home-community-footer grid grid-cols-2 items-stretch gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedHomeCommunityBook(null);
-                  _onNavigate('COMMUNITY');
-                }}
-                className="rounded-2xl border border-white/12 bg-white/[0.06] px-2 text-[11px] font-normal text-white whitespace-nowrap"
-              >
-                {t('Topluluk')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (getOwnedCommunityCourseId(selectedHomeCommunityBook, authUserId)) {
-                    void openOwnedHomeCommunityBook(selectedHomeCommunityBook);
-                  } else {
-                    void handleHomeCommunityDownload();
-                  }
-                }}
-                disabled={isHomeCommunityDownloading || isHomeCommunityReading}
-                className="fortale-community-library-button inline-flex items-center justify-center gap-1.5 rounded-2xl px-2 text-[10px] font-normal whitespace-nowrap"
-              >
-                {isHomeCommunityDownloading || isHomeCommunityReading ? (
-                  <FaviconSpinner size={14} />
-                ) : getOwnedCommunityCourseId(selectedHomeCommunityBook, authUserId) ? (
-                  <><BookOpen size={13} /><span className="whitespace-nowrap">{t('Oku')}</span></>
-                ) : (
-                  <><Library size={13} /><span className="whitespace-nowrap">{t('Kütüphaneme Ekle')} {COMMUNITY_DOWNLOAD_CREDIT_COST}C</span></>
-                )}
-              </button>
-            </div>
-          )}
-        >
-          {isHomeCommunityDetailLoading ? (
-            <div className="flex justify-center p-16"><FaviconSpinner size={28} /></div>
-          ) : (() => {
-            const bookLabels = getCommunityBookSectionLabels(selectedHomeCommunityBook.language);
-            return (
-            <div className="community-book-detail space-y-5 p-4">
-              <section className="community-detail-hero flex gap-4">
-                <div className="w-[126px] shrink-0">
-                  <span className="fortale-book-list-cover-media">
-                    {selectedHomeCommunityBook.coverImageUrl ? (
-                      <img src={selectedHomeCommunityBook.coverImageUrl} alt={selectedHomeCommunityBook.title} />
-                    ) : (
-                      <span className="fortale-home-rail-cover-empty"><BookOpen size={30} /></span>
-                    )}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="fortale-community-type-chip inline-flex rounded-full border px-2 py-1 text-[9px] font-black" data-book-type={selectedHomeCommunityBook.bookType}>
-                    {t(homeCommunityTypeLabel(selectedHomeCommunityBook.bookType))}
-                  </span>
-                  <p className="mt-3 text-[11px] font-bold text-white">@{selectedHomeCommunityBook.publisherAlias || t('Fortale üreticisi')}</p>
-                  <p className="community-detail-cover-summary mt-2 line-clamp-3 text-[10px] leading-[1.45] text-white">{String(selectedHomeCommunityBook.description || '').trim() || String(selectedHomeCommunityBook.preview?.[0]?.content || '').replace(/^#{1,6}\s+.+$/gm, ' ').replace(/[*_`>#-]/g, ' ').replace(/\s+/g, ' ').trim()}</p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white">
-                    {selectedHomeCommunityBook.language && <span>{selectedHomeCommunityBook.language}</span>}
-                    {selectedHomeCommunityBook.category && <span>• {t(selectedHomeCommunityBook.category)}</span>}
-                    {selectedHomeCommunityBook.pageCount ? <span>• {selectedHomeCommunityBook.pageCount} {t('sayfa')}</span> : null}
-                  </div>
-                  <div className="mt-4 flex items-center gap-4 text-[11px] text-white">
-                    <span className="inline-flex items-center gap-1"><Heart size={13} /> {selectedHomeCommunityBook.likeCount || 0}</span>
-                    <span className="inline-flex items-center gap-1"><Download size={13} /> {selectedHomeCommunityBook.downloadCount || 0}</span>
-                    <span className="inline-flex items-center gap-1"><MessageCircle size={13} /> {selectedHomeCommunityBook.commentCount || 0}</span>
-                  </div>
-                </div>
-              </section>
-
-              {selectedHomeCommunityBook.previewImages && selectedHomeCommunityBook.previewImages.length > 0 && (
-                <section className={`community-detail-media-grid grid gap-3 ${selectedHomeCommunityBook.bookType === 'story' ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                  {selectedHomeCommunityBook.previewImages.slice(0, selectedHomeCommunityBook.bookType === 'story' ? 1 : 2).map((image) => (
-                    <div key={image.id} className={`community-detail-media-item ${selectedHomeCommunityBook.bookType === 'story' ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden`}>
-                      <img src={image.url} alt={image.title || selectedHomeCommunityBook.title} className={`h-full w-full ${selectedHomeCommunityBook.bookType === 'story' ? 'object-contain' : 'object-cover'}`} loading="lazy" />
-                    </div>
-                  ))}
-                </section>
-              )}
-
-              {selectedHomeCommunityBook.description && (
-                <section className="px-1">
-                  <h3 className="community-detail-section-title">{bookLabels.description}</h3>
-                  <p className="community-detail-body mt-2 text-white">{selectedHomeCommunityBook.description}</p>
-                </section>
-              )}
-
-              {selectedHomeCommunityBook.outline && selectedHomeCommunityBook.outline.length > 0 && (
-                <section className="px-1">
-                  <h3 className="community-detail-section-title">{bookLabels.contents}</h3>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {selectedHomeCommunityBook.outline.slice(0, 6).map((title, index) => (
-                      <span key={`${title}-${index}`} className="rounded-full bg-white/[0.06] px-2 py-1 text-[11px] font-semibold text-white">{title}</span>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {selectedHomeCommunityBook.preview && selectedHomeCommunityBook.preview.length > 0 && (
-                <section className="space-y-3 px-1">
-                  <h3 className="community-detail-section-title">{bookLabels.firstChapterPreview}</h3>
-                  <article className="overflow-hidden">
-                    {selectedHomeCommunityBook.preview[0].title && <h4 className="text-[12px] font-semibold leading-5 text-white">{selectedHomeCommunityBook.preview[0].title}</h4>}
-                    <div className="community-preview-markdown prose prose-invert mt-2 max-w-none text-white">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{extractHomeCommunityPreview(selectedHomeCommunityBook.preview[0].content)}</ReactMarkdown>
-                    </div>
-                  </article>
-                </section>
-              )}
-            </div>
-            );
-          })()}
-        </FloatIslandSheet>
-      )}
 
       <FloatIslandSheet
         isOpen={courseDeleteModal.isOpen}
@@ -5245,7 +4895,7 @@ export default function HomeView({
                     disabled={isStickySaving || !hasStickyContent}
                     className="btn-glass-primary px-4 py-2 text-[12px] disabled:opacity-50"
                   >
-                    {isStickySaving ? <FaviconSpinner size={14} /> : (
+                    {isStickySaving ? <FaviconSpinner size={18} /> : (
                       <>
                         <Check size={14} />
                         {t('Kaydet')}

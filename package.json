@@ -1,7 +1,7 @@
 {
   "name": "fortale",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -29,6 +29,7 @@
     "@capacitor/screen-orientation": "^8.0.1",
     "@capacitor/share": "^8.0.1",
     "@capgo/capacitor-social-login": "^8.3.8",
+    "@fortale/native-book-reader": "file:plugins/native-book-reader",
     "@revenuecat/purchases-capacitor": "^12.2.1",
     "@revenuecat/purchases-capacitor-ui": "^12.2.1",
     "firebase": "^12.9.0",

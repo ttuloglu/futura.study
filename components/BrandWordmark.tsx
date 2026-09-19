@@ -13,10 +13,8 @@ const SIZE_CLASS_MAP: Record<NonNullable<BrandWordmarkProps['size']>, string> = 
 
 export default function BrandWordmark({ className = '', size = 'md' }: BrandWordmarkProps) {
   return (
-    <span className={`font-display leading-none tracking-tight text-zinc-900 ${SIZE_CLASS_MAP[size]} ${className}`}>
-      <span className="text-accent-green">ƒ</span>
-      <span>-</span>
-      <span className="italic">study</span>
+    <span className={`font-display leading-none tracking-tight text-white ${SIZE_CLASS_MAP[size]} ${className}`}>
+      Fortale
     </span>
   );
 }

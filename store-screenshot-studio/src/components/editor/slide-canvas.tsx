@@ -232,7 +232,9 @@ function Caption({
   onFocus?: () => void;
 }) {
   const fg = inverted ? theme.fgAlt : theme.fg;
-  const accent = theme.accent;
+  // Fortale's alternate surface is intentionally light. Keep the small
+  // section label dark enough to remain legible on that pale blue gradient.
+  const accent = inverted && theme.id === "fortale-cosmos" ? "#245C96" : theme.accent;
   // Scale typography off the *shorter* dimension so landscape layouts don't
   // produce headlines so tall they overlap the device frame.
   const unit = Math.min(cW, cH);

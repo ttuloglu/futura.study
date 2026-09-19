@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="80" fill="#000000"/>
+  <!-- F Omurgası -->
+  <rect x="240" y="172" width="60" height="680" rx="30" fill="#FFFFFF"/>
+  <!-- Üst Kol -->
+  <rect x="340" y="172" width="420" height="60" rx="30" fill="#FFFFFF"/>
+  <!-- Orta Kol -->
+  <rect x="340" y="452" width="260" height="60" rx="30" fill="#FFFFFF"/>
+  <!-- Masal Kıvılcımı / Yıldızı (Tale Sparkle) Voxnela'nın üçgeni gibi odak geometrik öğe -->
+  <path d="M680 482 C680 430, 720 390, 772 390 C720 390, 680 350, 680 298 C680 350, 640 390, 588 390 C640 390, 680 430, 680 482 Z" fill="#F59E0B"/>
+</svg>

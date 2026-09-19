@@ -63,7 +63,7 @@ const OPENAI_MINI_TTS_FAIRY_INSTRUCTIONS =
 // Keep podcast narration on Gemini Flash TTS (2.5) while preserving the same chunking/merge backend flow.
 const PODCAST_TTS_PROVIDER: "google" = "google";
 const GEMINI_QUIZ_REVIEW_MODEL = GEMINI_BOOK_MODEL;
-const OPENAI_IMAGE_MODEL = "gpt-image-2-2026-04-21";
+const OPENAI_IMAGE_MODEL = "gpt-image-2.5-sunburst-2026-09-08";
 const OPENAI_IMAGE_QUALITY: "low" = "low";
 const OPENAI_COVER_MODEL = OPENAI_IMAGE_MODEL;
 const OPENAI_LECTURE_IMAGE_MODEL = OPENAI_IMAGE_MODEL;
@@ -6342,12 +6342,6 @@ async function ensureCreditAvailable(
   if (isGuestUid(uid)) {
     throw new HttpsError("unauthenticated", "Bu işlem için giriş yapmalısınız.");
   }
-  const wallet = await getOrCreateCreditWallet(uid);
-  const current = wallet.createCredits;
-  if (current < charge.cost) {
-    const label = "oluşturma";
-    throw new HttpsError("resource-exhausted", `Yetersiz ${label} kredisi.`);
-  }
 }
 
 async function consumeCredit(
@@ -6360,12 +6354,7 @@ async function consumeCredit(
     const snap = await tx.get(ref);
     const existing = normalizeCreditWalletSnapshot(snap.data()) ?? buildStarterCreditWallet();
     const available = existing.createCredits;
-    if (available < cost) {
-      const label = "oluşturma";
-      throw new HttpsError("resource-exhausted", `Yetersiz ${label} kredisi.`);
-    }
-
-    const next = debitCreditWallet(existing, cost).wallet;
+    const next = available >= cost ? debitCreditWallet(existing, cost).wallet : existing;
     tx.set(
       ref,
       {
@@ -6395,12 +6384,7 @@ async function consumeCreditWithReceipt(
     const snap = await tx.get(ref);
     const existing = normalizeCreditWalletSnapshot(snap.data()) ?? buildStarterCreditWallet();
     const available = existing.createCredits;
-    if (available < cost) {
-      const label = "oluşturma";
-      throw new HttpsError("resource-exhausted", `Yetersiz ${label} kredisi.`);
-    }
-
-    const debitResult = debitCreditWallet(existing, cost);
+    const debitResult = available >= cost ? debitCreditWallet(existing, cost) : { wallet: existing, debited: 0 };
     const next = debitResult.wallet;
     tx.set(
       ref,
@@ -12143,6 +12127,33 @@ function firstNonEmptyString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+function isDeviceOnlyAssetUrl(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim();
+  if (!normalized) return false;
+  return (
+    /^(?:capacitor|file|ionic):\/\//i.test(normalized) ||
+    /^https?:\/{2}(?:localhost|127\.0\.0\.1)\/_capacitor_file_/i.test(normalized)
+  );
+}
+
+function firstCloudSafeCoverUrl(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const normalized = value.trim();
+    if (
+      !normalized ||
+      isDeviceOnlyAssetUrl(normalized) ||
+      /^data:image\//i.test(normalized) ||
+      /^blob:/i.test(normalized)
+    ) {
+      continue;
+    }
+    return normalized;
+  }
+  return undefined;
+}
+
 function normalizeVisualStoryNarrationSource(value: unknown): string {
   if (typeof value !== "string") return "";
   return value
@@ -12507,6 +12518,7 @@ function normalizeBookMetadataForClient(
   const title = firstNonEmptyString(payload.title, payload.topic, payload.bookTitle, payload.id, bookId) || "İsimsiz Kitap";
   const bundlePath = firstNonEmptyString(bundlePayload.path, payload.contentPackagePath);
   const contentPackageUrl = firstNonEmptyString(payload.contentPackageUrl);
+  const coverImageUrl = firstCloudSafeCoverUrl(payload.coverImageUrl, coverPayload.url);
   const bundleVersionRaw = Number(bundlePayload.version);
   const bundleVersion = Number.isFinite(bundleVersionRaw) ? Math.max(1, Math.floor(bundleVersionRaw)) : 1;
 
@@ -12548,7 +12560,7 @@ function normalizeBookMetadataForClient(
       : undefined,
     cover: {
       path: firstNonEmptyString(coverPayload.path),
-      url: firstNonEmptyString(coverPayload.url, payload.coverImageUrl)
+      url: coverImageUrl
     },
     bundle: bundlePath
       ? {
@@ -12566,7 +12578,7 @@ function normalizeBookMetadataForClient(
     contentPackagePath: bundlePath,
     contentPackageUrl,
     contentPackageUpdatedAt: generatedAt,
-    coverImageUrl: firstNonEmptyString(coverPayload.url, payload.coverImageUrl),
+    coverImageUrl,
     createdAt,
     updatedAt: toIsoStringIfPossible(payload.updatedAt) || nowIso,
     lastActivity
@@ -12926,63 +12938,13 @@ function parseBundleVersionFromPath(bundlePath: string | undefined): number | un
   return parsed;
 }
 
-async function syncPublishedCommunityBundleSnapshot(params: {
+async function syncPublishedCommunityBundleSnapshot(_params: {
   uid: string;
   bookId: string;
   bookPayload: Record<string, unknown>;
   bundleBuffer: Buffer;
 }): Promise<void> {
-  const publication = isRecord(params.bookPayload.communityPublication)
-    ? params.bookPayload.communityPublication
-    : null;
-  if (String(publication?.status || "").trim().toLowerCase() !== "published") {
-    return;
-  }
-
-  const communityBookId = firstNonEmptyString(publication?.id) || communityBookIdFor(params.uid, params.bookId);
-  const communityRef = firestore.collection("communityBooks").doc(communityBookId);
-  const communitySnap = await communityRef.get();
-  if (!communitySnap.exists) {
-    throw new HttpsError("failed-precondition", "Topluluk kitap kaydı bulunamadı.");
-  }
-  const communityPayload = communitySnap.data() as Record<string, unknown>;
-  if (
-    firstNonEmptyString(communityPayload.userId) !== params.uid ||
-    firstNonEmptyString(communityPayload.bookId) !== params.bookId
-  ) {
-    throw new HttpsError("permission-denied", "Topluluk kitap sahipliği doğrulanamadı.");
-  }
-  if (String(communityPayload.status || "").trim().toLowerCase() !== "published") {
-    return;
-  }
-
-  const currentVersion = Number.isFinite(Number(communityPayload.snapshotVersion))
-    ? Math.max(0, Math.floor(Number(communityPayload.snapshotVersion)))
-    : 0;
-  const nextVersion = currentVersion + 1;
-  const snapshotPath = `communityPackages/${communityBookId}/v${nextVersion}/book.zip`;
-  const bucket = getStorage().bucket();
-  await bucket.file(snapshotPath).save(params.bundleBuffer, {
-    resumable: false,
-    contentType: "application/zip",
-    metadata: {
-      cacheControl: "private,max-age=0",
-      metadata: {
-        ownerId: params.uid,
-        communityBookId,
-        sourceBookId: params.bookId,
-        includesNarration: "true"
-      }
-    }
-  });
-  await communityRef.set(
-    {
-      snapshotPath,
-      snapshotVersion: nextVersion,
-      updatedAt: Timestamp.now()
-    },
-    { merge: true }
-  );
+  return;
 }
 
 async function republishBookBundleWithPodcastAudio(params: {
@@ -16479,7 +16441,7 @@ function buildBookReadyPushNotificationCopy(bookTitle: string, language: Preferr
   return (BOOK_READY_PUSH_NOTIFICATION_COPY[language] || BOOK_READY_PUSH_NOTIFICATION_COPY.en)(bookTitle);
 }
 
-async function sendBookReadyPushNotification(uid: string, bookTitle: string, language: PreferredLanguage): Promise<void> {
+async function sendBookReadyPushNotification(uid: string, courseId: string, bookTitle: string, language: PreferredLanguage): Promise<void> {
   try {
     const tokenDoc = await firestore.collection("userFcmTokens").doc(uid).get();
     if (!tokenDoc.exists) return;
@@ -16497,6 +16459,10 @@ async function sendBookReadyPushNotification(uid: string, bookTitle: string, lan
       notification: {
         title: notificationCopy.title,
         body: notificationCopy.body
+      },
+      data: {
+        type: "book_ready",
+        courseId
       },
       apns: {
         payload: { aps: { sound: "default", badge: 1 } }
@@ -17864,6 +17830,7 @@ async function runBookBundleJobTask(
     : detectedNotificationLanguage;
   await sendBookReadyPushNotification(
     uid,
+    courseId,
     bookTitle,
     notificationLanguage
   );
@@ -19059,7 +19026,9 @@ type MailProvider =
 
 const EMAIL_OTP_TTL_MS = 10 * 60 * 1000;
 const EMAIL_OTP_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+const EMAIL_OTP_DAILY_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000;
 const EMAIL_OTP_MAX_REQUESTS_PER_EMAIL = 5;
+const EMAIL_OTP_MAX_DAILY_REQUESTS_PER_EMAIL = 10;
 const EMAIL_OTP_MAX_REQUESTS_PER_IP = 20;
 const EMAIL_OTP_MAX_VERIFY_ATTEMPTS = 6;
 const APP_REVIEW_LOGIN_EMAIL_FALLBACK = "appstore-review@futurumapps.online";
@@ -19327,8 +19296,9 @@ function normalizeCoursePayloadForClient(
       "isPublic"
     ].forEach(copyIfPresent);
 
-    if (typeof payload.coverImageUrl === "string" && !payload.coverImageUrl.startsWith("data:image/")) {
-      normalized.coverImageUrl = payload.coverImageUrl;
+    const cloudSafeCoverUrl = firstCloudSafeCoverUrl(payload.coverImageUrl);
+    if (cloudSafeCoverUrl) {
+      normalized.coverImageUrl = cloudSafeCoverUrl;
     }
 
     if (typeof payload.contentPackagePath === "string" && payload.contentPackagePath.trim()) {
@@ -19689,6 +19659,9 @@ async function requestEmailLoginCodeCore(
     const emailWindowStartedAtMs = asNumber(emailState.requestWindowStartedAtMs, 0);
     const emailWindowIsValid = now - emailWindowStartedAtMs < EMAIL_OTP_REQUEST_WINDOW_MS;
     const emailRequestCount = emailWindowIsValid ? asNumber(emailState.requestCount, 0) : 0;
+    const dailyWindowStartedAtMs = asNumber(emailState.dailyRequestWindowStartedAtMs, 0);
+    const dailyWindowIsValid = now - dailyWindowStartedAtMs < EMAIL_OTP_DAILY_REQUEST_WINDOW_MS;
+    const dailyRequestCount = dailyWindowIsValid ? asNumber(emailState.dailyRequestCount, 0) : 0;
 
     let ipWindowStartedAtMs = now;
     let ipRequestCount = 0;
@@ -19702,6 +19675,7 @@ async function requestEmailLoginCodeCore(
 
     if (
       emailRequestCount >= EMAIL_OTP_MAX_REQUESTS_PER_EMAIL ||
+      dailyRequestCount >= EMAIL_OTP_MAX_DAILY_REQUESTS_PER_EMAIL ||
       ipRequestCount >= EMAIL_OTP_MAX_REQUESTS_PER_IP
     ) {
       throttled = true;
@@ -19720,6 +19694,8 @@ async function requestEmailLoginCodeCore(
         consumedAtMs: null,
         requestWindowStartedAtMs: emailWindowIsValid ? emailWindowStartedAtMs : now,
         requestCount: emailRequestCount + 1,
+        dailyRequestWindowStartedAtMs: dailyWindowIsValid ? dailyWindowStartedAtMs : now,
+        dailyRequestCount: dailyRequestCount + 1,
         lastRequestIpHash: normalizedIp ? hashValue(normalizedIp).slice(0, 24) : null,
         updatedAt: FieldValue.serverTimestamp()
       },
@@ -20081,7 +20057,7 @@ export const repairSmartBookCover = onCall(
 
     const bookPayload = bookSnap.data() as Record<string, unknown>;
     const currentCover = isRecord(bookPayload.cover) ? bookPayload.cover : {};
-    const existingCoverUrl = firstNonEmptyString(currentCover.url, bookPayload.coverImageUrl);
+    const existingCoverUrl = firstCloudSafeCoverUrl(bookPayload.coverImageUrl, currentCover.url);
     if (existingCoverUrl) {
       return { success: true, coverImageUrl: existingCoverUrl };
     }
@@ -20676,1579 +20652,3 @@ export const contactUs = onCall(
   }
 );
 
-const COMMUNITY_DOWNLOAD_COST = 0.5;
-const COMMUNITY_CREATOR_REWARD = 0.25;
-const COMMUNITY_TERMS_VERSION = "2026-07-15";
-const COMMUNITY_REPORT_HIDE_THRESHOLD = 3;
-const COMMUNITY_COMMENT_MAX_LENGTH = 500;
-const COMMUNITY_PREVIEW_NODE_COUNT = 2;
-const COMMUNITY_LIST_MAX_LIMIT = 40;
-const COMMUNITY_MODERATION_MODEL = "omni-moderation-latest";
-let communityEnabledCache: { value: boolean; expiresAt: number } | null = null;
-
-interface CommunityBookDoc {
-  userId: string;
-  bookId: string;
-  title: string;
-  description: string;
-  publisherAlias: string;
-  coverImageUrl: string;
-  coverStoragePath: string;
-  bookType: string;
-  subGenre: string;
-  category: string;
-  ageGroup: string;
-  language: string;
-  searchText: string;
-  searchKeywords: string[];
-  tags: string[];
-  pageCount: number;
-  outline: string[];
-  preview: Array<{ id: string; title: string; content: string }>;
-  previewImages?: Array<{ id: string; title: string; url: string; storagePath?: string; sourcePath?: string }>;
-  snapshotPath: string;
-  snapshotVersion: number;
-  status: "published" | "hidden" | "unpublished" | "removed";
-  moderationStatus: "approved" | "review_required" | "removed";
-  downloadCount: number;
-  likeCount: number;
-  commentCount: number;
-  reportCount: number;
-  hotScore: number;
-  isFeatured: boolean;
-  publishedAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
-}
-
-interface CommunityProfileDoc {
-  userId: string;
-  alias: string;
-  aliasLower: string;
-  bio: string;
-  ageConfirmedAt: FirebaseFirestore.Timestamp;
-  termsAcceptedAt: FirebaseFirestore.Timestamp;
-  termsVersion: string;
-  followerCount: number;
-  followingCount: number;
-  publicationCount: number;
-  totalLikeCount: number;
-  totalDownloadCount: number;
-  isSuspended: boolean;
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
-}
-
-function communityText(value: unknown, maxLength = 500): string {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
-}
-
-function normalizeCommunitySearch(value: unknown): string {
-  return communityText(value, 5_000)
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("en-US")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildCommunityKeywords(...values: unknown[]): string[] {
-  const normalized = normalizeCommunitySearch(values.map((value) => communityText(value, 1_000)).join(" "));
-  const tokens = normalized.split(" ").filter((token) => token.length >= 2).slice(0, 80);
-  const keywords = new Set<string>();
-  for (const token of tokens) {
-    keywords.add(token);
-    for (let length = 2; length <= Math.min(token.length, 16); length += 1) {
-      keywords.add(token.slice(0, length));
-    }
-  }
-  return Array.from(keywords).slice(0, 400);
-}
-
-function communityBookIdFor(uid: string, bookId: string): string {
-  return createHash("sha256").update(`${uid}:${bookId}`).digest("hex").slice(0, 40);
-}
-
-function communityRelationId(first: string, second: string): string {
-  return createHash("sha256").update(`${first}:${second}`).digest("hex");
-}
-
-async function assertCommunityEnabled(): Promise<void> {
-  if (communityEnabledCache && communityEnabledCache.expiresAt > Date.now()) {
-    if (!communityEnabledCache.value) throw new HttpsError("unavailable", "Topluluk şu anda kullanıma kapalı.");
-    return;
-  }
-  const snap = await firestore.collection("appConfig").doc("community").get();
-  const enabled = !snap.exists || snap.data()?.communityEnabled !== false;
-  communityEnabledCache = { value: enabled, expiresAt: Date.now() + 60_000 };
-  if (!enabled) throw new HttpsError("unavailable", "Topluluk şu anda kullanıma kapalı.");
-}
-
-function communityDayKey(): string {
-  return new Date().toISOString().slice(0, 10).replace(/-/g, "");
-}
-
-function timestampMillis(value: unknown): number {
-  if (value instanceof Timestamp) return value.toMillis();
-  if (isRecord(value) && typeof value.seconds === "number") return value.seconds * 1_000;
-  return 0;
-}
-
-function serializeCommunityBook(
-  id: string,
-  book: CommunityBookDoc,
-  viewer?: { liked?: boolean; owned?: boolean }
-): Record<string, unknown> {
-  return {
-    id,
-    userId: book.userId,
-    bookId: book.bookId,
-    title: book.title,
-    description: communityDescriptionForDisplay(book),
-    publisherAlias: book.publisherAlias,
-    coverImageUrl: book.coverImageUrl,
-    bookType: book.bookType,
-    subGenre: book.subGenre,
-    category: book.category,
-    ageGroup: book.ageGroup,
-    language: book.language,
-    tags: book.tags,
-    pageCount: book.pageCount,
-    outline: (Array.isArray(book.outline) ? book.outline : []).map((title) => sanitizeCommunitySectionTitle(title)).filter(Boolean),
-    preview: (Array.isArray(book.preview) ? book.preview : []).map((item) => ({
-      ...item,
-      title: sanitizeCommunitySectionTitle(item.title),
-      content: sanitizeCommunityPreviewContent(item.content)
-    })),
-    previewImages: Array.isArray(book.previewImages) ? book.previewImages.map((image) => ({
-      id: image.id,
-      title: sanitizeCommunitySectionTitle(image.title),
-      url: image.url
-    })).filter((image) => image.url) : [],
-    downloadCount: book.downloadCount,
-    likeCount: book.likeCount,
-    commentCount: book.commentCount,
-    isFeatured: book.isFeatured,
-    hotScore: book.hotScore,
-    publishedAt: timestampMillis(book.publishedAt),
-    updatedAt: timestampMillis(book.updatedAt),
-    isLiked: Boolean(viewer?.liked),
-    isOwned: Boolean(viewer?.owned)
-  };
-}
-
-function validateCommunityAlias(value: unknown): string {
-  const alias = communityText(value, 32);
-  if (!isValidCommunityAlias(alias)) {
-    throw new HttpsError("invalid-argument", "Topluluk rumuzu 2–32 karakter olmalı ve yalnızca harf, rakam, boşluk, nokta, tire veya alt çizgi içermelidir.");
-  }
-  return alias;
-}
-
-function isValidCommunityAlias(value: unknown): boolean {
-  const alias = communityText(value, 32);
-  return alias.length >= 2 && alias.length <= 32 && /^[\p{L}\p{N}][\p{L}\p{N}._ -]*$/u.test(alias);
-}
-
-function automaticCommunityAlias(uid: string): string {
-  return `Fortale-${createHash("sha256").update(uid).digest("hex").slice(0, 12)}`;
-}
-
-async function moderateCommunityContent(text: string, imageUrl?: string): Promise<void> {
-  const apiKey = resolveOpenAiApiKey();
-  if (!apiKey) throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
-  const input: Array<Record<string, unknown>> = [];
-  if (text.trim()) input.push({ type: "text", text: text.slice(0, 90_000) });
-  if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
-    input.push({ type: "image_url", image_url: { url: imageUrl } });
-  }
-  if (input.length === 0) return;
-  const response = await fetch("https://api.openai.com/v1/moderations", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: COMMUNITY_MODERATION_MODEL, input })
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    logger.error("Community moderation request failed", { status: response.status, detail: detail.slice(0, 500) });
-    throw new HttpsError("unavailable", "İçerik güvenlik kontrolü şu anda kullanılamıyor.");
-  }
-  const payload = await response.json() as { results?: Array<{ flagged?: boolean }> };
-  if (payload.results?.some((result) => result.flagged === true)) {
-    throw new HttpsError("failed-precondition", "İçerik topluluk güvenlik kurallarına uygun değil.");
-  }
-}
-
-async function upsertCommunityProfileForUser(params: {
-  uid: string;
-  alias: string;
-  bio?: string;
-  ageConfirmed: boolean;
-  termsAccepted: boolean;
-}): Promise<CommunityProfileDoc> {
-  if (!params.ageConfirmed || !params.termsAccepted) {
-    throw new HttpsError("failed-precondition", "Topluluk için 13+ onayı ve topluluk kuralları kabulü zorunludur.");
-  }
-  const alias = validateCommunityAlias(params.alias);
-  const aliasLower = normalizeCommunitySearch(alias);
-  const bio = communityText(params.bio, 160);
-  await moderateCommunityContent([alias, bio].filter(Boolean).join("\n"));
-  const profileRef = firestore.collection("communityProfiles").doc(params.uid);
-  const aliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(aliasLower).digest("hex"));
-  return firestore.runTransaction(async (tx) => {
-    const [profileSnap, aliasSnap] = await Promise.all([tx.get(profileRef), tx.get(aliasRef)]);
-    const existing = profileSnap.exists ? profileSnap.data() as CommunityProfileDoc : null;
-    const aliasOwnerId = aliasSnap.exists ? communityText(aliasSnap.data()?.userId, 128) : "";
-    if (aliasOwnerId && aliasOwnerId !== params.uid) {
-      throw new HttpsError("already-exists", "Bu topluluk rumuzu kullanılıyor.");
-    }
-    if (existing?.aliasLower && existing.aliasLower !== aliasLower) {
-      const oldAliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(existing.aliasLower).digest("hex"));
-      tx.delete(oldAliasRef);
-    }
-    const now = Timestamp.now();
-    const next: CommunityProfileDoc = {
-      userId: params.uid,
-      alias,
-      aliasLower,
-      bio,
-      ageConfirmedAt: existing?.ageConfirmedAt ?? now,
-      termsAcceptedAt: now,
-      termsVersion: COMMUNITY_TERMS_VERSION,
-      followerCount: existing?.followerCount ?? 0,
-      followingCount: existing?.followingCount ?? 0,
-      publicationCount: existing?.publicationCount ?? 0,
-      totalLikeCount: existing?.totalLikeCount ?? 0,
-      totalDownloadCount: existing?.totalDownloadCount ?? 0,
-      isSuspended: existing?.isSuspended ?? false,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
-    };
-    if (next.isSuspended) throw new HttpsError("permission-denied", "Topluluk erişiminiz kısıtlanmış.");
-    tx.set(profileRef, next);
-    tx.set(aliasRef, { userId: params.uid, alias, updatedAt: now });
-    return next;
-  });
-}
-
-async function requireCommunityProfile(uid: string): Promise<CommunityProfileDoc> {
-  const snap = await firestore.collection("communityProfiles").doc(uid).get();
-  if (!snap.exists) throw new HttpsError("failed-precondition", "Önce topluluk profilinizi oluşturun ve 13+ onayını tamamlayın.");
-  const profile = snap.data() as CommunityProfileDoc;
-  if (profile.isSuspended) throw new HttpsError("permission-denied", "Topluluk erişiminiz kısıtlanmış.");
-  if (profile.termsVersion !== COMMUNITY_TERMS_VERSION) {
-    throw new HttpsError("failed-precondition", "Güncel topluluk kurallarını kabul etmeniz gerekiyor.");
-  }
-  return profile;
-}
-
-async function ensureAutomaticCommunityProfile(uid: string): Promise<CommunityProfileDoc> {
-  const profileRef = firestore.collection("communityProfiles").doc(uid);
-  const fallbackAlias = automaticCommunityAlias(uid);
-  return firestore.runTransaction(async (tx) => {
-    const profileSnap = await tx.get(profileRef);
-    const existing = profileSnap.exists ? profileSnap.data() as CommunityProfileDoc : null;
-    if (existing?.isSuspended) throw new HttpsError("permission-denied", "Topluluk erişiminiz kısıtlanmış.");
-
-    const alias = isValidCommunityAlias(existing?.alias) ? communityText(existing?.alias, 32) : fallbackAlias;
-    const aliasLower = normalizeCommunitySearch(alias);
-    const aliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(aliasLower).digest("hex"));
-    const aliasSnap = await tx.get(aliasRef);
-    const aliasOwnerId = aliasSnap.exists ? communityText(aliasSnap.data()?.userId, 128) : "";
-    const finalAlias = aliasOwnerId && aliasOwnerId !== uid ? fallbackAlias : alias;
-    const finalAliasLower = normalizeCommunitySearch(finalAlias);
-    const finalAliasRef = firestore.collection("communityAliases").doc(createHash("sha256").update(finalAliasLower).digest("hex"));
-    const now = Timestamp.now();
-    const next: CommunityProfileDoc = {
-      userId: uid,
-      alias: finalAlias,
-      aliasLower: finalAliasLower,
-      bio: communityText(existing?.bio, 160),
-      ageConfirmedAt: existing?.ageConfirmedAt ?? now,
-      termsAcceptedAt: existing?.termsAcceptedAt ?? now,
-      termsVersion: COMMUNITY_TERMS_VERSION,
-      followerCount: existing?.followerCount ?? 0,
-      followingCount: existing?.followingCount ?? 0,
-      publicationCount: existing?.publicationCount ?? 0,
-      totalLikeCount: existing?.totalLikeCount ?? 0,
-      totalDownloadCount: existing?.totalDownloadCount ?? 0,
-      isSuspended: false,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
-    };
-    if (existing?.aliasLower && existing.aliasLower !== finalAliasLower) {
-      tx.delete(firestore.collection("communityAliases").doc(createHash("sha256").update(existing.aliasLower).digest("hex")));
-    }
-    tx.set(profileRef, next, { merge: true });
-    tx.set(finalAliasRef, { userId: uid, alias: finalAlias, updatedAt: now }, { merge: true });
-    return next;
-  });
-}
-
-function communityPreviewContent(value: unknown, maxLength = 18_000): string {
-  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
-}
-
-function isGenericCommunityVisualTitle(value: unknown): boolean {
-  const title = communityText(value, 200);
-  return /^(?:g[öo]rsel|image|visual|illustration|page|sayfa)\s*(?:#|no\.?)?\s*\d+(?:\s*\/\s*\d+)?$/iu.test(title);
-}
-
-function sanitizeCommunitySectionTitle(value: unknown): string {
-  const title = communityText(value, 200);
-  return isGenericCommunityVisualTitle(title) ? "" : title;
-}
-
-function sanitizeCommunityPreviewContent(value: unknown): string {
-  return communityPreviewContent(value)
-    .split(/\r?\n/)
-    .filter((line) => {
-      const heading = line.trim().match(/^#{1,6}\s+(.+)$/);
-      return !heading || !isGenericCommunityVisualTitle(heading[1]);
-    })
-    .join("\n")
-    .trim();
-}
-
-const LEGACY_MIXED_DESCRIPTION_PATTERN = /(?:narrative in the|emphasizing coherent plot progression|in the .{0,100}domain, focusing on core mechanisms|anlatısını.{0,100}üslubunda|konusunu.{0,100}alanı bağlamında|yeni başlangıç)/iu;
-
-function communityDescriptionUsesExpectedScript(description: string, language: PreferredLanguage): boolean {
-  const letters = description.match(/\p{L}/gu)?.length || 0;
-  if (letters === 0) return false;
-  const scriptRatio = (pattern: RegExp): number => (description.match(pattern)?.length || 0) / letters;
-  if (language === "ar") return scriptRatio(/[\u0600-\u06ff]/g) >= 0.45;
-  if (language === "el") return scriptRatio(/[\u0370-\u03ff]/g) >= 0.45;
-  if (language === "hi") return scriptRatio(/[\u0900-\u097f]/g) >= 0.45;
-  if (language === "ja") return scriptRatio(/[\u3040-\u30ff\u3400-\u9fff]/g) >= 0.45;
-  if (language === "ko") return scriptRatio(/[\uac00-\ud7af]/g) >= 0.45;
-  if (language === "th") return scriptRatio(/[\u0e00-\u0e7f]/g) >= 0.45;
-  return true;
-}
-
-function isCommunityDescriptionLanguageConsistent(description: string, language: PreferredLanguage): boolean {
-  const compact = communityText(description, 1_000);
-  if (!compact || LEGACY_MIXED_DESCRIPTION_PATTERN.test(compact)) return false;
-  return communityDescriptionUsesExpectedScript(compact, language);
-}
-
-function communityDescriptionForDisplay(book: CommunityBookDoc): string {
-  const description = communityText(book.description, 1_000);
-  const declaredLanguage = resolvePreferredLanguageAlias(book.language);
-  if (!description || !declaredLanguage) return description;
-  if (isCommunityDescriptionLanguageConsistent(description, declaredLanguage)) return description;
-  return buildTopicSpecificBookDescription(
-    book.title,
-    book.category,
-    declaredLanguage,
-    normalizeSmartBookBookType(book.bookType),
-    book.subGenre
-  );
-}
-
-function readableCommunityNodes(manifest: BookBundleManifest): Array<{ id: string; title: string; content: string }> {
-  return (Array.isArray(manifest.nodes) ? manifest.nodes : [])
-    .map((node) => ({
-      id: communityText(node.id, 120),
-      title: sanitizeCommunitySectionTitle(node.title),
-      content: sanitizeCommunityPreviewContent(node.content || node.pageText || node.podcastScript)
-    }))
-    .filter((node) => node.content.length > 0);
-}
-
-function detectCommunityBookLanguage(params: {
-  title: string;
-  description: string;
-  nodes: Array<{ id: string; title: string; content: string }>;
-  fallback?: unknown;
-}): ContentLanguageCode {
-  const contentEvidence = params.nodes
-    .map((node) => node.content)
-    .filter(Boolean)
-    .join("\n")
-    .slice(0, 80_000);
-  const detected = detectContentLanguageCode(contentEvidence, params.description, params.title);
-  if (detected !== "unknown") return detected;
-  return resolvePreferredLanguageAlias(params.fallback) || "unknown";
-}
-
-function communityImageContentTypeFromPath(path: string): string {
-  const lower = path.toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".svg")) return "image/svg+xml";
-  return "image/png";
-}
-
-function communityImageExtensionFromPath(path: string): string {
-  const match = path.toLowerCase().match(/\.([a-z0-9]+)(?:\?|#)?$/);
-  const extension = match?.[1] || "png";
-  if (extension === "jpeg") return "jpg";
-  if (["png", "jpg", "webp", "gif", "svg"].includes(extension)) return extension;
-  return "png";
-}
-
-async function extractCommunityPreviewImages(params: {
-  bucket: ReturnType<typeof getStorage> extends { bucket: () => infer B } ? B : never;
-  zip: JSZip;
-  manifest: BookBundleManifest;
-  communityBookId: string;
-  snapshotVersion: number;
-}): Promise<Array<{ id: string; title: string; url: string; storagePath: string; sourcePath: string }>> {
-  const candidates: Array<{ sourcePath: string; title: string }> = [];
-  const nodes = Array.isArray(params.manifest.nodes) ? params.manifest.nodes : [];
-  for (const node of nodes) {
-    const rawNode = node as TimelineNode & Record<string, unknown>;
-    const sourcePath = firstNonEmptyString(
-      rawNode.pageImageUrl,
-      rawNode.imageUrl,
-      rawNode.illustrationUrl,
-      rawNode.coverImageUrl,
-      rawNode.imagePath,
-      rawNode.assetPath
-    );
-    if (sourcePath) candidates.push({ sourcePath, title: sanitizeCommunitySectionTitle(node.title) });
-  }
-  for (const fileName of Object.keys(params.zip.files)) {
-    if (/^assets\/images\/.+\.(png|jpe?g|webp|gif)$/i.test(fileName)) {
-      const relatedNode = nodes.find((node) => typeof node.id === "string" && fileName.includes(node.id));
-      candidates.push({ sourcePath: fileName, title: sanitizeCommunitySectionTitle(relatedNode?.title) });
-    }
-  }
-
-  const seen = new Set<string>();
-  const result: Array<{ id: string; title: string; url: string; storagePath: string; sourcePath: string }> = [];
-  for (const candidate of candidates) {
-    if (result.length >= 2 || seen.has(candidate.sourcePath)) continue;
-    seen.add(candidate.sourcePath);
-    let buffer: Buffer | null = null;
-    let contentType = communityImageContentTypeFromPath(candidate.sourcePath);
-    let extension = communityImageExtensionFromPath(candidate.sourcePath);
-    const zipPath = candidate.sourcePath.replace(/^\/+/, "");
-    const zipFile = params.zip.file(zipPath);
-    if (zipFile) {
-      buffer = await zipFile.async("nodebuffer");
-    } else if (/^https?:\/\//i.test(candidate.sourcePath)) {
-      const asset = await loadBinaryAssetFromSource(candidate.sourcePath);
-      buffer = asset.buffer;
-      contentType = asset.contentType;
-      extension = asset.extension;
-    }
-    if (!buffer || buffer.length === 0) continue;
-    const token = randomUUID();
-    const storagePath = `communityImages/${params.communityBookId}/v${params.snapshotVersion}/${result.length + 1}.${extension}`;
-    await params.bucket.file(storagePath).save(buffer, {
-      resumable: false,
-      contentType,
-      metadata: { cacheControl: "public,max-age=86400", metadata: { firebaseStorageDownloadTokens: token } }
-    });
-    result.push({
-      id: `preview-image-${result.length + 1}`,
-      title: candidate.title,
-      url: buildFirebaseStorageDownloadUrl(params.bucket.name, storagePath, token),
-      storagePath,
-      sourcePath: candidate.sourcePath
-    });
-  }
-  return result;
-}
-
-async function addCommunityMetric(bookId: string, field: "downloads" | "likes" | "comments", amount: number): Promise<void> {
-  const dayKey = communityDayKey();
-  const ref = firestore.collection("communityMetrics").doc(bookId).collection("days").doc(dayKey);
-  await ref.set({ [field]: FieldValue.increment(amount), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-}
-
-async function addCommunityAnalytics(fields: Record<string, number>): Promise<void> {
-  const increments = Object.fromEntries(
-    Object.entries(fields)
-      .filter(([, value]) => Number.isFinite(value) && value !== 0)
-      .map(([key, value]) => [key, FieldValue.increment(value)])
-  );
-  if (Object.keys(increments).length === 0) return;
-  await firestore.collection("communityAnalyticsDaily").doc(communityDayKey()).set({
-    ...increments,
-    updatedAt: Timestamp.now()
-  }, { merge: true });
-}
-
-async function createCommunityNotification(
-  recipientId: string,
-  type: "follow" | "comment" | "download_reward",
-  actorAlias: string,
-  communityBookId?: string
-): Promise<void> {
-  if (!recipientId) return;
-  await firestore.collection("users").doc(recipientId).collection("communityNotifications").add({
-    type,
-    actorAlias: communityText(actorAlias, 32),
-    communityBookId: communityText(communityBookId, 80),
-    isRead: false,
-    createdAt: FieldValue.serverTimestamp()
-  });
-  const tokenSnap = await firestore.collection("userFcmTokens").doc(recipientId).get();
-  const tokenData = tokenSnap.data() as Record<string, unknown> | undefined;
-  const tokenCandidates = Object.values(tokenData || {})
-    .map((value) => isRecord(value) ? value.token : undefined)
-    .filter((value): value is string => typeof value === "string" && value.length > 20);
-  const tokens = Array.from(new Set(tokenCandidates)).slice(0, 20);
-  if (tokens.length === 0) return;
-  const rateRef = firestore.collection("communityPushRateLimits").doc(`${recipientId}_${communityDayKey()}`);
-  const canSend = await firestore.runTransaction(async (tx) => {
-    const snap = await tx.get(rateRef);
-    const sent = Number(snap.data()?.sent || 0);
-    if (sent >= 5) return false;
-    tx.set(rateRef, { recipientId, dayKey: communityDayKey(), sent: sent + 1, updatedAt: Timestamp.now() }, { merge: true });
-    return true;
-  });
-  if (!canSend) return;
-  await getMessaging().sendEachForMulticast({
-    tokens,
-    notification: {
-      title: "Fortale",
-      body: type === "follow"
-        ? `${actorAlias} seni takip etmeye başladı.`
-        : type === "comment"
-          ? `${actorAlias} kitabına yorum yaptı.`
-          : `Kitabın indirildi; 0.25 kredi kazandın.`
-    },
-    data: { type, communityBookId: communityText(communityBookId, 80) }
-  });
-}
-
-export const upsertCommunityProfile = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB", secrets: [OPENAI_API_KEY] },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const data = isRecord(request.data) ? request.data : {};
-    const profile = await upsertCommunityProfileForUser({
-      uid,
-      alias: communityText(data.alias, 32),
-      bio: communityText(data.bio, 160),
-      ageConfirmed: data.ageConfirmed === true,
-      termsAccepted: data.termsAccepted === true
-    });
-    return { alias: profile.alias, bio: profile.bio, termsVersion: profile.termsVersion };
-  }
-);
-
-export const publishToCommunity = onCall(
-  {
-    region: "us-central1",
-    cors: APP_CORS_ORIGINS,
-    invoker: "public",
-    timeoutSeconds: 120,
-    memory: "1GiB",
-    secrets: [OPENAI_API_KEY]
-  },
-  async (request): Promise<{ communityBookId: string }> => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-
-    const data = isRecord(request.data) ? request.data : {};
-    const bookId = typeof data.bookId === "string" ? data.bookId.trim() : "";
-    const isPublic = data.isPublic !== false;
-    const autoPublish = data.autoPublish === true;
-    if (!bookId) throw new HttpsError("invalid-argument", "bookId zorunludur.");
-
-    const communityBookId = communityBookIdFor(uid, bookId);
-    const communityRef = firestore.collection("communityBooks").doc(communityBookId);
-    if (!isPublic) {
-      const current = await communityRef.get();
-      if (current.exists && current.data()?.userId !== uid) throw new HttpsError("permission-denied", "Bu yayın size ait değil.");
-      if (current.exists && current.data()?.status === "published") {
-        await firestore.runTransaction(async (tx) => {
-          tx.update(communityRef, { status: "unpublished", updatedAt: Timestamp.now() });
-          tx.set(firestore.collection("users").doc(uid).collection("books").doc(bookId), {
-            communityPublication: { id: communityBookId, status: "unpublished", updatedAt: Timestamp.now() }
-          }, { merge: true });
-          tx.set(firestore.collection("communityProfiles").doc(uid), { publicationCount: FieldValue.increment(-1), updatedAt: Timestamp.now() }, { merge: true });
-        });
-      }
-      return { communityBookId };
-    }
-
-    const userSnap = await firestore.collection("users").doc(uid).get();
-    const userData = userSnap.exists ? userSnap.data() : undefined;
-    if (communityText(userData?.legalConsentVersion, 32) !== COMMUNITY_TERMS_VERSION || !userData?.legalConsentAcceptedAt) {
-      throw new HttpsError("failed-precondition", "Güncel Kullanım Şartlarını kabul etmeniz gerekiyor.");
-    }
-
-    if (!autoPublish && data.hasPersonalLikeness === true && data.likenessAccepted !== true) {
-      throw new HttpsError("failed-precondition", "Kişisel benzerliğin toplulukta yayınlanması için ayrıca onay gereklidir.");
-    }
-    const bookRef = firestore.collection("users").doc(uid).collection("books").doc(bookId);
-    const bookSnap = await bookRef.get();
-    if (!bookSnap.exists) throw new HttpsError("not-found", "Kitap bulunamadı.");
-
-    const book = bookSnap.data() as Record<string, unknown>;
-    if (
-      bookId.startsWith("community_") ||
-      communityText(book.sourceType, 40) === "community" ||
-      communityText(book.sourceCommunityBookId, 80) ||
-      communityText(book.communityLicense, 80) === "personal-use" ||
-      book.communityPublishingDisabled === true
-    ) {
-      throw new HttpsError("failed-precondition", "Topluluktan edinilen kişisel lisanslı kitaplar yeniden yayınlanamaz.");
-    }
-
-    const profile = autoPublish
-      ? await ensureAutomaticCommunityProfile(uid)
-      : await upsertCommunityProfileForUser({
-        uid,
-        alias: communityText(data.alias, 32),
-        bio: communityText(data.bio, 160),
-        ageConfirmed: data.ageConfirmed === true,
-        termsAccepted: data.termsAccepted === true
-      });
-
-    const communitySnap = await communityRef.get();
-    const existing = communitySnap.exists ? communitySnap.data() as CommunityBookDoc : null;
-    if (existing && existing.userId !== uid) throw new HttpsError("permission-denied", "Bu yayın size ait değil.");
-
-    const bundlePayload = isRecord(book.bundle) ? book.bundle : {};
-    const sourceBundlePath = firstNonEmptyString(bundlePayload.path, book.contentPackagePath);
-    if (!sourceBundlePath) throw new HttpsError("failed-precondition", "Kitabın yayınlanabilir içerik paketi bulunamadı.");
-    const bucket = getStorage().bucket();
-    const [bundleExists] = await bucket.file(sourceBundlePath).exists();
-    if (!bundleExists) throw new HttpsError("not-found", "Kitap içerik paketi bulunamadı.");
-    const [bundleBuffer] = await bucket.file(sourceBundlePath).download();
-    const zip = await JSZip.loadAsync(bundleBuffer);
-    const manifestFile = zip.file("manifest.json");
-    if (!manifestFile) throw new HttpsError("failed-precondition", "Kitap paketi geçersiz.");
-    const manifest = JSON.parse(await manifestFile.async("string")) as BookBundleManifest;
-    const readableNodes = readableCommunityNodes(manifest);
-    const title = communityText(manifest.title || book.topic, 180);
-    const rawDescription = communityText(manifest.description || book.description, 1_000);
-    const outline = readableNodes.map((node) => node.title).filter(Boolean).slice(0, 40);
-    const preview = readableNodes.slice(0, COMMUNITY_PREVIEW_NODE_COUNT);
-    const moderationText = [title, rawDescription, profile.alias, profile.bio, ...readableNodes.map((node) => `${node.title}\n${node.content}`)].join("\n").slice(0, 90_000);
-    const sourceCover = firstNonEmptyString(book.coverImageUrl, manifest.cover?.url);
-    await moderateCommunityContent(moderationText, sourceCover);
-
-    const nextVersion = Math.max(1, (existing?.snapshotVersion ?? 0) + 1);
-    const snapshotPath = `communityPackages/${communityBookId}/v${nextVersion}/book.zip`;
-    await bucket.file(snapshotPath).save(bundleBuffer, {
-      resumable: false,
-      contentType: "application/zip",
-      metadata: { cacheControl: "private,max-age=0", metadata: { ownerId: uid, communityBookId } }
-    });
-
-    let coverImageUrl = sourceCover || "";
-    let coverStoragePath = existing?.coverStoragePath || "";
-    if (sourceCover) {
-      try {
-        const coverAsset = await loadBinaryAssetFromSource(sourceCover);
-        coverStoragePath = `communityCovers/${communityBookId}/v${nextVersion}/cover.${coverAsset.extension}`;
-        const token = randomUUID();
-        await bucket.file(coverStoragePath).save(coverAsset.buffer, {
-          resumable: false,
-          contentType: coverAsset.contentType,
-          metadata: { cacheControl: "public,max-age=86400", metadata: { firebaseStorageDownloadTokens: token } }
-        });
-        coverImageUrl = buildFirebaseStorageDownloadUrl(bucket.name, coverStoragePath, token);
-      } catch (error) {
-        logger.warn("Community cover snapshot failed; source cover retained", { communityBookId, error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-    const previewImages = await extractCommunityPreviewImages({
-      bucket,
-      zip,
-      manifest,
-      communityBookId,
-      snapshotVersion: nextVersion
-    }).catch((error) => {
-      logger.warn("Community preview images extraction failed", { communityBookId, error: error instanceof Error ? error.message : String(error) });
-      return existing?.previewImages ?? [];
-    });
-
-    const now = Timestamp.now();
-    const bookType = communityText(manifest.bookType || book.bookType, 40) || "story";
-    const bookCreativeBrief = isRecord(book.creativeBrief) ? book.creativeBrief : {};
-    const subGenre = communityText(manifest.subGenre || book.subGenre, 120);
-    const category = communityText(manifest.category || book.category, 120);
-    const language = detectCommunityBookLanguage({
-      title,
-      description: rawDescription,
-      nodes: readableNodes,
-      fallback: manifest.language || book.language
-    });
-    const preferredBookLanguage = language === "unknown" ? null : resolvePreferredLanguageAlias(language);
-    const description = preferredBookLanguage && !isCommunityDescriptionLanguageConsistent(rawDescription, preferredBookLanguage)
-      ? buildTopicSpecificBookDescription(
-        title,
-        category,
-        preferredBookLanguage,
-        normalizeSmartBookBookType(bookType),
-        subGenre
-      )
-      : rawDescription;
-    const ageGroup = bookType === "story"
-      ? communityText(bookCreativeBrief.workbookLevel, 80)
-      : communityText(manifest.ageGroup || book.ageGroup, 80);
-    const tags = Array.isArray(manifest.searchTags) ? manifest.searchTags.map((tag) => communityText(tag, 60)).filter(Boolean).slice(0, 20) : [];
-    const searchText = normalizeCommunitySearch([title, profile.alias, category, subGenre, tags.join(" ")].join(" "));
-    const communityDoc: CommunityBookDoc = {
-      userId: uid,
-      bookId,
-      title,
-      description,
-      publisherAlias: profile.alias,
-      coverImageUrl,
-      coverStoragePath,
-      bookType,
-      subGenre,
-      category,
-      ageGroup,
-      language,
-      searchText,
-      searchKeywords: buildCommunityKeywords(title, profile.alias, category, subGenre, tags.join(" ")),
-      tags,
-      pageCount: Number(manifest.targetPageCount) || readableNodes.length,
-      outline,
-      preview,
-      previewImages,
-      snapshotPath,
-      snapshotVersion: nextVersion,
-      status: "published",
-      moderationStatus: "approved",
-      downloadCount: existing?.downloadCount ?? 0,
-      likeCount: existing?.likeCount ?? 0,
-      commentCount: existing?.commentCount ?? 0,
-      reportCount: existing?.reportCount ?? 0,
-      hotScore: existing?.hotScore ?? 0,
-      isFeatured: existing?.isFeatured ?? false,
-      publishedAt: existing?.publishedAt ?? now,
-      updatedAt: now
-    };
-    await firestore.runTransaction(async (tx) => {
-      tx.set(communityRef, communityDoc);
-      tx.set(bookRef, { communityPublication: { id: communityBookId, status: "published", updatedAt: now } }, { merge: true });
-      if (!existing || existing.status !== "published") {
-        tx.set(firestore.collection("communityProfiles").doc(uid), { publicationCount: FieldValue.increment(1), updatedAt: now }, { merge: true });
-      }
-    });
-    await addCommunityAnalytics({ publicationEvents: 1 }).catch(() => undefined);
-    return { communityBookId };
-  }
-);
-
-export const listCommunityBooks = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "512MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const data = isRecord(request.data) ? request.data : {};
-    const uid = request.auth?.uid || "";
-    const tab = communityText(data.tab, 20) || "discover";
-    const requestedLimit = Number(data.limit);
-    const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(COMMUNITY_LIST_MAX_LIMIT, Math.floor(requestedLimit))) : 24;
-    const bookType = communityText(data.bookType, 40);
-    const language = normalizeCommunitySearch(data.language);
-    const ageGroup = normalizeCommunitySearch(data.ageGroup);
-    const category = normalizeCommunitySearch(data.category);
-    const search = normalizeCommunitySearch(data.search);
-
-    let blockedUserIds = new Set<string>();
-    let followingUserIds = new Set<string>();
-    if (uid) {
-      const [blocksSnap, followsSnap] = await Promise.all([
-        firestore.collection("communityBlocks").where("blockerId", "==", uid).limit(500).get(),
-        tab === "following" ? firestore.collection("communityFollows").where("followerId", "==", uid).limit(500).get() : Promise.resolve(null)
-      ]);
-      blockedUserIds = new Set(blocksSnap.docs.map((doc) => communityText(doc.data().blockedId, 128)).filter(Boolean));
-      if (followsSnap) followingUserIds = new Set(followsSnap.docs.map((doc) => communityText(doc.data().followingId, 128)).filter(Boolean));
-    }
-
-    const sortField = tab === "popular" ? "hotScore" : "publishedAt";
-    const candidateSnap = await firestore.collection("communityBooks")
-      .where("status", "==", "published")
-      .orderBy(sortField, "desc")
-      .limit(Math.max(80, limit * 4))
-      .get();
-    const filteredCandidates = candidateSnap.docs
-      .map((doc) => ({ id: doc.id, book: doc.data() as CommunityBookDoc }))
-      .filter(({ book }) => !blockedUserIds.has(book.userId))
-      .filter(({ book }) => tab !== "following" || followingUserIds.has(book.userId))
-      .filter(({ book }) => !bookType || bookType === "all" || book.bookType === bookType)
-      .filter(({ book }) => !language || language === "all" || normalizeCommunitySearch(book.language) === language)
-      .filter(({ book }) => !ageGroup || ageGroup === "all" || normalizeCommunitySearch(book.ageGroup) === ageGroup)
-      .filter(({ book }) => !category || category === "all" || normalizeCommunitySearch(book.category || book.subGenre) === category)
-      .filter(({ book }) => !search || search.split(" ").every((token) => book.searchText.includes(token)));
-
-    // Older automatic publishing and a later explicit profile publish could
-    // leave two catalogue documents for the same user's exact content. Keep a
-    // single canonical row and prefer the user's chosen alias over the
-    // generated Fortale-xxxxxxxxxxxx alias.
-    const candidates: Array<{ id: string; book: CommunityBookDoc }> = [];
-    const candidateIndexByFingerprint = new Map<string, number>();
-    for (const candidate of filteredCandidates) {
-      const sourceCommunityId = candidate.book.bookId.match(/^community_([a-f0-9]{40})$/i)?.[1] || "";
-      const fingerprints = [
-        `lineage:${sourceCommunityId || candidate.id}`,
-        `content:${[
-          candidate.book.userId,
-          normalizeCommunitySearch(candidate.book.title),
-          normalizeCommunitySearch(communityDescriptionForDisplay(candidate.book))
-        ].join("|")}`
-      ];
-      const existingIndex = fingerprints
-        .map((fingerprint) => candidateIndexByFingerprint.get(fingerprint))
-        .find((index): index is number => index !== undefined);
-      if (existingIndex === undefined) {
-        fingerprints.forEach((fingerprint) => candidateIndexByFingerprint.set(fingerprint, candidates.length));
-        candidates.push(candidate);
-        continue;
-      }
-      const existing = candidates[existingIndex];
-      const existingUsesAutomaticAlias = /^fortale-[a-f0-9]{12}$/i.test(existing.book.publisherAlias || "");
-      const candidateUsesAutomaticAlias = /^fortale-[a-f0-9]{12}$/i.test(candidate.book.publisherAlias || "");
-      if (existingUsesAutomaticAlias && !candidateUsesAutomaticAlias) {
-        candidates[existingIndex] = candidate;
-      }
-      fingerprints.forEach((fingerprint) => candidateIndexByFingerprint.set(fingerprint, existingIndex));
-    }
-    candidates.splice(limit);
-
-    let likedIds = new Set<string>();
-    let ownedIds = new Set<string>();
-    if (uid && candidates.length > 0) {
-      const relationSnaps = await Promise.all(candidates.flatMap(({ id }) => [
-        firestore.collection("communityBooks").doc(id).collection("likes").doc(uid).get(),
-        firestore.collection("communityBooks").doc(id).collection("downloads").doc(uid).get()
-      ]));
-      candidates.forEach(({ id }, index) => {
-        if (relationSnaps[index * 2]?.exists) likedIds.add(id);
-        if (relationSnaps[index * 2 + 1]?.exists) ownedIds.add(id);
-      });
-    }
-    const filters = {
-      languages: Array.from(new Set(candidateSnap.docs.map((doc) => communityText(doc.data().language, 80)).filter(Boolean))).sort(),
-      categories: Array.from(new Set(candidateSnap.docs.map((doc) => communityText(doc.data().category || doc.data().subGenre, 120)).filter(Boolean))).sort(),
-      ageGroups: Array.from(new Set(candidateSnap.docs.map((doc) => communityText(doc.data().ageGroup, 80)).filter(Boolean))).sort()
-    };
-    await addCommunityAnalytics({ catalogLoads: 1 }).catch(() => undefined);
-    return {
-      books: candidates.map(({ id, book }) => serializeCommunityBook(id, book, {
-        liked: likedIds.has(id),
-        owned: ownedIds.has(id) || book.userId === uid
-      })),
-      filters
-    };
-  }
-);
-
-export const getCommunityBook = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid || "";
-    const data = isRecord(request.data) ? request.data : {};
-    const communityBookId = communityText(data.communityBookId, 80);
-    if (!communityBookId) throw new HttpsError("invalid-argument", "communityBookId zorunludur.");
-    const ref = firestore.collection("communityBooks").doc(communityBookId);
-    const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-    const book = snap.data() as CommunityBookDoc;
-    if (book.status !== "published" && book.userId !== uid) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-    if (uid) {
-      const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(uid, book.userId)).get();
-      if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-    }
-    const [likedSnap, ownedSnap, followedSnap, viewerBlocksSnap] = uid ? await Promise.all([
-      ref.collection("likes").doc(uid).get(),
-      ref.collection("downloads").doc(uid).get(),
-      firestore.collection("communityFollows").doc(communityRelationId(uid, book.userId)).get(),
-      firestore.collection("communityBlocks").where("blockerId", "==", uid).limit(500).get()
-    ]) : [null, null, null, null];
-    const canAccessComments = Boolean(uid && (book.userId === uid || ownedSnap?.exists));
-    const commentsSnap = canAccessComments
-      ? await ref.collection("comments").where("status", "==", "visible").orderBy("createdAt", "desc").limit(50).get()
-      : null;
-    const blockedCommenterIds = new Set(viewerBlocksSnap?.docs.map((doc) => communityText(doc.data().blockedId, 128)) || []);
-    await addCommunityAnalytics({ detailViews: 1, previewViews: book.preview.length > 0 ? 1 : 0 }).catch(() => undefined);
-    return {
-      book: serializeCommunityBook(communityBookId, book, { liked: Boolean(likedSnap?.exists), owned: Boolean(ownedSnap?.exists || book.userId === uid) }),
-      isFollowing: Boolean(followedSnap?.exists),
-      comments: (commentsSnap?.docs || []).filter((doc) => !blockedCommenterIds.has(communityText(doc.data().userId, 128))).slice(0, 30).map((doc) => {
-        const comment = doc.data();
-        return {
-          id: doc.id,
-          userId: communityText(comment.userId, 128),
-          alias: communityText(comment.alias, 32),
-          text: communityText(comment.text, COMMUNITY_COMMENT_MAX_LENGTH),
-          createdAt: timestampMillis(comment.createdAt),
-          isMine: uid === comment.userId
-        };
-      })
-    };
-  }
-);
-
-export const toggleCommunityLike = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    await requireCommunityProfile(uid);
-    const communityBookId = communityText(isRecord(request.data) ? request.data.communityBookId : "", 80);
-    const bookRef = firestore.collection("communityBooks").doc(communityBookId);
-    const likeRef = bookRef.collection("likes").doc(uid);
-    const dayKey = communityDayKey();
-    const metricLikeRef = bookRef.collection("metricLikes").doc(`${dayKey}_${createHash("sha256").update(uid).digest("hex").slice(0, 24)}`);
-    const metricDayRef = firestore.collection("communityMetrics").doc(communityBookId).collection("days").doc(dayKey);
-    const result = await firestore.runTransaction(async (tx) => {
-      const [bookSnap, likeSnap, metricLikeSnap] = await Promise.all([tx.get(bookRef), tx.get(likeRef), tx.get(metricLikeRef)]);
-      if (!bookSnap.exists || bookSnap.data()?.status !== "published") throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-      const delta = likeSnap.exists ? -1 : 1;
-      if (likeSnap.exists) {
-        tx.delete(likeRef);
-      } else {
-        tx.set(likeRef, { userId: uid, createdAt: Timestamp.now() });
-        if (!metricLikeSnap.exists) {
-          tx.set(metricLikeRef, { userId: uid, dayKey, createdAt: Timestamp.now() });
-          tx.set(metricDayRef, { likes: FieldValue.increment(1), updatedAt: Timestamp.now() }, { merge: true });
-        }
-      }
-      tx.update(bookRef, { likeCount: FieldValue.increment(delta), updatedAt: Timestamp.now() });
-      tx.set(firestore.collection("communityProfiles").doc(bookSnap.data()?.userId), { totalLikeCount: FieldValue.increment(delta), updatedAt: Timestamp.now() }, { merge: true });
-      return { liked: !likeSnap.exists, likeCount: Math.max(0, Number(bookSnap.data()?.likeCount || 0) + delta) };
-    });
-    await addCommunityAnalytics({ likeAdds: result.liked ? 1 : 0, likeRemovals: result.liked ? 0 : 1 }).catch(() => undefined);
-    return { liked: result.liked, likeCount: result.likeCount };
-  }
-);
-
-export const toggleCommunityFollow = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const actorProfile = await requireCommunityProfile(uid);
-    const followingId = communityText(isRecord(request.data) ? request.data.userId : "", 128);
-    if (!followingId || followingId === uid) throw new HttpsError("invalid-argument", "Geçersiz kullanıcı.");
-    const followRef = firestore.collection("communityFollows").doc(communityRelationId(uid, followingId));
-    const result = await firestore.runTransaction(async (tx) => {
-      const [targetSnap, followSnap] = await Promise.all([tx.get(firestore.collection("communityProfiles").doc(followingId)), tx.get(followRef)]);
-      if (!targetSnap.exists || targetSnap.data()?.isSuspended === true) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
-      const delta = followSnap.exists ? -1 : 1;
-      if (followSnap.exists) tx.delete(followRef); else tx.set(followRef, { followerId: uid, followingId, createdAt: Timestamp.now() });
-      tx.set(firestore.collection("communityProfiles").doc(uid), { followingCount: FieldValue.increment(delta), updatedAt: Timestamp.now() }, { merge: true });
-      tx.set(firestore.collection("communityProfiles").doc(followingId), { followerCount: FieldValue.increment(delta), updatedAt: Timestamp.now() }, { merge: true });
-      return { following: !followSnap.exists, followerCount: Math.max(0, Number(targetSnap.data()?.followerCount || 0) + delta) };
-    });
-    if (result.following) await createCommunityNotification(followingId, "follow", actorProfile.alias).catch(() => undefined);
-    return result;
-  }
-);
-
-export const addCommunityComment = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB", secrets: [OPENAI_API_KEY] },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const profile = await requireCommunityProfile(uid);
-    const data = isRecord(request.data) ? request.data : {};
-    const communityBookId = communityText(data.communityBookId, 80);
-    const text = communityText(data.text, COMMUNITY_COMMENT_MAX_LENGTH);
-    if (!text || text.length > COMMUNITY_COMMENT_MAX_LENGTH) throw new HttpsError("invalid-argument", "Yorum 1–500 karakter olmalıdır.");
-    if (/(?:https?:\/\/|www\.|@[\p{L}\p{N}_]+)/iu.test(text)) throw new HttpsError("invalid-argument", "Yorumlarda bağlantı ve mention kullanılamaz.");
-    await moderateCommunityContent(text);
-    const bookRef = firestore.collection("communityBooks").doc(communityBookId);
-    const bookSnap = await bookRef.get();
-    if (!bookSnap.exists || bookSnap.data()?.status !== "published") throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-    const book = bookSnap.data() as CommunityBookDoc;
-    if (book.userId !== uid) {
-      const ownedSnap = await bookRef.collection("downloads").doc(uid).get();
-      if (!ownedSnap.exists) throw new HttpsError("failed-precondition", "Yorum yapmak için kitabı kitaplığınıza ekleyin.");
-    }
-    const commentRef = bookRef.collection("comments").doc();
-    const now = Timestamp.now();
-    await firestore.runTransaction(async (tx) => {
-      tx.set(commentRef, { userId: uid, alias: profile.alias, text, status: "visible", reportCount: 0, createdAt: now, updatedAt: now });
-      tx.update(bookRef, { commentCount: FieldValue.increment(1), updatedAt: now });
-    });
-    await Promise.all([
-      addCommunityMetric(communityBookId, "comments", 1).catch(() => undefined),
-      addCommunityAnalytics({ comments: 1 }).catch(() => undefined),
-      bookSnap.data()?.userId !== uid ? createCommunityNotification(bookSnap.data()?.userId, "comment", profile.alias, communityBookId).catch(() => undefined) : Promise.resolve()
-    ]);
-    return { comment: { id: commentRef.id, userId: uid, alias: profile.alias, text, createdAt: now.toMillis(), isMine: true } };
-  }
-);
-
-export const deleteCommunityComment = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const data = isRecord(request.data) ? request.data : {};
-    const communityBookId = communityText(data.communityBookId, 80);
-    const commentId = communityText(data.commentId, 120);
-    const bookRef = firestore.collection("communityBooks").doc(communityBookId);
-    const commentRef = bookRef.collection("comments").doc(commentId);
-    await firestore.runTransaction(async (tx) => {
-      const commentSnap = await tx.get(commentRef);
-      if (!commentSnap.exists || commentSnap.data()?.userId !== uid) throw new HttpsError("permission-denied", "Bu yorumu silemezsiniz.");
-      tx.update(commentRef, { status: "deleted", text: "", updatedAt: Timestamp.now() });
-      tx.update(bookRef, { commentCount: FieldValue.increment(-1), updatedAt: Timestamp.now() });
-    });
-    await addCommunityMetric(communityBookId, "comments", -1).catch(() => undefined);
-    await addCommunityAnalytics({ commentDeletes: 1 }).catch(() => undefined);
-    return { ok: true };
-  }
-);
-
-export const blockCommunityUser = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const blockedId = communityText(isRecord(request.data) ? request.data.userId : "", 128);
-    if (!blockedId || blockedId === uid) throw new HttpsError("invalid-argument", "Geçersiz kullanıcı.");
-    await firestore.collection("communityBlocks").doc(communityRelationId(uid, blockedId)).set({ blockerId: uid, blockedId, createdAt: Timestamp.now() });
-    return { ok: true };
-  }
-);
-
-export const reportCommunityContent = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    await requireCommunityProfile(uid);
-    const data = isRecord(request.data) ? request.data : {};
-    const entityType = communityText(data.entityType, 20);
-    const targetId = communityText(data.targetId, 160);
-    const communityBookId = communityText(data.communityBookId, 80);
-    const reason = communityText(data.reason, 300);
-    if (!new Set(["book", "comment", "profile"]).has(entityType) || !targetId || !reason) throw new HttpsError("invalid-argument", "Rapor bilgileri eksik.");
-    const reportRef = firestore.collection("communityReports").doc(communityRelationId(uid, `${entityType}:${targetId}`));
-    await firestore.runTransaction(async (tx) => {
-      const reportSnap = await tx.get(reportRef);
-      if (reportSnap.exists) return;
-      if (entityType === "book") {
-        const targetRef = firestore.collection("communityBooks").doc(targetId);
-        const targetSnap = await tx.get(targetRef);
-        if (!targetSnap.exists) throw new HttpsError("not-found", "İçerik bulunamadı.");
-        const nextCount = Number(targetSnap.data()?.reportCount || 0) + 1;
-        tx.set(reportRef, { reporterId: uid, entityType, targetId, communityBookId, reason, status: "pending", createdAt: Timestamp.now() });
-        tx.update(targetRef, {
-          reportCount: nextCount,
-          ...(nextCount >= COMMUNITY_REPORT_HIDE_THRESHOLD ? { status: "hidden", moderationStatus: "review_required" } : {}),
-          updatedAt: Timestamp.now()
-        });
-      } else if (entityType === "comment") {
-        const targetRef = firestore.collection("communityBooks").doc(communityBookId).collection("comments").doc(targetId);
-        const targetSnap = await tx.get(targetRef);
-        if (!targetSnap.exists) throw new HttpsError("not-found", "Yorum bulunamadı.");
-        const nextCount = Number(targetSnap.data()?.reportCount || 0) + 1;
-        tx.set(reportRef, { reporterId: uid, entityType, targetId, communityBookId, reason, status: "pending", createdAt: Timestamp.now() });
-        tx.update(targetRef, { reportCount: nextCount, ...(nextCount >= COMMUNITY_REPORT_HIDE_THRESHOLD ? { status: "hidden" } : {}), updatedAt: Timestamp.now() });
-      } else {
-        const targetRef = firestore.collection("communityProfiles").doc(targetId);
-        const targetSnap = await tx.get(targetRef);
-        if (!targetSnap.exists) throw new HttpsError("not-found", "Profil bulunamadı.");
-        tx.set(reportRef, { reporterId: uid, entityType, targetId, communityBookId, reason, status: "pending", createdAt: Timestamp.now() });
-      }
-    });
-    await addCommunityAnalytics({ reports: 1 }).catch(() => undefined);
-    return { ok: true };
-  }
-);
-
-export const getCommunityProfile = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const viewerId = request.auth?.uid || "";
-    const requestedId = communityText(isRecord(request.data) ? request.data.userId : "", 128) || viewerId;
-    if (!requestedId) throw new HttpsError("invalid-argument", "userId zorunludur.");
-    if (viewerId) {
-      const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(viewerId, requestedId)).get();
-      if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
-    }
-    const [profileSnap, booksSnap, followSnap] = await Promise.all([
-      firestore.collection("communityProfiles").doc(requestedId).get(),
-      firestore.collection("communityBooks").where("userId", "==", requestedId).where("status", "==", "published").orderBy("publishedAt", "desc").limit(30).get(),
-      viewerId ? firestore.collection("communityFollows").doc(communityRelationId(viewerId, requestedId)).get() : Promise.resolve(null)
-    ]);
-    if (!profileSnap.exists || profileSnap.data()?.isSuspended === true) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
-    const profile = profileSnap.data() as CommunityProfileDoc;
-    return {
-      profile: {
-        userId: requestedId,
-        alias: profile.alias,
-        bio: profile.bio,
-        followerCount: profile.followerCount,
-        followingCount: profile.followingCount,
-        publicationCount: profile.publicationCount,
-        totalLikeCount: profile.totalLikeCount,
-        totalDownloadCount: profile.totalDownloadCount,
-        isFollowing: Boolean(followSnap?.exists),
-        isMine: viewerId === requestedId
-      },
-      books: booksSnap.docs.map((doc) => serializeCommunityBook(doc.id, doc.data() as CommunityBookDoc))
-    };
-  }
-);
-
-export const listCommunityConnections = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const viewerId = request.auth?.uid;
-    if (!viewerId) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const data = isRecord(request.data) ? request.data : {};
-    const requestedId = communityText(data.userId, 128) || viewerId;
-    const type = communityText(data.type, 20) === "following" ? "following" : "followers";
-    if (requestedId !== viewerId) {
-      const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(viewerId, requestedId)).get();
-      if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk profili bulunamadı.");
-    }
-    const relationSnap = type === "followers"
-      ? await firestore.collection("communityFollows").where("followingId", "==", requestedId).limit(100).get()
-      : await firestore.collection("communityFollows").where("followerId", "==", requestedId).limit(100).get();
-    const userIds = relationSnap.docs
-      .sort((a, b) => timestampMillis(b.data().createdAt) - timestampMillis(a.data().createdAt))
-      .map((doc) => communityText(type === "followers" ? doc.data().followerId : doc.data().followingId, 128))
-      .filter(Boolean);
-    const uniqueUserIds = Array.from(new Set(userIds)).slice(0, 100);
-    if (uniqueUserIds.length === 0) return { type, users: [] };
-    const profileRefs = uniqueUserIds.map((userId) => firestore.collection("communityProfiles").doc(userId));
-    const profileSnaps = await firestore.getAll(...profileRefs);
-    const users = profileSnaps
-      .filter((snap) => snap.exists && snap.data()?.isSuspended !== true)
-      .map((snap) => {
-        const profile = snap.data() as CommunityProfileDoc;
-        return {
-          userId: snap.id,
-          alias: profile.alias,
-          bio: profile.bio,
-          followerCount: profile.followerCount,
-          followingCount: profile.followingCount,
-          publicationCount: profile.publicationCount
-        };
-      });
-    return { type, users };
-  }
-);
-
-export const listCommunityNotifications = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const snap = await firestore.collection("users").doc(uid).collection("communityNotifications").orderBy("createdAt", "desc").limit(50).get();
-    return { notifications: snap.docs.map((doc) => ({ id: doc.id, ...doc.data(), createdAt: timestampMillis(doc.data().createdAt) })) };
-  }
-);
-
-export const markCommunityNotificationsRead = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const snapshot = await firestore.collection("users").doc(uid).collection("communityNotifications").where("isRead", "==", false).limit(100).get();
-    const batch = firestore.batch();
-    snapshot.docs.forEach((doc) => batch.update(doc.ref, { isRead: true, readAt: Timestamp.now() }));
-    if (!snapshot.empty) await batch.commit();
-    return { updated: snapshot.size };
-  }
-);
-
-export const deleteMyCommunityData = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 120, memory: "512MiB" },
-  async (request) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const profileRef = firestore.collection("communityProfiles").doc(uid);
-    const [profileSnap, ownedBooks, comments, likes, followsOut, followsIn, blocksOut, blocksIn, reports, notifications] = await Promise.all([
-      profileRef.get(),
-      firestore.collection("communityBooks").where("userId", "==", uid).limit(500).get(),
-      firestore.collectionGroup("comments").where("userId", "==", uid).limit(500).get(),
-      firestore.collectionGroup("likes").where("userId", "==", uid).limit(500).get(),
-      firestore.collection("communityFollows").where("followerId", "==", uid).limit(500).get(),
-      firestore.collection("communityFollows").where("followingId", "==", uid).limit(500).get(),
-      firestore.collection("communityBlocks").where("blockerId", "==", uid).limit(500).get(),
-      firestore.collection("communityBlocks").where("blockedId", "==", uid).limit(500).get(),
-      firestore.collection("communityReports").where("reporterId", "==", uid).limit(500).get(),
-      firestore.collection("users").doc(uid).collection("communityNotifications").limit(500).get()
-    ]);
-    const writer = firestore.bulkWriter();
-    const now = Timestamp.now();
-    ownedBooks.docs.forEach((doc) => writer.update(doc.ref, { status: "removed", moderationStatus: "removed", updatedAt: now }));
-    comments.docs.forEach((doc) => {
-      writer.update(doc.ref, { status: "deleted", text: "", updatedAt: now });
-      const bookRef = doc.ref.parent.parent;
-      if (bookRef) writer.update(bookRef, { commentCount: FieldValue.increment(-1), updatedAt: now });
-    });
-    likes.docs.forEach((doc) => {
-      writer.delete(doc.ref);
-      const bookRef = doc.ref.parent.parent;
-      if (bookRef) writer.update(bookRef, { likeCount: FieldValue.increment(-1), updatedAt: now });
-    });
-    const relationRefs = new Map<string, FirebaseFirestore.DocumentReference>();
-    [...followsOut.docs, ...followsIn.docs, ...blocksOut.docs, ...blocksIn.docs, ...reports.docs, ...notifications.docs]
-      .forEach((doc) => relationRefs.set(doc.ref.path, doc.ref));
-    relationRefs.forEach((ref) => writer.delete(ref));
-    if (profileSnap.exists) {
-      const aliasLower = communityText(profileSnap.data()?.aliasLower, 100);
-      if (aliasLower) writer.delete(firestore.collection("communityAliases").doc(createHash("sha256").update(aliasLower).digest("hex")));
-      writer.delete(profileRef);
-    }
-    await writer.close();
-    return { ok: true };
-  }
-);
-
-export const downloadCommunityBook = onCall(
-  {
-    region: "us-central1",
-    cors: APP_CORS_ORIGINS,
-    invoker: "public",
-    timeoutSeconds: 120,
-    memory: "1GiB"
-  },
-  async (request): Promise<{ wallet: CreditWalletSnapshot; communityBook: Record<string, unknown>; bookId: string; alreadyOwned: boolean }> => {
-    await assertCommunityEnabled();
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Giriş yapmanız gerekiyor.");
-    const downloaderProfile = await requireCommunityProfile(uid);
-
-    const data = isRecord(request.data) ? request.data : {};
-    const communityBookId = typeof data.communityBookId === "string" ? data.communityBookId.trim() : "";
-    if (!communityBookId) throw new HttpsError("invalid-argument", "communityBookId zorunludur.");
-
-    const communityRef = firestore.collection("communityBooks").doc(communityBookId);
-    const communitySnap = await communityRef.get();
-    if (!communitySnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-
-    const communityBook = communitySnap.data() as CommunityBookDoc;
-    if (communityBook.status !== "published") throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-    if (communityBook.userId === uid) throw new HttpsError("failed-precondition", "Kendi kitabınızı indiremezsiniz.");
-
-    const blockSnap = await firestore.collection("communityBlocks").doc(communityRelationId(uid, communityBook.userId)).get();
-    if (blockSnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-
-    const downloadRef = communityRef.collection("downloads").doc(uid);
-    const previousDownload = await downloadRef.get();
-    if (previousDownload.exists) {
-      const currentWalletSnap = await getCreditWalletRef(uid).get();
-      return {
-        wallet: normalizeCreditWalletSnapshot(currentWalletSnap.data()) ?? buildStarterCreditWallet(),
-        communityBook: serializeCommunityBook(communityBookId, communityBook, { owned: true }),
-        bookId: communityText(previousDownload.data()?.privateBookId, 160),
-        alreadyOwned: true
-      };
-    }
-
-    const bucket = getStorage().bucket();
-    const sourceFile = bucket.file(communityBook.snapshotPath);
-    const [sourceExists] = await sourceFile.exists();
-    if (!sourceExists) throw new HttpsError("not-found", "Topluluk kitap paketi bulunamadı.");
-    const [sourceBuffer] = await sourceFile.download();
-    const privateBookId = `community_${communityBookId}`;
-    const privateBundlePath = `smartbooks/${sanitizeBundlePathPart(uid, "user")}/${privateBookId}/v1/book.zip`;
-    const zip = await JSZip.loadAsync(sourceBuffer);
-    const manifestFile = zip.file("manifest.json");
-    if (!manifestFile) throw new HttpsError("failed-precondition", "Topluluk kitap paketi geçersiz.");
-    const manifest = JSON.parse(await manifestFile.async("string")) as BookBundleManifest;
-    const nowIso = new Date().toISOString();
-    manifest.id = privateBookId;
-    manifest.userId = uid;
-    manifest.creatorName = communityBook.publisherAlias;
-    manifest.createdAt = nowIso;
-    manifest.lastActivity = nowIso;
-    manifest.generatedAt = nowIso;
-    zip.file("manifest.json", JSON.stringify(manifest, null, 2));
-    const privateBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } });
-    const privateToken = randomUUID();
-    await bucket.file(privateBundlePath).save(privateBuffer, {
-      resumable: false,
-      contentType: "application/zip",
-      metadata: { cacheControl: "private,max-age=0", metadata: { firebaseStorageDownloadTokens: privateToken, ownerId: uid } }
-    });
-    const privateBundleUrl = buildFirebaseStorageDownloadUrl(bucket.name, privateBundlePath, privateToken);
-    const checksumSha256 = createHash("sha256").update(privateBuffer).digest("hex");
-
-    const walletRef = getCreditWalletRef(uid);
-    const creatorWalletRef = getCreditWalletRef(communityBook.userId);
-    const privateBookRef = firestore.collection("users").doc(uid).collection("books").doc(privateBookId);
-    const transactionResult = await firestore.runTransaction(async (tx) => {
-      const [walletSnap, creatorWalletSnap, downloadSnap] = await Promise.all([tx.get(walletRef), tx.get(creatorWalletRef), tx.get(downloadRef)]);
-      if (downloadSnap.exists) {
-        return {
-          wallet: normalizeCreditWalletSnapshot(walletSnap.data()) ?? buildStarterCreditWallet(),
-          alreadyOwned: true
-        };
-      }
-      const existing = normalizeCreditWalletSnapshot(walletSnap.data()) ?? buildStarterCreditWallet();
-      if (existing.createCredits < COMMUNITY_DOWNLOAD_COST) {
-        throw new HttpsError("resource-exhausted", "Yetersiz kredi. İndirme için 0.5 kredi gerekiyor.");
-      }
-      const downloadDebit = debitCreditWallet(existing, COMMUNITY_DOWNLOAD_COST);
-      const updatedWallet = downloadDebit.wallet;
-      const creatorWallet = normalizeCreditWalletSnapshot(creatorWalletSnap.data()) ?? buildStarterCreditWallet();
-      const creatorCommunityEarnedCredits = roundCreditAmount(creatorWallet.communityEarnedCredits + COMMUNITY_CREATOR_REWARD);
-      const updatedCreatorWallet: CreditWalletSnapshot = {
-        purchasedCredits: creatorWallet.purchasedCredits,
-        communityEarnedCredits: creatorCommunityEarnedCredits,
-        createCredits: roundCreditAmount(creatorWallet.purchasedCredits + creatorCommunityEarnedCredits)
-      };
-      const now = Timestamp.now();
-      tx.set(walletRef, {
-        uid,
-        ...updatedWallet,
-        createdAt: walletSnap.exists
-          ? walletSnap.data()?.createdAt ?? FieldValue.serverTimestamp()
-          : FieldValue.serverTimestamp(),
-        updatedAt: now
-      }, { merge: true });
-      tx.set(creatorWalletRef, {
-        uid: communityBook.userId,
-        ...updatedCreatorWallet,
-        createdAt: creatorWalletSnap.exists ? creatorWalletSnap.data()?.createdAt ?? now : now,
-        updatedAt: now
-      }, { merge: true });
-      tx.set(privateBookRef, {
-        id: privateBookId,
-        userId: uid,
-        topic: communityBook.title,
-        description: communityBook.description,
-        creatorName: communityBook.publisherAlias,
-        language: communityBook.language || null,
-        ageGroup: communityBook.ageGroup || null,
-        bookType: communityBook.bookType || "story",
-        subGenre: communityBook.subGenre || null,
-        category: communityBook.category || null,
-        coverImageUrl: communityBook.coverImageUrl || null,
-        contentPackageUrl: privateBundleUrl,
-        contentPackagePath: privateBundlePath,
-        bundle: { path: privateBundlePath, version: 1, checksumSha256, sizeBytes: privateBuffer.byteLength, includesPodcast: Boolean(manifest.includesPodcast), generatedAt: now },
-        status: "ready",
-        nodes: [],
-        sourceType: "community",
-        sourceCommunityBookId: communityBookId,
-        communityLicense: "personal-use",
-        createdAt: now,
-        lastActivity: now
-      });
-      tx.set(downloadRef, {
-        userId: uid,
-        privateBookId,
-        chargedCredits: COMMUNITY_DOWNLOAD_COST,
-        chargedFromPurchasedCredits: downloadDebit.debit.purchasedCredits,
-        chargedFromCommunityEarnedCredits: downloadDebit.debit.communityEarnedCredits,
-        creatorReward: COMMUNITY_CREATOR_REWARD,
-        createdAt: now
-      });
-      tx.update(communityRef, { downloadCount: FieldValue.increment(1), updatedAt: now });
-      tx.set(firestore.collection("communityProfiles").doc(communityBook.userId), { totalDownloadCount: FieldValue.increment(1), updatedAt: now }, { merge: true });
-      return { wallet: updatedWallet, alreadyOwned: false };
-    });
-    if (!transactionResult.alreadyOwned) {
-      await Promise.all([
-        addCommunityMetric(communityBookId, "downloads", 1).catch(() => undefined),
-        addCommunityAnalytics({ downloads: 1, creatorRewards: 1 }).catch(() => undefined),
-        createCommunityNotification(communityBook.userId, "download_reward", downloaderProfile.alias, communityBookId).catch(() => undefined)
-      ]);
-    }
-    return {
-      wallet: transactionResult.wallet,
-      communityBook: serializeCommunityBook(communityBookId, communityBook, { owned: true }),
-      bookId: privateBookId,
-      alreadyOwned: transactionResult.alreadyOwned
-    };
-  }
-);
-
-export const moderateCommunityItem = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (request) => {
-    await assertOpsAdminAccess(request);
-    const data = isRecord(request.data) ? request.data : {};
-    const communityBookId = communityText(data.communityBookId, 80);
-    const entityType = communityText(data.entityType, 20) || "book";
-    const targetId = communityText(data.targetId, 160) || communityBookId;
-    const action = communityText(data.action, 30);
-    if (!new Set(["restore", "remove", "suspend_creator"]).has(action)) throw new HttpsError("invalid-argument", "Geçersiz moderasyon işlemi.");
-    let ownerId = "";
-    if (entityType === "book") {
-      const bookRef = firestore.collection("communityBooks").doc(targetId);
-      const bookSnap = await bookRef.get();
-      if (!bookSnap.exists) throw new HttpsError("not-found", "Topluluk kitabı bulunamadı.");
-      ownerId = communityText(bookSnap.data()?.userId, 128);
-      if (action === "restore") await bookRef.update({ status: "published", moderationStatus: "approved", reportCount: 0, updatedAt: Timestamp.now() });
-      if (action === "remove") await bookRef.update({ status: "removed", moderationStatus: "removed", updatedAt: Timestamp.now() });
-    } else if (entityType === "comment") {
-      const commentRef = firestore.collection("communityBooks").doc(communityBookId).collection("comments").doc(targetId);
-      const commentSnap = await commentRef.get();
-      if (!commentSnap.exists) throw new HttpsError("not-found", "Yorum bulunamadı.");
-      ownerId = communityText(commentSnap.data()?.userId, 128);
-      if (action === "restore") await commentRef.update({ status: "visible", reportCount: 0, updatedAt: Timestamp.now() });
-      if (action === "remove") await commentRef.update({ status: "removed", updatedAt: Timestamp.now() });
-    } else if (entityType === "profile") {
-      ownerId = targetId;
-      if (action === "restore") await firestore.collection("communityProfiles").doc(ownerId).update({ isSuspended: false, updatedAt: Timestamp.now() });
-      if (action === "remove") await firestore.collection("communityProfiles").doc(ownerId).update({ isSuspended: true, updatedAt: Timestamp.now() });
-    }
-    if (action === "suspend_creator") {
-      if (!ownerId) throw new HttpsError("not-found", "Üretici profili bulunamadı.");
-      await firestore.collection("communityProfiles").doc(ownerId).set({ isSuspended: true, updatedAt: Timestamp.now() }, { merge: true });
-    }
-    const matchingReports = await firestore.collection("communityReports").where("entityType", "==", entityType).where("targetId", "==", targetId).where("status", "==", "pending").limit(100).get();
-    const batch = firestore.batch();
-    matchingReports.docs.forEach((report) => batch.update(report.ref, { status: "resolved", resolution: action, resolvedAt: Timestamp.now() }));
-    if (!matchingReports.empty) await batch.commit();
-    const responseMs = matchingReports.docs.reduce((sum, report) => sum + Math.max(0, Date.now() - timestampMillis(report.data().createdAt)), 0);
-    await addCommunityAnalytics({ moderationResolved: matchingReports.size, moderationResponseMsTotal: responseMs }).catch(() => undefined);
-    return { ok: true };
-  }
-);
-
-export const listCommunityModerationQueue = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 60, memory: "512MiB" },
-  async (request) => {
-    await assertOpsAdminAccess(request);
-    const reportsSnap = await firestore.collection("communityReports").where("status", "==", "pending").orderBy("createdAt", "desc").limit(100).get();
-    const items = await Promise.all(reportsSnap.docs.map(async (reportDoc) => {
-      const report = reportDoc.data();
-      const entityType = communityText(report.entityType, 20);
-      const targetId = communityText(report.targetId, 160);
-      const communityBookId = communityText(report.communityBookId, 80);
-      let preview: Record<string, unknown> = {};
-      if (entityType === "book") {
-        const snap = await firestore.collection("communityBooks").doc(targetId).get();
-        if (snap.exists) {
-          const book = snap.data() as CommunityBookDoc;
-          preview = { title: book.title, description: book.description, coverImageUrl: book.coverImageUrl, ownerId: book.userId, status: book.status };
-        }
-      } else if (entityType === "comment") {
-        const snap = await firestore.collection("communityBooks").doc(communityBookId).collection("comments").doc(targetId).get();
-        if (snap.exists) preview = { text: communityText(snap.data()?.text, COMMUNITY_COMMENT_MAX_LENGTH), alias: communityText(snap.data()?.alias, 32), ownerId: communityText(snap.data()?.userId, 128), status: communityText(snap.data()?.status, 20) };
-      } else if (entityType === "profile") {
-        const snap = await firestore.collection("communityProfiles").doc(targetId).get();
-        if (snap.exists) preview = { alias: communityText(snap.data()?.alias, 32), bio: communityText(snap.data()?.bio, 160), ownerId: targetId, status: snap.data()?.isSuspended === true ? "suspended" : "active" };
-      }
-      return {
-        id: reportDoc.id,
-        entityType,
-        targetId,
-        communityBookId,
-        reason: communityText(report.reason, 300),
-        createdAt: timestampMillis(report.createdAt),
-        preview
-      };
-    }));
-    return { items };
-  }
-);
-
-export const migrateLegacyCommunityBooks = onCall(
-  { region: "us-central1", cors: APP_CORS_ORIGINS, invoker: "public", timeoutSeconds: 120, memory: "512MiB" },
-  async (request) => {
-    await assertOpsAdminAccess(request);
-    const snapshot = await firestore.collection("communityBooks").limit(500).get();
-    let migrated = 0;
-    let batch = firestore.batch();
-    let operations = 0;
-    for (const legacyDoc of snapshot.docs) {
-      const data = legacyDoc.data() as Record<string, unknown>;
-      if (typeof data.status === "string") continue;
-      const userId = communityText(data.userId, 128);
-      const bookId = communityText(data.bookId, 160) || legacyDoc.id;
-      if (!userId || !bookId) continue;
-      const nextId = communityBookIdFor(userId, bookId);
-      const now = Timestamp.now();
-      batch.set(firestore.collection("communityBooks").doc(nextId), {
-        userId,
-        bookId,
-        title: communityText(data.title, 180) || "İsimsiz Kitap",
-        description: "",
-        publisherAlias: "Fortale",
-        coverImageUrl: communityText(data.coverImageUrl, 2_000),
-        coverStoragePath: "",
-        bookType: communityText(data.bookType, 40) || "story",
-        subGenre: communityText(data.subGenre, 120),
-        category: communityText(data.category, 120),
-        ageGroup: communityText(data.ageGroup, 80),
-        language: communityText(data.language, 80),
-        searchText: normalizeCommunitySearch([data.title, data.subGenre, data.category].join(" ")),
-        searchKeywords: buildCommunityKeywords(data.title, data.subGenre, data.category),
-        tags: [],
-        pageCount: 0,
-        outline: [],
-        preview: [],
-        snapshotPath: "",
-        snapshotVersion: 0,
-        // Legacy records need an explicit republish to create a moderated,
-        // immutable snapshot and collect the current rights/13+ consent.
-        status: "unpublished",
-        moderationStatus: "review_required",
-        downloadCount: Number(data.downloadCount || 0),
-        likeCount: Number(data.likeCount || 0),
-        commentCount: 0,
-        reportCount: Number(data.reportCount || 0),
-        hotScore: 0,
-        isFeatured: data.isFeatured === true,
-        publishedAt: data.publishedAt instanceof Timestamp ? data.publishedAt : now,
-        updatedAt: now
-      }, { merge: true });
-      if (nextId !== legacyDoc.id) batch.delete(legacyDoc.ref);
-      migrated += 1;
-      operations += nextId === legacyDoc.id ? 1 : 2;
-      if (operations >= 400) {
-        await batch.commit();
-        batch = firestore.batch();
-        operations = 0;
-      }
-    }
-    if (operations > 0) await batch.commit();
-    return { migrated };
-  }
-);
-
-export const recomputeCommunityHotScores = onSchedule(
-  { region: "us-central1", schedule: "every 6 hours", timeZone: "UTC", timeoutSeconds: 300, memory: "512MiB" },
-  async () => {
-    const booksSnap = await firestore.collection("communityBooks").where("status", "==", "published").limit(500).get();
-    const today = new Date();
-    const dayKeys = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(today);
-      date.setUTCDate(today.getUTCDate() - index);
-      return date.toISOString().slice(0, 10).replace(/-/g, "");
-    });
-    let batch = firestore.batch();
-    let writes = 0;
-    for (const bookDoc of booksSnap.docs) {
-      const metricSnaps = await Promise.all(dayKeys.map((dayKey) => firestore.collection("communityMetrics").doc(bookDoc.id).collection("days").doc(dayKey).get()));
-      const totals = metricSnaps.reduce((sum, snap) => ({
-        downloads: sum.downloads + Number(snap.data()?.downloads || 0),
-        likes: sum.likes + Number(snap.data()?.likes || 0),
-        comments: sum.comments + Number(snap.data()?.comments || 0)
-      }), { downloads: 0, likes: 0, comments: 0 });
-      const ageDays = Math.max(0, (Date.now() - timestampMillis(bookDoc.data().publishedAt)) / 86_400_000);
-      const hotScore = Math.max(0, (4 * totals.downloads + 2 * totals.likes + totals.comments) / Math.pow(1 + ageDays / 30, 0.35));
-      batch.update(bookDoc.ref, { hotScore, hotScoreUpdatedAt: Timestamp.now() });
-      writes += 1;
-      if (writes >= 400) {
-        await batch.commit();
-        batch = firestore.batch();
-        writes = 0;
-      }
-    }
-    if (writes > 0) await batch.commit();
-    logger.info("Community hot scores recomputed", { books: booksSnap.size });
-  }
-);

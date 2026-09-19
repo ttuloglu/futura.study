@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { ArrowRight, KeyRound, Mail } from 'lucide-react';
 import FaviconSpinner from '../components/FaviconSpinner';
+import FLogo from '../components/FLogo';
 import {
   browserPopupRedirectResolver,
   GoogleAuthProvider,
@@ -513,7 +514,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
             <div className="fortale-login-card relative z-10 w-full max-w-[440px] mx-auto space-y-5">
             <div className="flex w-full items-center justify-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center">
-                <img src="/favicon-red.svg" alt="Fortale logo" className="h-9 w-9" />
+                <FLogo size={36} />
               </div>
               <div className="min-w-0">
                 <h1 className="text-xl font-semibold tracking-tight text-white">Fortale</h1>
@@ -582,7 +583,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                 }}
               >
                 {isEmailBusy || isCodeBusy ? (
-                  <FaviconSpinner size={16} />
+                  <FaviconSpinner size={20} />
                 ) : authStep === 'email' ? (
                   <>
                     <span className="text-[14px] font-semibold">{t('Kodu gönder')}</span>
@@ -642,7 +643,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                   style={inputStyle}
                 >
                   {isBusy && activeAction === 'google' ? (
-                    <FaviconSpinner size={16} />
+                    <FaviconSpinner size={20} />
                   ) : (
                     <SocialIconFrame>
                       <GoogleMark />
@@ -657,7 +658,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
                   style={inputStyle}
                 >
                   {isBusy && activeAction === 'apple' ? (
-                    <FaviconSpinner size={16} />
+                    <FaviconSpinner size={20} />
                   ) : (
                     <SocialIconFrame>
                       <AppleMark />

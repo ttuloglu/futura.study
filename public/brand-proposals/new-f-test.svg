@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <rect width="1024" height="1024" rx="224" fill="#000000"/>
+  <!-- Sol taraf: 3 dikey çubuk (merkez 512 Y ekseninde) -->
+  <!-- 1. Sol en baş: Turuncu kısa -->
+  <rect x="182" y="452" width="60" height="120" rx="30" fill="#F59E0B"/>
+  <!-- 2. Orta sol: Beyaz orta boy -->
+  <rect x="282" y="372" width="60" height="280" rx="30" fill="#FFFFFF"/>
+  <!-- 3. İç sol: Beyaz uzun boy -->
+  <rect x="382" y="277" width="60" height="470" rx="30" fill="#FFFFFF"/>
+
+  <!-- Merkez: En uzun dikey beyaz omurga (X=512 tam ortada) -->
+  <rect x="482" y="172" width="60" height="680" rx="30" fill="#FFFFFF"/>
+
+  <!-- Sağ taraf (F kısmı): -->
+  <!-- 5 & 6. Üst kol: 2 adet aynı boyda yatay beyaz çubuk -->
+  <rect x="582" y="172" width="260" height="60" rx="30" fill="#FFFFFF"/>
+  <rect x="582" y="272" width="260" height="60" rx="30" fill="#FFFFFF"/>
+
+  <!-- 7 & 8. Orta kol: 2 adet yatay turuncu çubuk -->
+  <rect x="582" y="422" width="180" height="60" rx="30" fill="#F59E0B"/>
+  <rect x="582" y="522" width="180" height="60" rx="30" fill="#F59E0B"/>
+</svg>

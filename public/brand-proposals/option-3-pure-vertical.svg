@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="80" fill="#000000"/>
+  <!-- 1. Kolon: Sol ana omurga -->
+  <rect x="200" y="172" width="60" height="680" rx="30" fill="#FFFFFF"/>
+  <!-- 2. Kolon: Sayfa ve ses çizgileri -->
+  <rect x="320" y="172" width="60" height="190" rx="30" fill="#FFFFFF"/>
+  <rect x="320" y="420" width="60" height="180" rx="30" fill="#F59E0B"/>
+  <!-- 3. Kolon: F orta ve üst uzantısı -->
+  <rect x="440" y="172" width="60" height="190" rx="30" fill="#FFFFFF"/>
+  <rect x="440" y="420" width="60" height="180" rx="30" fill="#FFFFFF"/>
+  <!-- 4. Kolon: F üst kol ucu -->
+  <rect x="560" y="172" width="60" height="190" rx="30" fill="#FFFFFF"/>
+  <!-- 5. Kolon: F üst kanadı -->
+  <rect x="680" y="172" width="60" height="190" rx="30" fill="#FFFFFF"/>
+</svg>

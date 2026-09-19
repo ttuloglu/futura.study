@@ -372,7 +372,17 @@ export function ScreenshotEditor() {
       toast.error("Nothing to export");
       return;
     }
-    const locales = state.locales;
+    const requestedLocales =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+            .get("locales")
+            ?.split(",")
+            .map((locale) => locale.trim())
+            .filter(Boolean)
+        : undefined;
+    const locales = requestedLocales?.length
+      ? state.locales.filter((locale) => requestedLocales.includes(locale))
+      : state.locales;
     await preloadImages(assetPaths, { retryFailed: true });
     await waitForPaint();
 
@@ -457,18 +467,33 @@ export function ScreenshotEditor() {
     }
 
     setExportLocaleOverride(null);
-    setExporting(null);
 
     if (okCount > 0) {
       try {
         const blob = await zip.generateAsync({ type: "blob" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${slugify(state.appName)}-${platform}-${state.device}-${stamp()}.zip`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        const fastlaneMode =
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("fastlane") === "1";
+        if (fastlaneMode) {
+          const response = await fetch(
+            `/api/export?device=${encodeURIComponent(state.device)}&locales=${encodeURIComponent(locales.join(","))}`,
+            { method: "POST", body: blob },
+          );
+          if (!response.ok) throw new Error(`Fastlane export save failed (${response.status})`);
+          console.info("Fastlane export saved", await response.json());
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const localeSuffix = requestedLocales?.length
+            ? `-${locales.map((locale) => slugify(locale)).join("-")}`
+            : "";
+          a.download = `${slugify(state.appName)}-${platform}-${state.device}${localeSuffix}-${stamp()}.zip`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
       } catch (e) {
+        setExporting(null);
         toast.error("Couldn't bundle export");
         console.error(e);
         return;
@@ -487,6 +512,7 @@ export function ScreenshotEditor() {
         description: errors.slice(0, 3).join("\n"),
       });
     }
+    setExporting(null);
   }
 
   async function captureSlide(

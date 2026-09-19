@@ -1,5 +1,6 @@
 import React, { lazy, startTransition, Suspense, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
@@ -51,7 +52,6 @@ import {
 import { normalizeMarkdownNarrativeLayout } from './utils/markdownLayout';
 
 import HomeView from './views/HomeView';
-import CommunityView from './views/CommunityView';
 import CourseFlowView from './views/CourseFlowView';
 import PersonalGrowthView from './views/PersonalGrowthView';
 import ProfileView from './views/ProfileView';
@@ -62,6 +62,14 @@ import OnboardingView from './views/OnboardingView';
 import SettingsModal from './components/SettingsModal';
 import CreditPaywallModal from './components/CreditPaywallModal';
 import LoginPromptModal from './components/LoginPromptModal';
+import {
+  addAppNotification,
+  clearAppNotifications,
+  countUnreadAppNotifications,
+  markAllAppNotificationsRead,
+  readAppNotifications,
+  subscribeToAppNotifications
+} from './utils/appNotificationCenter';
 
 const LOCAL_COURSE_KEY_PREFIX = 'f-study-courses';
 const LOCAL_FULL_COURSE_CACHE_KEY_PREFIX = 'f-study-full-courses';
@@ -112,11 +120,6 @@ const FREE_STARTER_CREDITS: CreditWallet = {
   communityEarnedCredits: 0,
   createCredits: 3
 };
-const DEFAULT_ACTION_CREDIT_COST: Record<CreditActionType, number> = { create: 1, community_download: 0.5 };
-const autoPublishToCommunity = httpsCallable<
-  { bookId: string; isPublic: true; autoPublish: true; rightsAccepted: true; termsAccepted: true; ageConfirmed: true },
-  { communityBookId: string }
->(functions, 'publishToCommunity');
 const CREDIT_PACKS: CreditPackOption[] = [
   { id: 'pack-5', createCredits: 10, priceUsd: 5.99 },
   { id: 'pack-15', createCredits: 25, priceUsd: 12.99 },
@@ -403,8 +406,6 @@ const repairSmartBookCover = httpsCallable<{ bookId: string }, RepairSmartBookCo
   'repairSmartBookCover',
   { timeout: 120_000 }
 );
-const deleteMyCommunityData = httpsCallable<Record<string, never>, { ok: boolean }>(functions, 'deleteMyCommunityData');
-
 function sortCoursesByLastActivity(courses: CourseData[]): CourseData[] {
   return [...courses].sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
 }
@@ -501,6 +502,46 @@ function resolveInitialAppLanguageSetup(): InitialAppLanguageSetup {
   };
 }
 
+function isDeviceOnlyAssetUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim();
+  if (!normalized) return false;
+  return (
+    /^(?:capacitor|file|ionic):\/\//i.test(normalized) ||
+    /^https?:\/{2}(?:localhost|127\.0\.0\.1)\/_capacitor_file_/i.test(normalized)
+  );
+}
+
+function firstPortableCoverUrl(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim();
+    if (!normalized || isDeviceOnlyAssetUrl(normalized)) continue;
+    return normalized;
+  }
+  return undefined;
+}
+
+function firstCloudSafeCoverUrl(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const normalized = firstPortableCoverUrl(value);
+    if (!normalized || DATA_IMAGE_URL_PREFIX_RE.test(normalized) || isTransientBlobUrl(normalized)) continue;
+    return normalized;
+  }
+  return undefined;
+}
+
+function firstDisplayableCoverUrl(...values: unknown[]): string | undefined {
+  if (isCapacitorNativeRuntime()) {
+    for (const value of values) {
+      if (typeof value !== 'string') continue;
+      const normalized = value.trim();
+      if (normalized) return normalized;
+    }
+  }
+  return firstPortableCoverUrl(...values);
+}
+
 function buildCourseMetadataPayload(course: CourseData): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     topic: resolveCourseTopic(course.topic),
@@ -519,7 +560,8 @@ function buildCourseMetadataPayload(course: CourseData): Record<string, unknown>
   if (typeof course.category === 'string') payload.category = course.category;
   if (Array.isArray(course.searchTags) && course.searchTags.length > 0) payload.searchTags = course.searchTags;
   if (typeof course.totalDuration === 'string') payload.totalDuration = course.totalDuration;
-  if (typeof course.coverImageUrl === 'string') payload.coverImageUrl = course.coverImageUrl;
+  const cloudSafeCoverUrl = firstCloudSafeCoverUrl(course.coverImageUrl, course.cover?.url);
+  if (cloudSafeCoverUrl) payload.coverImageUrl = cloudSafeCoverUrl;
   if (typeof course.contentPackageUrl === 'string') payload.contentPackageUrl = course.contentPackageUrl;
   if (typeof course.contentPackagePath === 'string') payload.contentPackagePath = course.contentPackagePath;
   if (course.contentPackageUpdatedAt instanceof Date && !Number.isNaN(course.contentPackageUpdatedAt.getTime())) {
@@ -669,12 +711,8 @@ function buildBookDocumentPayload(
   if (typeof course.cover?.path === 'string' && course.cover.path.trim()) {
     nextCover.path = course.cover.path.trim();
   }
-  const coverUrlCandidate = (typeof course.cover?.url === 'string' && course.cover.url.trim())
-    ? course.cover.url.trim()
-    : (typeof course.coverImageUrl === 'string' && course.coverImageUrl.trim())
-      ? course.coverImageUrl.trim()
-      : null;
-  if (coverUrlCandidate && !DATA_IMAGE_URL_PREFIX_RE.test(coverUrlCandidate) && !coverUrlCandidate.startsWith('blob:')) {
+  const coverUrlCandidate = firstCloudSafeCoverUrl(course.coverImageUrl, course.cover?.url);
+  if (coverUrlCandidate) {
     nextCover.url = coverUrlCandidate;
   }
 
@@ -3004,11 +3042,7 @@ function fromStoredCourse(raw: unknown): CourseData | null {
   const resolvedContentPackagePath = resolvedBundlePath
     || normalizeStorageObjectPath(item.contentPackagePath)
     || normalizeStorageObjectPath(bundlePayload?.path);
-  const resolvedCoverImageUrl = (
-    typeof item.coverImageUrl === 'string'
-      ? item.coverImageUrl
-      : (typeof coverPayload?.url === 'string' ? coverPayload.url : undefined)
-  );
+  const resolvedCoverImageUrl = firstDisplayableCoverUrl(item.coverImageUrl, coverPayload?.url);
 
   const normalizedNodes = Array.isArray(item.nodes)
     ? item.nodes.filter(
@@ -3049,9 +3083,7 @@ function fromStoredCourse(raw: unknown): CourseData | null {
   )
     ? {
       path: typeof coverPayload?.path === 'string' ? coverPayload.path : undefined,
-      url: typeof coverPayload?.url === 'string'
-        ? coverPayload.url
-        : (typeof resolvedCoverImageUrl === 'string' ? resolvedCoverImageUrl : undefined)
+      url: resolvedCoverImageUrl
     }
     : undefined;
 
@@ -3246,6 +3278,7 @@ function fromUserBookDocument(
   const coverPayload = raw.cover && typeof raw.cover === 'object'
     ? raw.cover as Record<string, unknown>
     : undefined;
+  const cloudCoverImageUrl = firstCloudSafeCoverUrl(raw.coverImageUrl, coverPayload?.url);
 
   const normalized: Record<string, unknown> = {
     ...raw,
@@ -3254,6 +3287,7 @@ function fromUserBookDocument(
     createdAt: createdAtIso,
     lastActivity: lastActivityIso,
     contentPackageUpdatedAt: contentPackageUpdatedAtIso,
+    coverImageUrl: cloudCoverImageUrl,
     bundle: bundlePayload
       ? {
         ...bundlePayload,
@@ -3263,11 +3297,9 @@ function fromUserBookDocument(
     cover: coverPayload
       ? {
         ...coverPayload,
-        url: typeof coverPayload.url === 'string'
-          ? coverPayload.url
-          : (typeof raw.coverImageUrl === 'string' ? raw.coverImageUrl : undefined)
+        url: cloudCoverImageUrl
       }
-      : undefined
+      : (cloudCoverImageUrl ? { url: cloudCoverImageUrl } : undefined)
   };
 
   return fromStoredCourse(normalized);
@@ -3792,9 +3824,8 @@ export default function App() {
   const getTabVal = (v: ViewState) => {
     if (v === 'HOME') return 0;
     if (v === 'AI_CHAT') return 1;
-    if (v === 'COMMUNITY') return 2;
-    if (v === 'PROFILE') return 3;
-    return 4;
+    if (v === 'PROFILE') return 2;
+    return 3;
   };
 
   const handleViewChange = (nextView: ViewState) => {
@@ -3808,6 +3839,7 @@ export default function App() {
   };
 
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [appNotifications, setAppNotifications] = useState(() => readAppNotifications());
   const [appLanguage, setAppLanguage] = useState<AppLanguageCode>(initialAppLanguageSetupRef.current.language);
   const [appLanguageSource, setAppLanguageSource] = useState<AppLanguagePreferenceSource>(initialAppLanguageSetupRef.current.source);
   const [isAppLanguageSetupOpen, setAppLanguageSetupOpen] = useState<boolean>(initialAppLanguageSetupRef.current.requiresSelection);
@@ -3839,6 +3871,7 @@ export default function App() {
   const [isCreditPurchaseBusy, setCreditPurchaseBusy] = useState(false);
   const [creditPackDisplayPrices, setCreditPackDisplayPrices] = useState<Partial<Record<string, string>>>({});
   const [legalConsentState, setLegalConsentState] = useState<LegalConsentState>('unknown');
+  const unreadNotificationCount = countUnreadAppNotifications(appNotifications);
   const appLanguageBootstrapWriteRef = useRef<string | null>(null);
   const didWarnCloudPermissionRef = useRef(false);
   const cloudCourseWriteTimerRef = useRef<number | null>(null);
@@ -3851,7 +3884,6 @@ export default function App() {
   const cloudCourseWriteInFlightRef = useRef(false);
   const courseCloudWriteRetryCountRef = useRef(0);
   const sessionCreatedCourseIdsRef = useRef<Set<string>>(new Set());
-  const automaticCommunityPublishAttemptedRef = useRef<Set<string>>(new Set());
   const progressOnlyFallbackCourseIdsRef = useRef<Set<string>>(new Set());
   const savedCoursesRef = useRef<CourseData[]>([]);
   const courseOpenStateByIdRef = useRef<Record<string, CourseOpenUiState>>({});
@@ -5000,7 +5032,7 @@ export default function App() {
     return { wallet: null };
   };
 
-  const requireCreditForAction = (action: CreditActionType, costOverride?: number): boolean => {
+  const requireCreditForAction = (action: CreditActionType = 'create', costOverride?: number): boolean => {
     if (isGuestSession || (!authUser && !isAuthLoading)) {
       setLoginPromptOpen(true);
       return false;
@@ -5013,7 +5045,7 @@ export default function App() {
     return false;
   };
 
-  const consumeCreditForAction = async (action: CreditActionType, costOverride?: number): Promise<boolean> => {
+  const consumeCreditForAction = async (action: CreditActionType = 'create', costOverride?: number): Promise<boolean> => {
     if (isGuestSession || (!authUser && !isAuthLoading)) {
       setLoginPromptOpen(true);
       return false;
@@ -5027,7 +5059,6 @@ export default function App() {
       return false;
     }
 
-    // Create credits are charged server-side inside aiGateway for paid AI operations.
     return true;
   };
 
@@ -5286,6 +5317,30 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => subscribeToAppNotifications(setAppNotifications), []);
+
+  useEffect(() => {
+    const clearNativeNotificationBadge = () => {
+      if (!isCapacitorNativeRuntime()) return;
+      LocalNotifications.removeAllDeliveredNotifications().catch(() => undefined);
+      FirebaseMessaging.removeAllDeliveredNotifications().catch(() => undefined);
+    };
+
+    clearNativeNotificationBadge();
+    const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) clearNativeNotificationBadge();
+    });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') clearNativeNotificationBadge();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      appStateListener.then((listener) => listener.remove()).catch(() => undefined);
+    };
+  }, []);
+
   useEffect(() => {
     LocalNotifications.requestPermissions().catch(() => undefined);
   }, []);
@@ -5314,7 +5369,39 @@ export default function App() {
       } catch { /* ignore */ }
     });
 
-    return () => { tokenListener.then((l) => l.remove()).catch(() => undefined); };
+    const storeBookReadyPush = (notification: {
+      id?: string;
+      title?: string;
+      body?: string;
+      data?: unknown;
+    }) => {
+      const data = notification.data && typeof notification.data === 'object'
+        ? notification.data as Record<string, unknown>
+        : {};
+      if (data.type !== 'book_ready') return;
+      const title = String(notification.title || '').trim();
+      const body = String(notification.body || '').trim();
+      if (!title || !body) return;
+      addAppNotification({
+        id: `book-ready:${String(data.courseId || notification.id || Date.now())}`,
+        type: 'book_ready',
+        title,
+        body,
+        courseId: data.courseId ? String(data.courseId) : undefined
+      });
+    };
+    const notificationReceivedListener = FirebaseMessaging.addListener('notificationReceived', ({ notification }) => {
+      storeBookReadyPush(notification);
+    });
+    const notificationActionListener = FirebaseMessaging.addListener('notificationActionPerformed', ({ notification }) => {
+      storeBookReadyPush(notification);
+    });
+
+    return () => {
+      tokenListener.then((listener) => listener.remove()).catch(() => undefined);
+      notificationReceivedListener.then((listener) => listener.remove()).catch(() => undefined);
+      notificationActionListener.then((listener) => listener.remove()).catch(() => undefined);
+    };
   }, [authUser?.uid]);
 
   useEffect(() => {
@@ -5364,48 +5451,6 @@ export default function App() {
   useEffect(() => {
     savedCoursesRef.current = savedCourses;
   }, [authUser?.uid, savedCourses]);
-
-  useEffect(() => {
-    const uid = authUser?.uid;
-    if (!uid || isAuthLoading || !hasCompletedLocalBootstrap || legalConsentState !== 'accepted') return;
-
-    const eligibleCourses = savedCourses.filter((course) => {
-      if (!course.id || course.id.startsWith('community_')) return false;
-      if (course.sourceType === 'community' || course.sourceCommunityBookId || course.communityLicense === 'personal-use' || course.communityPublishingDisabled) return false;
-      if (course.communityPublication?.status === 'published') return false;
-      return Boolean(
-        resolvePreferredBookZipStoragePath(course.bundle?.path, course.contentPackagePath)
-        || String(course.contentPackageUrl || '').trim()
-      );
-    });
-    if (eligibleCourses.length === 0) return;
-
-    void runTasksWithConcurrency(eligibleCourses, 2, async (course) => {
-      const attemptKey = `${uid}:${course.id}`;
-      if (automaticCommunityPublishAttemptedRef.current.has(attemptKey)) return;
-      automaticCommunityPublishAttemptedRef.current.add(attemptKey);
-      try {
-        const result = await autoPublishToCommunity({
-          bookId: course.id,
-          isPublic: true,
-          autoPublish: true,
-          rightsAccepted: true,
-          termsAccepted: true,
-          ageConfirmed: true
-        });
-        const updatedAt = new Date();
-        setSavedCourses((current) => {
-          const next = current.map((item) => item.id === course.id
-            ? { ...item, communityPublication: { id: result.data.communityBookId, status: 'published' as const, updatedAt } }
-            : item);
-          savedCoursesRef.current = next;
-          return next;
-        });
-      } catch (error) {
-        window.setTimeout(() => automaticCommunityPublishAttemptedRef.current.delete(attemptKey), 5 * 60_000);
-      }
-    });
-  }, [authUser?.uid, hasCompletedLocalBootstrap, isAuthLoading, legalConsentState, savedCourses]);
 
   useEffect(() => {
     courseOpenStateByIdRef.current = courseOpenStateById;
@@ -6441,8 +6486,8 @@ export default function App() {
 
   useEffect(() => {
     if (!incomingSharedSmartBookId) return;
-    if (currentView !== 'EXPLORE' && currentView !== 'COURSE_FLOW') {
-      setCurrentView('EXPLORE');
+    if (currentView !== 'HOME' && currentView !== 'COURSE_FLOW') {
+      setCurrentView('HOME');
     }
   }, [incomingSharedSmartBookId, currentView]);
 
@@ -7669,10 +7714,6 @@ export default function App() {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId) return;
 
-    if (authUser) {
-      await deleteMyCommunityData({});
-    }
-
     if (authUser && cloudSyncEnabled) {
       try {
         const [userBooksSnap, stickySnap] = await Promise.all([
@@ -7956,41 +7997,6 @@ export default function App() {
             wallet={creditWallet}
           />
         );
-      case 'EXPLORE':
-        return (
-          <HomeView
-            onNavigate={handleViewChange}
-            onCourseCreate={handleCourseCreate}
-            onDeleteCourse={handleCourseDelete}
-            savedCourses={savedCourses}
-            onCourseSelect={handleCourseSelect}
-            canDeleteCourse={canDeleteCourse}
-            stickyNotes={stickyNotes}
-            onCreateStickyNote={handleStickyNoteCreate}
-            onUpdateStickyNote={handleStickyNoteUpdate}
-            onDeleteStickyNote={handleCourseDelete}
-            onRequireCredit={requireCreditForAction}
-            onConsumeCredit={consumeCreditForAction}
-            isBootstrapping={Boolean(isLoading && savedCourses.length === 0)}
-            bootstrapMessage={loadingMessage}
-            defaultBookLanguage={getAppLanguageLabel(appLanguage)}
-            courseOpenStates={courseOpenStateById}
-            isLoggedIn={Boolean(authUser && !isGuestSession)}
-            onRequestLogin={handleOpenLoginScreen}
-            authUserId={authUser?.uid}
-          />
-        );
-      case 'COMMUNITY':
-        return (
-          <CommunityView
-            authUser={authUser}
-            wallet={creditWallet}
-            onRequireCredit={requireCreditForAction}
-            onNavigate={handleViewChange}
-            onCourseSelect={handleCourseSelect}
-            onOpenPaywall={() => openCreditPaywall('community_download')}
-          />
-        );
       case 'PROFILE':
         return (
           <ProfileView
@@ -7999,6 +8005,7 @@ export default function App() {
             isGuestSession={isGuestSession}
             savedBookCount={savedCourses.length}
             wallet={creditWallet}
+            onOpenPaywall={() => setCreditPaywallOpen(true)}
             onLogout={handleLogout}
             onUpdateProfileName={handleProfileNameUpdate}
             onDeleteMyData={handleDeleteMyData}
@@ -8056,7 +8063,7 @@ export default function App() {
           <Suspense fallback={<FullScreenFallback message={loadingMessage} />}>
             <OnboardingView
               onFinish={handleOnboardingFinish}
-              onExplore={handleContinueWithoutLogin}
+              onContinueWithoutLogin={handleContinueWithoutLogin}
             />
           </Suspense>
         </UiI18nProvider>
@@ -8120,11 +8127,23 @@ export default function App() {
               isLoggedIn={Boolean(authUser)}
               credits={creditWallet}
               appLanguage={appLanguage}
+              notifications={appNotifications}
+              unreadNotificationCount={unreadNotificationCount}
               onOpenPaywall={() => openCreditPaywall()}
               onNavigate={handleViewChange}
               onContact={handleContactSupport}
               onAppLanguageChange={handleAppLanguageChange}
               onAuthAction={authUser ? handleLogout : handleOpenLoginScreen}
+              onMarkNotificationsRead={() => {
+                setAppNotifications(markAllAppNotificationsRead());
+              }}
+              onClearNotifications={() => {
+                setAppNotifications(clearAppNotifications());
+                if (isCapacitorNativeRuntime()) {
+                  LocalNotifications.removeAllDeliveredNotifications().catch(() => undefined);
+                  FirebaseMessaging.removeAllDeliveredNotifications().catch(() => undefined);
+                }
+              }}
             />
 
             <AppLanguageSetupModal
@@ -8167,6 +8186,7 @@ export default function App() {
                 onViewChange={handleViewChange}
                 onToggleSettings={handleToggleSettings}
                 isSettingsOpen={isSettingsOpen}
+                unreadNotificationCount={unreadNotificationCount}
                 showCourseScrollTop={currentView === 'COURSE_FLOW' && (activeCourse?.bookType === 'story' || activeCourse?.bookType === 'novel')}
                 onCourseScrollTop={() => window.dispatchEvent(new CustomEvent('fortale:course-scroll-top'))}
               />

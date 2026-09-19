@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="80" fill="#000000"/>
+  <!-- Sol ses dalgaları / açılan sayfalar -->
+  <rect x="160" y="382" width="60" height="260" rx="30" fill="#FFFFFF"/>
+  <rect x="260" y="277" width="60" height="470" rx="30" fill="#FFFFFF"/>
+  <!-- Kitap omurgası & F gövdesi -->
+  <rect x="360" y="172" width="60" height="680" rx="30" fill="#FFFFFF"/>
+  <!-- F Üst Kolu -->
+  <rect x="460" y="172" width="380" height="60" rx="30" fill="#FFFFFF"/>
+  <!-- F Orta Kolu (Amber vurgulu masal çizgisi) -->
+  <rect x="460" y="440" width="240" height="60" rx="30" fill="#F59E0B"/>
+</svg>

@@ -48,14 +48,14 @@ export const defaultTermsPolicy: PolicyDocument = {
         'Fortale içinde üretilen metin, görsel, ses, özet, test, başlık, kapak ve benzeri tüm çıktılar yapay zeka destekli olabilir. Bu nedenle içerikler hatalı, eksik, tekrar eden, önyargılı, teknik olarak kusurlu veya üçüncü kişi haklarını etkileyebilecek nitelikte olabilir.\n\nÖzellikle ticari yayın, eğitim materyali dağıtımı, profesyonel danışmanlık, çocuklara yönelik kullanım, reklam, marka kullanımı veya kamuya açık paylaşım öncesinde nihai kontrol kullanıcıya aittir. Fortale çıktıları tek başına editoryal, hukuki, tıbbi, finansal veya mesleki tavsiye olarak değerlendirilmemelidir.'
     },
     {
-      title: '7. Paylaşım, Keşfet ve Kamuya Açık İçerikler',
+      title: '7. İçerik Hakları ve Kişisel Kullanım',
       content:
-        'Fortale Topluluk kataloğu misafirler tarafından görüntülenebilir; yayınlama, kalp, takip, yorum, rapor ve kitaplığa ekleme işlemleri için giriş ve 13 yaş veya üzeri olma onayı gerekir. Yayınladığınız kitap, kapak, topluluk rumuzu, biyografi ve önizleme bölümleri herkese açık olabilir. E-posta, gerçek ad ve ülke profilinizde gösterilmez.\n\nÖNEMLİ İÇERİK HAKLARI BEYANI: Hesabınızla giriş yapıp bu Kullanım Şartlarını kabul ettiğinizde, Toplulukta yayınladığınız her içerik için; içeriği yayınlama, paylaşma ve gerekli lisansları verme hakkına sahip olduğunuzu otomatik olarak beyan etmiş sayılırsınız. Bu beyan ayrıca bir kutucuğun işaretlenmesini gerektirmez ve her yeni yayın ya da yayın güncellemesi için geçerlidir. İçeriğin size ait olmaması halinde hak sahibinden gerekli izinleri almak, üçüncü kişilerin telif, marka, kişilik, ses, görüntü, gizlilik ve diğer haklarını ihlal etmemek sizin sorumluluğunuzdadır.\n\nBu beyanla Fortale\'e içeriği Topluluk içinde barındırma, göstermek ve önizletmek, teknik biçimlere dönüştürmek, güvenlik ve moderasyon amacıyla incelemek ve kullanıcıların kişisel kitaplığına lisanslı kopya sağlamak için hizmetle sınırlı, münhasır olmayan ve geri alınabilir bir yetki verirsiniz. İçeriğinizin mülkiyeti bu nedenle Fortale\'e geçmez. Gerçek bir kişiye benzeyen stilize görseller için uygulamada ayrıca istenen kişisel benzerlik onayı saklıdır.\n\nTopluluktan alınan kitaplar kişisel kullanım lisanslıdır. Uygulamada okuma ve kişisel PDF/EPUB dışa aktarımı serbesttir; satış, yeniden yayınlama, topluluğa yeniden yükleme veya kendi eseriymiş gibi sunma yasaktır. Bir yayın kaldırıldığında yeni edinimler kapanır; daha önce edinilmiş kişisel kopyalar geri çağrılmaz.'
+        'Fortale üzerinde ürettiğiniz kitaplar, görseller ve seslendirmeler doğrudan kişisel kütüphanenize kaydedilir. Üretilen içeriklerinizi cihazınıza indirebilir, PDF ve EPUB biçiminde dışa aktarabilirsiniz.\n\nİçerik üretiminde girdi olarak kullandığınız metinlerin, isimlerin ve isteğe bağlı portrelerin üçüncü kişilerin telif, marka, kişilik ve gizlilik haklarını ihlal etmemesi sizin sorumluluğunuzdadır. Fortale, kullanıcı içerikleri üzerinde mülkiyet iddiasında bulunmaz; yalnızca hizmetin teknik olarak sunulması için gereken sınırlı işleme yetkisine sahiptir.'
     },
     {
-      title: '8. Topluluk Güvenliği, Raporlama ve Engelleme',
+      title: '8. Hizmet Güvenliği ve Uygunluk',
       content:
-        'Topluluğu kullanırken aşağıdaki kurallara uymanız gerekir:\n• Yalnızca yayınlama hakkına sahip olduğunuz içerikleri paylaşın; başkasının eserini, markasını, karakterini, sesini, görüntüsünü veya kişisel verisini izinsiz kullanmayın.\n• Çocukların güvenliğini tehlikeye atan, cinsel sömürü veya istismar içeren ya da reşit olmayanları uygunsuz biçimde betimleyen hiçbir içerik paylaşmayın.\n• Nefret söylemi, hedefli taciz, tehdit, zorbalık, ayrımcılık, şiddet teşviki, kendine zarar vermeyi özendirme veya gerçek kişilere zarar verme amacı taşıyan içerik paylaşmayın.\n• Dolandırıcılık, kimliğe bürünme, yanıltıcı bilgi, spam, yapay etkileşim, ödül manipülasyonu, zararlı bağlantı veya kötü amaçlı yazılım kullanmayın.\n• Adres, telefon, e-posta, kimlik belgesi, finansal bilgi, sağlık bilgisi veya özel yazışma gibi kişisel ya da hassas verileri izinsiz yayımlamayın.\n• Yorumlarda yapıcı ve konuyla ilgili olun; tekrar eden mesajlar, reklam, aşağılayıcı ifade veya tartışmayı sabote eden davranışlardan kaçının.\n\nTopluluk rumuzları, biyografiler, yorumlar, kitap metinleri, kapaklar ve önizleme görselleri otomatik sistemlerle ve gerektiğinde insan moderatörler tarafından incelenebilir. Kullanıcılar kitap, yorum ve profilleri ayrı ayrı raporlayabilir ve diğer üreticileri engelleyebilir. Engellenen üreticinin kitapları, profili ve yorumları engelleyen kullanıcıdan gizlenir. Rapor göndermek içeriğin otomatik olarak kaldırılacağı anlamına gelmez; kötü niyetli veya tekrarlanan asılsız raporlar da kötüye kullanım sayılabilir.\n\nRapor eşiği, güvenlik sinyali veya açık ihlal halinde içerik inceleme süresince önerilerden gizlenebilir. İhlalin niteliği ve tekrarına göre içerik görünürlüğü azaltılabilir, yayın kaldırılabilir, özellikler sınırlandırılabilir, Topluluk erişimi askıya alınabilir veya hesap kapatılabilir. Ciddi çocuk güvenliği riski, suç tehdidi ya da hukuki zorunluluk halinde ilgili kayıtlar yetkili mercilerle mevzuata uygun biçimde paylaşılabilir.'
+        'Fortale hizmetini kullanırken yürürlükteki yasalara, üçüncü kişi haklarına ve genel ahlak kurallarına uymanız beklenir. Çocukların güvenliğini tehlikeye atan, cinsel istismar içeren, nefret söylemi yayan, şiddeti teşvik eden veya zararlı yazılım barındıran istem ve içerikler oluşturulamaz.\n\nYapay zeka güvenlik filtreleri ve otomatik denetim sistemleri şüpheli veya ihlal niteliğindeki üretimleri engelleyebilir, sınırlandırabilir veya tekrarlanan ağır ihlallerde hesap erişimini askıya alabilir.'
     },
     {
       title: '9. Yasaklı Kullanımlar',
@@ -69,9 +69,9 @@ export const defaultTermsPolicy: PolicyDocument = {
         'Bu tür kullanımlar tespit edildiğinde üretim engellenebilir, hesap erişimi sınırlandırılabilir ve gerekli görülürse yasal süreçlere uyum için kayıt tutulabilir.'
     },
     {
-      title: '10. Krediler ve Topluluk Ödülleri',
+      title: '10. Kredi Sistemi ve Satın Alımlar',
       content:
-        'Toplulukta yayınlama ücretsizdir. Tam bir topluluk kitabını ilk kez kişisel kitaplığa eklemek 0,5 kredi tüketir ve üreticiye 0,25 kredi ödülü verir. Aynı kullanıcı aynı kitabı yeniden indirirse tekrar ücret veya ödül oluşmaz. Kendi kitabınızı indirerek ödül kazanamazsınız. Kötüye kullanım, sahte etkileşim veya ödül manipülasyonu tespit edilirse ilgili işlem ve ödüller iptal edilebilir.'
+        'Fortale içinde kitap ve ses üretimi kredi tüketimi esasına dayanır. Krediler paketler halinde mağaza üzerinden satın alınabilir. Satın alınan krediler hesabınıza tanımlanır ve her başarılı üretim işlemiyle birlikte güncellenir. Tamamlanamayan veya sistem hatasıyla sonuçlanan üretimlerde harcanan krediler hesabınıza iade edilir.'
     },
     {
       title: '11. Fikri Mülkiyet ve Fortale Hakları',
@@ -121,7 +121,6 @@ export const defaultPrivacyPolicy: PolicyDocument = {
         '• Medya verisi: kapak/bölüm görselleri, podcast ses dosyaları ve üretim kayıtları\n' +
         '• İsteğe bağlı portre verisi: kitap ana karakterini görsel olarak tutarlı resmetmek için kullanıcı tarafından yüklenen portre ve karakter adı\n' +
         '• Kredi/işlem verisi: kredi bakiyesi, kredi tüketim-iade kayıtları, işlem zaman damgaları\n' +
-        '• Topluluk verisi: ayrı topluluk rumuzu, biyografi, yayınlar, önizlemeler, takipler, kalpler, yorumlar, indirme lisansları, raporlar, engellemeler ve moderasyon kayıtları\n' +
         '• Kullanım ve teknik veriler: ip adresi, cihaz bilgisi, hata/perf logları, güvenlik sinyalleri'
     },
     {
@@ -131,7 +130,6 @@ export const defaultPrivacyPolicy: PolicyDocument = {
         '• Kitap üretimi, görsel üretimi, dışa aktarma ve podcast üretimi hizmetlerini sağlamak\n' +
         '• İsteğe bağlı portre görselini yalnızca kitap ana karakterini görsel olarak tutarlı resmetmek için kullanmak\n' +
         '• Kredi sistemi işlemlerini yürütmek (tüketim, iade, bakiye güncelleme)\n' +
-        '• Topluluk kataloğunu, aramayı, sıralamayı, sosyal özellikleri, bildirimleri, kişisel lisanslı kopyaları ve üretici ödüllerini yürütmek\n' +
         '• Güvenlik, dolandırıcılık ve kötüye kullanım tespitini yapmak\n' +
         '• Yasal uygunluk kontrollerini uygulamak\n' +
         '• Destek taleplerini yanıtlamak ve ürün kalitesini iyileştirmek'
@@ -153,7 +151,7 @@ export const defaultPrivacyPolicy: PolicyDocument = {
     {
       title: '7. Çocuk Verileri ve Ebeveyn Onayı',
       content:
-        'Çocuklara yönelik içerik üretimi desteklense de kişisel verilerin işlenmesi, ilgili ülke hukukundaki yaş ve ebeveyn onayı kurallarına tabidir. Topluluk kataloğu görüntülenebilse de yayınlama, yorum, kalp, takip, rapor ve indirme gibi sosyal işlemler 13 yaş ve üzeri kullanıcılarla sınırlandırılır.\n\nYasal olarak gerekli durumlarda ebeveyn doğrulaması, ek bildirim ve sınırlı işlem prensipleri uygulanabilir.'
+        'Çocuklara yönelik masal ve hikaye üretimi desteklense de kişisel verilerin işlenmesi, ilgili ülke hukukundaki yaş ve ebeveyn onayı kurallarına tabidir.\n\nYasal olarak gerekli durumlarda ebeveyn doğrulaması, ek bildirim ve sınırlı işlem prensipleri uygulanabilir.'
     },
     {
       title: '8. Paylaşım, İşleyenler ve Resmi Talepler',
@@ -168,7 +166,7 @@ export const defaultPrivacyPolicy: PolicyDocument = {
     {
       title: '10. Saklama Süresi ve Silme',
       content:
-        'Veriler, işleme amacı için gerekli süre kadar saklanır. Süre sonunda silme, anonimleştirme veya erişim kısıtlama yöntemleri uygulanır. Yayından kaldırılan topluluk kitapları yeni kullanıcılara gösterilmez; daha önce edinilmiş kişisel lisanslı snapshot kopyaları kullanıcının kitaplığında kalabilir. Rapor ve moderasyon kayıtları güvenlik, itiraz ve yasal yükümlülükler için sınırlı süre saklanabilir.\n\nPortre görselleri üretim işi sırasında geçici referans olarak işlenir; üretim tamamlandığında, başarısız olduğunda veya zaman aşımına uğradığında kalıcı referans silinir. Üretilen kitap görselleri ve kitap çıktıları saklanabilir, ancak yüklenen portre referansı reklam, profil veya kalıcı medya arşivi amacıyla tutulmaz.\n\nYasal uyuşmazlık, denetim, güvenlik incelemesi veya resmi talep halinde bazı kayıtlar mevzuatın izin verdiği süre boyunca tutulabilir.'
+        'Veriler, işleme amacı için gerekli süre kadar saklanır. Süre sonunda silme, anonimleştirme veya erişim kısıtlama yöntemleri uygulanır. Kullanıcı tarafından silinen kitaplar ve içerikler sistemden güvenli biçimde kaldırılır.\n\nPortre görselleri üretim işi sırasında geçici referans olarak işlenir; üretim tamamlandığında, başarısız olduğunda veya zaman aşımına uğradığında kalıcı referans silinir. Üretilen kitap görselleri ve kitap çıktıları saklanabilir, ancak yüklenen portre referansı reklam, profil veya kalıcı medya arşivi amacıyla tutulmaz.\n\nYasal uyuşmazlık, denetim, güvenlik incelemesi veya resmi talep halinde bazı kayıtlar mevzuatın izin verdiği süre boyunca tutulabilir.'
     },
     {
       title: '11. Güvenlik Önlemleri',

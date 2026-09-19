@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft, Coins } from 'lucide-react';
 import { CreditWallet, ViewState } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
+import FLogo from './FLogo';
 
 interface GlobalHeaderProps {
   currentView: ViewState;
@@ -36,7 +37,6 @@ export default function GlobalHeader({
   const getHeaderTitle = () => {
     if (currentView === 'HOME') return 'Fortale';
     if (currentView === 'AI_CHAT') return t('Kitaplarım');
-    if (currentView === 'COMMUNITY') return t('Topluluk');
     if (currentView === 'PROFILE') return t('Profil');
     if (currentView === 'COURSE_FLOW') return t('Kitap Oku');
     if (currentView === 'PRIVACY') return t('Gizlilik');
@@ -47,27 +47,54 @@ export default function GlobalHeader({
   return (
     <header
       className="fixed left-0 right-0 z-40 pointer-events-none transition-opacity duration-300"
-      style={{ top: isIosClient ? '-5px' : '0' }}
+      style={{
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)'
+      }}
     >
       <div
-        className="w-full pointer-events-none relative pb-8"
+        className="w-full bg-transparent"
         style={{
-          background: 'transparent',
-          paddingTop: 'var(--app-header-row-top)',
-          paddingBottom: '32px',
-          borderTop: 'none',
+          boxShadow: 'none',
           borderRadius: '0'
         }}
       >
         <div className="app-chrome-width">
           <div className="relative flex w-full items-center justify-between py-2 px-2 gap-2">
-            <div className="fortale-global-header-status relative z-10 h-full mr-auto pointer-events-auto transition-opacity duration-200">
-              <div className="rounded-full" style={groupShellStyle}>
-                <div className="fortale-chrome-pill px-3.5 h-9 rounded-full flex items-center justify-center font-bold tracking-tight">
-                  <span className="block text-[14px] text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.22)]">
+            <div className="fortale-global-header-status relative z-10 mr-auto pointer-events-auto transition-opacity duration-200 flex items-center">
+              <div
+                className={`inline-flex flex-col items-start select-none ${showBackButton && onBack ? 'cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all' : ''}`}
+                onClick={showBackButton && onBack ? onBack : undefined}
+                role={showBackButton && onBack ? 'button' : undefined}
+                tabIndex={showBackButton && onBack ? 0 : undefined}
+                aria-label={getHeaderTitle()}
+              >
+                <div className="flex items-center gap-2">
+                  <FLogo size={26} className="shrink-0" />
+                  <span className="text-[17px] font-extrabold tracking-tight text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)]">
                     {getHeaderTitle()}
                   </span>
                 </div>
+                {/* Kalından inceye amber çizgi */}
+                <svg
+                  className="w-full h-[3.5px] mt-1 overflow-visible pointer-events-none"
+                  viewBox="0 0 100 4"
+                  preserveAspectRatio="none"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M 1.5 0.5 L 98.5 1.75 A 0.25 0.25 0 0 1 98.5 2.25 L 1.5 3.5 A 1.5 1.5 0 0 0 1.5 0.5 Z"
+                    fill="url(#fortale-amber-taper)"
+                    style={{ filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.45))' }}
+                  />
+                  <defs>
+                    <linearGradient id="fortale-amber-taper" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#F59E0B" stopOpacity="1" />
+                      <stop offset="60%" stopColor="#F59E0B" stopOpacity="0.85" />
+                      <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.2" />
+                    </linearGradient>
+                  </defs>
+                </svg>
               </div>
             </div>
 
@@ -80,8 +107,8 @@ export default function GlobalHeader({
                     title={t('Kredi satın al')}
                     aria-label={t('Kredi satın al')}
                   >
-                    <Coins size={14} />
-                    <span className="text-[10px] font-semibold text-white whitespace-nowrap">
+                    <Coins size={14} className="text-amber-400" />
+                    <span className="text-[11px] font-bold text-white whitespace-nowrap">
                       {createCredits}C
                     </span>
                   </button>
