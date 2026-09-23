@@ -2794,9 +2794,55 @@ async function installBookPackage(uid: string, course: CourseData): Promise<Cour
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = window.setTimeout(() => controller?.abort(), SMARTBOOK_PACKAGE_FETCH_TIMEOUT_MS);
     try {
-      const response = await fetch(url, { cache: 'no-store', signal: controller?.signal });
-      if (!response.ok) throw new Error(`Book package fetch failed (${response.status})`);
-      const blob = await response.blob();
+      const parsedUrl = new URL(url, window.location.href);
+      const requestUrl = import.meta.env.DEV && !isCapacitorNativeRuntime() && parsedUrl.hostname === 'firebasestorage.googleapis.com'
+        ? `${window.location.origin}/__fortale_storage__${parsedUrl.pathname}${parsedUrl.search}`
+        : url;
+      let blob: Blob | null = null;
+      if (!isCapacitorNativeRuntime() && isFirebaseStorageDownloadUrl(url)) {
+        const chunkSize = 2 * 1024 * 1024;
+        const chunks: Blob[] = [];
+        let offset = 0;
+        let totalSize: number | null = null;
+        for (;;) {
+          if (offset >= 512 * chunkSize) throw new Error('Book package exceeds download limit');
+          const end = totalSize === null
+            ? offset + chunkSize - 1
+            : Math.min(offset + chunkSize, totalSize) - 1;
+          const response = await fetch(requestUrl, {
+            cache: 'no-store',
+            headers: { Range: `bytes=${offset}-${end}` },
+            signal: controller?.signal
+          });
+          if (response.status === 416 && offset > 0 && totalSize === null) break;
+          if (response.status === 200 && offset === 0) {
+            blob = await response.blob();
+            break;
+          }
+          if (response.status !== 206) throw new Error(`Book package range fetch failed (${response.status})`);
+          const chunk = await response.blob();
+          const expectedSize = Number(response.headers.get('Content-Length'));
+          if (!chunk.size || chunk.size > chunkSize || (expectedSize > 0 && chunk.size !== expectedSize)) {
+            throw new Error('Book package range size mismatch');
+          }
+          const range = response.headers.get('Content-Range')?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+          if (range) {
+            if (Number(range[1]) !== offset || Number(range[2]) - offset + 1 !== chunk.size) {
+              throw new Error('Book package range offset mismatch');
+            }
+            totalSize = Number(range[3]);
+          }
+          chunks.push(chunk);
+          offset += chunk.size;
+          if ((totalSize !== null && offset >= totalSize) || chunk.size < chunkSize) break;
+        }
+        if (!blob && chunks.length > 0) blob = new Blob(chunks, { type: chunks[0].type || 'application/zip' });
+      } else {
+        const response = await fetch(requestUrl, { cache: 'no-store', signal: controller?.signal });
+        if (!response.ok) throw new Error(`Book package fetch failed (${response.status})`);
+        blob = await response.blob();
+      }
+      if (!blob) throw new Error('Book package download was empty');
       const pathFromUrl = isFirebaseStorageDownloadUrl(url)
         ? tryParseFirebaseStorageObjectPath(url)
         : undefined;
@@ -2823,6 +2869,27 @@ async function installBookPackage(uid: string, course: CourseData): Promise<Cour
   }
 
   if (preferredPath) {
+    // The URL copied into a book document can become stale or malformed even
+    // while the Storage object still exists. Resolve a fresh download URL
+    // before falling back to a potentially much slower blob request.
+    try {
+      const refreshedUrl = await withPromiseTimeout(
+        getDownloadURL(storageRef(getStorage(), preferredPath)),
+        SMARTBOOK_STORAGE_URL_TIMEOUT_MS,
+        `Book package URL refresh timeout (${preferredPath})`
+      );
+      if (refreshedUrl && refreshedUrl !== preferredUrl) {
+        try {
+          const refreshedCourse = await tryFetchUrl(refreshedUrl);
+          if (refreshedCourse) return refreshedCourse;
+        } catch (error) {
+          console.warn('Refreshed book package URL install failed; trying Storage blob:', error);
+        }
+      }
+    } catch (error) {
+      console.warn('Book package URL refresh failed; trying Storage blob:', error);
+    }
+
     const blob = await withPromiseTimeout(
       getBlob(storageRef(getStorage(), preferredPath)),
       SMARTBOOK_STORAGE_BLOB_TIMEOUT_MS,

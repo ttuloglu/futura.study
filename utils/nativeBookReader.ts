@@ -32,6 +32,30 @@ export interface NativeBookReaderPluginInterface {
 
 export const NativeBookReader = registerPlugin<NativeBookReaderPluginInterface>('NativeBookReader');
 
+function normalizeInlineHtmlImages(markup: string): string {
+  if (!markup || !/<img\b/i.test(markup)) return markup;
+
+  return markup.replace(/<img\b[^>]*>/gi, (tag) => {
+    const srcMatch =
+      tag.match(/\bsrc\s*=\s*"([^"]+)"/i) ||
+      tag.match(/\bsrc\s*=\s*'([^']+)'/i) ||
+      tag.match(/\bsrc\s*=\s*([^\s>]+)/i);
+    if (!srcMatch?.[1]) return '';
+    const altMatch =
+      tag.match(/\balt\s*=\s*"([^"]*)"/i) ||
+      tag.match(/\balt\s*=\s*'([^']*)'/i) ||
+      tag.match(/\balt\s*=\s*([^\s>]+)/i);
+    const src = srcMatch[1].replace(/&amp;/gi, '&').trim();
+    const alt = (altMatch?.[1] || 'İçerik görseli')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\]/g, '\\]')
+      .trim();
+    return src ? `![${alt}](${src})` : '';
+  });
+}
+
 /**
  * Checks if the native book reader plugin can be executed on this device.
  */
@@ -89,7 +113,11 @@ export function prepareBookPagesForNativeReader(
 ): NativeBookPage[] {
   const pages: NativeBookPage[] = [];
   const targetNodes = (nodes && nodes.length > 0 ? nodes : courseData.nodes || []).filter(
-    (node) => Boolean(node.content && node.content.trim())
+    (node) => Boolean(
+      node.content?.trim() ||
+      node.pageText?.trim() ||
+      node.pageImageUrl?.trim()
+    )
   );
 
   let currentPageNumber = 1;
@@ -102,10 +130,20 @@ export function prepareBookPagesForNativeReader(
           ? `Çalışma Kitabı • Bölüm ${idx + 1}`
           : `Hikaye • Bölüm ${idx + 1}`);
 
-    const rawContent = node.content || '';
+    const rawContent = normalizeInlineHtmlImages(node.pageText?.trim() || node.content || '');
+    const explicitImageSrc = node.pageImageUrl?.trim();
     const imageSections = extractMarkdownImageSections(rawContent);
 
-    if (imageSections.length > 0) {
+    if (explicitImageSrc) {
+      pages.push({
+        pageNumber: currentPageNumber++,
+        chapterTitle: chapterLabel,
+        title: node.title,
+        contentHtml: markdownToCleanHtml(rawContent),
+        imageSrc: explicitImageSrc,
+        imageAlt: node.title || 'İçerik görseli'
+      });
+    } else if (imageSections.length > 0) {
       for (let sIdx = 0; sIdx < imageSections.length; sIdx++) {
         const section = imageSections[sIdx];
         const contentHtml = markdownToCleanHtml(section.markdown);
@@ -120,28 +158,14 @@ export function prepareBookPagesForNativeReader(
         });
       }
     } else {
-      // If no standalone images, split long chapters into page-sized chunks if needed
-      const paragraphs = rawContent.split(/\n\n+/).filter(Boolean);
-      const CHUNK_SIZE = 4; // ~3-4 paragraphs per page fits comfortably on mobile screens
-
-      if (paragraphs.length <= CHUNK_SIZE) {
-        pages.push({
-          pageNumber: currentPageNumber++,
-          chapterTitle: chapterLabel,
-          title: node.title,
-          contentHtml: markdownToCleanHtml(rawContent)
-        });
-      } else {
-        for (let p = 0; p < paragraphs.length; p += CHUNK_SIZE) {
-          const chunk = paragraphs.slice(p, p + CHUNK_SIZE).join('\n\n');
-          pages.push({
-            pageNumber: currentPageNumber++,
-            chapterTitle: chapterLabel,
-            title: p === 0 ? node.title : undefined,
-            contentHtml: markdownToCleanHtml(chunk)
-          });
-        }
-      }
+      // Native pagination uses the actual device viewport and current font size.
+      // Keep the complete section here so every rendered screen becomes a real curl page.
+      pages.push({
+        pageNumber: currentPageNumber++,
+        chapterTitle: chapterLabel,
+        title: node.title,
+        contentHtml: markdownToCleanHtml(rawContent)
+      });
     }
   }
 

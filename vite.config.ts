@@ -6,6 +6,13 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    proxy: {
+      '/__fortale_storage__': {
+        target: 'https://firebasestorage.googleapis.com',
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/__fortale_storage__/, ''),
+      },
+    },
   },
   build: {
     rollupOptions: {

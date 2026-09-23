@@ -37,6 +37,7 @@ public class NativeBookReaderPlugin: CAPPlugin, CAPBridgedPlugin {
 
             pages.append(BookPageData(
                 pageNumber: pageNum,
+                sourceIndex: index,
                 chapterTitle: chapterTitle,
                 title: pageTitle,
                 contentHtml: contentHtml,

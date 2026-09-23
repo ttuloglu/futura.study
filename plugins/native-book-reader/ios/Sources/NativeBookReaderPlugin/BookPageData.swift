@@ -64,28 +64,37 @@ public enum ReaderTheme: String {
 
 public struct BookPageData {
     public let pageNumber: Int
+    public let sourceIndex: Int
+    public let contentStartOffset: Int
     public let chapterTitle: String?
     public let title: String?
     public let contentHtml: String
     public let plainText: String?
     public let imageSrc: String?
     public let imageAlt: String?
+    public let attributedContent: NSAttributedString?
 
     public init(
         pageNumber: Int,
+        sourceIndex: Int = 0,
+        contentStartOffset: Int = 0,
         chapterTitle: String? = nil,
         title: String? = nil,
         contentHtml: String,
         plainText: String? = nil,
         imageSrc: String? = nil,
-        imageAlt: String? = nil
+        imageAlt: String? = nil,
+        attributedContent: NSAttributedString? = nil
     ) {
         self.pageNumber = pageNumber
+        self.sourceIndex = sourceIndex
+        self.contentStartOffset = contentStartOffset
         self.chapterTitle = chapterTitle
         self.title = title
         self.contentHtml = contentHtml
         self.plainText = plainText
         self.imageSrc = imageSrc
         self.imageAlt = imageAlt
+        self.attributedContent = attributedContent
     }
 }

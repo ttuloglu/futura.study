@@ -5,3 +5,5 @@ dist/
 functions/node_modules/
 functions/lib/
 .claude/
+.swiftpm/
+*.xcuserdatad

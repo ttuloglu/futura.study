@@ -1739,6 +1739,7 @@ export default function HomeView({
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
   const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
+  const [openingHomeCourseId, setOpeningHomeCourseId] = useState<string | null>(null);
   const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
   const generationDisplayLanguage = isGenerating
     ? (activeGeneratingLanguage || normalizeAppLanguageCode(bookLanguageInput) || language)
@@ -4609,6 +4610,7 @@ export default function HomeView({
         const selectedOpenState = courseOpenStates[selectedHomeCourse.id] || { status: 'idle', progress: 0, updatedAt: 0 };
         const selectedOpenProgress = Math.max(0, Math.min(100, Math.round(selectedOpenState.progress || 0)));
         const selectedIsDownloading = selectedOpenState.status === 'downloading';
+        const selectedIsOpening = openingHomeCourseId === selectedHomeCourse.id;
         const selectedIsReady = selectedOpenState.status === 'ready' || courseHasReadableContent(selectedHomeCourse);
         const selectedIsFailed = selectedOpenState.status === 'failed';
         const selectedActionLabel = selectedIsReady
@@ -4625,6 +4627,7 @@ export default function HomeView({
           <FloatIslandSheet
             isOpen
             onClose={() => setSelectedHomeCourse(null)}
+            closeDisabled={selectedIsOpening}
             title={selectedHomeCourse.topic}
             subtitle={`${t(bookTypeToLabel(selectedHomeCourse.bookType))} · ${formatStickyDate(selectedHomeCourse.lastActivity, locale)}`}
             maxWidth={520}
@@ -4634,9 +4637,11 @@ export default function HomeView({
                 {selectedCanDelete && (
                   <button
                     type="button"
+                    disabled={selectedIsOpening}
                     onClick={() => {
                       const course = selectedHomeCourse;
                       setSelectedHomeCourse(null);
+                      setOpeningHomeCourseId(null);
                       openCourseDeleteModal(course);
                     }}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-300/25 bg-rose-400/10 text-[12px] font-black text-rose-100"
@@ -4646,16 +4651,23 @@ export default function HomeView({
                 )}
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const courseId = selectedHomeCourse.id;
-                    setSelectedHomeCourse(null);
-                    onCourseSelect(courseId);
+                    if (selectedIsOpening) return;
+                    setOpeningHomeCourseId(courseId);
+                    try {
+                      const didOpen = await onCourseSelect(courseId);
+                      if (!didOpen) setOpeningHomeCourseId(null);
+                    } catch (error) {
+                      console.warn(`Book open failed (${courseId}):`, error);
+                      setOpeningHomeCourseId(null);
+                    }
                   }}
-                  disabled={selectedIsDownloading}
+                  disabled={selectedIsDownloading || selectedIsOpening}
                   className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white text-[12px] font-black text-[#102018] disabled:opacity-55"
                 >
-                  {selectedIsDownloading ? <FaviconSpinner size={24} dark={true} /> : selectedIsReady ? <BookOpen size={16} /> : <Download size={16} />}
-                  {selectedActionLabel}
+                  {selectedIsDownloading || selectedIsOpening ? <FaviconSpinner size={24} dark={true} /> : selectedIsReady ? <BookOpen size={16} /> : <Download size={16} />}
+                  {selectedIsOpening ? t('Açılıyor...') : selectedActionLabel}
                 </button>
               </div>
             )}
