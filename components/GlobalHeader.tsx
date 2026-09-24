@@ -101,17 +101,40 @@ export default function GlobalHeader({
             <div className="relative z-10 h-full ml-auto pointer-events-auto">
               <div className="rounded-full" style={groupShellStyle}>
                 <div className="h-9 rounded-full flex items-center gap-1.5">
-                  <button
-                    onClick={() => onOpenPaywall?.()}
-                    className="fortale-chrome-icon-button h-9 px-3 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] hover:scale-105 active:scale-95 transition-transform duration-200 inline-flex items-center gap-1.5"
-                    title={t('Kredi satın al')}
-                    aria-label={t('Kredi satın al')}
-                  >
-                    <Coins size={14} className="text-amber-400" />
-                    <span className="text-[11px] font-bold text-white whitespace-nowrap">
-                      {createCredits}C
-                    </span>
-                  </button>
+                  <div className="relative inline-flex shrink-0">
+                    <button
+                      onClick={() => onOpenPaywall?.()}
+                      className="fortale-header-credit-button h-9 px-3 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] hover:scale-105 active:scale-95 transition-transform duration-200 inline-flex items-center gap-1.5"
+                      title={t('Kredi satın al')}
+                      aria-label={t('Kredi satın al')}
+                    >
+                      <Coins size={14} className="text-amber-400" />
+                      <span className="text-[11px] font-bold text-white whitespace-nowrap">
+                        {createCredits}C
+                      </span>
+                    </button>
+                    <svg
+                      className="absolute left-0 top-full h-[3.5px] w-full overflow-visible pointer-events-none"
+                      viewBox="0 0 100 4"
+                      preserveAspectRatio="none"
+                      fill="none"
+                      aria-hidden="true"
+                      style={{ top: 'calc(100% - 8px)', transform: 'rotate(180deg)', opacity: 0.72 }}
+                    >
+                      <path
+                        d="M 1.5 0.5 L 98.5 1.75 A 0.25 0.25 0 0 1 98.5 2.25 L 1.5 3.5 A 1.5 1.5 0 0 0 1.5 0.5 Z"
+                        fill="url(#fortale-credit-amber-reflection)"
+                        style={{ filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.32))' }}
+                      />
+                      <defs>
+                        <linearGradient id="fortale-credit-amber-reflection" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#F59E0B" stopOpacity="1" />
+                          <stop offset="60%" stopColor="#F59E0B" stopOpacity="0.85" />
+                          <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.2" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
                   {showBackButton && (
                     <button
                       onClick={onBack}

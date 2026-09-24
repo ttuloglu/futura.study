@@ -4458,7 +4458,7 @@ button.fortale-hero-inline-field {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 16px 14px;
-  border-bottom: 1px solid rgba(190,220,255,0.12);
+  border-bottom: 1px dashed rgba(190,220,255,0.22);
 }
 
 .fortale-sheet-close {
@@ -4797,6 +4797,7 @@ button.fortale-hero-inline-field {
   overflow: visible !important;
   display: inline-block;
   vertical-align: middle;
+  transform: rotate(45deg);
 }
 
 .fortale-mark__piece {
@@ -5241,4 +5242,302 @@ button.fortale-hero-inline-field {
   .fortale-login-card {
     padding: 14px;
   }
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-logout {
+  background: rgba(127, 29, 29, 0.24) !important;
+  border-color: rgba(248, 113, 113, 0.42) !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-logout:hover {
+  background: rgba(127, 29, 29, 0.4) !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-login {
+  background: rgba(20, 83, 45, 0.24) !important;
+  border-color: rgba(74, 222, 128, 0.38) !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-login:hover {
+  background: rgba(20, 83, 45, 0.4) !important;
+}
+
+.fortale-home-greeting {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  padding: 2px 12px 0;
+  text-align: center;
+}
+
+.fortale-home-greeting h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(17px, 4.5vw, 21px);
+  font-weight: 780;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.fortale-home-greeting p {
+  max-width: 36rem;
+  margin: 7px auto 0;
+  color: rgba(226, 237, 250, 0.78);
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.fortale-home-view.view-container.is-intro .fortale-home-rail-stack {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-height) + 8px);
+  width: min(calc(100vw - 28px), 520px);
+  transform: translateX(-50%);
+}
+
+.fortale-home-create-dock .fortale-type-step {
+  transform: scale(1.035);
+}
+
+.fortale-wizard-type-step-docked .fortale-type-copy {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  width: 100%;
+}
+
+/* Match Voxnela's shared black glass surfaces across Fortale sheets. */
+:root {
+  --fortale-floatisland-surface: rgba(0, 0, 0, 0.30);
+  --fortale-wizard-surface: var(--fortale-floatisland-surface);
+  --fortale-modal-surface: rgba(0, 0, 0, 0.30);
+}
+
+.floatisland-nav {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(0, 0, 0, 0.30) !important;
+  background-color: rgba(0, 0, 0, 0.30) !important;
+  background-image: none !important;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+}
+
+.fortale-modal-backdrop,
+.fortale-floatisland-sheet-root {
+  background: rgba(0, 0, 0, 0.35) !important;
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  background-image: none !important;
+  backdrop-filter: blur(8px) saturate(110%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(110%) !important;
+}
+
+.fortale-sheet-surface,
+.fortale-cosmos-panel,
+.fortale-settings-panel.fortale-sheet-surface {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 28px !important;
+  background: rgba(0, 0, 0, 0.30) !important;
+  background-color: rgba(0, 0, 0, 0.30) !important;
+  background-image: none !important;
+  box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-logout {
+  border: none !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  background-color: #dc2626 !important;
+  background-image: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+  transition: transform 140ms ease, opacity 140ms ease, box-shadow 160ms ease !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-logout * {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-logout:hover:not(:disabled) {
+  opacity: 0.96 !important;
+  transform: scale(1.02) !important;
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.5) !important;
+}
+
+.fortale-settings-panel .fortale-settings-auth-action.is-logout:active:not(:disabled) {
+  transform: scale(0.97) !important;
+}
+
+/* Keep settings links consistently left aligned and remove the green notice tint. */
+.fortale-settings-panel .grid.w-full.grid-cols-2 > button {
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+/* All shared sheet close controls use the same high-contrast treatment. */
+.fortale-sheet-close {
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  background: #fff !important;
+  color: #080b10 !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24) !important;
+}
+
+.fortale-sheet-close svg {
+  stroke: #080b10 !important;
+}
+
+/* Make the three book type choices and their center logo clearly distinct. */
+.fortale-home-create-dock .fortale-type-divider.horizontal,
+.fortale-home-create-dock .fortale-type-divider.left {
+  display: block !important;
+  background: rgba(255, 255, 255, 0.38) !important;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.16) !important;
+}
+
+.fortale-home-create-dock .fortale-type-divider.horizontal {
+  height: 2px !important;
+}
+
+.fortale-home-create-dock .fortale-type-divider.left {
+  width: 2px !important;
+}
+
+.fortale-home-create-dock .fortale-type-core {
+  z-index: 7 !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+  border-radius: 50% !important;
+  background: rgba(7, 16, 28, 0.96) !important;
+  box-shadow:
+    0 0 0 4px rgba(7, 16, 28, 0.52),
+    0 0 16px rgba(245, 158, 11, 0.36),
+    0 4px 14px rgba(0, 0, 0, 0.58) !important;
+}
+
+.fortale-home-create-dock .fortale-type-core svg {
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.62));
+}
+
+.fortale-cosmos-panel .fortale-sheet-close,
+.fortale-cosmos-panel .fortale-sheet-close svg {
+  color: #080b10 !important;
+  stroke: #080b10 !important;
+}
+
+/* Three-way selector: no center shade, logo halo, or divider lines. */
+.fortale-home-create-dock .fortale-type-divider.horizontal,
+.fortale-home-create-dock .fortale-type-divider.left { display: none !important; }
+.fortale-home-create-dock .fortale-type-core {
+  width: 34px !important;
+  height: 34px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.fortale-home-create-dock .fortale-type-core svg,
+.fortale-home-create-dock .fortale-type-core .fortale-mark__piece { filter: none !important; }
+.fortale-home-create-dock .fortale-black-hole-field {
+  background: conic-gradient(from 18deg, transparent, rgba(103,232,249,0.045), transparent 20%, rgba(196,181,253,0.04), transparent 46%, rgba(251,191,36,0.035), transparent 72%) !important;
+  filter: none !important;
+}
+.fortale-home-create-dock .fortale-black-hole-field::before,
+.fortale-home-create-dock .fortale-black-hole-field::after { box-shadow: none !important; }
+.fortale-home-create-dock .fortale-type-choice.accent-fairy_tale::before { background: linear-gradient(145deg, rgba(205,224,255,0.16), rgba(111,152,205,0.08)) !important; }
+.fortale-home-create-dock .fortale-type-choice.accent-novel::before { background: linear-gradient(145deg, rgba(239,35,47,0.22), rgba(185,18,32,0.10)) !important; }
+.fortale-home-create-dock .fortale-type-choice.accent-story::before { background: linear-gradient(145deg, rgba(255,218,72,0.22), rgba(250,204,21,0.10)) !important; }
+
+/* Keep the three-part book selector unchanged after a choice is selected. */
+.fortale-type-divider { display: none !important; }
+.fortale-type-core { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.fortale-type-core svg, .fortale-type-core .fortale-mark__piece { filter: none !important; }
+.fortale-black-hole-field { background: conic-gradient(from 18deg, transparent, rgba(103,232,249,0.045), transparent 20%, rgba(196,181,253,0.04), transparent 46%, rgba(251,191,36,0.035), transparent 72%) !important; filter: none !important; }
+.fortale-black-hole-field::before, .fortale-black-hole-field::after { box-shadow: none !important; }
+.fortale-type-choice.is-accented::before { filter: none !important; box-shadow: none !important; }
+.fortale-type-choice.is-accented.accent-fairy_tale::before { background: linear-gradient(145deg, rgba(205,224,255,0.16), rgba(111,152,205,0.08)) !important; }
+.fortale-type-choice.is-accented.accent-novel::before { background: linear-gradient(145deg, rgba(239,35,47,0.22), rgba(185,18,32,0.10)) !important; }
+.fortale-type-choice.is-accented.accent-story::before { background: linear-gradient(145deg, rgba(255,218,72,0.22), rgba(250,204,21,0.10)) !important; }
+.fortale-type-choice.is-accented, .fortale-type-choice.is-accented svg, .fortale-type-choice.is-accented .fortale-type-label { color: #fff !important; text-shadow: none !important; }
+
+/* All editable controls share FloatIsland surface and border values. */
+#root input:not([type=checkbox]):not([type=radio]):not([type=range]):not(.hidden),
+#root textarea,
+#root select {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background-color: var(--fortale-floatisland-surface) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+}
+
+#root .fortale-wizard-fields input.fortale-wizard-glass-control,
+#root .fortale-wizard-fields textarea.fortale-wizard-glass-control,
+#root .fortale-wizard-fields select.fortale-wizard-glass-control {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background-color: var(--fortale-floatisland-surface) !important;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+}
+
+#root input:not([type=checkbox]):not([type=radio]):not([type=range]):not(.hidden):focus,
+#root textarea:focus, #root select:focus,
+#root .fortale-wizard-fields input.fortale-wizard-glass-control:focus,
+#root .fortale-wizard-fields textarea.fortale-wizard-glass-control:focus,
+#root .fortale-wizard-fields select.fortale-wizard-glass-control:focus {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  background-color: var(--fortale-floatisland-surface) !important;
+}
+
+.fortale-header-credit-button {
+  border: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Keep the intro palette when the selector is docked inside wizard step one. */
+.fortale-wizard-type-step-docked .fortale-type-choice.accent-fairy_tale::before {
+  background: linear-gradient(145deg, rgba(205,224,255,0.16), rgba(111,152,205,0.08)) !important;
+}
+
+.fortale-wizard-type-step-docked .fortale-type-choice.accent-novel::before {
+  background: linear-gradient(145deg, rgba(239,35,47,0.22), rgba(185,18,32,0.10)) !important;
+}
+
+.fortale-wizard-type-step-docked .fortale-type-choice.accent-story::before {
+  background: linear-gradient(145deg, rgba(255,218,72,0.22), rgba(250,204,21,0.10)) !important;
+}
+
+/* Only the selected slice gets a fill in its own border hue. */
+.fortale-type-choice.is-accented.accent-fairy_tale::before {
+  border-color: #fff !important;
+  background: #fff !important;
+}
+
+.fortale-type-choice.is-accented.accent-novel::before {
+  border-color: rgba(255, 74, 74, 0.92) !important;
+  background: rgba(255, 74, 74, 0.92) !important;
+}
+
+.fortale-type-choice.is-accented.accent-story::before {
+  border-color: rgba(255, 218, 72, 0.94) !important;
+  background: rgba(255, 218, 72, 0.94) !important;
+}
+
+.fortale-type-choice.is-accented svg,
+.fortale-type-choice.is-accented .fortale-type-label {
+  color: #111 !important;
 }

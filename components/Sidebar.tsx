@@ -59,8 +59,8 @@ export default function Sidebar({
                   <BrandWordmark size="md" className="block font-bold text-white" />
                 </div>
               </div>
-              <button onClick={onClose} className="h-9 w-9 glass-icon hover:bg-white/10 transition-all">
-                <X size={16} className="text-white" />
+              <button onClick={onClose} className="fortale-sheet-close transition-all">
+                <X size={16} />
               </button>
             </div>
 

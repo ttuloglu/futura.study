@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <g transform="rotate(45 512 512)">
   <rect x="110" y="183" width="52" height="186" rx="26" fill="#FFFFFF"/>
   <rect x="204" y="183" width="52" height="186" rx="26" fill="#FFFFFF"/>
   <rect x="298" y="183" width="52" height="186" rx="26" fill="#FFFFFF"/>
@@ -14,4 +15,5 @@
   <rect x="580" y="419" width="52" height="186" rx="26" fill="#FFFFFF"/>
   <rect x="674" y="419" width="52" height="186" rx="26" fill="#FFFFFF"/>
   <rect x="486" y="655" width="52" height="186" rx="26" fill="#F59E0B"/>
+  </g>
 </svg>

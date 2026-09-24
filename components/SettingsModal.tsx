@@ -41,10 +41,10 @@ interface SettingsModalProps {
 }
 
 const tileButtonClass =
-  'fortale-settings-surface w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-white transition-all';
+  'fortale-settings-surface w-full h-10 flex items-center justify-start gap-2 px-3 rounded-xl border text-left text-xs font-semibold text-white transition-all';
 
-const SMARTBOOK_SURFACE_BG = 'rgba(14, 38, 31, 0.78)';
-const SMARTBOOK_SURFACE_BORDER = 'rgba(230, 245, 238, 0.16)';
+const SMARTBOOK_SURFACE_BG = 'rgba(17, 24, 39, 0.72)';
+const SMARTBOOK_SURFACE_BORDER = 'rgba(255, 255, 255, 0.14)';
 
 export default function SettingsModal({
   isOpen,
@@ -167,7 +167,7 @@ export default function SettingsModal({
 
   return (
     <>
-      <FloatIslandSheet isOpen onClose={onClose} title={userName} subtitle={userEmail || t('Misafir oturumu')} layer={10001} maxWidth={520} panelRef={panelRef} panelClassName="fortale-settings-panel" bodyClassName="p-4">
+      <FloatIslandSheet isOpen onClose={onClose} title={userName} subtitle={userEmail || t('Misafir oturumu')} layer={10001} maxWidth={520} panelRef={panelRef} panelClassName="fortale-settings-panel" bodyClassName="p-4" logoSize={36}>
           <div className="w-full space-y-4">
             <button
               onClick={() => { onOpenPaywall(); onClose(); }}
@@ -175,21 +175,21 @@ export default function SettingsModal({
               style={smartbookSurfaceStyle}
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/15 border border-amber-400/30 text-amber-300">
-                  <Coins size={16} />
+                <div className="flex items-center justify-center text-amber-300">
+                  <Coins size={19} />
                 </div>
                 <div>
                   <p className="text-[13px] font-bold text-white">{t('Kredi Paketleri')}</p>
                   <p className="text-[11px] text-white/60">{t('Kitap üretimi için kredi satın al')}</p>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-amber-300 rounded-xl bg-amber-400/10 border border-amber-400/20 px-3 py-1.5 flex items-center gap-1">
+              <span className="flex items-center gap-1 text-[11px] font-bold text-amber-300">
                 <Coins size={12} />
                 <span>{credits?.createCredits ?? 0}C</span>
               </span>
             </button>
 
-            <section className="overflow-hidden rounded-2xl border" style={smartbookSurfaceStyle}>
+            <section className="fortale-settings-surface overflow-hidden rounded-2xl border" style={smartbookSurfaceStyle}>
               <button
                 type="button"
                 onClick={() => {
@@ -204,8 +204,8 @@ export default function SettingsModal({
                 aria-label={t('Bildirimleri aç')}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[rgba(230,245,238,0.18)] bg-[rgba(19,48,40,0.82)]">
-                    <Bell size={16} className="text-accent-green" />
+                  <div className="relative flex shrink-0 items-center justify-center">
+                    <Bell size={19} className="text-sky-300" />
                     {unreadNotificationCount > 0 ? (
                       <span className="absolute -right-1.5 -top-1.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white shadow-md">
                         {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
@@ -245,8 +245,8 @@ export default function SettingsModal({
 
                   {notifications.length === 0 ? (
                     <div className="flex flex-col items-center px-4 py-5 text-center">
-                      <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.06] text-white/55">
-                        <Bell size={18} />
+                      <div className="mb-2 flex items-center justify-center text-sky-300">
+                        <Bell size={22} />
                       </div>
                       <p className="text-[11px] font-semibold text-white">{t('Henüz bildirim yok')}</p>
                       <p className="mt-1 max-w-[290px] text-[10px] leading-relaxed text-white/55">
@@ -258,16 +258,16 @@ export default function SettingsModal({
                       {notifications.map((notification) => (
                         <article
                           key={notification.id}
-                          className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5"
+                          className={`rounded-xl border px-3 py-2.5 ${notification.readAt ? 'border-white/[0.08] bg-black/15' : 'border-sky-300/20 bg-sky-400/[0.07]'}`}
                         >
                           <div className="flex items-start gap-2.5">
-                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[rgba(25,60,48,0.9)] text-accent-green">
-                              <BookOpen size={14} />
+                            <div className="mt-0.5 flex shrink-0 items-center justify-center text-sky-300">
+                              <BookOpen size={17} />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <p className="text-[11px] font-semibold leading-snug text-white">{notification.title}</p>
-                                {!notification.readAt ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent-green" /> : null}
+                                {!notification.readAt ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.45)]" /> : null}
                               </div>
                               <p className="mt-1 text-[10px] leading-relaxed text-white/65">{notification.body}</p>
                               <time className="mt-1.5 block text-[9px] text-white/40" dateTime={notification.createdAt}>
@@ -315,8 +315,8 @@ export default function SettingsModal({
                   aria-expanded={isLanguageMenuOpen}
                 >
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[rgba(230,245,238,0.18)] bg-[rgba(19,48,40,0.82)]">
-                      <Globe2 size={15} className="text-accent-green" />
+                    <div className="flex shrink-0 items-center justify-center text-violet-300">
+                      <Globe2 size={19} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-[12px] font-semibold text-white">{t('Uygulama Dili')}</p>
@@ -334,8 +334,7 @@ export default function SettingsModal({
             {isLoggedIn ? (
               <button
                 onClick={onAuthAction}
-                className="fortale-settings-surface w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-red-200 transition-all hover:bg-[rgba(23,28,36,0.52)]"
-                style={smartbookSurfaceStyle}
+                className="fortale-settings-surface fortale-settings-auth-action is-logout w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-red-200 transition-all"
               >
                 <LogOut size={14} />
                 {t('Oturumu Kapat')}
@@ -343,8 +342,7 @@ export default function SettingsModal({
             ) : (
               <button
                 onClick={onAuthAction}
-                className="fortale-settings-surface w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-accent-green transition-all hover:bg-[rgba(23,28,36,0.52)]"
-                style={smartbookSurfaceStyle}
+                className="fortale-settings-surface fortale-settings-auth-action is-login w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl border text-xs font-semibold text-emerald-200 transition-all"
               >
                 <LogIn size={14} />
                 {t('Giriş Yap')}

@@ -18,6 +18,7 @@ interface FloatIslandSheetProps {
   showHeader?: boolean;
   showCloseButton?: boolean;
   showLogo?: boolean;
+  logoSize?: number;
   panelClassName?: string;
   bodyClassName?: string;
   panelRef?: React.RefObject<HTMLDivElement | null>;
@@ -37,6 +38,7 @@ export default function FloatIslandSheet({
   showHeader = true,
   showCloseButton = true,
   showLogo = true,
+  logoSize = 28,
   panelClassName = '',
   bodyClassName = 'p-4 sm:p-5',
   panelRef
@@ -85,7 +87,7 @@ export default function FloatIslandSheet({
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               {showLogo && (
                 <div className="shrink-0 flex items-center justify-center">
-                  <FLogo size={28} />
+                  <FLogo size={logoSize} />
                 </div>
               )}
               <div className="min-w-0 flex-1">

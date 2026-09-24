@@ -62,6 +62,7 @@ interface HomeViewProps {
   isLoggedIn?: boolean;
   onRequestLogin?: () => void;
   authUserId?: string;
+  userName?: string;
 }
 
 type StickyModalState = {
@@ -758,6 +759,12 @@ function getLiteraryFactsForBookType(bookType: SmartBookBookType | null | undefi
   if (bookType !== 'fairy_tale' && bookType !== 'story' && bookType !== 'novel') return [];
   const factsForType = LITERARY_FACTS[bookType];
   return factsForType[language] ?? factsForType.en ?? factsForType.tr ?? [];
+}
+
+function getRandomHomeLiteraryFact(language: AppLanguageCode): string {
+  const factTypes: SmartBookBookType[] = ['fairy_tale', 'story', 'novel'];
+  const facts = factTypes.flatMap((bookType) => getLiteraryFactsForBookType(bookType, language));
+  return facts[Math.floor(Math.random() * facts.length)] ?? '';
 }
 
 function shuffledLiteraryFactIndices(count: number): number[] {
@@ -1652,7 +1659,8 @@ export default function HomeView({
   courseOpenStates = {},
   isLoggedIn = true,
   onRequestLogin,
-  authUserId
+  authUserId,
+  userName = 'Turgay'
 }: HomeViewProps) {
   const { language, locale, t } = useUiI18n();
   const [searchTerm, setSearchTerm] = useState('');
@@ -1695,6 +1703,7 @@ export default function HomeView({
   const [activeGeneratingBookType, setActiveGeneratingBookType] = useState<SmartBookBookType | null>(null);
   const [activeGeneratingLanguage, setActiveGeneratingLanguage] = useState<AppLanguageCode | null>(null);
   const [currentLiteraryFactIndex, setCurrentLiteraryFactIndex] = useState<number | null>(null);
+  const homeLiteraryFact = useMemo(() => getRandomHomeLiteraryFact(language), [language]);
   const literaryFactAvailableRef = useRef<number[]>([]);
   const literaryFactShownRef = useRef<number[]>([]);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
@@ -1741,6 +1750,7 @@ export default function HomeView({
   const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
   const [openingHomeCourseId, setOpeningHomeCourseId] = useState<string | null>(null);
   const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
+  const homeGreetingRef = useRef<HTMLDivElement | null>(null);
   const generationDisplayLanguage = isGenerating
     ? (activeGeneratingLanguage || normalizeAppLanguageCode(bookLanguageInput) || language)
     : language;
@@ -3089,6 +3099,7 @@ export default function HomeView({
 
   const hasStickyContent = Boolean(stickyModal.title.trim() || stickyModal.text.trim());
   const isCreationIntroOnly = !isCreationWizardOpen && !isGenerating;
+  const isWizardTypeStepDocked = isCreationWizardOpen && !isGenerating && creationStep === 1;
   const themeStep = 3;
   const ageGroupStep = 4;
   const storyModeStep = 5;
@@ -3111,7 +3122,7 @@ export default function HomeView({
 
   useLayoutEffect(() => {
     if (!isCreationIntroOnly || typeof document === 'undefined') {
-      setHomeCreateDockBounds(null);
+      if (!isWizardTypeStepDocked) setHomeCreateDockBounds(null);
       return;
     }
 
@@ -3120,10 +3131,11 @@ export default function HomeView({
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const railStack = homeRailStackRef.current;
+        const greeting = homeGreetingRef.current;
         const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
-        if (!railStack || !floatIsland) return;
-        const top = Math.ceil(railStack.getBoundingClientRect().bottom);
-        const bottom = Math.floor(floatIsland.getBoundingClientRect().top);
+        if (!railStack || !greeting || !floatIsland) return;
+        const top = Math.ceil(greeting.getBoundingClientRect().bottom + 12);
+        const bottom = Math.floor(railStack.getBoundingClientRect().top - 10);
         const height = Math.max(202, bottom - top);
         setHomeCreateDockBounds((current) => current?.top === top && current.height === height ? current : { top, height });
       });
@@ -3132,6 +3144,7 @@ export default function HomeView({
     syncDockBounds();
     const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncDockBounds) : null;
     if (homeRailStackRef.current) resizeObserver?.observe(homeRailStackRef.current);
+    if (homeGreetingRef.current) resizeObserver?.observe(homeGreetingRef.current);
     const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
     if (floatIsland) resizeObserver?.observe(floatIsland);
     window.addEventListener('resize', syncDockBounds);
@@ -3141,7 +3154,7 @@ export default function HomeView({
       resizeObserver?.disconnect();
       window.removeEventListener('resize', syncDockBounds);
     };
-  }, [isCreationIntroOnly]);
+  }, [isCreationIntroOnly, isWizardTypeStepDocked, homeLiteraryFact]);
 
   useEffect(() => {
     if (currentVisibleStepIndexRaw !== -1) return;
@@ -3623,6 +3636,24 @@ export default function HomeView({
       </div>
 
       <div className="app-content-width fortale-home-content space-y-4">
+        {isCreationIntroOnly && (
+          <div ref={homeGreetingRef} className="fortale-home-greeting">
+            <h1>
+              {(() => {
+                const hour = new Date().getHours();
+                const greeting = hour >= 5 && hour < 12
+                  ? 'Merhaba'
+                  : hour >= 12 && hour < 19
+                    ? 'İyi günler'
+                    : 'İyi geceler';
+                const firstName = userName.trim().split(/\s+/)[0] || 'Turgay';
+                return `${greeting}, ${firstName}`;
+              })()}
+            </h1>
+            {homeLiteraryFact && <p>- “{homeLiteraryFact}”</p>}
+          </div>
+        )}
+
         {showStickyNotes && (
           <section ref={stickyRowContainerRef} className="relative">
             {isStickyRowExpanded && (
@@ -3732,11 +3763,10 @@ export default function HomeView({
                 <button
                   type="button"
                   onClick={() => { setCreationWizardOpen(false); setCreationStep(1); setAccentedBookType(null); }}
-                  className="h-8 w-8 shrink-0 rounded-[18px] border flex items-center justify-center"
-                  style={{ borderColor: 'rgba(135, 164, 197, 0.18)', background: 'rgba(10, 20, 32, 0.42)', color: '#ffffff' }}
+                  className="fortale-sheet-close shrink-0"
                   aria-label={t('Kapat')}
                 >
-                  <X size={14} />
+                  <X size={17} />
                 </button>
               </div>
             )}
@@ -3768,7 +3798,25 @@ export default function HomeView({
             >
               {/* TYPE ORB: intro ve wizard adım 1'de göster */}
               {(isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1)) && (
-                <div className="fortale-type-step">
+                <div
+                  className={`fortale-type-step ${isWizardTypeStepDocked ? 'fortale-wizard-type-step-docked' : ''}`}
+                  style={isWizardTypeStepDocked && homeCreateDockBounds ? {
+                    position: 'fixed',
+                    top: `${Math.round(homeCreateDockBounds.top + (homeCreateDockBounds.height - 202) / 2)}px`,
+                    left: '50%',
+                    zIndex: 38,
+                    width: 'min(calc(100vw - 24px), 430px)',
+                    height: '202px',
+                    minHeight: '202px',
+                    padding: 0,
+                    gap: 0,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transform: 'translateX(-50%) scale(1.035)',
+                    transformOrigin: 'center center',
+                    pointerEvents: 'auto'
+                  } : undefined}
+                >
                   <div className="fortale-black-hole-field" aria-hidden="true">
                     {WIZARD_BLACK_HOLE_TILES.map((tile, index) => (
                       <span

@@ -27,9 +27,11 @@
       .fortale-bar { animation: none; }
     }
   </style>
+  <g transform="rotate(45 512 512)">
   <rect x="232" y="352" width="64" height="320" rx="32" fill="#FFFFFF" class="fortale-bar fortale-bar-col-1"/>
   <rect x="362" y="242" width="64" height="540" rx="32" fill="#FFFFFF" class="fortale-bar fortale-bar-col-2"/>
   <rect x="492" y="172" width="64" height="680" rx="32" fill="#F59E0B" class="fortale-bar fortale-bar-col-3"/>
   <rect x="622" y="242" width="64" height="540" rx="32" fill="#FFFFFF" class="fortale-bar fortale-bar-col-4"/>
   <rect x="752" y="352" width="64" height="320" rx="32" fill="#FFFFFF" class="fortale-bar fortale-bar-col-5"/>
+  </g>
 </svg>

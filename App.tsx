@@ -8032,6 +8032,7 @@ export default function App() {
             isLoggedIn={Boolean(authUser && !isGuestSession)}
             onRequestLogin={handleOpenLoginScreen}
             authUserId={authUser?.uid}
+            userName={userName}
           />
         );
       case 'COURSE_FLOW': {
@@ -8104,6 +8105,7 @@ export default function App() {
             isLoggedIn={Boolean(authUser && !isGuestSession)}
             onRequestLogin={handleOpenLoginScreen}
             authUserId={authUser?.uid}
+            userName={userName}
           />
         );
     }
