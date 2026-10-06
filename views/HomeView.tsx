@@ -3650,11 +3650,7 @@ export default function HomeView({
     </div>
   );
   const wizardThemeVars = {} as React.CSSProperties;
-  const wizardAccentColor = (activeGeneratingBookType ?? selectedBookType) === 'fairy_tale'
-    ? 'linear-gradient(90deg, #E6F0FA, #D4E4F6)'
-    : (activeGeneratingBookType ?? selectedBookType) === 'novel'
-    ? 'linear-gradient(90deg, #FBC5C5, #F5A8A8)'
-    : 'linear-gradient(90deg, #FEF0B2, #FCE088)';
+  const wizardAccentColor = '#c04235';
   const showStickyNotes = false;
   const stickyModalTop =
     stickyRowContainerRef.current
@@ -4081,8 +4077,8 @@ export default function HomeView({
                   <div className="mt-3.5 shrink-0">
                     <div className="h-1.5 overflow-hidden rounded-[18px] bg-white/10">
                       <div
-                        className="h-full rounded-[18px] transition-all duration-300"
-                        style={{ width: `${Math.max(1, Math.min(100, generationProgress || 0))}%`, background: wizardAccentColor }}
+                        className="fortale-progress-bar-red h-full rounded-[18px] transition-all duration-300"
+                        style={{ width: `${Math.max(1, Math.min(100, generationProgress || 0))}%`, background: '#c04235', backgroundColor: '#c04235' }}
                       />
                     </div>
                     <div className="mt-1.5 flex items-center justify-between">

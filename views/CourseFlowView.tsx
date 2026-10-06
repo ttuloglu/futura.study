@@ -6662,7 +6662,7 @@ export default function CourseFlowView({
                           </p>
                         )}
                         <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-3">
-                          <div className="h-full bg-accent-green transition-all duration-300" style={{ width: `${visualProgress}%` }} />
+                          <div className="fortale-progress-bar-red h-full transition-all duration-300" style={{ width: `${visualProgress}%`, background: '#c04235', backgroundColor: '#c04235' }} />
                         </div>
                       </div>
                     )}
