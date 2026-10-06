@@ -37,6 +37,7 @@ import { NodeType, TimelineNode, CourseData, PodcastUsageSummary, ViewState, Pod
 import FLogo from '../components/FLogo';
 import FaviconSpinner from '../components/FaviconSpinner';
 import FloatIslandSheet from '../components/FloatIslandSheet';
+import FairyTaleBookReader from '../components/FairyTaleBookReader';
 import {
   formatAiUsageEntryForConsole,
   generateLectureContent,
@@ -54,6 +55,7 @@ import {
 } from '../utils/creditCosts';
 import { downloadFile } from '../utils/fileDownload';
 import { openNativeBookReader, isNativeBookReaderAvailable } from '../utils/nativeBookReader';
+import BookReader from '../components/BookReader';
 import StyledMarkdown, { extractMarkdownImageSections } from '../components/StyledMarkdown';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
@@ -1602,7 +1604,7 @@ function VisualStoryReader({
   const derivedVisualStoryNarrationPages = useMemo(
     () =>
       (courseData.nodes || [])
-        .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()) && Boolean(node.id))
+        .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim() || node.pageText?.trim() || node.content?.trim()) && Boolean(node.id))
         .slice()
         .sort((left, right) => {
           const leftSeqRaw = Number(left.pageSequence);
@@ -1631,7 +1633,7 @@ function VisualStoryReader({
       text: derivedCoverNarrationScript
     };
     const storyPages = (courseData.nodes || [])
-      .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim()))
+      .filter((node) => node.type === 'lecture' && Boolean(node.pageImageUrl?.trim() || node.pageText?.trim() || node.content?.trim()))
       .slice()
       .sort((left, right) => {
         const leftSeqRaw = Number(left.pageSequence);
@@ -1649,7 +1651,7 @@ function VisualStoryReader({
         text: deriveVisualStoryPageScript(node, index, t, courseData.topic),
         pageSequence: node.pageSequence
       }));
-    return [coverPage, ...storyPages].filter((page) => Boolean(page.imageUrl?.trim()));
+    return [coverPage, ...storyPages].filter((page) => Boolean(page.imageUrl?.trim() || page.text?.trim()));
   }, [courseData, coverAudioOverrideUrl, derivedCoverNarrationScript, pageAudioOverrideUrls, t]);
 
   const currentPage = pages[pageIndex] || null;
@@ -1730,7 +1732,7 @@ function VisualStoryReader({
           throw new Error(`Bundle fetch failed: ${response.status}`);
         }
         return JSZipModule.default.loadAsync(await response.arrayBuffer());
-      })();
+      })().catch(error => { visualStoryBundleZipPromiseRef.current = null; throw error; });
     }
     return visualStoryBundleZipPromiseRef.current;
   }, [courseData.contentPackageUrl]);
@@ -2691,7 +2693,7 @@ function VisualStoryReader({
         </button>
         <div className="relative z-10 grid min-h-dvh place-items-center px-4 text-center">
           <div className="space-y-3">
-            <FaviconSpinner size={30} />
+            <FaviconSpinner size={44} />
             <p className="text-[12px] font-semibold text-white">{t('Kitabınız yükleniyor')}</p>
           </div>
         </div>
@@ -2755,6 +2757,31 @@ function VisualStoryReader({
       </div>
     );
   }
+
+  if (pages.length) return <FairyTaleBookReader course={courseData} title={courseData.topic || t('Masal')}
+    pages={pages.map(page => ({ ...page, title: page.title || t('Masal'), text: page.text || '' }))}
+    onBack={onBack} backgroundAudioSrc={backgroundPlaybackSrc} preparationProgress={narrationGenerationProgress}
+    onResolveAudio={source => ensureBundledVisualStoryAudioUrl(source)}
+    onPrepareNarration={async index => {
+      const requested = pages[index];
+      if (!requested) return false;
+      if (requested.audioUrl) return true;
+      if (courseData.id && onResolveCourseForExport) {
+        const resolved = await onResolveCourseForExport(courseData.id);
+        const audioUrl = requested.id === 'cover' ? resolved?.coverNarrationAudioUrl
+          : resolved?.nodes?.find(node => node.id === requested.nodeId)?.pageAudioUrl;
+        if (audioUrl) {
+          if (requested.id === 'cover') setCoverAudioOverrideUrl(audioUrl);
+          else setPageAudioOverrideUrls(current => ({ ...current, [requested.id]: audioUrl }));
+          return true;
+        }
+      }
+      return handleGenerateVisualStoryNarration();
+    }} onDownload={format => format === 'pdf' ? handleVisualStoryPdfDownload() : handleVisualStoryEpubDownload()}
+    downloadControl={<details className="fairy-reader-download"><summary aria-label={t('İndir')}><Download size={18} /></summary>
+      <div><button type="button" disabled={isPdfDownloading} onClick={() => void handleVisualStoryPdfDownload()}>{t('PDF indir')}</button>
+        <button type="button" disabled={isEpubDownloading} onClick={() => void handleVisualStoryEpubDownload()}>{t('EPUB indir')}</button></div>
+    </details>} />;
 
   return (
     <div className="fortale-cosmos-page relative min-h-dvh overflow-hidden text-white">
@@ -3561,9 +3588,9 @@ export default function CourseFlowView({
   }, []);
 
   useEffect(() => {
-    onReadingFullscreenChange?.(isReadingFullscreen || courseData?.visualStoryMode === true);
+    onReadingFullscreenChange?.(isReadingFullscreen || courseData?.visualStoryMode === true || isFairyTaleBookType(courseData?.bookType) || courseData?.bookType === 'novel' || courseData?.bookType === 'story');
     return () => onReadingFullscreenChange?.(false);
-  }, [courseData?.visualStoryMode, isReadingFullscreen, onReadingFullscreenChange]);
+  }, [courseData?.visualStoryMode, courseData?.bookType, isReadingFullscreen, onReadingFullscreenChange]);
 
   useEffect(() => {
     if (!isReadingFullscreen) return;
@@ -4582,13 +4609,14 @@ export default function CourseFlowView({
   };
 
   const handleFullSmartBookDownload = async (
-    e: React.MouseEvent,
+    e: React.MouseEvent | undefined,
     options?: {
       backgroundColor?: string;
       closePalette?: boolean;
+      throwOnError?: boolean;
     }
   ) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
 
@@ -4618,6 +4646,7 @@ export default function CourseFlowView({
       });
     } catch (error) {
       console.error('PDF export failed:', error);
+      if (options?.throwOnError) throw error;
       showIosPopup(t('PDF indirilemedi.'));
     }
   };
@@ -4643,8 +4672,8 @@ export default function CourseFlowView({
   const selectedPdfBackgroundPreset =
     PDF_BACKGROUND_PRESETS.find((preset) => preset.id === selectedPdfBackgroundPresetId) || PDF_BACKGROUND_PRESETS[0];
 
-  const handleFullSmartBookEpubDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleFullSmartBookEpubDownload = async (e?: React.MouseEvent, throwOnError = false) => {
+    e?.stopPropagation();
     if (!courseData) return;
     if (isExportBusy) return;
 
@@ -4684,6 +4713,7 @@ export default function CourseFlowView({
       });
     } catch (error) {
       console.error('EPUB export failed:', error);
+      if (throwOnError) throw error;
       showIosPopup(t('EPUB indirilemedi.'));
     }
   };
@@ -5364,7 +5394,7 @@ export default function CourseFlowView({
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}/${t('dk')}`;
-	  if (courseData.visualStoryMode === true) {
+	  if (courseData.visualStoryMode === true || isFairyTaleBook) {
 	    return (
 	      <VisualStoryReader
 	        courseData={courseData}
@@ -5374,6 +5404,10 @@ export default function CourseFlowView({
 	      />
 	    );
 	  }
+  if (courseData.bookType === 'novel' || courseData.bookType === 'story') {
+    return <BookReader key={courseData.id} course={courseData} nodes={orderedTabNodes} onBack={onBack}
+      onDownload={format => format === 'pdf' ? handleFullSmartBookDownload(undefined, { throwOnError: true }) : handleFullSmartBookEpubDownload(undefined, true)} />;
+  }
   if (!orderedTabNodes.length) {
     return (
       <div className="view-container fortale-loading-view">
@@ -6590,7 +6624,7 @@ export default function CourseFlowView({
                     {isBookLoadingPlaceholder && (
                       <div className="space-y-3 py-6 max-w-[300px] mx-auto text-center">
                         <div className="flex h-16 w-16 items-center justify-center mx-auto">
-                          <FaviconSpinner size={30} />
+                          <FaviconSpinner size={46} />
                         </div>
                         <p className="text-[12px] font-semibold text-white">
                           {t('Kitabınız yükleniyor')}
@@ -6610,7 +6644,7 @@ export default function CourseFlowView({
                     {!isLocked && !isReadingFullscreen && !isBookLoadingPlaceholder && (isGen || isBackgroundPreparing || isNarrativeHydrationPlaceholder) && (
                       <div className="space-y-4 py-6 max-w-[300px] mx-auto text-center">
                         <div className="flex h-16 w-16 items-center justify-center mx-auto">
-                          <FaviconSpinner size={30} />
+                          <FaviconSpinner size={46} />
                         </div>
                         <h3 className="text-sm font-bold text-white">
                           {isNarrativeHydrationPlaceholder ? t('İçerik İndiriliyor') : t('İçerik Hazırlanıyor')}

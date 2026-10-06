@@ -1,0 +1,183 @@
+
+.fortale-companion-art { --friend-cream:light-dark(#fff9ed,#fff9ed); --friend-shade:light-dark(#e6dbcc,#e6dbcc); --friend-ink:light-dark(#303136,#303136); --friend-red:light-dark(#c04235,#c04235); --friend-blush:light-dark(#efb4a5,#efb4a5); }
+.fortale-companion-art .friend-shadow { position:absolute; width:125px; height:16px; left:28px; bottom:-5px; background:color-mix(in srgb,var(--friend-ink) 15%,transparent); border-radius:50%; filter:blur(6px); animation:friend-shadow 3.6s ease-in-out infinite; }
+.fortale-companion-art .friend-pet { display:block; position:relative; width:180px; height:190px; border:0; background:transparent; padding:0; color:var(--friend-ink); -webkit-tap-highlight-color:transparent; }
+.fortale-companion-art .friend-body { position:absolute; left:16px; top:32px; width:148px; height:139px; border-radius:48% 48% 40% 40% / 43% 43% 45% 45%; background:radial-gradient(ellipse at 38% 22%,light-dark(#ffffff,#ffffff),var(--friend-cream) 57%,var(--friend-shade) 100%); box-shadow:inset 0 -5px 6px color-mix(in srgb,var(--friend-shade) 55%,transparent),inset 0 3px 4px light-dark(#ffffff,#ffffff),0 9px 16px color-mix(in srgb,var(--friend-ink) 9%,transparent); transform-origin:50% 90%; animation:friend-breathe 3.6s ease-in-out infinite; }
+.fortale-companion-art .friend-tuft { position:absolute; width:24px; height:32px; left:65px; top:-17px; border-radius:85% 18% 70% 25%; transform:rotate(20deg); transform-origin:bottom left; background:linear-gradient(145deg,light-dark(#e7867b,#e7867b),var(--friend-red)); box-shadow:inset 3px 1px 3px color-mix(in srgb,var(--friend-cream) 65%,transparent); animation:friend-tuft 3.6s ease-in-out infinite; }
+.fortale-companion-art .friend-face { position:absolute; inset:0; animation:friend-look 8s ease-in-out infinite; }
+.fortale-companion-art .friend-eye { position:absolute; top:52px; width:13px; height:21px; border-radius:50%; background:var(--friend-ink); transform-origin:center; animation:friend-blink 6.2s infinite; transition:width .25s,height .25s,top .25s,transform .25s; }
+.fortale-companion-art .eye-left { left:44px; } .fortale-companion-art .eye-right { right:44px; }
+.fortale-companion-art .friend-eye span { position:absolute; width:4px; height:5px; left:3px; top:4px; border-radius:50%; background:var(--friend-cream); opacity:.95; }
+.fortale-companion-art .friend-brow { position:absolute; width:13px; height:5px; top:40px; border-radius:50%; border-top:2px solid var(--friend-ink); opacity:0; transition:transform .25s,opacity .25s; }
+.fortale-companion-art .brow-left { left:43px; } .fortale-companion-art .brow-right { right:43px; }
+.fortale-companion-art .friend-mouth { position:absolute; top:77px; left:65px; width:17px; height:10px; border-bottom:3px solid var(--friend-ink); border-radius:0 0 50% 50%; transition:all .2s; }
+.fortale-companion-art .friend-cheek { position:absolute; width:19px; height:8px; top:77px; border-radius:50%; background:var(--friend-blush); opacity:.68; filter:blur(1px); }
+.fortale-companion-art .cheek-left { left:27px; } .fortale-companion-art .cheek-right { right:27px; }
+.fortale-companion-art .friend-arm { position:absolute; top:89px; width:23px; height:38px; border-radius:60%; background:linear-gradient(90deg,var(--friend-shade),var(--friend-cream)); transform-origin:50% 8%; box-shadow:0 2px 2px color-mix(in srgb,var(--friend-ink) 8%,transparent); }
+.fortale-companion-art .arm-left { left:-9px; transform:rotate(19deg); } .fortale-companion-art .arm-right { right:-9px; transform:rotate(-19deg); background:linear-gradient(-90deg,var(--friend-shade),var(--friend-cream)); }
+.fortale-companion-art .friend-foot { position:absolute; bottom:2px; width:33px; height:21px; border-radius:50% 50% 42% 42%; background:linear-gradient(var(--friend-cream),var(--friend-shade)); box-shadow:inset 0 -2px 2px var(--friend-shade); }
+.fortale-companion-art .foot-left { left:43px; transform:rotate(-12deg); } .fortale-companion-art .foot-right { right:43px; transform:rotate(12deg); }
+.fortale-companion-art .friend-thought { display:flex; align-items:center; justify-content:center; gap:5px; position:absolute; top:-22px; right:-9px; width:64px; height:41px; background:var(--friend-cream); box-shadow:0 4px 15px color-mix(in srgb,var(--friend-ink) 12%,transparent); border-radius:50% 50% 50% 10%; opacity:0; transform:scale(.8); transition:opacity .2s,transform .2s; }
+.fortale-companion-art .friend-thought b { width:5px; height:5px; background:var(--friend-red); border-radius:50%; }
+.fortale-companion-art .friend-book { position:absolute; display:flex; left:39px; bottom:20px; width:102px; height:51px; opacity:0; transform:translateY(10px) scale(.85); transition:opacity .2s,transform .2s; filter:drop-shadow(0 3px 2px color-mix(in srgb,var(--friend-ink) 18%,transparent)); }
+.fortale-companion-art .friend-book>span { flex:1; position:relative; background:linear-gradient(125deg,color-mix(in srgb,var(--friend-red) 65%,var(--friend-cream)),var(--friend-red) 85%); border:1px solid color-mix(in srgb,var(--friend-red) 78%,var(--friend-ink)); border-right:0; border-radius:4px 1px 0 5px; transform:skewY(9deg); box-shadow:inset 0 2px 0 var(--friend-cream),inset 0 3px 0 var(--friend-shade); }
+.fortale-companion-art .friend-book>span+span { border-radius:1px 4px 5px 0; transform:skewY(-9deg); border-left:2px solid color-mix(in srgb,var(--friend-red) 75%,var(--friend-ink)); border-right:1px solid color-mix(in srgb,var(--friend-red) 78%,var(--friend-ink)); }
+.fortale-companion-art .friend-book>span::after { content:""; position:absolute; inset:9px 7px 7px; border:1px solid color-mix(in srgb,var(--friend-cream) 24%,transparent); border-radius:2px; }
+.fortale-companion-art .friend-book::before,
+.fortale-companion-art .friend-book::after { content:""; position:absolute; top:16px; width:12px; height:23px; z-index:1; border-radius:60%; background:linear-gradient(90deg,var(--friend-cream),var(--friend-shade)); box-shadow:0 1px 3px color-mix(in srgb,var(--friend-ink) 15%,transparent); }
+.fortale-companion-art .friend-book::before { left:-5px; transform:rotate(-9deg); }
+.fortale-companion-art .friend-book::after { right:-5px; transform:rotate(9deg); }
+.fortale-companion-art .friend-spark { position:absolute; color:var(--friend-red); font-size:25px; opacity:0; } .fortale-companion-art .s1 { left:-3px; top:34px; } .fortale-companion-art .s2 { right:-5px; top:9px; font-size:33px; } .fortale-companion-art .s3 { left:26px; top:-4px; font-size:19px; }
+.fortale-companion-art[data-mood="think"] .friend-body { animation:friend-ponder 2.8s ease-in-out infinite; }
+.fortale-companion-art[data-mood="think"] .friend-face { animation:none; transform:translate(-3px,-4px); }
+.fortale-companion-art[data-mood="think"] .brow-left { opacity:1; transform:rotate(-15deg) translateY(-3px); }
+.fortale-companion-art[data-mood="think"] .friend-mouth { width:10px; left:69px; height:3px; border-radius:50%; transform:rotate(-9deg); }
+.fortale-companion-art[data-mood="think"] .arm-right { transform:translate(-30px,-24px) rotate(42deg); z-index:2; }
+.fortale-companion-art[data-mood="think"] .friend-thought { opacity:1; transform:scale(1); }
+.fortale-companion-art[data-mood="think"] .friend-thought b { animation:friend-dot 1.4s ease-in-out infinite; } .fortale-companion-art[data-mood="think"] .friend-thought b:nth-child(2) { animation-delay:.16s; } .fortale-companion-art[data-mood="think"] .friend-thought b:nth-child(3) { animation-delay:.32s; }
+.fortale-companion-art[data-mood="walk"] .friend-body { animation:friend-waddle .6s ease-in-out infinite; }
+.fortale-companion-art[data-mood="walk"] .friend-face { animation:friend-curious-look 10s ease-in-out infinite; }
+.fortale-companion-art[data-mood="walk"] .friend-brow { opacity:.65; animation:friend-curious-brow 10s ease-in-out infinite; }
+.fortale-companion-art[data-mood="walk"] .brow-right { animation-delay:-5s; }
+.fortale-companion-art[data-mood="walk"] .friend-eye { animation:friend-walking-blink 10s ease-in-out infinite; }
+.fortale-companion-art[data-mood="walk"] .friend-mouth { animation:friend-curious-mouth 10s ease-in-out infinite; }
+.fortale-companion-art[data-mood="walk"] .foot-left { animation:friend-step .6s ease-in-out infinite; } .fortale-companion-art[data-mood="walk"] .foot-right { animation:friend-step .6s ease-in-out -.3s infinite; }
+.fortale-companion-art[data-mood="walk"] .arm-left { animation:friend-swing .6s ease-in-out infinite; } .fortale-companion-art[data-mood="walk"] .arm-right { animation:friend-swing .6s ease-in-out -.3s infinite; }
+.fortale-companion-art[data-mood="read"] .friend-face { animation:friend-reading 5s ease-in-out infinite; }
+.fortale-companion-art[data-mood="read"] .friend-eye { height:14px; top:57px; }
+.fortale-companion-art[data-mood="read"] .friend-book { opacity:1; transform:translateY(0) scale(1); }
+.fortale-companion-art[data-mood="read"] .arm-left { transform:translate(21px,5px) rotate(-36deg); z-index:2; } .fortale-companion-art[data-mood="read"] .arm-right { transform:translate(-21px,5px) rotate(36deg); z-index:2; }
+.fortale-companion-art[data-mood="read"] .friend-book { z-index:3; }
+.fortale-companion-art[data-mood="read"] .friend-foot { z-index:4; }
+.fortale-companion-art[data-mood="happy"] .friend-pet { animation:friend-jump 1.3s cubic-bezier(.4,0,.2,1) infinite; }
+.fortale-companion-art[data-mood="happy"] .friend-eye { background:transparent; width:17px; height:12px; border-top:4px solid var(--friend-ink); top:54px; border-radius:50%; animation:none; }
+.fortale-companion-art[data-mood="happy"] .friend-eye span { display:none; }
+.fortale-companion-art[data-mood="happy"] .friend-face { animation:none; }
+.fortale-companion-art[data-mood="happy"] .friend-mouth { width:20px; height:14px; left:64px; background:var(--friend-ink); border:0; border-radius:3px 3px 50% 50%; }
+.fortale-companion-art[data-mood="happy"] .arm-left { transform:rotate(140deg); } .fortale-companion-art[data-mood="happy"] .arm-right { transform:rotate(-140deg); }
+.fortale-companion-art[data-mood="happy"] .friend-spark { animation:friend-sparkle 1.3s ease-in-out infinite; } .fortale-companion-art[data-mood="happy"] .s2 { animation-delay:.15s; } .fortale-companion-art[data-mood="happy"] .s3 { animation-delay:.3s; }
+.fortale-companion-art[data-mood="happy"] .friend-shadow { animation:friend-jump-shadow 1.3s ease-in-out infinite; }
+.fortale-companion-art[data-mood="surprise"] .friend-pet { animation:friend-startle .6s ease-out 1; }
+.fortale-companion-art[data-mood="surprise"] .friend-eye { width:17px; height:25px; top:48px; animation:none; }
+.fortale-companion-art[data-mood="surprise"] .friend-face { animation:none; }
+.fortale-companion-art[data-mood="surprise"] .friend-mouth { width:12px; height:16px; left:68px; top:80px; border:0; background:var(--friend-ink); border-radius:50%; }
+.fortale-companion-art[data-mood="surprise"] .friend-brow { opacity:1; transform:translateY(-7px); }
+.fortale-companion-art[data-mood="surprise"] .arm-left { transform:rotate(65deg); } .fortale-companion-art[data-mood="surprise"] .arm-right { transform:rotate(-65deg); }
+@keyframes friend-breathe { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(-3px) scale(1.018,.985)} }
+@keyframes friend-shadow { 0%,100%{transform:scaleX(1);opacity:.8} 50%{transform:scaleX(.9);opacity:.6} }
+@keyframes friend-tuft { 0%,100%{transform:rotate(20deg)} 50%{transform:rotate(29deg)} }
+@keyframes friend-fringe { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(4deg) translateY(-1px)} }
+@keyframes friend-blink { 0%,42%,46%,83%,87%,100%{transform:scaleY(1)} 44%,85%{transform:scaleY(.08)} }
+@keyframes friend-look { 0%,18%,100%{transform:translateX(0)} 25%,42%{transform:translateX(4px)} 52%,73%{transform:translateX(-4px)} 80%,92%{transform:translateY(-2px)} }
+@keyframes friend-curious-look { 0%,100%{transform:translate(0,0) rotate(0)} 13%,24%{transform:translate(7px,-1px) rotate(-5deg)} 29%,37%{transform:translate(3px,-8px) rotate(-8deg)} 46%{transform:translate(0,0) rotate(0)} 57%,68%{transform:translate(-7px,-1px) rotate(5deg)} 73%,81%{transform:translate(-3px,-8px) rotate(8deg)} 91%{transform:translate(0,0) rotate(0)} }
+@keyframes friend-curious-brow { 0%,100%{transform:translateY(0);opacity:.15} 26%,38%{transform:translateY(-4px) rotate(-12deg);opacity:.8} 55%,75%{transform:translateY(-2px);opacity:.4} }
+@keyframes friend-walking-blink { 0%,39%,43%,84%,88%,100%{transform:scaleY(1)} 41%,86%{transform:scaleY(.08)} }
+@keyframes friend-curious-mouth { 0%,24%,43%,68%,91%,100%{transform:scale(1)} 30%,37%,76%,81%{transform:scale(.65,1.4)} }
+@keyframes friend-ponder { 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(-1deg) translateY(-3px)} }
+@keyframes friend-dot { 0%,70%,100%{transform:translateY(0);opacity:.4} 35%{transform:translateY(-4px);opacity:1} }
+@keyframes friend-waddle { 0%,100%{transform:translateY(0) rotate(-4deg)} 50%{transform:translateY(-5px) rotate(4deg)} }
+@keyframes friend-step { 0%,100%{transform:translateY(0) rotate(-7deg)} 50%{transform:translateY(-8px) rotate(15deg)} }
+@keyframes friend-swing { 0%,100%{transform:rotate(24deg)} 50%{transform:rotate(-24deg)} }
+@keyframes friend-reading { 0%,100%{transform:translate(-3px,5px)} 46%{transform:translate(3px,5px)} 50%{transform:translate(-3px,5px)} }
+@keyframes friend-jump { 0%,100%{transform:translateY(0) scale(1.04,.96)} 22%{transform:translateY(-27px) scale(.96,1.04)} 44%{transform:translateY(0) scale(1.07,.93)} 62%,83%{transform:translateY(0) scale(1)} }
+@keyframes friend-jump-shadow { 0%,44%,100%{transform:scaleX(1);opacity:.8} 22%{transform:scaleX(.65);opacity:.35} }
+@keyframes friend-sparkle { 0%,65%,100%{opacity:0;transform:translateY(7px) scale(.6)} 25%,45%{opacity:1;transform:translateY(-7px) scale(1)} }
+@keyframes friend-startle { 0%{transform:translateY(0)} 25%{transform:translateY(-20px) scale(.96,1.04)} 55%{transform:translateY(0) scale(1.05,.95)} 100%{transform:none} }
+@media(prefers-reduced-motion:reduce) { .fortale-companion-art *,.fortale-companion-art *::before,.fortale-companion-art *::after { animation:none!important; transition:none!important; } .fortale-companion-art[data-mood="happy"] .friend-spark {opacity:1} }
+
+.fortale-companion-art { display:block; position:relative; flex:0 0 auto; isolation:isolate; pointer-events:none; }
+.fortale-companion-art .friend-canvas { display:block; position:relative; width:180px; height:190px; transform-origin:top left; }
+.fortale-companion-art .friend-spark { color:var(--friend-red) !important; }
+/* A single continuous, swept forelock instead of separate rounded hair pieces. */
+.fortale-companion-art .friend-tuft { width:44px; height:15px; left:55px; top:-4px; border-radius:75% 18% 80% 20%; transform-origin:15% 80%; animation:friend-swept-hair 3.6s ease-in-out infinite; }
+.fortale-companion-art .friend-tuft::after { content:""; position:absolute; width:23px; height:10px; left:-10px; top:7px; border-radius:75% 10% 65% 30%; transform:rotate(-22deg); background:linear-gradient(145deg,light-dark(#e7867b,#e7867b),var(--friend-red)); }
+.fortale-companion-art[data-mood="idle"] .friend-mouth { animation:friend-soft-smile 8s ease-in-out infinite; }
+.fortale-companion-art[data-mood="read"] .friend-mouth { width:14px; left:67px; height:7px; }
+.fortale-companion-art[data-mood="walk"] .friend-mouth { animation:friend-human-curiosity 10s ease-in-out infinite; }
+.fortale-companion-art[data-mood="happy"] .friend-mouth::after { content:""; position:absolute; left:5px; bottom:1px; width:10px; height:5px; border-radius:50%; background:var(--friend-blush); }
+.fortale-companion-art[data-mood]:not([data-mood="happy"]):not([data-mood="surprise"]) .friend-eye { animation:friend-natural-blink 3.8s ease-in-out infinite; }
+.fortale-companion-art[data-wink="left"]:not([data-mood="surprise"]) .eye-left,
+.fortale-companion-art[data-wink="right"]:not([data-mood="surprise"]) .eye-right { animation:none !important; width:16px; height:9px; top:58px; background:transparent; border-top:0; border-bottom:3px solid var(--friend-ink); border-radius:0 0 50% 50%; transform:rotate(-8deg); }
+.fortale-companion-art[data-wink="left"] .eye-left>span,
+.fortale-companion-art[data-wink="right"] .eye-right>span { opacity:0; }
+.fortale-companion-art[data-wink="left"]:not([data-mood="think"]):not([data-mood="happy"]):not([data-mood="surprise"]) .friend-mouth,
+.fortale-companion-art[data-wink="right"]:not([data-mood="think"]):not([data-mood="happy"]):not([data-mood="surprise"]) .friend-mouth { animation:none; width:21px; height:11px; left:64px; transform:rotate(-8deg); }
+.fortale-companion-rail { position:absolute; z-index:80; left:0; right:0; bottom:calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-height) + 12px); height:132px; pointer-events:none; overflow:hidden; }
+.fortale-companion-rail[hidden] { display:none !important; }
+.fortale-companion-target { position:absolute; bottom:8px; width:96px; height:104px; padding:4px; border:0 !important; border-radius:28px; background:transparent !important; box-shadow:none !important; backdrop-filter:none !important; opacity:1 !important; pointer-events:auto; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transform:translateX(-50%); transition:left var(--companion-travel,2200ms) cubic-bezier(.4,0,.2,1),opacity 180ms; }
+.fortale-companion-target:focus-visible { outline:2px solid var(--fortale-brand-accent); outline-offset:-3px; }
+.fortale-companion-rail[data-play="flee"] .fortale-companion-target { transition-duration:650ms; }
+.fortale-companion-rail[data-play="hide"] .fortale-companion-target { opacity:0 !important; pointer-events:none; }
+.fortale-companion-rail[data-play="peek"] .fortale-companion-target { transition-duration:420ms; }
+.fortale-companion-rail[data-play="found"] .fortale-companion-target { transition-duration:900ms; }
+.fortale-companion-rail[data-reduced-motion="true"] .fortale-companion-target { transition:none; }
+@keyframes friend-swept-hair { 0%,100%{transform:rotate(-12deg)} 50%{transform:rotate(-6deg)} }
+@keyframes friend-natural-blink { 0%,26%,32%,74%,79%,84%,89%,100%{transform:scaleY(1)} 29%,77%,86%{transform:scaleY(.07)} }
+@keyframes friend-soft-smile { 0%,100%{transform:rotate(0);width:17px} 25%,42%{transform:rotate(-5deg);width:20px} 57%,75%{transform:rotate(5deg);width:18px} }
+@keyframes friend-human-curiosity { 0%,22%,46%,66%,91%,100%{width:17px;height:10px;left:65px;border-radius:0 0 50% 50%;background:transparent;border-bottom-width:3px} 29%,37%,76%,81%{width:11px;height:12px;left:68px;border-radius:50%;background:var(--friend-ink);border-bottom-width:0} }
+
+/* The companion can be picked up anywhere inside the app, above its controls. */
+.fortale-companion-rail { inset:0; height:auto; bottom:0; }
+.fortale-companion-floor { position:absolute; width:1px; height:104px; bottom:calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-height) + 20px); visibility:hidden; pointer-events:none; }
+.fortale-companion-ceiling { position:absolute; top:max(12px, calc(env(safe-area-inset-top) + 8px)); visibility:hidden; pointer-events:none; }
+.fortale-companion-target { bottom:auto; touch-action:none; user-select:none; -webkit-user-select:none; cursor:grab; transition:left var(--companion-travel,2200ms) cubic-bezier(.4,0,.2,1), top .5s ease, opacity 180ms; }
+.fortale-companion-rail[data-held="true"] .fortale-companion-target { transition:none!important; cursor:grabbing; }
+.fortale-companion-rail[data-held="true"] .friend-pet { animation:none; transform:rotate(-7deg) scale(1.03); }
+.fortale-companion-rail[data-play="fall"] .fortale-companion-target { transition:top 700ms cubic-bezier(.55,0,1,.45); }
+.fortale-generation-companion-row { height:110px; flex-shrink:0; position:relative; }
+.fortale-companion-art[data-mood="march"] .friend-body { animation:friend-march-body .5s linear infinite; }
+.fortale-companion-art[data-mood="march"] .friend-face { animation:friend-curious-look 10s ease-in-out infinite; }
+.fortale-companion-art[data-mood="march"] .foot-left { animation:friend-march-step .5s linear infinite; }
+.fortale-companion-art[data-mood="march"] .foot-right { animation:friend-march-step .5s linear -.25s infinite; }
+.fortale-companion-art[data-mood="march"] .arm-left { animation:friend-march-arm .5s ease-in-out infinite; }
+.fortale-companion-art[data-mood="march"] .arm-right { animation:friend-march-arm .5s ease-in-out -.25s infinite; }
+.fortale-companion-rail[data-wandering="true"] .fortale-companion-art[data-mood="read"] .foot-left,
+.fortale-companion-art[data-mood="read"][data-wandering="true"] .foot-left { animation:friend-step .6s ease-in-out infinite; }
+.fortale-companion-rail[data-wandering="true"] .fortale-companion-art[data-mood="read"] .foot-right,
+.fortale-companion-art[data-mood="read"][data-wandering="true"] .foot-right { animation:friend-step .6s ease-in-out -.3s infinite; }
+.fortale-companion-art[data-mood="clap"] .friend-face { animation:none; }
+.fortale-companion-art[data-mood="clap"] .friend-body { animation:friend-clap-bounce .6s ease-in-out infinite; }
+.fortale-companion-art[data-mood="clap"] .friend-eye { background:transparent; border-top:3px solid var(--friend-ink); height:10px; border-radius:50%; animation:none!important; }
+.fortale-companion-art[data-mood="clap"] .friend-eye>span { opacity:0; }
+.fortale-companion-art[data-mood="clap"] .friend-mouth { width:23px; height:14px; left:62px; }
+.fortale-companion-art[data-mood="clap"] .arm-left { z-index:5; animation:friend-clap-left .4s ease-in-out infinite; }
+.fortale-companion-art[data-mood="clap"] .arm-right { z-index:5; animation:friend-clap-right .4s ease-in-out infinite; }
+.fortale-companion-art[data-mood="clap"] .friend-spark { animation:friend-sparkle 1.3s ease-in-out infinite; }
+.fortale-companion-art[data-mood="read"][data-affection="sigh"] .friend-body { animation:friend-contented-sigh 2.8s ease-in-out 1; }
+.fortale-companion-art[data-mood="read"][data-affection="sigh"] .friend-face,
+.fortale-companion-art[data-mood="read"][data-affection="delighted"] .friend-face { animation:none; transform:translateY(2px); }
+.fortale-companion-art[data-mood="read"][data-affection="sigh"] .friend-eye,
+.fortale-companion-art[data-mood="read"][data-affection="delighted"] .friend-eye { animation:none!important; background:transparent; border-bottom:3px solid var(--friend-ink); height:8px; border-radius:50%; }
+.fortale-companion-art[data-mood="read"][data-affection]:not([data-affection=""]) .friend-eye>span { opacity:0; }
+.fortale-companion-art[data-mood="read"][data-affection="sigh"] .friend-mouth { animation:friend-sigh-mouth 2.8s ease-in-out 1; }
+.fortale-companion-art[data-mood="read"][data-affection="delighted"] .friend-mouth { width:23px; height:12px; left:63px; }
+.fortale-companion-art[data-mood="read"][data-affection="delighted"] .friend-pet { animation:friend-book-hug 2.8s ease-in-out 1; }
+@keyframes friend-march-body { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-4px) rotate(2deg)} }
+@keyframes friend-march-step { 0%,100%{transform:translateY(0) rotate(-12deg)} 50%{transform:translateY(-15px) rotate(22deg)} }
+@keyframes friend-march-arm { 0%,100%{transform:rotate(42deg)} 50%{transform:rotate(-42deg)} }
+@keyframes friend-clap-bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+@keyframes friend-clap-left { 0%,100%{transform:translate(43px,-20px) rotate(-30deg)} 50%{transform:translate(70px,-23px) rotate(-18deg)} }
+@keyframes friend-clap-right { 0%,100%{transform:translate(-43px,-20px) rotate(30deg)} 50%{transform:translate(-70px,-23px) rotate(18deg)} }
+@keyframes friend-contented-sigh { 0%,100%{transform:scale(1)} 38%{transform:translateY(-5px) scale(1.04,1.025)} 75%{transform:translateY(2px) scale(.99,.975)} }
+@keyframes friend-sigh-mouth { 0%,100%{width:14px;height:7px;left:67px;background:transparent;border-bottom:3px solid var(--friend-ink);border-radius:0 0 50% 50%} 45%,65%{width:8px;height:9px;left:70px;background:var(--friend-ink);border:0;border-radius:50%} 88%{width:21px;height:10px;left:64px;background:transparent;border-bottom:3px solid var(--friend-ink);border-radius:0 0 50% 50%} }
+@keyframes friend-book-hug { 0%,100%{transform:none} 40%,65%{transform:translateY(-3px) rotate(-4deg)} }
+
+/* This clipping window ends exactly on the modal's top border. */
+.fortale-modal-companion-root { position:fixed; inset:0; pointer-events:none; overflow:visible; }
+.fortale-production-composer { z-index:2; }
+.fortale-composer-companion { position:absolute; z-index:1; width:120px; overflow:hidden; pointer-events:none; }
+.fortale-composer-companion[hidden] { display:none!important; }
+.fortale-composer-companion-puppet { position:absolute; bottom:-32px; left:8px; width:104px; height:110px; transition:bottom .7s cubic-bezier(.3,.7,.2,1),transform .4s; }
+.fortale-composer-companion[data-pose="head"] .friend-face { animation:friend-over-the-border 5s ease-in-out infinite; }
+.fortale-composer-companion[data-pose="eyes"] { clip-path:inset(calc(100% - 22px) 0 0); }
+.fortale-composer-companion[data-pose="eyes"] .fortale-composer-companion-puppet { bottom:-47px; }
+.fortale-composer-companion[data-pose="eyes"] .friend-body { background:transparent; box-shadow:none; }
+.fortale-composer-companion[data-pose="eyes"] .friend-eye { box-shadow:0 0 0 4px var(--friend-cream); }
+.fortale-composer-companion[data-pose="eyes"] .friend-cheek,
+.fortale-composer-companion[data-pose="eyes"] .friend-mouth { opacity:0; }
+.fortale-composer-companion[data-pose="hidden"] .fortale-composer-companion-puppet { bottom:-125px; }
+.fortale-composer-companion[data-pose="show"] .fortale-composer-companion-puppet,
+.fortale-composer-companion[data-pose="clap"] .fortale-composer-companion-puppet { bottom:0; }
+.fortale-composer-companion[data-pose="surprise"] .fortale-composer-companion-puppet { bottom:-23px; transform:rotate(-8deg); }
+@keyframes friend-over-the-border { 0%,100%{transform:translate(0,5px)} 35%{transform:translate(-5px,9px) rotate(-7deg)} 70%{transform:translate(5px,8px) rotate(7deg)} }
+@media(prefers-reduced-motion:reduce) { .fortale-companion-target,.fortale-composer-companion-puppet { transition:none!important; } }

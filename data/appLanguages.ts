@@ -58,6 +58,64 @@ export function getAppLanguageLabel(code: AppLanguageCode): string {
   return APP_LANGUAGE_LABELS.get(code) || APP_LANGUAGE_LABELS.get(DEFAULT_APP_LANGUAGE) || 'Turkish';
 }
 
+const TURKISH_APP_LANGUAGE_LABELS: Record<string, string> = {
+  ar: 'Arapça',
+  da: 'Danca',
+  nl: 'Felemenkçe',
+  en: 'İngilizce',
+  fi: 'Fince',
+  fr: 'Fransızca',
+  de: 'Almanca',
+  el: 'Yunanca',
+  hi: 'Hintçe',
+  id: 'Endonezce',
+  it: 'İtalyanca',
+  ja: 'Japonca',
+  ko: 'Korece',
+  no: 'Norveççe',
+  pl: 'Lehçe',
+  'pt-br': 'Portekizce',
+  pt: 'Portekizce',
+  es: 'İspanyolca',
+  sv: 'İsveççe',
+  th: 'Tayca',
+  tr: 'Türkçe',
+  ru: 'Rusça',
+  uk: 'Ukraynaca',
+  fa: 'Farsça',
+  he: 'İbranice',
+  cs: 'Çekçe',
+  ro: 'Romence',
+  hu: 'Macarca',
+  vi: 'Vietnamca'
+};
+
+export function getLocalizedLanguageName(code: string | undefined | null, locale?: string): string {
+  if (!code) return '';
+  const rawCode = String(code).trim();
+  const lowerCode = rawCode.toLowerCase();
+  const isTr = (locale || '').toLowerCase().startsWith('tr');
+  if (isTr && TURKISH_APP_LANGUAGE_LABELS[lowerCode]) {
+    return TURKISH_APP_LANGUAGE_LABELS[lowerCode];
+  }
+  const option = APP_LANGUAGE_OPTIONS.find((opt) => opt.code.toLowerCase() === lowerCode);
+  if (option) {
+    if (isTr && TURKISH_APP_LANGUAGE_LABELS[option.code.toLowerCase()]) {
+      return TURKISH_APP_LANGUAGE_LABELS[option.code.toLowerCase()];
+    }
+    return option.label;
+  }
+  const optionByLabel = APP_LANGUAGE_OPTIONS.find((opt) => opt.label.toLowerCase() === lowerCode);
+  if (optionByLabel) {
+    if (isTr && TURKISH_APP_LANGUAGE_LABELS[optionByLabel.code.toLowerCase()]) {
+      return TURKISH_APP_LANGUAGE_LABELS[optionByLabel.code.toLowerCase()];
+    }
+    return optionByLabel.label;
+  }
+  return rawCode;
+}
+
+
 const APP_LANGUAGE_LOCALES: Record<AppLanguageCode, string> = {
   ar: 'ar',
   da: 'da-DK',

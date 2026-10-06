@@ -18,6 +18,7 @@ type FortaleDropdownProps<T extends string> = {
   minMenuWidth?: number;
   menuAlign?: 'left' | 'right';
   wizardStyle?: boolean;
+  forceDirection?: 'down' | 'up';
 };
 
 export default function FortaleDropdown<T extends string>({
@@ -30,7 +31,8 @@ export default function FortaleDropdown<T extends string>({
   triggerStyle,
   minMenuWidth = 0,
   menuAlign = 'left',
-  wizardStyle = false
+  wizardStyle = false,
+  forceDirection
 }: FortaleDropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -49,15 +51,20 @@ export default function FortaleDropdown<T extends string>({
     const menuWidth = Math.max(rect.width, minMenuWidth);
     const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
     const spaceAbove = rect.top - viewportPadding;
-    const openUpward = spaceBelow < Math.min(144, desiredHeight) && spaceAbove > spaceBelow;
-    const maxHeight = Math.max(88, Math.min(desiredHeight, openUpward ? spaceAbove - gap : spaceBelow - gap));
+    const openUpward = forceDirection === 'down'
+      ? false
+      : forceDirection === 'up'
+      ? true
+      : (spaceBelow < Math.min(144, desiredHeight) && spaceAbove > spaceBelow);
+    const availableHeight = openUpward ? spaceAbove - gap : spaceBelow - gap;
+    const maxHeight = Math.min(desiredHeight, Math.max(80, availableHeight));
     const top = openUpward
       ? Math.max(viewportPadding, rect.top - maxHeight - gap)
-      : Math.min(window.innerHeight - viewportPadding - maxHeight, rect.bottom + gap);
+      : rect.bottom + gap;
     const preferredLeft = menuAlign === 'right' ? rect.right - menuWidth : rect.left;
     const left = Math.max(viewportPadding, Math.min(preferredLeft, window.innerWidth - menuWidth - viewportPadding));
     setMenuPosition({ top, left, width: menuWidth, maxHeight });
-  }, [menuAlign, minMenuWidth, options.length]);
+  }, [forceDirection, menuAlign, minMenuWidth, options.length]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -106,12 +113,13 @@ export default function FortaleDropdown<T extends string>({
           ref={menuRef}
           role="listbox"
           aria-label={label}
-          className="fortale-cosmos-menu fixed z-[1000] overflow-y-auto rounded-xl border p-1.5 shadow-[0_22px_60px_rgba(0,0,0,0.72)]"
+          className="fortale-cosmos-menu fixed z-[1050] overflow-y-auto rounded-xl border p-1.5 shadow-[0_22px_60px_rgba(0,0,0,0.72)]"
           style={{
             top: menuPosition.top,
             left: menuPosition.left,
             width: menuPosition.width,
-            maxHeight: menuPosition.maxHeight
+            maxHeight: menuPosition.maxHeight,
+            ...(wizardStyle ? { background: 'rgba(20,24,26,0.98)', borderColor: 'rgba(255,255,255,0.2)' } : {})
           }}
         >
           {options.map((option) => {
@@ -128,7 +136,7 @@ export default function FortaleDropdown<T extends string>({
                 }}
                 className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[11px] ${wizardStyle ? 'font-normal' : 'font-black'} transition-colors ${isSelected
                   ? `bg-white ${wizardStyle ? 'text-black' : 'text-[#0b1d32]'} shadow-[0_4px_14px_rgba(0,0,0,0.22)]`
-                  : 'bg-[#10263d] text-white hover:bg-[#193a58]'
+                  : wizardStyle ? 'bg-transparent text-white hover:bg-white/10' : 'bg-[#10263d] text-white hover:bg-[#193a58]'
                 }`}
               >
                 <span className={`truncate ${isSelected ? (wizardStyle ? '!text-black' : '!text-[#0b1d32]') : '!text-white'}`}>{option.label}</span>

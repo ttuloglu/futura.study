@@ -1,3 +1,4 @@
+import type { LanguageLearningProfile } from './functions/src/languageLearning';
 export type ViewState =
   | 'HOME'
   | 'COURSE_FLOW'
@@ -28,6 +29,7 @@ export interface SmartBookCreativeBrief {
   bookType: SmartBookBookType;
   subGenre?: string;
   languageText?: string;
+  languageLearning?: LanguageLearningProfile;
   workbookLevel?: string;
   workbookCategory?: string;
   includeExamples?: boolean;
@@ -58,6 +60,7 @@ export interface CommunityBook {
   category?: string;
   ageGroup?: SmartBookAgeGroup;
   language?: string;
+  languageLearning?: LanguageLearningProfile;
   tags?: string[];
   pageCount?: number;
   outline?: string[];
@@ -176,6 +179,7 @@ export interface BookMeta {
   description?: string;
   creatorName?: string;
   language?: string;
+  languageLearning?: LanguageLearningProfile;
   ageGroup?: SmartBookAgeGroup;
   bookType?: SmartBookBookType;
   subGenre?: string;
@@ -204,6 +208,7 @@ export interface BookBundleManifest {
   description?: string;
   creatorName?: string;
   language?: string;
+  languageLearning?: LanguageLearningProfile;
   ageGroup?: SmartBookAgeGroup;
   bookType?: SmartBookBookType;
   subGenre?: string;
@@ -237,6 +242,7 @@ export interface CourseData {
   description?: string;
   creatorName?: string;
   language?: string;
+  languageLearning?: LanguageLearningProfile;
   ageGroup?: SmartBookAgeGroup;
   bookType?: SmartBookBookType;
   subGenre?: string;

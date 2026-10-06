@@ -1,8 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Home, Library, Settings } from 'lucide-react';
+import { ArrowUp, Library, Settings } from 'lucide-react';
 import { ViewState } from '../types';
 import { useUiI18n } from '../i18n/uiI18n';
+import FortaleMark from './FortaleMark';
 
 interface BottomNavProps {
   currentView: ViewState;
@@ -62,7 +63,7 @@ export default function BottomNav({
           }}
           className={`floatisland-item tab-home ${isHomeActive ? 'active' : ''}`}
         >
-          <Home size={18} strokeWidth={isHomeActive ? 2.5 : 2} />
+          <FortaleMark size={32} />
           {isHomeActive && <span className="floatisland-label">{t('Anasayfa')}</span>}
         </button>
 

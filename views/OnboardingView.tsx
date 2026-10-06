@@ -13,12 +13,14 @@ import {
   Lightbulb,
   PenLine
 } from 'lucide-react';
+import OnboardingFeatureIntro from '../components/OnboardingFeatureIntro';
 import {
   ONBOARDING_V2_COPY,
   ONBOARDING_V2_LABELS,
   type OnboardingV2Copy
 } from '../data/onboardingV2Copy';
 import { useUiI18n } from '../i18n/uiI18n';
+import { triggerHaptic } from '../utils/haptics';
 
 type DemoKind = 'fairy' | 'story' | 'workbook';
 
@@ -35,7 +37,9 @@ interface OnboardingViewProps {
   onExplore?: () => void;
 }
 
+const INTRO_STEP_COUNT = 2;
 const STAGE_COUNT = 4;
+const TOTAL_STAGE_COUNT = INTRO_STEP_COUNT + STAGE_COUNT;
 const FORTALE_AI_LABEL = 'Fortale';
 const FORTALE_ORIGINAL_LABEL = 'Fortale Original';
 
@@ -109,6 +113,31 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
     [selectedKind]
   );
   const isRtl = language === 'ar';
+  const introSteps = [
+    {
+      direction: 'top' as const,
+      features: [
+        t('Sınırsız hayal gücü'),
+        t('Yeni keşifler'),
+        t('Masal'),
+        t('Hikaye'),
+        t('Yabancı dil kitabı'),
+        t('Çalışma kitabı'),
+        t('Sen ne istersen')
+      ]
+    },
+    {
+      direction: 'sides' as const,
+      features: [
+        t('Yeni bir dil öğren'),
+        t('Yabancı dilini geliştir'),
+        t('Kendi hikayeni yaz'),
+        t('Paylaş'),
+        t('Öğrenme kitabı oluştur'),
+        t('Limitsiz ol')
+      ]
+    }
+  ];
 
   useEffect(() => {
     DEMO_BOOKS.forEach(({ image }) => {
@@ -126,7 +155,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
   }, []);
 
   useEffect(() => {
-    if (stage !== 2) return;
+    if (stage !== INTRO_STEP_COUNT + 2) return;
     setDemoPhase(prefersReducedMotion ? 4 : 0);
     if (prefersReducedMotion) return;
 
@@ -141,11 +170,11 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
   }, [prefersReducedMotion, selectedKind, stage]);
 
   const goNext = () => {
-    if (stage >= STAGE_COUNT - 1) {
+    if (stage >= TOTAL_STAGE_COUNT - 1) {
       onFinish();
       return;
     }
-    setStage((current) => Math.min(current + 1, STAGE_COUNT - 1));
+    setStage((current) => Math.min(current + 1, TOTAL_STAGE_COUNT - 1));
   };
 
   const goBack = () => setStage((current) => Math.max(current - 1, 0));
@@ -181,6 +210,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
     if (start === null || end === null) return;
     const delta = start - end;
     if (Math.abs(delta) < 52) return;
+    triggerHaptic();
     if (delta > 0) goNext();
     else goBack();
   };
@@ -204,8 +234,8 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
       <div className="pointer-events-none absolute inset-0 opacity-[0.055] [background-image:linear-gradient(rgba(255,255,255,.45)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.45)_1px,transparent_1px)] [background-size:42px_42px]" />
 
       <header className="absolute inset-x-0 top-0 z-30 mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
-        <div className="flex min-w-0 flex-1 gap-1.5" aria-label={`${stage + 1} / ${STAGE_COUNT}`}>
-          {Array.from({ length: STAGE_COUNT }, (_, index) => (
+        <div className="flex min-w-0 flex-1 gap-1.5" aria-label={`${stage + 1} / ${TOTAL_STAGE_COUNT}`}>
+          {Array.from({ length: TOTAL_STAGE_COUNT }, (_, index) => (
             <button
               key={index}
               type="button"
@@ -235,7 +265,9 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
 
       <main className="relative z-10 h-full overflow-y-auto overscroll-contain px-4 pb-[calc(6.8rem+env(safe-area-inset-bottom))] pt-[calc(4.75rem+env(safe-area-inset-top))] sm:px-6 sm:pb-28 sm:pt-24">
         <div key={stage} className="onboarding-v2-stage mx-auto flex min-h-full w-full max-w-6xl items-center justify-center">
-          {stage === 0 && (
+          {stage < INTRO_STEP_COUNT && <OnboardingFeatureIntro {...introSteps[stage]} />}
+
+          {stage === INTRO_STEP_COUNT && (
             <section className="grid w-full items-center gap-7 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
               <div className="mx-auto max-w-xl text-center lg:mx-0 lg:text-start">
                 <div className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-cyan-300">
@@ -249,7 +281,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
                   {copy.heroBody}
                 </p>
                 <div className="mx-auto mt-6 flex max-w-md items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.07] p-3 text-start backdrop-blur-xl lg:mx-0">
-                  <Feather className="h-6 w-6 shrink-0 text-amber-400" />
+                  <Feather className="h-6 w-6 shrink-0 text-[#c04235]" />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-normal text-white/50">{labels.writeYourIdea}</p>
                     <p className="truncate text-sm font-medium text-white sm:text-base">{copy.prompt}</p>
@@ -283,7 +315,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
             </section>
           )}
 
-          {stage === 1 && (
+          {stage === INTRO_STEP_COUNT + 1 && (
             <section className="w-full max-w-5xl">
               <div className="mx-auto max-w-2xl text-center">
                 <p className="text-xs font-semibold text-cyan-300 sm:text-sm">{labels.youChoose}</p>
@@ -329,7 +361,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
             </section>
           )}
 
-          {stage === 2 && (
+          {stage === INTRO_STEP_COUNT + 2 && (
             <section className="grid w-full max-w-5xl items-center gap-4 sm:gap-7 md:grid-cols-[0.85fr_1.15fr] md:gap-12">
               <div className="mx-auto w-full max-w-[165px] sm:max-w-[250px] md:max-w-[280px]">
                 <div className="relative">
@@ -376,7 +408,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
             </section>
           )}
 
-          {stage === 3 && (
+          {stage === INTRO_STEP_COUNT + 3 && (
             <section className="w-full max-w-5xl text-center">
               <Languages className="mx-auto h-10 w-10 text-cyan-300 sm:h-12 sm:w-12" />
               <p className="mt-4 text-xs font-semibold text-cyan-300 sm:text-sm">{copy.languageTitle}</p>
@@ -401,7 +433,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
                   { label: labels.library, icon: Library }
                 ].map(({ label, icon: Icon }) => (
                   <span key={label} className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-[#071421]/80 px-3 py-2 text-xs font-medium text-white/80">
-                    <Icon className="h-3.5 w-3.5 text-amber-300" /> {label}
+                    <Icon className="h-3.5 w-3.5 text-[#c04235]" /> {label}
                   </span>
                 ))}
               </div>
@@ -428,7 +460,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
       </main>
 
       <footer className="absolute inset-x-0 bottom-0 z-30 mx-auto w-full max-w-6xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
-        {stage < STAGE_COUNT - 1 ? (
+        {stage < TOTAL_STAGE_COUNT - 1 ? (
           <div className="mx-auto flex max-w-xl items-center gap-3 rounded-[22px] border border-white/12 bg-[#06111e]/80 p-2 shadow-[0_20px_70px_rgba(0,0,0,.45)] backdrop-blur-2xl">
             <button
               type="button"
@@ -446,7 +478,13 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
               style={{ backgroundColor: '#ffffff', color: '#030816' }}
             >
               <span style={{ color: '#030816', WebkitTextFillColor: '#030816' }}>
-                {stage === 0 ? copy.chooseTitle : stage === 1 ? copy.transformationTitle : copy.finalTitle}
+                {stage < INTRO_STEP_COUNT
+                  ? t('İleri')
+                  : stage === INTRO_STEP_COUNT
+                    ? copy.chooseTitle
+                    : stage === INTRO_STEP_COUNT + 1
+                      ? copy.transformationTitle
+                      : copy.finalTitle}
               </span>
               <ArrowRight className={`h-4 w-4 shrink-0 ${isRtl ? 'rotate-180' : ''}`} style={{ color: '#030816', stroke: '#030816' }} />
             </button>

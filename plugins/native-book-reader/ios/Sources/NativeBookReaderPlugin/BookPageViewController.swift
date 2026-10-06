@@ -8,6 +8,7 @@ public class BookPageViewController: UIViewController {
         didSet { applyTheme() }
     }
     public var fontScale: CGFloat = 1.0
+    private let preserveNarratedPage: Bool
 
     private let contentStack = UIStackView()
     private let chapterLabel = UILabel()
@@ -18,10 +19,11 @@ public class BookPageViewController: UIViewController {
     private var imageTask: URLSessionDataTask?
     private var imageHeightConstraint: NSLayoutConstraint?
 
-    public init(pageData: BookPageData, theme: ReaderTheme, fontScale: CGFloat) {
+    public init(pageData: BookPageData, theme: ReaderTheme, fontScale: CGFloat, preserveNarratedPage: Bool = false) {
         self.pageData = pageData
         self.currentTheme = theme
         self.fontScale = fontScale
+        self.preserveNarratedPage = preserveNarratedPage
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -38,6 +40,15 @@ public class BookPageViewController: UIViewController {
 
     deinit {
         imageTask?.cancel()
+    }
+
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard preserveNarratedPage else { return }
+        let available = max(120, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - BookPageLayout.contentTopInset - BookPageLayout.contentBottomInset)
+        let width = max(120, view.bounds.width - BookPageLayout.horizontalInset * 2)
+        let ratio = imageView.image.map { $0.size.height / max(1, $0.size.width) } ?? (2.0 / 3.0)
+        imageHeightConstraint?.constant = min(width * ratio, min(320, available * 0.44))
     }
 
     private func setupViews() {
@@ -59,8 +70,6 @@ public class BookPageViewController: UIViewController {
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.contentMode = .scaleAspectFit
         imageView.clipsToBounds = true
-        imageView.layer.cornerRadius = 14
-        imageView.layer.borderWidth = 1
         imageView.isAccessibilityElement = true
         contentStack.addArrangedSubview(imageView)
 
@@ -71,19 +80,19 @@ public class BookPageViewController: UIViewController {
             imageActivityIndicator.centerYAnchor.constraint(equalTo: imageView.centerYAnchor)
         ])
 
-        titleLabel.numberOfLines = 0
+        titleLabel.numberOfLines = preserveNarratedPage ? 2 : 0
         titleLabel.textAlignment = .left
         titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         contentStack.addArrangedSubview(titleLabel)
 
         bodyTextView.isEditable = false
         bodyTextView.isSelectable = false
-        bodyTextView.isScrollEnabled = false
-        bodyTextView.isUserInteractionEnabled = false
+        bodyTextView.isScrollEnabled = preserveNarratedPage
+        bodyTextView.isUserInteractionEnabled = preserveNarratedPage
         bodyTextView.textContainerInset = .zero
         bodyTextView.textContainer.lineFragmentPadding = 0
         bodyTextView.backgroundColor = .clear
-        bodyTextView.setContentCompressionResistancePriority(.required, for: .vertical)
+        bodyTextView.setContentCompressionResistancePriority(preserveNarratedPage ? .defaultLow : .required, for: .vertical)
         contentStack.addArrangedSubview(bodyTextView)
 
         let safeArea = view.safeAreaLayoutGuide
@@ -105,6 +114,9 @@ public class BookPageViewController: UIViewController {
                 constant: -BookPageLayout.contentBottomInset
             )
         ])
+        if preserveNarratedPage {
+            contentStack.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor, constant: -BookPageLayout.contentBottomInset).isActive = true
+        }
     }
 
     private func applyContent() {
@@ -141,8 +153,7 @@ public class BookPageViewController: UIViewController {
         chapterLabel.textColor = currentTheme.secondaryTextColor
         titleLabel.textColor = currentTheme.textColor
         bodyTextView.textColor = currentTheme.textColor
-        imageView.layer.borderColor = currentTheme.borderToneColor.cgColor
-        imageView.backgroundColor = currentTheme.secondaryTextColor.withAlphaComponent(0.035)
+        imageView.backgroundColor = .clear
         imageView.tintColor = currentTheme.secondaryTextColor.withAlphaComponent(0.55)
         imageActivityIndicator.color = currentTheme.secondaryTextColor
     }
@@ -231,6 +242,13 @@ public class BookPageViewController: UIViewController {
             return UIImage(contentsOfFile: absolutePath)
         }
 
+        if url.scheme == nil || url.host == "localhost" {
+            let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if let file = Bundle.main.resourceURL?.appendingPathComponent("public").appendingPathComponent(path) {
+                return UIImage(contentsOfFile: file.path)
+            }
+        }
+
         return nil
     }
 
@@ -243,6 +261,7 @@ public class BookPageViewController: UIViewController {
         imageActivityIndicator.stopAnimating()
         imageView.contentMode = .scaleAspectFit
         imageView.image = image
+        if preserveNarratedPage { view.setNeedsLayout() }
         imageMemoryCache.setObject(image, forKey: source as NSString)
     }
 

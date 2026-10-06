@@ -1,3 +1,4 @@
+import { BOOK_INTAKE_OTHER_LABELS } from '../functions/src/bookCreationIntake';
 import type { AppLanguageCode } from './appLanguages';
 
 type UiTranslationSupplement = Partial<Record<AppLanguageCode, Record<string, string>>>;
@@ -1207,3 +1208,625 @@ export const UI_TRANSLATION_SUPPLEMENTS: UiTranslationSupplement = {
     'Create, Discover and Share': 'Oluştur, Keşfet ve Paylaş'
   }
 };
+
+const WIZARD_ADDED_TRANSLATIONS: UiTranslationSupplement = {
+  ar: { "Fortale'e bırak": 'دع Fortale يختار', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'ستتلقى إشعارًا عندما يصبح كتابك جاهزًا' },
+  da: { "Fortale'e bırak": 'Lad Fortale vælge', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Du får en besked, når din bog er klar' },
+  de: { "Fortale'e bırak": 'Fortale auswählen lassen', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Du wirst benachrichtigt, wenn dein Buch fertig ist' },
+  el: { "Fortale'e bırak": 'Άφησέ το στη Fortale', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Θα ειδοποιηθείτε όταν το βιβλίο σας είναι έτοιμο' },
+  en: { "Fortale'e bırak": 'Let Fortale choose', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'You’ll be notified when your book is ready' },
+  es: { "Fortale'e bırak": 'Que Fortale elija', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Recibirás una notificación cuando tu libro esté listo' },
+  fi: { "Fortale'e bırak": 'Anna Fortalen valita', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Saat ilmoituksen, kun kirjasi on valmis' },
+  fr: { "Fortale'e bırak": 'Laisser Fortale choisir', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Vous recevrez une notification lorsque votre livre sera prêt' },
+  hi: { "Fortale'e bırak": 'Fortale को चुनने दें', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'आपकी किताब तैयार होने पर आपको सूचना मिलेगी' },
+  id: { "Fortale'e bırak": 'Biarkan Fortale memilih', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Anda akan mendapat notifikasi saat buku Anda siap' },
+  it: { "Fortale'e bırak": 'Lascia scegliere a Fortale', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Riceverai una notifica quando il tuo libro sarà pronto' },
+  ja: { "Fortale'e bırak": 'Fortaleに任せる', 'Kitabınız hazır olduğunda bildirim alacaksınız': '本の準備ができたら通知が届きます' },
+  ko: { "Fortale'e bırak": 'Fortale에 맡기기', 'Kitabınız hazır olduğunda bildirim alacaksınız': '책이 준비되면 알림을 보내드려요' },
+  nl: { "Fortale'e bırak": 'Laat Fortale kiezen', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Je krijgt een melding zodra je boek klaar is' },
+  no: { "Fortale'e bırak": 'La Fortale velge', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Du får et varsel når boken din er klar' },
+  pl: { "Fortale'e bırak": 'Pozwól wybrać Fortale', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Otrzymasz powiadomienie, gdy Twoja książka będzie gotowa' },
+  'pt-BR': { "Fortale'e bırak": 'Deixar a Fortale escolher', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Você receberá uma notificação quando seu livro estiver pronto' },
+  sv: { "Fortale'e bırak": 'Låt Fortale välja', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Du får en avisering när din bok är klar' },
+  th: { "Fortale'e bırak": 'ให้ Fortale เลือก', 'Kitabınız hazır olduğunda bildirim alacaksınız': 'คุณจะได้รับการแจ้งเตือนเมื่อหนังสือพร้อม' },
+  tr: { "Fortale'e bırak": "Fortale'e bırak", 'Kitabınız hazır olduğunda bildirim alacaksınız': 'Kitabınız hazır olduğunda bildirim alacaksınız' }
+};
+
+for (const [language, translations] of Object.entries(WIZARD_ADDED_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_TRANSLATION_SUPPLEMENTS[language] = {
+    ...(UI_TRANSLATION_SUPPLEMENTS[language] || {}),
+    ...translations
+  };
+}
+
+// Conversational creation controls.
+const BOOK_INTAKE_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, [string, string]>> = {
+  "ar": [
+    "أرفق ملفاً",
+    "سجّل الدخول لإنشاء كتاب."
+  ],
+  "da": [
+    "Vedhæft fil",
+    "Log ind for at oprette en bog."
+  ],
+  "de": [
+    "Datei anhängen",
+    "Melde dich an, um ein Buch zu erstellen."
+  ],
+  "el": [
+    "Επισύναψη αρχείου",
+    "Συνδέσου για να δημιουργήσεις ένα βιβλίο."
+  ],
+  "en": [
+    "Attach file",
+    "Sign in to create a book."
+  ],
+  "es": [
+    "Adjuntar archivo",
+    "Inicia sesión para crear un libro."
+  ],
+  "fi": [
+    "Liitä tiedosto",
+    "Kirjaudu sisään luodaksesi kirjan."
+  ],
+  "fr": [
+    "Joindre un fichier",
+    "Connectez-vous pour créer un livre."
+  ],
+  "hi": [
+    "फ़ाइल संलग्न करें",
+    "पुस्तक बनाने के लिए साइन इन करें।"
+  ],
+  "id": [
+    "Lampirkan file",
+    "Masuk untuk membuat buku."
+  ],
+  "it": [
+    "Allega file",
+    "Accedi per creare un libro."
+  ],
+  "ja": [
+    "ファイルを添付",
+    "本を作成するにはログインしてください。"
+  ],
+  "ko": [
+    "파일 첨부",
+    "책을 만들려면 로그인하세요."
+  ],
+  "nl": [
+    "Bestand bijvoegen",
+    "Log in om een boek te maken."
+  ],
+  "no": [
+    "Legg ved fil",
+    "Logg inn for å lage en bok."
+  ],
+  "pl": [
+    "Załącz plik",
+    "Zaloguj się, aby utworzyć książkę."
+  ],
+  "pt-BR": [
+    "Anexar arquivo",
+    "Entre para criar um livro."
+  ],
+  "sv": [
+    "Bifoga fil",
+    "Logga in för att skapa en bok."
+  ],
+  "th": [
+    "แนบไฟล์",
+    "เข้าสู่ระบบเพื่อสร้างหนังสือ"
+  ]
+};
+for (const [locale, labels] of Object.entries(BOOK_INTAKE_UI_TRANSLATIONS)) {
+  const key = locale as AppLanguageCode;
+  UI_TRANSLATION_SUPPLEMENTS[key] = {
+    ...UI_TRANSLATION_SUPPLEMENTS[key],
+    'Dosya Ekle': labels[0],
+    'Kitap oluşturmak için giriş yapın.': labels[1],
+  };
+}
+
+const BOOK_ATTACHMENT_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, string>> = {
+  "ar": "استخدم الملف المرفق.",
+  "da": "Brug den vedhæftede fil.",
+  "de": "Verwende die angehängte Datei.",
+  "el": "Χρησιμοποίησε το συνημμένο αρχείο.",
+  "en": "Use the attached file.",
+  "es": "Usa el archivo adjunto.",
+  "fi": "Käytä liitettyä tiedostoa.",
+  "fr": "Utilise le fichier joint.",
+  "hi": "संलग्न फ़ाइल का उपयोग करें।",
+  "id": "Gunakan file terlampir.",
+  "it": "Usa il file allegato.",
+  "ja": "添付ファイルを使ってください。",
+  "ko": "첨부 파일을 사용해 주세요.",
+  "nl": "Gebruik het bijgevoegde bestand.",
+  "no": "Bruk den vedlagte filen.",
+  "pl": "Użyj załączonego pliku.",
+  "pt-BR": "Use o arquivo anexado.",
+  "sv": "Använd den bifogade filen.",
+  "th": "ใช้ไฟล์ที่แนบมา"
+};
+for (const [locale, label] of Object.entries(BOOK_ATTACHMENT_UI_TRANSLATIONS)) {
+  const key = locale as AppLanguageCode;
+  UI_TRANSLATION_SUPPLEMENTS[key] = { ...UI_TRANSLATION_SUPPLEMENTS[key], 'Ekli dosyayı kullan.': label };
+}
+
+const BOOK_DETAIL_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, [string, string, string]>> = {
+  "ar": [
+    "يرجى التحديد…",
+    "موصى به",
+    "حدد التفاصيل"
+  ],
+  "da": [
+    "Angiv venligst…",
+    "Anbefalet",
+    "Vælg detaljer"
+  ],
+  "de": [
+    "Bitte angeben…",
+    "Empfohlen",
+    "Details festlegen"
+  ],
+  "el": [
+    "Διευκρίνισε…",
+    "Προτεινόμενο",
+    "Ορισμός λεπτομερειών"
+  ],
+  "en": [
+    "Please specify…",
+    "Recommended",
+    "Choose Details"
+  ],
+  "es": [
+    "Especifica…",
+    "Recomendado",
+    "Define los detalles"
+  ],
+  "fi": [
+    "Tarkenna…",
+    "Suositeltu",
+    "Valitse tiedot"
+  ],
+  "fr": [
+    "Précisez…",
+    "Recommandé",
+    "Définir les détails"
+  ],
+  "hi": [
+    "कृपया बताएं…",
+    "अनुशंसित",
+    "विवरण चुनें"
+  ],
+  "id": [
+    "Silakan jelaskan…",
+    "Disarankan",
+    "Tentukan detail"
+  ],
+  "it": [
+    "Specifica…",
+    "Consigliato",
+    "Definisci i dettagli"
+  ],
+  "ja": [
+    "具体的に入力…",
+    "おすすめ",
+    "詳細を設定"
+  ],
+  "ko": [
+    "직접 입력…",
+    "추천",
+    "세부 정보 설정"
+  ],
+  "nl": [
+    "Geef aan…",
+    "Aanbevolen",
+    "Details kiezen"
+  ],
+  "no": [
+    "Vennligst spesifiser…",
+    "Anbefalt",
+    "Velg detaljer"
+  ],
+  "pl": [
+    "Podaj szczegóły…",
+    "Zalecane",
+    "Określ szczegóły"
+  ],
+  "pt-BR": [
+    "Especifique…",
+    "Recomendado",
+    "Defina os detalhes"
+  ],
+  "sv": [
+    "Ange…",
+    "Rekommenderat",
+    "Välj detaljer"
+  ],
+  "th": [
+    "โปรดระบุ…",
+    "แนะนำ",
+    "กำหนดรายละเอียด"
+  ]
+};
+for (const [locale, labels] of Object.entries(BOOK_DETAIL_UI_TRANSLATIONS)) {
+  const key = locale as AppLanguageCode;
+  UI_TRANSLATION_SUPPLEMENTS[key] = {
+    ...UI_TRANSLATION_SUPPLEMENTS[key],
+    'Diğer…': BOOK_INTAKE_OTHER_LABELS[locale],
+    'Belirtin…': labels[0],
+    'Önerilen': labels[1],
+    'Ayrıntıları Belirle': labels[2],
+  };
+}
+
+const BOOK_REQUEST_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, string>> = {
+  "ar": "صِف الكتاب الذي تريده…",
+  "da": "Beskriv den bog, du ønsker…",
+  "de": "Beschreibe dein gewünschtes Buch…",
+  "el": "Περιέγραψε το βιβλίο που θέλεις…",
+  "en": "Describe the book you want…",
+  "es": "Describe el libro que quieres…",
+  "fi": "Kuvaile haluamaasi kirjaa…",
+  "fr": "Décris le livre que tu souhaites…",
+  "hi": "अपनी मनचाही पुस्तक का वर्णन करें…",
+  "id": "Jelaskan buku yang kamu inginkan…",
+  "it": "Descrivi il libro che desideri…",
+  "ja": "作りたい本について教えてください…",
+  "ko": "원하는 책을 설명해 주세요…",
+  "nl": "Beschrijf het boek dat je wilt…",
+  "no": "Beskriv boken du ønsker…",
+  "pl": "Opisz książkę, którą chcesz stworzyć…",
+  "pt-BR": "Descreva o livro que você deseja…",
+  "sv": "Beskriv boken du vill ha…",
+  "th": "อธิบายหนังสือที่คุณต้องการ…"
+};
+for (const [locale, placeholder] of Object.entries(BOOK_REQUEST_UI_TRANSLATIONS)) {
+  const key = locale as AppLanguageCode;
+  UI_TRANSLATION_SUPPLEMENTS[key] = { ...UI_TRANSLATION_SUPPLEMENTS[key], 'İstediğin kitabı anlat...': placeholder };
+}
+
+const BOOK_CREATION_MODE_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, [string, string]>> = {
+  "ar": [
+    "اترك الأمر لـ Fortale",
+    "أدخل التفاصيل"
+  ],
+  "da": [
+    "Lad Fortale vælge",
+    "Angiv detaljer"
+  ],
+  "de": [
+    "Fortale entscheiden lassen",
+    "Details eingeben"
+  ],
+  "el": [
+    "Άφησέ το στο Fortale",
+    "Πρόσθεσε λεπτομέρειες"
+  ],
+  "en": [
+    "Leave it to Fortale",
+    "Enter details"
+  ],
+  "es": [
+    "Déjaselo a Fortale",
+    "Introduce detalles"
+  ],
+  "fi": [
+    "Anna Fortalen päättää",
+    "Anna lisätietoja"
+  ],
+  "fr": [
+    "Laisse Fortale choisir",
+    "Saisir les détails"
+  ],
+  "hi": [
+    "Fortale पर छोड़ें",
+    "विवरण दर्ज करें"
+  ],
+  "id": [
+    "Serahkan pada Fortale",
+    "Masukkan detail"
+  ],
+  "it": [
+    "Lascia fare a Fortale",
+    "Inserisci i dettagli"
+  ],
+  "ja": [
+    "Fortaleにおまかせ",
+    "詳細を入力"
+  ],
+  "ko": [
+    "Fortale에 맡기기",
+    "세부 내용 입력"
+  ],
+  "nl": [
+    "Laat Fortale kiezen",
+    "Details invoeren"
+  ],
+  "no": [
+    "La Fortale velge",
+    "Skriv inn detaljer"
+  ],
+  "pl": [
+    "Zostaw to Fortale",
+    "Podaj szczegóły"
+  ],
+  "pt-BR": [
+    "Deixe com o Fortale",
+    "Informe os detalhes"
+  ],
+  "sv": [
+    "Låt Fortale välja",
+    "Ange detaljer"
+  ],
+  "th": [
+    "ให้ Fortale จัดการ",
+    "กรอกรายละเอียด"
+  ]
+};
+for (const [locale, labels] of Object.entries(BOOK_CREATION_MODE_UI_TRANSLATIONS)) {
+  const key = locale as AppLanguageCode;
+  UI_TRANSLATION_SUPPLEMENTS[key] = { ...UI_TRANSLATION_SUPPLEMENTS[key], 'Fortale’ye bırak': labels[0], 'Detay gir': labels[1] };
+}
+
+const LANGUAGE_LEARNING_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, Record<string, string>>> = {
+  ar: {
+    'Kitap okuyarak dil öğren': 'تعلّم لغة من خلال القراءة', 'Seviyene ve ilgine uygun bir kitap oluştur': 'أنشئ كتابًا يناسب مستواك واهتماماتك', 'Dil öğrenme ayarları': 'إعدادات تعلم اللغة',
+    'Öğrenmek istediğin dil': 'اللغة التي تريد تعلمها', 'Açıklama dili': 'لغة الشرح', 'Okuma seviyen': 'مستوى القراءة', 'Başlangıç': 'مبتدئ', 'Temel': 'أساسي', 'Orta': 'متوسط', 'Orta üstü': 'فوق المتوسط', 'İleri': 'متقدم', 'Çok ileri': 'متمكن', 'Tüm Diller': 'كل اللغات', 'Okur yaşı': 'عمر القارئ', '7–11 yaş': 'الأعمار 7–11',
+    '12–18 yaş': 'الأعمار 12–18', 'Yetişkin': 'بالغ', 'Masal yaşı 0–6 olarak ayarlı': 'القصص الخيالية مخصصة للأعمار 0–6', 'Kitap Dili': 'لغة الكتاب',
+    'Dil öğrenme kitabı': 'كتاب لتعلم اللغة', 'Açıkla': 'اشرح', 'Dil desteği': 'مساعدة لغوية', 'Bağlam inceleniyor': 'جارٍ فحص السياق',
+    'Açıklama şu anda alınamadı.': 'تعذر الحصول على الشرح الآن.', 'Anlamı': 'المعنى', 'Dil bilgisi': 'القواعد', 'Kullanımı': 'الاستخدام', 'Örnek': 'مثال'
+  },
+  da: {
+    'Kitap okuyarak dil öğren': 'Lær sprog gennem læsning', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Lav en bog, der passer til dit niveau og dine interesser', 'Dil öğrenme ayarları': 'Indstillinger for sprogindlæring',
+    'Öğrenmek istediğin dil': 'Sprog, du vil lære', 'Açıklama dili': 'Forklaringssprog', 'Okuma seviyen': 'Læseniveau', 'Başlangıç': 'Begynder', 'Temel': 'Grundlæggende', 'Orta': 'Mellem', 'Orta üstü': 'Øvre mellemniveau', 'İleri': 'Avanceret', 'Çok ileri': 'Meget avanceret', 'Tüm Diller': 'Alle sprog', 'Okur yaşı': 'Læserens alder', '7–11 yaş': '7–11 år',
+    '12–18 yaş': '12–18 år', 'Yetişkin': 'Voksen', 'Masal yaşı 0–6 olarak ayarlı': 'Eventyr er indstillet til alderen 0–6 år', 'Kitap Dili': 'Bogens sprog',
+    'Dil öğrenme kitabı': 'Sprogindlæringsbog', 'Açıkla': 'Forklar', 'Dil desteği': 'Sproghjælp', 'Bağlam inceleniyor': 'Konteksten undersøges',
+    'Açıklama şu anda alınamadı.': 'Forklaringen kunne ikke hentes lige nu.', 'Anlamı': 'Betydning', 'Dil bilgisi': 'Grammatik', 'Kullanımı': 'Brug', 'Örnek': 'Eksempel'
+  },
+  de: {
+    'Kitap okuyarak dil öğren': 'Lerne durch Lesen eine Sprache', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Erstelle ein Buch passend zu deinem Niveau und deinen Interessen', 'Dil öğrenme ayarları': 'Einstellungen zum Sprachenlernen',
+    'Öğrenmek istediğin dil': 'Zu lernende Sprache', 'Açıklama dili': 'Erklärungssprache', 'Okuma seviyen': 'Leseniveau', 'Başlangıç': 'Anfänger', 'Temel': 'Grundkenntnisse', 'Orta': 'Mittelstufe', 'Orta üstü': 'Obere Mittelstufe', 'İleri': 'Fortgeschritten', 'Çok ileri': 'Sehr fortgeschritten', 'Tüm Diller': 'Alle Sprachen', 'Okur yaşı': 'Alter der Lesenden', '7–11 yaş': '7–11 Jahre',
+    '12–18 yaş': '12–18 Jahre', 'Yetişkin': 'Erwachsene', 'Masal yaşı 0–6 olarak ayarlı': 'Märchen sind auf 0–6 Jahre eingestellt', 'Kitap Dili': 'Buchsprache',
+    'Dil öğrenme kitabı': 'Sprachlern-Buch', 'Açıkla': 'Erklären', 'Dil desteği': 'Sprachhilfe', 'Bağlam inceleniyor': 'Kontext wird geprüft',
+    'Açıklama şu anda alınamadı.': 'Die Erklärung ist gerade nicht verfügbar.', 'Anlamı': 'Bedeutung', 'Dil bilgisi': 'Grammatik', 'Kullanımı': 'Verwendung', 'Örnek': 'Beispiel'
+  },
+  el: {
+    'Kitap okuyarak dil öğren': 'Μάθε μια γλώσσα διαβάζοντας', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Δημιούργησε ένα βιβλίο για το επίπεδο και τα ενδιαφέροντά σου', 'Dil öğrenme ayarları': 'Ρυθμίσεις εκμάθησης γλώσσας',
+    'Öğrenmek istediğin dil': 'Γλώσσα εκμάθησης', 'Açıklama dili': 'Γλώσσα επεξήγησης', 'Okuma seviyen': 'Επίπεδο ανάγνωσης', 'Başlangıç': 'Αρχάριος', 'Temel': 'Βασικός', 'Orta': 'Μέτριος', 'Orta üstü': 'Άνω του μετρίου', 'İleri': 'Προχωρημένος', 'Çok ileri': 'Άριστος', 'Tüm Diller': 'Όλες οι γλώσσες', 'Okur yaşı': 'Ηλικία αναγνώστη', '7–11 yaş': '7–11 ετών',
+    '12–18 yaş': '12–18 ετών', 'Yetişkin': 'Ενήλικας', 'Masal yaşı 0–6 olarak ayarlı': 'Τα παραμύθια απευθύνονται σε ηλικίες 0–6', 'Kitap Dili': 'Γλώσσα βιβλίου',
+    'Dil öğrenme kitabı': 'Βιβλίο εκμάθησης γλώσσας', 'Açıkla': 'Εξήγηση', 'Dil desteği': 'Γλωσσική βοήθεια', 'Bağlam inceleniyor': 'Έλεγχος συμφραζομένων',
+    'Açıklama şu anda alınamadı.': 'Η επεξήγηση δεν είναι διαθέσιμη αυτή τη στιγμή.', 'Anlamı': 'Σημασία', 'Dil bilgisi': 'Γραμματική', 'Kullanımı': 'Χρήση', 'Örnek': 'Παράδειγμα'
+  },
+  fi: {
+    'Kitap okuyarak dil öğren': 'Opi kieltä lukemalla', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Luo tasollesi ja kiinnostuksenkohteisiisi sopiva kirja', 'Dil öğrenme ayarları': 'Kielenoppimisen asetukset',
+    'Öğrenmek istediğin dil': 'Opiskeltava kieli', 'Açıklama dili': 'Selitysten kieli', 'Okuma seviyen': 'Lukemistaso', 'Başlangıç': 'Aloittelija', 'Temel': 'Perustaso', 'Orta': 'Keskitaso', 'Orta üstü': 'Ylempi keskitaso', 'İleri': 'Edistynyt', 'Çok ileri': 'Taitava', 'Tüm Diller': 'Kaikki kielet', 'Okur yaşı': 'Lukijan ikä', '7–11 yaş': '7–11-vuotiaat',
+    '12–18 yaş': '12–18-vuotiaat', 'Yetişkin': 'Aikuinen', 'Masal yaşı 0–6 olarak ayarlı': 'Sadut on suunnattu 0–6-vuotiaille', 'Kitap Dili': 'Kirjan kieli',
+    'Dil öğrenme kitabı': 'Kielenoppimiskirja', 'Açıkla': 'Selitä', 'Dil desteği': 'Kieliapu', 'Bağlam inceleniyor': 'Asiayhteyttä tarkistetaan',
+    'Açıklama şu anda alınamadı.': 'Selitystä ei saada juuri nyt.', 'Anlamı': 'Merkitys', 'Dil bilgisi': 'Kielioppi', 'Kullanımı': 'Käyttö', 'Örnek': 'Esimerkki'
+  },
+  fr: {
+    'Kitap okuyarak dil öğren': 'Apprendre une langue en lisant', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Créez un livre adapté à votre niveau et à vos centres d’intérêt', 'Dil öğrenme ayarları': 'Paramètres d’apprentissage des langues',
+    'Öğrenmek istediğin dil': 'Langue à apprendre', 'Açıklama dili': 'Langue des explications', 'Okuma seviyen': 'Niveau de lecture', 'Başlangıç': 'Débutant', 'Temel': 'Élémentaire', 'Orta': 'Intermédiaire', 'Orta üstü': 'Intermédiaire supérieur', 'İleri': 'Avancé', 'Çok ileri': 'Maîtrise', 'Tüm Diller': 'Toutes les langues', 'Okur yaşı': 'Âge du lecteur', '7–11 yaş': '7–11 ans',
+    '12–18 yaş': '12–18 ans', 'Yetişkin': 'Adulte', 'Masal yaşı 0–6 olarak ayarlı': 'Les contes sont prévus pour les 0–6 ans', 'Kitap Dili': 'Langue du livre',
+    'Dil öğrenme kitabı': 'Livre d’apprentissage linguistique', 'Açıkla': 'Expliquer', 'Dil desteği': 'Aide linguistique', 'Bağlam inceleniyor': 'Analyse du contexte',
+    'Açıklama şu anda alınamadı.': 'L’explication est indisponible pour le moment.', 'Anlamı': 'Sens', 'Dil bilgisi': 'Grammaire', 'Kullanımı': 'Usage', 'Örnek': 'Exemple'
+  },
+  hi: {
+    'Kitap okuyarak dil öğren': 'पढ़कर भाषा सीखें', 'Seviyene ve ilgine uygun bir kitap oluştur': 'अपने स्तर और रुचियों के अनुसार किताब बनाएँ', 'Dil öğrenme ayarları': 'भाषा सीखने की सेटिंग',
+    'Öğrenmek istediğin dil': 'सीखने की भाषा', 'Açıklama dili': 'समझाने की भाषा', 'Okuma seviyen': 'पढ़ने का स्तर', 'Başlangıç': 'शुरुआती', 'Temel': 'बुनियादी', 'Orta': 'मध्यम', 'Orta üstü': 'उच्च-मध्यम', 'İleri': 'उन्नत', 'Çok ileri': 'प्रवीण', 'Tüm Diller': 'सभी भाषाएँ', 'Okur yaşı': 'पाठक की उम्र', '7–11 yaş': '7–11 वर्ष',
+    '12–18 yaş': '12–18 वर्ष', 'Yetişkin': 'वयस्क', 'Masal yaşı 0–6 olarak ayarlı': 'परियों की कहानियाँ 0–6 वर्ष के लिए हैं', 'Kitap Dili': 'किताब की भाषा',
+    'Dil öğrenme kitabı': 'भाषा सीखने की किताब', 'Açıkla': 'समझाएँ', 'Dil desteği': 'भाषा सहायता', 'Bağlam inceleniyor': 'संदर्भ जाँचा जा रहा है',
+    'Açıklama şu anda alınamadı.': 'अभी व्याख्या नहीं मिल सकी।', 'Anlamı': 'अर्थ', 'Dil bilgisi': 'व्याकरण', 'Kullanımı': 'प्रयोग', 'Örnek': 'उदाहरण'
+  },
+  id: {
+    'Kitap okuyarak dil öğren': 'Belajar bahasa lewat membaca', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Buat buku sesuai tingkat dan minatmu', 'Dil öğrenme ayarları': 'Pengaturan belajar bahasa',
+    'Öğrenmek istediğin dil': 'Bahasa yang ingin dipelajari', 'Açıklama dili': 'Bahasa penjelasan', 'Okuma seviyen': 'Tingkat membaca', 'Başlangıç': 'Pemula', 'Temel': 'Dasar', 'Orta': 'Menengah', 'Orta üstü': 'Menengah atas', 'İleri': 'Lanjutan', 'Çok ileri': 'Mahir', 'Tüm Diller': 'Semua bahasa', 'Okur yaşı': 'Usia pembaca', '7–11 yaş': 'Usia 7–11',
+    '12–18 yaş': 'Usia 12–18', 'Yetişkin': 'Dewasa', 'Masal yaşı 0–6 olarak ayarlı': 'Dongeng ditujukan untuk usia 0–6 tahun', 'Kitap Dili': 'Bahasa Buku',
+    'Dil öğrenme kitabı': 'Buku belajar bahasa', 'Açıkla': 'Jelaskan', 'Dil desteği': 'Bantuan bahasa', 'Bağlam inceleniyor': 'Konteks sedang diperiksa',
+    'Açıklama şu anda alınamadı.': 'Penjelasan belum tersedia saat ini.', 'Anlamı': 'Makna', 'Dil bilgisi': 'Tata bahasa', 'Kullanımı': 'Penggunaan', 'Örnek': 'Contoh'
+  },
+  it: {
+    'Kitap okuyarak dil öğren': 'Impara una lingua leggendo', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Crea un libro adatto al tuo livello e ai tuoi interessi', 'Dil öğrenme ayarları': 'Impostazioni per l’apprendimento delle lingue',
+    'Öğrenmek istediğin dil': 'Lingua da imparare', 'Açıklama dili': 'Lingua delle spiegazioni', 'Okuma seviyen': 'Livello di lettura', 'Başlangıç': 'Principiante', 'Temel': 'Base', 'Orta': 'Intermedio', 'Orta üstü': 'Intermedio avanzato', 'İleri': 'Avanzato', 'Çok ileri': 'Padronanza', 'Tüm Diller': 'Tutte le lingue', 'Okur yaşı': 'Età del lettore', '7–11 yaş': '7–11 anni',
+    '12–18 yaş': '12–18 anni', 'Yetişkin': 'Adulto', 'Masal yaşı 0–6 olarak ayarlı': 'Le fiabe sono impostate per la fascia 0–6 anni', 'Kitap Dili': 'Lingua del libro',
+    'Dil öğrenme kitabı': 'Libro per imparare le lingue', 'Açıkla': 'Spiega', 'Dil desteği': 'Supporto linguistico', 'Bağlam inceleniyor': 'Analisi del contesto',
+    'Açıklama şu anda alınamadı.': 'Al momento non è possibile ottenere la spiegazione.', 'Anlamı': 'Significato', 'Dil bilgisi': 'Grammatica', 'Kullanımı': 'Uso', 'Örnek': 'Esempio'
+  },
+  ja: {
+    'Kitap okuyarak dil öğren': '本を読んで言語を学ぶ', 'Seviyene ve ilgine uygun bir kitap oluştur': 'レベルや興味に合った本を作成', 'Dil öğrenme ayarları': '言語学習の設定',
+    'Öğrenmek istediğin dil': '学習する言語', 'Açıklama dili': '説明の言語', 'Okuma seviyen': '読書レベル', 'Başlangıç': '初級', 'Temel': '初中級', 'Orta': '中級', 'Orta üstü': '中上級', 'İleri': '上級', 'Çok ileri': '熟達', 'Tüm Diller': 'すべての言語', 'Okur yaşı': '読者の年齢', '7–11 yaş': '7～11歳',
+    '12–18 yaş': '12～18歳', 'Yetişkin': '大人', 'Masal yaşı 0–6 olarak ayarlı': '童話は0～6歳向けに設定されています', 'Kitap Dili': '本の言語',
+    'Dil öğrenme kitabı': '語学学習の本', 'Açıkla': '解説', 'Dil desteği': '言語サポート', 'Bağlam inceleniyor': '文脈を確認中',
+    'Açıklama şu anda alınamadı.': '現在、解説を取得できません。', 'Anlamı': '意味', 'Dil bilgisi': '文法', 'Kullanımı': '使い方', 'Örnek': '例'
+  },
+  ko: {
+    'Kitap okuyarak dil öğren': '책을 읽으며 언어 배우기', 'Seviyene ve ilgine uygun bir kitap oluştur': '수준과 관심사에 맞는 책 만들기', 'Dil öğrenme ayarları': '언어 학습 설정',
+    'Öğrenmek istediğin dil': '배우고 싶은 언어', 'Açıklama dili': '설명 언어', 'Okuma seviyen': '읽기 수준', 'Başlangıç': '초급', 'Temel': '기초', 'Orta': '중급', 'Orta üstü': '중상급', 'İleri': '고급', 'Çok ileri': '능숙', 'Tüm Diller': '모든 언어', 'Okur yaşı': '독자 연령', '7–11 yaş': '7~11세',
+    '12–18 yaş': '12~18세', 'Yetişkin': '성인', 'Masal yaşı 0–6 olarak ayarlı': '동화는 0~6세 대상으로 설정됩니다', 'Kitap Dili': '책 언어',
+    'Dil öğrenme kitabı': '언어 학습 도서', 'Açıkla': '설명', 'Dil desteği': '언어 도움말', 'Bağlam inceleniyor': '문맥을 확인하는 중',
+    'Açıklama şu anda alınamadı.': '지금은 설명을 가져올 수 없습니다.', 'Anlamı': '의미', 'Dil bilgisi': '문법', 'Kullanımı': '사용법', 'Örnek': '예문'
+  },
+  nl: {
+    'Kitap okuyarak dil öğren': 'Leer een taal door te lezen', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Maak een boek dat past bij je niveau en interesses', 'Dil öğrenme ayarları': 'Instellingen voor taalleren',
+    'Öğrenmek istediğin dil': 'Taal die je wilt leren', 'Açıklama dili': 'Taal voor uitleg', 'Okuma seviyen': 'Leesniveau', 'Başlangıç': 'Beginner', 'Temel': 'Basis', 'Orta': 'Gemiddeld', 'Orta üstü': 'Bovengemiddeld', 'İleri': 'Gevorderd', 'Çok ileri': 'Zeer gevorderd', 'Tüm Diller': 'Alle talen', 'Okur yaşı': 'Leeftijd van de lezer', '7–11 yaş': '7–11 jaar',
+    '12–18 yaş': '12–18 jaar', 'Yetişkin': 'Volwassene', 'Masal yaşı 0–6 olarak ayarlı': 'Sprookjes zijn ingesteld voor kinderen van 0–6 jaar', 'Kitap Dili': 'Boektaal',
+    'Dil öğrenme kitabı': 'Taal-leerboek', 'Açıkla': 'Uitleg', 'Dil desteği': 'Hulp bij taal', 'Bağlam inceleniyor': 'Context wordt bekeken',
+    'Açıklama şu anda alınamadı.': 'De uitleg is nu niet beschikbaar.', 'Anlamı': 'Betekenis', 'Dil bilgisi': 'Grammatica', 'Kullanımı': 'Gebruik', 'Örnek': 'Voorbeeld'
+  },
+  no: {
+    'Kitap okuyarak dil öğren': 'Lær språk ved å lese', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Lag en bok som passer til nivået og interessene dine', 'Dil öğrenme ayarları': 'Innstillinger for språklæring',
+    'Öğrenmek istediğin dil': 'Språket du vil lære', 'Açıklama dili': 'Forklaringsspråk', 'Okuma seviyen': 'Lesenivå', 'Başlangıç': 'Nybegynner', 'Temel': 'Grunnleggende', 'Orta': 'Middels', 'Orta üstü': 'Øvre middels', 'İleri': 'Avansert', 'Çok ileri': 'Svært avansert', 'Tüm Diller': 'Alle språk', 'Okur yaşı': 'Leserens alder', '7–11 yaş': '7–11 år',
+    '12–18 yaş': '12–18 år', 'Yetişkin': 'Voksen', 'Masal yaşı 0–6 olarak ayarlı': 'Eventyr er beregnet for alderen 0–6 år', 'Kitap Dili': 'Bokspråk',
+    'Dil öğrenme kitabı': 'Språklæringsbok', 'Açıkla': 'Forklar', 'Dil desteği': 'Språkhjelp', 'Bağlam inceleniyor': 'Konteksten undersøkes',
+    'Açıklama şu anda alınamadı.': 'Forklaringen er ikke tilgjengelig akkurat nå.', 'Anlamı': 'Betydning', 'Dil bilgisi': 'Grammatikk', 'Kullanımı': 'Bruk', 'Örnek': 'Eksempel'
+  },
+  pl: {
+    'Kitap okuyarak dil öğren': 'Ucz się języka przez czytanie', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Utwórz książkę dopasowaną do poziomu i zainteresowań', 'Dil öğrenme ayarları': 'Ustawienia nauki języka',
+    'Öğrenmek istediğin dil': 'Język do nauki', 'Açıklama dili': 'Język objaśnień', 'Okuma seviyen': 'Poziom czytania', 'Başlangıç': 'Początkujący', 'Temel': 'Podstawowy', 'Orta': 'Średni', 'Orta üstü': 'Wyższy średni', 'İleri': 'Zaawansowany', 'Çok ileri': 'Biegły', 'Tüm Diller': 'Wszystkie języki', 'Okur yaşı': 'Wiek czytelnika', '7–11 yaş': '7–11 lat',
+    '12–18 yaş': '12–18 lat', 'Yetişkin': 'Dorosły', 'Masal yaşı 0–6 olarak ayarlı': 'Bajki są przeznaczone dla dzieci w wieku 0–6 lat', 'Kitap Dili': 'Język książki',
+    'Dil öğrenme kitabı': 'Książka do nauki języka', 'Açıkla': 'Wyjaśnij', 'Dil desteği': 'Pomoc językowa', 'Bağlam inceleniyor': 'Analizowanie kontekstu',
+    'Açıklama şu anda alınamadı.': 'Wyjaśnienie jest teraz niedostępne.', 'Anlamı': 'Znaczenie', 'Dil bilgisi': 'Gramatyka', 'Kullanımı': 'Użycie', 'Örnek': 'Przykład'
+  },
+  'pt-BR': {
+    'Kitap okuyarak dil öğren': 'Aprenda um idioma lendo', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Crie um livro adequado ao seu nível e aos seus interesses', 'Dil öğrenme ayarları': 'Configurações de aprendizagem de idiomas',
+    'Öğrenmek istediğin dil': 'Idioma que deseja aprender', 'Açıklama dili': 'Idioma das explicações', 'Okuma seviyen': 'Nível de leitura', 'Başlangıç': 'Iniciante', 'Temel': 'Básico', 'Orta': 'Intermediário', 'Orta üstü': 'Intermediário superior', 'İleri': 'Avançado', 'Çok ileri': 'Proficiente', 'Tüm Diller': 'Todos os idiomas', 'Okur yaşı': 'Idade do leitor', '7–11 yaş': '7–11 anos',
+    '12–18 yaş': '12–18 anos', 'Yetişkin': 'Adulto', 'Masal yaşı 0–6 olarak ayarlı': 'Contos configurados para crianças de 0 a 6 anos', 'Kitap Dili': 'Idioma do livro',
+    'Dil öğrenme kitabı': 'Livro para aprender idiomas', 'Açıkla': 'Explicar', 'Dil desteği': 'Ajuda com o idioma', 'Bağlam inceleniyor': 'Analisando o contexto',
+    'Açıklama şu anda alınamadı.': 'Não foi possível obter a explicação agora.', 'Anlamı': 'Significado', 'Dil bilgisi': 'Gramática', 'Kullanımı': 'Uso', 'Örnek': 'Exemplo'
+  },
+  sv: {
+    'Kitap okuyarak dil öğren': 'Lär dig ett språk genom att läsa', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Skapa en bok som passar din nivå och dina intressen', 'Dil öğrenme ayarları': 'Inställningar för språkinlärning',
+    'Öğrenmek istediğin dil': 'Språket du vill lära dig', 'Açıklama dili': 'Förklaringsspråk', 'Okuma seviyen': 'Läsnivå', 'Başlangıç': 'Nybörjare', 'Temel': 'Grundläggande', 'Orta': 'Medel', 'Orta üstü': 'Övre medel', 'İleri': 'Avancerad', 'Çok ileri': 'Mycket avancerad', 'Tüm Diller': 'Alla språk', 'Okur yaşı': 'Läsarens ålder', '7–11 yaş': '7–11 år',
+    '12–18 yaş': '12–18 år', 'Yetişkin': 'Vuxen', 'Masal yaşı 0–6 olarak ayarlı': 'Sagor är anpassade för åldrarna 0–6 år', 'Kitap Dili': 'Bokspråk',
+    'Dil öğrenme kitabı': 'Språkinlärningsbok', 'Açıkla': 'Förklara', 'Dil desteği': 'Språkhjälp', 'Bağlam inceleniyor': 'Sammanhanget granskas',
+    'Açıklama şu anda alınamadı.': 'Förklaringen kan inte hämtas just nu.', 'Anlamı': 'Betydelse', 'Dil bilgisi': 'Grammatik', 'Kullanımı': 'Användning', 'Örnek': 'Exempel'
+  },
+  th: {
+    'Kitap okuyarak dil öğren': 'เรียนภาษาผ่านการอ่าน', 'Seviyene ve ilgine uygun bir kitap oluştur': 'สร้างหนังสือที่เหมาะกับระดับและความสนใจของคุณ', 'Dil öğrenme ayarları': 'การตั้งค่าการเรียนภาษา',
+    'Öğrenmek istediğin dil': 'ภาษาที่ต้องการเรียน', 'Açıklama dili': 'ภาษาสำหรับคำอธิบาย', 'Okuma seviyen': 'ระดับการอ่าน', 'Başlangıç': 'เริ่มต้น', 'Temel': 'พื้นฐาน', 'Orta': 'ระดับกลาง', 'Orta üstü': 'กลางระดับสูง', 'İleri': 'ขั้นสูง', 'Çok ileri': 'ชำนาญ', 'Tüm Diller': 'ทุกภาษา', 'Okur yaşı': 'อายุผู้อ่าน', '7–11 yaş': 'อายุ 7–11 ปี',
+    '12–18 yaş': 'อายุ 12–18 ปี', 'Yetişkin': 'ผู้ใหญ่', 'Masal yaşı 0–6 olarak ayarlı': 'นิทานกำหนดไว้สำหรับเด็กอายุ 0–6 ปี', 'Kitap Dili': 'ภาษาของหนังสือ',
+    'Dil öğrenme kitabı': 'หนังสือเรียนภาษา', 'Açıkla': 'อธิบาย', 'Dil desteği': 'ตัวช่วยด้านภาษา', 'Bağlam inceleniyor': 'กำลังตรวจสอบบริบท',
+    'Açıklama şu anda alınamadı.': 'ยังไม่สามารถแสดงคำอธิบายได้ในขณะนี้', 'Anlamı': 'ความหมาย', 'Dil bilgisi': 'ไวยากรณ์', 'Kullanımı': 'การใช้', 'Örnek': 'ตัวอย่าง'
+  },
+  en: {
+    'Kitap okuyarak dil öğren': 'Learn a language by reading',
+    'DİL ATÖLYESİ': 'LANGUAGE ATELIER',
+    'Yabancı Dilinizi Okuyarak Geliştirin': 'Improve Your Foreign Language by Reading',
+    'Seviyenize uygun edebi hikaye ve masallarla dil pratiği yapın': 'Practice language with literary stories and tales tailored to your level',
+    'Seviyene ve ilgine uygun bir kitap oluştur': 'Create a book for your level and interests',
+    'Dil öğrenme ayarları': 'Language learning settings', 'Öğrenmek istediğin dil': 'Language to learn', 'Açıklama dili': 'Explanation language',
+    'Okuma seviyen': 'Reading level', 'Başlangıç': 'Beginner', 'Temel': 'Elementary', 'Orta': 'Intermediate', 'Orta üstü': 'Upper-intermediate',
+    'İleri': 'Advanced', 'Çok ileri': 'Proficient', 'Tüm Diller': 'All languages', 'Okur yaşı': 'Reader age', '7–11 yaş': 'Ages 7–11', '12–18 yaş': 'Ages 12–18',
+    'Yetişkin': 'Adult', 'Masal yaşı 0–6 olarak ayarlı': 'Fairy tales are set for ages 0–6', 'Kitap Dili': 'Book Language',
+    'Dil öğrenme kitabı': 'Language-learning book', 'Açıkla': 'Explain', 'Dil desteği': 'Language help', 'Bağlam inceleniyor': 'Checking the context',
+    'Açıklama şu anda alınamadı.': 'The explanation is unavailable right now.', 'Anlamı': 'Meaning', 'Dil bilgisi': 'Grammar', 'Kullanımı': 'Usage', 'Örnek': 'Example'
+  },
+  es: {
+    'Kitap okuyarak dil öğren': 'Aprende idiomas leyendo', 'Seviyene ve ilgine uygun bir kitap oluştur': 'Crea un libro para tu nivel e intereses',
+    'Dil öğrenme ayarları': 'Ajustes de aprendizaje de idiomas', 'Öğrenmek istediğin dil': 'Idioma que quieres aprender', 'Açıklama dili': 'Idioma de las explicaciones',
+    'Okuma seviyen': 'Nivel de lectura', 'Başlangıç': 'Principiante', 'Temel': 'Básico', 'Orta': 'Intermedio', 'Orta üstü': 'Intermedio alto',
+    'İleri': 'Avanzado', 'Çok ileri': 'Dominio avanzado', 'Tüm Diller': 'Todos los idiomas', 'Okur yaşı': 'Edad del lector', '7–11 yaş': 'De 7 a 11 años', '12–18 yaş': 'De 12 a 18 años',
+    'Yetişkin': 'Adulto', 'Masal yaşı 0–6 olarak ayarlı': 'Los cuentos están configurados para edades de 0 a 6 años', 'Kitap Dili': 'Idioma del libro',
+    'Dil öğrenme kitabı': 'Libro para aprender idiomas', 'Açıkla': 'Explicar', 'Dil desteği': 'Ayuda de idioma', 'Bağlam inceleniyor': 'Analizando el contexto',
+    'Açıklama şu anda alınamadı.': 'No se pudo obtener la explicación ahora.', 'Anlamı': 'Significado', 'Dil bilgisi': 'Gramática', 'Kullanımı': 'Uso', 'Örnek': 'Ejemplo'
+  }
+};
+for (const [locale, translations] of Object.entries(LANGUAGE_LEARNING_UI_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_TRANSLATION_SUPPLEMENTS[locale] = { ...UI_TRANSLATION_SUPPLEMENTS[locale], ...translations };
+}
+
+const LANGUAGE_LEARNING_BOOK_TITLE_TRANSLATIONS: Partial<Record<AppLanguageCode, string>> = {
+  ar: 'حكاية بلغة أجنبية', da: 'Historie på et fremmedsprog', de: 'Geschichte in einer Fremdsprache',
+  el: 'Ιστορία σε ξένη γλώσσα', en: 'Story in a Foreign Language', es: 'Historia en lengua extranjera',
+  fi: 'Tarina vieraalla kielellä', fr: 'Histoire en langue étrangère', hi: 'विदेशी भाषा की कहानी',
+  id: 'Cerita dalam Bahasa Asing', it: 'Storia in lingua straniera', ja: '外国語の物語',
+  ko: '외국어 이야기', nl: 'Verhaal in een vreemde taal', no: 'Historie på et fremmedspråk',
+  pl: 'Opowieść w języku obcym', 'pt-BR': 'História em idioma estrangeiro', sv: 'Berättelse på ett främmande språk',
+  th: 'เรื่องราวในภาษาต่างประเทศ', tr: 'Yabancı Dilde Hikaye'
+};
+for (const [locale, title] of Object.entries(LANGUAGE_LEARNING_BOOK_TITLE_TRANSLATIONS) as Array<[AppLanguageCode, string]>) {
+  UI_TRANSLATION_SUPPLEMENTS[locale] = { ...UI_TRANSLATION_SUPPLEMENTS[locale], 'Yabancı Dilde Hikaye': title };
+}
+
+const ONBOARDING_FEATURE_UI_TRANSLATIONS: Partial<Record<AppLanguageCode, Record<string, string>>> = {
+  ar: {
+    'Sınırsız hayal gücü': 'خيال بلا حدود', 'Yeni keşifler': 'اكتشافات جديدة', 'Yabancı dil kitabı': 'كتاب لتعلّم لغة أجنبية', 'Sen ne istersen': 'كما تريد',
+    'Yeni bir dil öğren': 'تعلّم لغة جديدة', 'Yabancı dilini geliştir': 'طوّر لغتك الأجنبية', 'Kendi hikayeni yaz': 'اكتب قصتك بنفسك',
+    'Öğrenme kitabı oluştur': 'أنشئ كتابًا تعليميًا', 'Limitsiz ol': 'كن بلا حدود'
+  },
+  da: {
+    'Sınırsız hayal gücü': 'Ubegrænset fantasi', 'Yeni keşifler': 'Nye opdagelser', 'Yabancı dil kitabı': 'Bog til fremmedsprog', 'Sen ne istersen': 'Lige hvad du vil',
+    'Yeni bir dil öğren': 'Lær et nyt sprog', 'Yabancı dilini geliştir': 'Bliv bedre til dit fremmedsprog', 'Kendi hikayeni yaz': 'Skriv din egen historie',
+    'Öğrenme kitabı oluştur': 'Lav en læringsbog', 'Limitsiz ol': 'Vær grænseløs'
+  },
+  de: {
+    'Sınırsız hayal gücü': 'Grenzenlose Fantasie', 'Yeni keşifler': 'Neue Entdeckungen', 'Yabancı dil kitabı': 'Fremdsprachenbuch', 'Sen ne istersen': 'Ganz nach deinem Wunsch',
+    'Yeni bir dil öğren': 'Eine neue Sprache lernen', 'Yabancı dilini geliştir': 'Deine Fremdsprache verbessern', 'Kendi hikayeni yaz': 'Schreib deine eigene Geschichte',
+    'Öğrenme kitabı oluştur': 'Ein Lernbuch erstellen', 'Limitsiz ol': 'Sei grenzenlos'
+  },
+  el: {
+    'Sınırsız hayal gücü': 'Απεριόριστη φαντασία', 'Yeni keşifler': 'Νέες ανακαλύψεις', 'Yabancı dil kitabı': 'Βιβλίο ξένης γλώσσας', 'Sen ne istersen': 'Ό,τι θέλεις',
+    'Yeni bir dil öğren': 'Μάθε μια νέα γλώσσα', 'Yabancı dilini geliştir': 'Βελτίωσε την ξένη γλώσσα σου', 'Kendi hikayeni yaz': 'Γράψε τη δική σου ιστορία',
+    'Öğrenme kitabı oluştur': 'Δημιούργησε ένα βιβλίο μάθησης', 'Limitsiz ol': 'Χωρίς όρια'
+  },
+  en: {
+    'Sınırsız hayal gücü': 'Limitless imagination', 'Yeni keşifler': 'New discoveries', 'Yabancı dil kitabı': 'Foreign language book', 'Sen ne istersen': 'Whatever you want',
+    'Yeni bir dil öğren': 'Learn a new language', 'Yabancı dilini geliştir': 'Improve your foreign language', 'Kendi hikayeni yaz': 'Write your own story',
+    'Öğrenme kitabı oluştur': 'Create a learning book', 'Limitsiz ol': 'Be limitless'
+  },
+  es: {
+    'Sınırsız hayal gücü': 'Imaginación sin límites', 'Yeni keşifler': 'Nuevos descubrimientos', 'Yabancı dil kitabı': 'Libro de idiomas', 'Sen ne istersen': 'Lo que tú quieras',
+    'Yeni bir dil öğren': 'Aprende un nuevo idioma', 'Yabancı dilini geliştir': 'Mejora tu idioma extranjero', 'Kendi hikayeni yaz': 'Escribe tu propia historia',
+    'Öğrenme kitabı oluştur': 'Crea un libro de aprendizaje', 'Limitsiz ol': 'Sé ilimitado'
+  },
+  fi: {
+    'Sınırsız hayal gücü': 'Rajaton mielikuvitus', 'Yeni keşifler': 'Uusia löytöjä', 'Yabancı dil kitabı': 'Vieraan kielen kirja', 'Sen ne istersen': 'Mitä vain haluat',
+    'Yeni bir dil öğren': 'Opettele uusi kieli', 'Yabancı dilini geliştir': 'Kehitä vierasta kieltäsi', 'Kendi hikayeni yaz': 'Kirjoita oma tarinasi',
+    'Öğrenme kitabı oluştur': 'Luo oppimiskirja', 'Limitsiz ol': 'Ole rajaton'
+  },
+  fr: {
+    'Sınırsız hayal gücü': 'Imagination sans limites', 'Yeni keşifler': 'Nouvelles découvertes', 'Yabancı dil kitabı': 'Livre de langue étrangère', 'Sen ne istersen': 'Comme tu le souhaites',
+    'Yeni bir dil öğren': 'Apprends une nouvelle langue', 'Yabancı dilini geliştir': 'Améliore ta langue étrangère', 'Kendi hikayeni yaz': 'Écris ta propre histoire',
+    'Öğrenme kitabı oluştur': 'Crée un livre d’apprentissage', 'Limitsiz ol': 'Sans limites'
+  },
+  hi: {
+    'Sınırsız hayal gücü': 'असीम कल्पना', 'Yeni keşifler': 'नई खोजें', 'Yabancı dil kitabı': 'विदेशी भाषा की किताब', 'Sen ne istersen': 'जो चाहो',
+    'Yeni bir dil öğren': 'एक नई भाषा सीखें', 'Yabancı dilini geliştir': 'अपनी विदेशी भाषा बेहतर करें', 'Kendi hikayeni yaz': 'अपनी कहानी खुद लिखें',
+    'Öğrenme kitabı oluştur': 'सीखने की किताब बनाएँ', 'Limitsiz ol': 'असीमित बनें'
+  },
+  id: {
+    'Sınırsız hayal gücü': 'Imajinasi tanpa batas', 'Yeni keşifler': 'Penemuan baru', 'Yabancı dil kitabı': 'Buku bahasa asing', 'Sen ne istersen': 'Apa pun yang kamu inginkan',
+    'Yeni bir dil öğren': 'Pelajari bahasa baru', 'Yabancı dilini geliştir': 'Tingkatkan kemampuan bahasa asingmu', 'Kendi hikayeni yaz': 'Tulis ceritamu sendiri',
+    'Öğrenme kitabı oluştur': 'Buat buku pembelajaran', 'Limitsiz ol': 'Jadilah tanpa batas'
+  },
+  it: {
+    'Sınırsız hayal gücü': 'Immaginazione senza limiti', 'Yeni keşifler': 'Nuove scoperte', 'Yabancı dil kitabı': 'Libro di lingua straniera', 'Sen ne istersen': 'Quello che vuoi',
+    'Yeni bir dil öğren': 'Impara una nuova lingua', 'Yabancı dilini geliştir': 'Migliora la tua lingua straniera', 'Kendi hikayeni yaz': 'Scrivi la tua storia',
+    'Öğrenme kitabı oluştur': 'Crea un libro didattico', 'Limitsiz ol': 'Sii senza limiti'
+  },
+  ja: {
+    'Sınırsız hayal gücü': '無限の想像力', 'Yeni keşifler': '新しい発見', 'Yabancı dil kitabı': '外国語の本', 'Sen ne istersen': '好きなものを',
+    'Yeni bir dil öğren': '新しい言語を学ぶ', 'Yabancı dilini geliştir': '外国語を上達させる', 'Kendi hikayeni yaz': '自分だけの物語を書く',
+    'Öğrenme kitabı oluştur': '学習本を作る', 'Limitsiz ol': '限界を超えよう'
+  },
+  ko: {
+    'Sınırsız hayal gücü': '무한한 상상력', 'Yeni keşifler': '새로운 발견', 'Yabancı dil kitabı': '외국어 책', 'Sen ne istersen': '원하는 무엇이든',
+    'Yeni bir dil öğren': '새로운 언어 배우기', 'Yabancı dilini geliştir': '외국어 실력 키우기', 'Kendi hikayeni yaz': '나만의 이야기 쓰기',
+    'Öğrenme kitabı oluştur': '학습 도서 만들기', 'Limitsiz ol': '한계를 넘어'
+  },
+  nl: {
+    'Sınırsız hayal gücü': 'Grenzeloze verbeelding', 'Yeni keşifler': 'Nieuwe ontdekkingen', 'Yabancı dil kitabı': 'Boek voor vreemde talen', 'Sen ne istersen': 'Wat jij maar wilt',
+    'Yeni bir dil öğren': 'Leer een nieuwe taal', 'Yabancı dilini geliştir': 'Verbeter je vreemde taal', 'Kendi hikayeni yaz': 'Schrijf je eigen verhaal',
+    'Öğrenme kitabı oluştur': 'Maak een leerboek', 'Limitsiz ol': 'Wees grenzeloos'
+  },
+  no: {
+    'Sınırsız hayal gücü': 'Grenseløs fantasi', 'Yeni keşifler': 'Nye oppdagelser', 'Yabancı dil kitabı': 'Bok for fremmedspråk', 'Sen ne istersen': 'Akkurat det du vil',
+    'Yeni bir dil öğren': 'Lær et nytt språk', 'Yabancı dilini geliştir': 'Bli bedre i fremmedspråket ditt', 'Kendi hikayeni yaz': 'Skriv din egen historie',
+    'Öğrenme kitabı oluştur': 'Lag en læringsbok', 'Limitsiz ol': 'Vær grenseløs'
+  },
+  pl: {
+    'Sınırsız hayal gücü': 'Nieograniczona wyobraźnia', 'Yeni keşifler': 'Nowe odkrycia', 'Yabancı dil kitabı': 'Książka do nauki języka obcego', 'Sen ne istersen': 'Cokolwiek zechcesz',
+    'Yeni bir dil öğren': 'Naucz się nowego języka', 'Yabancı dilini geliştir': 'Rozwijaj znajomość języka obcego', 'Kendi hikayeni yaz': 'Napisz własną historię',
+    'Öğrenme kitabı oluştur': 'Stwórz książkę edukacyjną', 'Limitsiz ol': 'Nie miej granic'
+  },
+  'pt-BR': {
+    'Sınırsız hayal gücü': 'Imaginação sem limites', 'Yeni keşifler': 'Novas descobertas', 'Yabancı dil kitabı': 'Livro de língua estrangeira', 'Sen ne istersen': 'O que você quiser',
+    'Yeni bir dil öğren': 'Aprenda um novo idioma', 'Yabancı dilini geliştir': 'Aprimore seu idioma estrangeiro', 'Kendi hikayeni yaz': 'Escreva sua própria história',
+    'Öğrenme kitabı oluştur': 'Crie um livro de aprendizagem', 'Limitsiz ol': 'Seja ilimitado'
+  },
+  sv: {
+    'Sınırsız hayal gücü': 'Gränslös fantasi', 'Yeni keşifler': 'Nya upptäckter', 'Yabancı dil kitabı': 'Bok för främmande språk', 'Sen ne istersen': 'Vad du än vill',
+    'Yeni bir dil öğren': 'Lär dig ett nytt språk', 'Yabancı dilini geliştir': 'Utveckla ditt främmande språk', 'Kendi hikayeni yaz': 'Skriv din egen berättelse',
+    'Öğrenme kitabı oluştur': 'Skapa en lärobok', 'Limitsiz ol': 'Var gränslös'
+  },
+  th: {
+    'Sınırsız hayal gücü': 'จินตนาการไร้ขีดจำกัด', 'Yeni keşifler': 'การค้นพบใหม่', 'Yabancı dil kitabı': 'หนังสือภาษาต่างประเทศ', 'Sen ne istersen': 'อะไรก็ได้ที่คุณต้องการ',
+    'Yeni bir dil öğren': 'เรียนรู้ภาษาใหม่', 'Yabancı dilini geliştir': 'พัฒนาภาษาต่างประเทศของคุณ', 'Kendi hikayeni yaz': 'เขียนเรื่องราวของคุณเอง',
+    'Öğrenme kitabı oluştur': 'สร้างหนังสือเพื่อการเรียนรู้', 'Limitsiz ol': 'ไร้ขีดจำกัด'
+  }
+};
+for (const [locale, translations] of Object.entries(ONBOARDING_FEATURE_UI_TRANSLATIONS) as Array<[AppLanguageCode, Record<string, string>]>) {
+  UI_TRANSLATION_SUPPLEMENTS[locale] = { ...UI_TRANSLATION_SUPPLEMENTS[locale], ...translations };
+}

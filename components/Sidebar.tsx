@@ -46,7 +46,7 @@ export default function Sidebar({
         onClick={onClose}
       />
 
-      <aside className="fortale-cosmos-panel fixed inset-x-0 top-0 z-[51] w-full max-h-[90vh] animate-slide-down border-b border-white/10 glass-panel shadow-2xl rounded-b-[2rem] overflow-hidden">
+      <aside data-companion-dialog className="fortale-cosmos-panel fixed inset-x-0 top-0 z-[51] w-full max-h-[90vh] animate-slide-down border-b border-white/10 glass-panel shadow-2xl rounded-b-[2rem] overflow-hidden">
         <div className="app-content-width flex h-full flex-col">
           <div className="px-6 pb-6 pt-10">
             <div className="mb-6 flex items-center justify-between">

@@ -1,3 +1,5 @@
+import { normalizeBookIntakeResult, type IntakeContext, type BookIntakeResult } from './functions/src/bookCreationIntake';
+import { readLanguageLearning, type ReadingExplanation } from './functions/src/languageLearning';
 import { httpsCallable } from "firebase/functions";
 import { appCheckReady, functions } from "./firebaseConfig";
 import {
@@ -16,6 +18,8 @@ import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from "./u
 import { normalizeMarkdownNarrativeLayout } from "./utils/markdownLayout";
 
 type AiOperation =
+  | "planBookCreation"
+  | "explainReaderSelection"
   | "extractDocumentContext"
   | "generateCourseOutline"
   | "generateCourseCover"
@@ -69,6 +73,8 @@ export const CREDIT_WALLET_UPDATED_EVENT = "fortale:credit-wallet-updated";
 export const CREDIT_EXHAUSTED_EVENT = "fortale:credit-exhausted";
 
 interface AiGatewayResponse {
+  bookIntake?: BookIntakeResult;
+  explanation?: ReadingExplanation;
   detectedTopic?: string;
   sourceContent?: string;
   outline?: TimelineNode[];
@@ -237,6 +243,7 @@ const aiGateway = httpsCallable<AiGatewayRequest, AiGatewayResponse>(functions, 
 });
 
 // Podcast TTS generation can take several minutes — use a much longer timeout
+const bookPlanningGateway = httpsCallable<AiGatewayRequest, AiGatewayResponse>(functions, "bookPlanningGateway", { timeout: 180_000 });
 const aiGatewayLong = httpsCallable<AiGatewayRequest, AiGatewayResponse>(functions, "aiGateway", {
   timeout: 540_000
 });
@@ -267,6 +274,8 @@ const cancelBookGenerationJobCallable = httpsCallable<{ jobId: string }, { cance
 );
 
 const OPERATION_LABELS: Record<AiOperation, string> = {
+  planBookCreation: "kitap planlama",
+  explainReaderSelection: "okuma dil desteği",
   extractDocumentContext: "dokuman analizi",
   generateCourseOutline: "akis plani",
   generateCourseCover: "kitap kapagi",
@@ -316,7 +325,9 @@ export function formatAiUsageEntryForConsole(entry: UsageReportEntry): string {
   const priceUsd = toUsd(entry.estimatedCostUsd);
   const suffixParts: string[] = [];
 
-  if (provider === "openai" && isGptImageModel(model)) {
+  if (provider === "openai" && (model.includes("gpt-6-luna") || model.includes("luna"))) {
+    suffixParts.push("rates in $0.10/M out $0.50/M");
+  } else if (provider === "openai" && isGptImageModel(model)) {
     const rates = resolveGptImageConsoleRates(model);
     if (entry.costMode) suffixParts.push(`mode ${entry.costMode}`);
     if (entry.quality) suffixParts.push(`quality ${entry.quality}`);
@@ -328,6 +339,8 @@ export function formatAiUsageEntryForConsole(entry: UsageReportEntry): string {
     if (Number(entry.costUsdInputImage) > 0) suffixParts.push(`cost_in_image ${toUsd(entry.costUsdInputImage)} usd`);
     if (Number(entry.costUsdOutputImage) > 0) suffixParts.push(`cost_out_image ${toUsd(entry.costUsdOutputImage)} usd`);
     suffixParts.push(`rates text_in_${rates.textIn}/M image_in_${rates.imageIn}/M image_out_${rates.imageOut}/M`);
+  } else if (model.includes("gemini-2.5-flash-preview-tts") || model.includes("flash-tts")) {
+    suffixParts.push("rates in $0.50/M out $10.00/M (audio)");
   }
 
   return `${label}: ${provider} ${model} in ${inputTokens} out ${outputTokens} total ${totalTokens} price ${priceUsd} usd${suffixParts.length ? ` | ${suffixParts.join(" ")}` : ""}`;
@@ -532,7 +545,7 @@ async function callAi(operation: AiOperation, payload: Record<string, unknown>):
     "generatePodcastScript",
     "generatePodcastAudio"
   ]);
-  const callable = longRunningOperations.has(operation) ? aiGatewayLong : aiGateway;
+  const callable = operation === "planBookCreation" ? bookPlanningGateway : longRunningOperations.has(operation) ? aiGatewayLong : aiGateway;
 
   const extractRetryDelayMs = (error: any): number | undefined => {
     const raw = String(error?.message || error || '');
@@ -893,6 +906,7 @@ function hydrateCourseData(raw: unknown): CourseData | null {
     description: typeof data.description === 'string' ? data.description : undefined,
     creatorName: typeof data.creatorName === 'string' ? data.creatorName : undefined,
     language: typeof data.language === 'string' ? data.language : undefined,
+    languageLearning: readLanguageLearning(data.languageLearning),
     ageGroup: typeof data.ageGroup === 'string' ? data.ageGroup as SmartBookAgeGroup : undefined,
     bookType:
       data.bookType === 'fairy_tale' ||
@@ -997,6 +1011,7 @@ function hydrateBookMeta(raw: unknown): BookMeta | null {
     description: typeof data.description === 'string' ? data.description : undefined,
     creatorName: typeof data.creatorName === 'string' ? data.creatorName : undefined,
     language: typeof data.language === 'string' ? data.language : undefined,
+    languageLearning: readLanguageLearning(data.languageLearning),
     ageGroup: typeof data.ageGroup === 'string' ? data.ageGroup as SmartBookAgeGroup : undefined,
     bookType:
       data.bookType === 'fairy_tale' ||
@@ -1049,6 +1064,7 @@ function buildCoursePlaceholderFromBookMeta(book: BookMeta): CourseData {
     description: book.description,
     creatorName: book.creatorName,
     language: book.language,
+    languageLearning: book.languageLearning,
     ageGroup: book.ageGroup,
     bookType: book.bookType,
     subGenre: book.subGenre,
@@ -1454,4 +1470,24 @@ export async function chatWithAI(
     throw new Error("Chat response is missing.");
   }
   return data.message;
+}
+
+export async function planBookCreation(context: IntakeContext): Promise<BookIntakeResult> {
+  const response = await callAi('planBookCreation', { ...context });
+  // Validate the handoff again at the client boundary; malformed output must never start production.
+  const result = normalizeBookIntakeResult(response.bookIntake, context);
+  if (result.status === 'ready' && response.bookIntake?.status === 'ready') {
+    result.draft.sourceContent = response.bookIntake.draft.sourceContent;
+  }
+  return result;
+}
+
+export async function explainReaderSelection(params: {
+  bookId: string;
+  selectedText: string;
+  sourceContext: string;
+}): Promise<ReadingExplanation> {
+  const data = await callAi('explainReaderSelection', params);
+  if (!data.explanation) throw new Error('Okuma açıklaması alınamadı.');
+  return data.explanation;
 }

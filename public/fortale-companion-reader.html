@@ -1,0 +1,43 @@
+<!doctype html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><link rel="stylesheet" href="fortale-companion.css">
+<style>html,body{margin:0;background:transparent;overflow:hidden}body{padding:16px 4px 0;box-sizing:border-box}*,*::before,*::after{box-sizing:border-box}</style></head>
+<body>
+<span class="fortale-companion-art" data-mood="read" data-wink="" data-affection="" style="width:88px;height:93px" aria-hidden="true">
+  <span class="friend-canvas" style="transform:scale(.4888889)">
+    <span class="friend-shadow"></span><span class="friend-pet">
+      <span class="friend-spark s1">✦</span><span class="friend-spark s2">✦</span><span class="friend-spark s3">✧</span>
+      <span class="friend-thought"><b></b><b></b><b></b></span>
+      <span class="friend-body"><span class="friend-tuft"></span>
+        <span class="friend-arm arm-left"></span><span class="friend-arm arm-right"></span>
+        <span class="friend-face"><span class="friend-brow brow-left"></span><span class="friend-brow brow-right"></span>
+          <span class="friend-eye eye-left"><span></span></span><span class="friend-eye eye-right"><span></span></span>
+          <span class="friend-cheek cheek-left"></span><span class="friend-cheek cheek-right"></span><span class="friend-mouth"></span>
+        </span>
+      </span>
+      <span class="friend-foot foot-left"></span><span class="friend-foot foot-right"></span><span class="friend-book"><span></span><span></span></span>
+    </span>
+  </span>
+</span>
+<script>
+(() => {
+  const art = document.querySelector('.fortale-companion-art');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  function wink() {
+    if (!reduced.matches && art.dataset.mood === 'read') {
+      art.dataset.wink = Math.random() > .5 ? 'left' : 'right';
+      setTimeout(() => { art.dataset.wink = ''; }, 520);
+    }
+    setTimeout(wink, 9500 + Math.random() * 7000);
+  }
+  function enjoy() {
+    if (!reduced.matches && art.dataset.mood === 'read') {
+      art.dataset.affection = Math.random() < .6 ? 'sigh' : 'delighted';
+      setTimeout(() => { art.dataset.affection = ''; }, 2800);
+    }
+    setTimeout(enjoy, 12000 + Math.random() * 10000);
+  }
+  setTimeout(wink, 4500);
+  setTimeout(enjoy, 7000);
+})();
+</script>
+</body></html>

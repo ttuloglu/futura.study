@@ -1,0 +1,97 @@
+.fortale-onboarding-intro-stage {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  width: 100%;
+  min-height: min(74dvh, 700px);
+  align-items: center;
+  justify-content: center;
+  margin-inline: auto;
+}
+
+.fortale-onboarding-intro-collage {
+  position: relative;
+  width: min(100%, 620px);
+  height: min(74dvh, 700px);
+  min-height: 360px;
+  margin-inline: auto;
+  container-type: inline-size;
+  isolation: isolate;
+}
+
+.fortale-onboarding-intro-floor {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.075) 0.7px, transparent 0.8px) 0 0 / 18px 18px,
+    radial-gradient(ellipse at 50% 80%, rgba(255, 255, 255, 0.025), transparent 70%);
+  mask-image: radial-gradient(ellipse, #000 20%, transparent 72%);
+}
+
+.fortale-onboarding-intro-features { margin: 0; padding: 0; list-style: none; }
+
+.fortale-onboarding-intro-position {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.fortale-onboarding-intro-card {
+  position: relative;
+  padding: clamp(10px, 3.4cqw, 21px) clamp(13px, 3.9cqw, 24px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: clamp(12px, 3.3cqw, 19px);
+  color: #242321;
+  background: #efede5;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2), 0 10px 16px rgba(0, 0, 0, 0.27), 0 23px 38px rgba(0, 0, 0, 0.16);
+  font-size: clamp(13px, var(--fortale-intro-card-font), 27px) !important;
+  font-weight: 600;
+  line-height: 1.12 !important;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+  transform-origin: 50% 65%;
+}
+
+.fortale-onboarding-intro-card::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.11), transparent 55%, rgba(0, 0, 0, 0.035));
+}
+
+.fortale-onboarding-intro-card--serif { font-family: Georgia, 'Times New Roman', serif !important; font-weight: 500; }
+.fortale-onboarding-intro-card--sans { font-family: var(--font-ui, sans-serif) !important; }
+.fortale-onboarding-intro-card--mono { font-family: 'SFMono-Regular', Consolas, monospace !important; letter-spacing: -0.06em; }
+.fortale-onboarding-intro-card--lavender { background: #d7cbea; color: #292237; }
+.fortale-onboarding-intro-card--coral { background: #ee755f; color: #281613; }
+.fortale-onboarding-intro-card--ink { background: #24292e; color: #f8f4eb; }
+.fortale-onboarding-intro-card--mint { background: #c4d6c3; color: #233426; }
+.fortale-onboarding-intro-card--butter { background: #e3cb89; color: #382d15; }
+.fortale-onboarding-intro-card--silver { background: linear-gradient(130deg, #ebedeb, #b8c1c8); color: #293038; }
+
+.fortale-onboarding-intro-position--final .fortale-onboarding-intro-card {
+  display: flex;
+  min-height: clamp(82px, 23cqw, 138px);
+  align-items: center;
+  justify-content: center;
+  padding: clamp(17px, 5cqw, 31px);
+  border-radius: clamp(17px, 4.2cqw, 26px);
+  font-size: clamp(22px, 6.1cqw, 38px) !important;
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-height: 700px) {
+  .fortale-onboarding-intro-stage { min-height: 400px; }
+  .fortale-onboarding-intro-collage { height: min(72dvh, 560px); min-height: 340px; }
+  .fortale-onboarding-intro-card { padding-block: 9px; font-size: clamp(12px, var(--fortale-intro-card-font), 19px) !important; }
+  .fortale-onboarding-intro-position--final .fortale-onboarding-intro-card { min-height: 64px; padding: 12px; }
+}
+
+@media (max-height: 600px) {
+  .fortale-onboarding-intro-stage { min-height: 360px; }
+  .fortale-onboarding-intro-collage { height: 68dvh; min-height: 320px; }
+  .fortale-onboarding-intro-card { padding-inline: 12px; font-size: clamp(12px, var(--fortale-intro-card-font), 14px) !important; }
+}

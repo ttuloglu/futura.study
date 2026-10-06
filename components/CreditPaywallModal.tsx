@@ -35,25 +35,25 @@ const PACK_ACCENTS: PackAccent[] = [
   {
     panelClass: 'border-[#cfe4ff]/30 bg-[#12315a]/70 shadow-[inset_0_0_0_1px_rgba(207,228,255,0.12)]',
     buyButtonClass: 'bg-[#dcecff]',
-    chipClass: 'border border-[#e7f2ff]/70 bg-[#e7f2ff]/90 text-[#071a33]',
+    chipClass: 'border border-white/20 bg-white/10 text-white',
     priceClass: 'text-white'
   },
   {
     panelClass: 'border-[#a9c7ec]/32 bg-[#0b294f]/76 shadow-[inset_0_0_0_1px_rgba(169,199,236,0.14)]',
     buyButtonClass: 'bg-[#dcecff]',
-    chipClass: 'border border-[#dcecff]/70 bg-[#dcecff]/90 text-[#071a33]',
+    chipClass: 'border border-white/20 bg-white/10 text-white',
     priceClass: 'text-white'
   },
   {
     panelClass: 'border-[#84b7ee]/32 bg-[#12315f]/72 shadow-[inset_0_0_0_1px_rgba(132,183,238,0.14)]',
     buyButtonClass: 'bg-[#dcecff]',
-    chipClass: 'border border-[#e6f3ff]/70 bg-[#e6f3ff]/90 text-[#071a33]',
+    chipClass: 'border border-white/20 bg-white/10 text-white',
     priceClass: 'text-white'
   },
   {
     panelClass: 'border-[#dcecff]/28 bg-[#163864]/72 shadow-[inset_0_0_0_1px_rgba(220,236,255,0.12)]',
     buyButtonClass: 'bg-[#dcecff]',
-    chipClass: 'border border-[#eff7ff]/70 bg-[#eff7ff]/90 text-[#071a33]',
+    chipClass: 'border border-white/20 bg-white/10 text-white',
     priceClass: 'text-white'
   }
 ];
@@ -116,16 +116,15 @@ export default function CreditPaywallModal({
       panelClassName="fortale-paywall-panel"
     >
       <div
-        className="mb-3 h-1.5 w-full rounded-full"
-        style={{ background: 'linear-gradient(90deg, #dcecff 0%, #8eb9ee 50%, #3b82f6 100%)' }}
+        className="fortale-modal-divider mb-3 h-1.5 w-full rounded-full"
       />
       <div className="fortale-paywall-balance mt-3 rounded-2xl border border-sky-300/35 bg-slate-800/60 p-4 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]">
         <div className="flex items-center justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-2">
-            <Coins size={16} className="text-amber-400" />
+            <Coins size={16} className="text-[#c04235]" />
             <p className="text-[13px] font-bold text-white">{t('Mevcut Krediniz')}</p>
           </div>
-          <span className="text-[14px] font-black text-amber-300">
+          <span className="text-[14px] font-black text-[#c04235]">
             {wallet?.createCredits ?? 0} {t('Kredi')}
           </span>
         </div>

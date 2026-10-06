@@ -16,13 +16,12 @@ export default function LoginPromptModal({ isOpen, onClose, onLogin }: LoginProm
   return (
     <FloatIslandSheet isOpen onClose={onClose} title={t('Fortale')} subtitle={t('Create, Discover and Share')} layer={11001} maxWidth={520}>
             <div
-              className="mb-3 h-1.5 w-full rounded-full"
-              style={{ background: '#3b82f6' }}
+              className="fortale-modal-divider mb-3 h-1.5 w-full rounded-full"
             />
             <div className="mt-4 rounded-2xl border border-sky-300/30 bg-slate-800/40 p-4 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.12)]">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-300/50 bg-amber-400/12">
-                  <BookOpen size={18} className="text-amber-200" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#c04235]/50 bg-[#c04235]/12">
+                  <BookOpen size={18} className="text-[#c04235]" />
                 </div>
                 <div>
                   <p className="text-[15px] font-bold text-white">{t('Üye olarak devam et')}</p>

@@ -75,6 +75,8 @@ export interface PodcastSegment {
   duration?: string;
 }
 
+import type { LanguageLearningProfile } from './languageLearning';
+
 export type VisualStoryAudioStatus = 'pending' | 'ready' | 'failed' | 'partial';
 
 export interface TimelineNode {
@@ -137,6 +139,7 @@ export interface BookMeta {
   description?: string;
   creatorName?: string;
   language?: string;
+  languageLearning?: LanguageLearningProfile;
   ageGroup?: SmartBookAgeGroup;
   bookType?: SmartBookBookType;
   subGenre?: string;
@@ -165,6 +168,7 @@ export interface BookBundleManifest {
   description?: string;
   creatorName?: string;
   language?: string;
+  languageLearning?: LanguageLearningProfile;
   ageGroup?: SmartBookAgeGroup;
   bookType?: SmartBookBookType;
   subGenre?: string;

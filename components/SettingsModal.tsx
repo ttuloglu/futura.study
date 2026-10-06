@@ -175,7 +175,7 @@ export default function SettingsModal({
               style={smartbookSurfaceStyle}
             >
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center text-amber-300">
+                <div className="flex items-center justify-center text-[#c04235]">
                   <Coins size={19} />
                 </div>
                 <div>
@@ -183,7 +183,7 @@ export default function SettingsModal({
                   <p className="text-[11px] text-white/60">{t('Kitap üretimi için kredi satın al')}</p>
                 </div>
               </div>
-              <span className="flex items-center gap-1 text-[11px] font-bold text-amber-300">
+              <span className="flex items-center gap-1 text-[11px] font-bold text-[#c04235]">
                 <Coins size={12} />
                 <span>{credits?.createCredits ?? 0}C</span>
               </span>
@@ -267,7 +267,7 @@ export default function SettingsModal({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <p className="text-[11px] font-semibold leading-snug text-white">{notification.title}</p>
-                                {!notification.readAt ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.45)]" /> : null}
+                                {!notification.readAt ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#c04235] shadow-[0_0_8px_rgba(252,211,77,0.45)]" /> : null}
                               </div>
                               <p className="mt-1 text-[10px] leading-relaxed text-white/65">{notification.body}</p>
                               <time className="mt-1.5 block text-[9px] text-white/40" dateTime={notification.createdAt}>

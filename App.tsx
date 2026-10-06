@@ -19,6 +19,10 @@ import BottomNav from './components/BottomNav';
 import GlobalHeader from './components/GlobalHeader';
 import AppLanguageSetupModal from './components/AppLanguageSetupModal';
 import FaviconSpinner from './components/FaviconSpinner';
+import ReadingStatsDialog from './components/ReadingStatsDialog';
+import { clearReadingCache, pauseReadingWritesForDeletion } from './utils/readingProgress';
+import FortaleCompanion from './components/FortaleCompanion';
+import ModalCompanion from './components/ModalCompanion';
 import type { CreditPackOption } from './components/CreditPaywallModal';
 import { UiI18nProvider } from './i18n/uiI18n';
 import {
@@ -50,6 +54,9 @@ import {
   purchaseRevenueCatCreditPack
 } from './utils/revenueCat';
 import { normalizeMarkdownNarrativeLayout } from './utils/markdownLayout';
+import { readLanguageLearning } from './functions/src/languageLearning';
+import { NativeFloatIsland, supportsNativeFloatIsland, type NativeFloatIslandAction, type NativeFloatIslandState } from './utils/nativeFloatIsland';
+import { installInteractionHaptics } from './utils/haptics';
 
 import HomeView from './views/HomeView';
 import CourseFlowView from './views/CourseFlowView';
@@ -93,6 +100,28 @@ const GUEST_LOCAL_UID = 'guest';
 const COURSE_CLOUD_SYNC_DEBOUNCE_MS = 1300;
 const COURSE_LOCAL_CACHE_DEBOUNCE_MS = 180;
 const BACKGROUND_SMARTBOOK_POLL_MS = 300;
+const NATIVE_FLOAT_ISLAND_LABELS: Partial<Record<AppLanguageCode, NativeFloatIslandState['labels']>> = {
+  ar: { home: 'الرئيسية', books: 'الكتب', settings: 'الإعدادات', create: 'إنشاء', navigation: 'تنقل Fortale' },
+  da: { home: 'Hjem', books: 'Bøger', settings: 'Indstillinger', create: 'Opret', navigation: 'Fortale navigation' },
+  de: { home: 'Start', books: 'Bücher', settings: 'Einstellungen', create: 'Erstellen', navigation: 'Fortale Navigation' },
+  el: { home: 'Αρχική', books: 'Βιβλία', settings: 'Ρυθμίσεις', create: 'Δημιουργία', navigation: 'Πλοήγηση Fortale' },
+  en: { home: 'Home', books: 'Books', settings: 'Settings', create: 'Create', navigation: 'Fortale navigation' },
+  es: { home: 'Inicio', books: 'Libros', settings: 'Ajustes', create: 'Crear', navigation: 'Navegación de Fortale' },
+  fi: { home: 'Etusivu', books: 'Kirjat', settings: 'Asetukset', create: 'Luo', navigation: 'Fortale navigointi' },
+  fr: { home: 'Accueil', books: 'Livres', settings: 'Réglages', create: 'Créer', navigation: 'Navigation Fortale' },
+  hi: { home: 'होम', books: 'किताबें', settings: 'सेटिंग्स', create: 'बनाएँ', navigation: 'Fortale नेविगेशन' },
+  id: { home: 'Beranda', books: 'Buku', settings: 'Pengaturan', create: 'Buat', navigation: 'Navigasi Fortale' },
+  it: { home: 'Home', books: 'Libri', settings: 'Impostazioni', create: 'Crea', navigation: 'Navigazione Fortale' },
+  ja: { home: 'ホーム', books: '本', settings: '設定', create: '作成', navigation: 'Fortale ナビゲーション' },
+  ko: { home: '홈', books: '책', settings: '설정', create: '만들기', navigation: 'Fortale 탐색' },
+  nl: { home: 'Home', books: 'Boeken', settings: 'Instellingen', create: 'Maken', navigation: 'Fortale navigatie' },
+  no: { home: 'Hjem', books: 'Bøker', settings: 'Innstillinger', create: 'Opprett', navigation: 'Fortale navigasjon' },
+  pl: { home: 'Główna', books: 'Książki', settings: 'Ustawienia', create: 'Utwórz', navigation: 'Nawigacja Fortale' },
+  'pt-BR': { home: 'Início', books: 'Livros', settings: 'Configurações', create: 'Criar', navigation: 'Navegação Fortale' },
+  sv: { home: 'Hem', books: 'Böcker', settings: 'Inställningar', create: 'Skapa', navigation: 'Fortale navigering' },
+  th: { home: 'หน้าหลัก', books: 'หนังสือ', settings: 'การตั้งค่า', create: 'สร้าง', navigation: 'การนำทาง Fortale' },
+  tr: { home: 'Anasayfa', books: 'Kitaplarım', settings: 'Ayarlar', create: 'Oluştur', navigation: 'Fortale gezinme' }
+};
 const SMARTBOOK_PREFETCH_RETRY_COOLDOWN_MS = 15_000;
 const SMARTBOOK_COVER_REPAIR_RETRY_COOLDOWN_MS = 3500;
 const SMARTBOOK_HYDRATION_PREFETCH_CONCURRENCY = 4;
@@ -552,6 +581,7 @@ function buildCourseMetadataPayload(course: CourseData): Record<string, unknown>
   if (typeof course.description === 'string') payload.description = course.description;
   if (typeof course.creatorName === 'string') payload.creatorName = course.creatorName;
   if (typeof course.language === 'string') payload.language = course.language;
+  if (course.languageLearning) payload.languageLearning = course.languageLearning;
   if (course.ageGroup) payload.ageGroup = course.ageGroup;
   if (course.bookType) payload.bookType = course.bookType;
   if (typeof course.subGenre === 'string') payload.subGenre = course.subGenre;
@@ -3165,6 +3195,7 @@ function fromStoredCourse(raw: unknown): CourseData | null {
     description: typeof item.description === 'string' ? item.description : undefined,
     creatorName: typeof item.creatorName === 'string' ? item.creatorName : undefined,
     language: typeof item.language === 'string' ? item.language : undefined,
+    languageLearning: readLanguageLearning(item.languageLearning),
     ageGroup: normalizeSmartBookAgeGroup(item.ageGroup),
     bookType: typeof item.bookType === 'string' ? item.bookType : undefined,
     subGenre: typeof item.subGenre === 'string' ? item.subGenre : undefined,
@@ -3379,6 +3410,7 @@ type UserCourseProgressDoc = {
   description?: string;
   creatorName?: string;
   language?: string;
+  languageLearning?: CourseData['languageLearning'];
   ageGroup?: SmartBookAgeGroup;
   bookType?: CourseData['bookType'];
   subGenre?: string;
@@ -3433,6 +3465,7 @@ function mergeSharedCourseWithUserProgress(sharedCourse: CourseData, progress: U
     description: sharedCourse.description || progress.description,
     creatorName: sharedCourse.creatorName || progress.creatorName,
     language: sharedCourse.language || progress.language,
+    languageLearning: sharedCourse.languageLearning || progress.languageLearning,
     ageGroup: sharedCourse.ageGroup || progress.ageGroup,
     bookType: sharedCourse.bookType || progress.bookType,
     subGenre: sharedCourse.subGenre || progress.subGenre,
@@ -3469,6 +3502,7 @@ function toProgressDocFromCourseSnapshot(course: CourseData): UserCourseProgress
     description: course.description,
     creatorName: course.creatorName,
     language: course.language,
+    languageLearning: course.languageLearning,
     ageGroup: course.ageGroup,
     bookType: course.bookType,
     subGenre: course.subGenre,
@@ -3882,6 +3916,7 @@ function shouldRetryCreditGatewayError(error: unknown): boolean {
 }
 
 export default function App() {
+  useEffect(installInteractionHaptics, []);
   const initialAppLanguageSetupRef = useRef<InitialAppLanguageSetup>(resolveInitialAppLanguageSetup());
   const [currentView, setCurrentView] = useState<ViewState>(() => readInitialViewFromUrl());
   const courseOpenRequestIdRef = useRef(0);
@@ -3928,6 +3963,7 @@ export default function App() {
   const [isOnboardingVisible, setOnboardingVisible] = useState<boolean>(true);
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [isReaderFullscreen, setIsReaderFullscreen] = useState(false);
+  const [isReadingStatsOpen,setIsReadingStatsOpen] = useState(false);
   const [likedCourseIds, setLikedCourseIds] = useState<string[]>([]);
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(true);
   const [incomingSharedSmartBookId, setIncomingSharedSmartBookId] = useState<string | null>(() => readSharedSmartBookIdFromUrl());
@@ -5938,6 +5974,83 @@ export default function App() {
     setSettingsOpen((prev) => !prev);
   };
 
+  const nativeFloatIslandSupported = supportsNativeFloatIsland();
+  const [nativeFloatIslandReady, setNativeFloatIslandReady] = useState(false);
+  const nativeFloatIslandActionRef = useRef<(action: NativeFloatIslandAction) => void>(() => {});
+  const nativeFloatIslandLabels = NATIVE_FLOAT_ISLAND_LABELS[appLanguage] || NATIVE_FLOAT_ISLAND_LABELS.en!;
+  const nativeFloatIslandState: NativeFloatIslandState = {
+    active: isSettingsOpen ? 'settings' : currentView === 'AI_CHAT' ? 'books' : 'home',
+    visible: !isReaderFullscreen && !isReadingStatsOpen
+      && (!isAuthLoading || (currentView !== 'COURSE_FLOW' && Boolean(isGuestSession || bootstrapAuthUid || savedCourses.length > 0)))
+      && Boolean(isAuthLoading || authUser || isGuestSession || currentView === 'PRIVACY' || currentView === 'TERMS'),
+    unreadCount: unreadNotificationCount,
+    labels: nativeFloatIslandLabels
+  };
+
+  nativeFloatIslandActionRef.current = (action) => {
+    if (action === 'home') {
+      setSettingsOpen(false);
+      handleViewChange('HOME');
+      return;
+    }
+    if (action === 'books') {
+      setSettingsOpen(false);
+      handleViewChange('AI_CHAT');
+      return;
+    }
+    if (action === 'settings') {
+      handleToggleSettings();
+      return;
+    }
+
+    setSettingsOpen(false);
+    if (currentView !== 'HOME') handleViewChange('HOME');
+    window.setTimeout(() => window.dispatchEvent(new Event('fortale:native-create')), currentView === 'HOME' ? 80 : 360);
+  };
+
+  useEffect(() => {
+    if (!nativeFloatIslandSupported) return;
+    let disposed = false;
+    let actionListener: { remove: () => Promise<void> } | undefined;
+
+    void (async () => {
+      try {
+        actionListener = await NativeFloatIsland.addListener('action', ({ action }) => {
+          nativeFloatIslandActionRef.current(action);
+        });
+        if (disposed) {
+          await actionListener.remove();
+          return;
+        }
+        setNativeFloatIslandReady(true);
+      } catch (error) {
+        setNativeFloatIslandReady(false);
+        console.warn('Native FloatIsland could not be installed; keeping the web navigation visible.', error);
+        document.documentElement.classList.remove('native-float-island');
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      void actionListener?.remove();
+      void NativeFloatIsland.hide().catch(() => undefined);
+      document.documentElement.classList.remove('native-float-island');
+    };
+  }, [nativeFloatIslandSupported]);
+
+  useEffect(() => {
+    if (!nativeFloatIslandSupported || !nativeFloatIslandReady) return;
+    let disposed = false;
+    void NativeFloatIsland.update(nativeFloatIslandState).then(() => {
+      if (!disposed) document.documentElement.classList.toggle('native-float-island', nativeFloatIslandState.visible);
+    }).catch((error) => {
+      if (disposed) return;
+      document.documentElement.classList.remove('native-float-island');
+      console.warn('Native FloatIsland update failed; keeping the web navigation visible.', error);
+    });
+    return () => { disposed = true; };
+  }, [nativeFloatIslandSupported, nativeFloatIslandReady, nativeFloatIslandState.active, nativeFloatIslandState.visible, nativeFloatIslandState.unreadCount, nativeFloatIslandState.labels]);
+
   const handleContactSupport = () => {
     const subject = encodeURIComponent('Fortale Support');
     const body = encodeURIComponent('Hello Fortale Support,\n\nI need help with:\n\n');
@@ -7780,32 +7893,37 @@ export default function App() {
   const handleDeleteMyData = async (): Promise<void> => {
     const localUserId = authUser?.uid ?? (isGuestSession ? GUEST_LOCAL_UID : null);
     if (!localUserId) return;
+    const resumeReadingWrites = await pauseReadingWritesForDeletion(authUser?.uid || 'guest');
+    try {
+      if (authUser && cloudSyncEnabled) {
+        try {
+          const [userBooksSnap, stickySnap, readingSnap] = await Promise.all([
+            getDocs(collection(db, 'users', authUser.uid, 'books')),
+            getDocs(collection(db, 'users', authUser.uid, 'stickyNotes')),
+            getDocs(collection(db, 'users', authUser.uid, 'readingProgress'))
+          ]);
 
-    if (authUser && cloudSyncEnabled) {
-      try {
-        const [userBooksSnap, stickySnap] = await Promise.all([
-          getDocs(collection(db, 'users', authUser.uid, 'books')),
-          getDocs(collection(db, 'users', authUser.uid, 'stickyNotes'))
-        ]);
-
-        await Promise.all([
-          ...userBooksSnap.docs.map((snapshot) => deleteDoc(snapshot.ref)),
-          ...stickySnap.docs.map((snapshot) => deleteDoc(snapshot.ref))
-        ]);
-      } catch (error) {
-        if (isPermissionDeniedError(error)) {
-          disableCloudSyncForPermission();
-        } else {
-          throw error;
+          await Promise.all([
+            ...userBooksSnap.docs.map((snapshot) => deleteDoc(snapshot.ref)),
+            ...stickySnap.docs.map((snapshot) => deleteDoc(snapshot.ref)),
+            ...readingSnap.docs.map((snapshot) => deleteDoc(snapshot.ref))
+          ]);
+        } catch (error) {
+          if (isPermissionDeniedError(error)) {
+            disableCloudSyncForPermission();
+          } else {
+            throw error;
+          }
         }
       }
-    }
 
-    clearLocalUserDataCaches(localUserId);
-    setSavedCourses([]);
-    setStickyNotes([]);
-    setLikedCourseIds([]);
-    setActiveCourseId(null);
+      clearLocalUserDataCaches(localUserId);
+      clearReadingCache(authUser?.uid || 'guest');
+      setSavedCourses([]);
+      setStickyNotes([]);
+      setLikedCourseIds([]);
+      setActiveCourseId(null);
+    } finally { resumeReadingWrites(); }
   };
 
   const handleDeleteAccount = async (): Promise<void> => {
@@ -8249,7 +8367,12 @@ export default function App() {
               </div>
             </main>
 
-            {!isReaderFullscreen && (
+            <FortaleCompanion reading={currentView === 'COURSE_FLOW'}
+              hidden={isReaderFullscreen || isSettingsOpen || isCreditPaywallOpen || isLoginPromptOpen || isAppLanguageSetupOpen || currentView === 'PRIVACY' || currentView === 'TERMS'} />
+            <ModalCompanion />
+            <ReadingStatsDialog onOpenChange={setIsReadingStatsOpen} />
+
+            {!isReaderFullscreen && !isReadingStatsOpen && (
               <BottomNav
                 currentView={currentView}
                 onViewChange={handleViewChange}

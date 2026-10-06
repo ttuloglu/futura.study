@@ -212,7 +212,7 @@ export default function ProfileView({
         <section className="rounded-3xl border border-white/10 bg-[#071d34]/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-400">{t('Krediler & Kitaplık')}</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#c04235]">{t('Krediler & Kitaplık')}</p>
               <h2 className="mt-1 truncate text-[18px] font-black text-white">
                 {t('Kişisel Kitaplık')}
               </h2>
@@ -224,7 +224,7 @@ export default function ProfileView({
               <button
                 type="button"
                 onClick={onOpenPaywall}
-                className="flex items-center gap-1.5 rounded-2xl bg-amber-400/15 border border-amber-400/30 px-3.5 py-2 text-[12px] font-bold text-amber-300 hover:bg-amber-400/25 transition-colors"
+                className="flex items-center gap-1.5 rounded-2xl bg-[#c04235]/15 border border-[#c04235]/30 px-3.5 py-2 text-[12px] font-bold text-[#c04235] hover:bg-[#c04235]/25 transition-colors"
               >
                 <Coins size={14} />
                 {t('Kredi Satın Al')}
@@ -241,7 +241,7 @@ export default function ProfileView({
               <p className="mt-1 text-[20px] font-black text-white">{savedBookCount}</p>
             </div>
             <div className="rounded-2xl bg-white/[0.06] px-3.5 py-3">
-              <div className="flex items-center gap-1.5 text-amber-400">
+              <div className="flex items-center gap-1.5 text-[#c04235]">
                 <Coins size={14} />
                 <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('Kredi Bakiyesi')}</span>
               </div>

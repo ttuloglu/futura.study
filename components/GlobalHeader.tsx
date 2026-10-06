@@ -48,7 +48,7 @@ export default function GlobalHeader({
     <header
       className="fixed left-0 right-0 z-40 pointer-events-none transition-opacity duration-300"
       style={{
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)'
+        paddingTop: 'max(2px, env(safe-area-inset-top, 0px))'
       }}
     >
       <div
@@ -59,7 +59,7 @@ export default function GlobalHeader({
         }}
       >
         <div className="app-chrome-width">
-          <div className="relative flex w-full items-center justify-between py-2 px-2 gap-2">
+          <div className="relative flex w-full items-center justify-between pt-0.5 pb-1 px-2 gap-2">
             <div className="fortale-global-header-status relative z-10 mr-auto pointer-events-auto transition-opacity duration-200 flex items-center">
               <div
                 className={`inline-flex flex-col items-start select-none ${showBackButton && onBack ? 'cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all' : ''}`}
@@ -74,7 +74,7 @@ export default function GlobalHeader({
                     {getHeaderTitle()}
                   </span>
                 </div>
-                {/* Kalından inceye amber çizgi */}
+                {/* Kalından inceye red çizgi */}
                 <svg
                   className="w-full h-[3.5px] mt-1 overflow-visible pointer-events-none"
                   viewBox="0 0 100 4"
@@ -84,14 +84,14 @@ export default function GlobalHeader({
                 >
                   <path
                     d="M 1.5 0.5 L 98.5 1.75 A 0.25 0.25 0 0 1 98.5 2.25 L 1.5 3.5 A 1.5 1.5 0 0 0 1.5 0.5 Z"
-                    fill="url(#fortale-amber-taper)"
-                    style={{ filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.45))' }}
+                    fill="url(#fortale-red-taper)"
+                    style={{ filter: 'drop-shadow(0 0 4px rgba(192, 66, 53, 0.45))' }}
                   />
                   <defs>
-                    <linearGradient id="fortale-amber-taper" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#F59E0B" stopOpacity="1" />
-                      <stop offset="60%" stopColor="#F59E0B" stopOpacity="0.85" />
-                      <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.2" />
+                    <linearGradient id="fortale-red-taper" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#c04235" stopOpacity="1" />
+                      <stop offset="60%" stopColor="#c04235" stopOpacity="0.85" />
+                      <stop offset="100%" stopColor="#c04235" stopOpacity="0.2" />
                     </linearGradient>
                   </defs>
                 </svg>
@@ -108,7 +108,7 @@ export default function GlobalHeader({
                       title={t('Kredi satın al')}
                       aria-label={t('Kredi satın al')}
                     >
-                      <Coins size={14} className="text-amber-400" />
+                      <Coins size={14} className="text-[#c04235]" />
                       <span className="text-[11px] font-bold text-white whitespace-nowrap">
                         {createCredits}C
                       </span>
@@ -123,14 +123,14 @@ export default function GlobalHeader({
                     >
                       <path
                         d="M 1.5 0.5 L 98.5 1.75 A 0.25 0.25 0 0 1 98.5 2.25 L 1.5 3.5 A 1.5 1.5 0 0 0 1.5 0.5 Z"
-                        fill="url(#fortale-credit-amber-reflection)"
-                        style={{ filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.32))' }}
+                        fill="url(#fortale-credit-red-reflection)"
+                        style={{ filter: 'drop-shadow(0 0 4px rgba(192, 66, 53, 0.32))' }}
                       />
                       <defs>
-                        <linearGradient id="fortale-credit-amber-reflection" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#F59E0B" stopOpacity="1" />
-                          <stop offset="60%" stopColor="#F59E0B" stopOpacity="0.85" />
-                          <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.2" />
+                        <linearGradient id="fortale-credit-red-reflection" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#c04235" stopOpacity="1" />
+                          <stop offset="60%" stopColor="#c04235" stopOpacity="0.85" />
+                          <stop offset="100%" stopColor="#c04235" stopOpacity="0.2" />
                         </linearGradient>
                       </defs>
                     </svg>

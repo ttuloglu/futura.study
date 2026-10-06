@@ -7,3 +7,6 @@ functions/lib/
 .claude/
 .swiftpm/
 *.xcuserdatad
+build/
+.build/
+*.zip

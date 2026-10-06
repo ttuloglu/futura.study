@@ -1,4 +1,6 @@
-import { registerPlugin, Capacitor } from '@capacitor/core';
+import { registerPlugin, Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { readerHeading } from './readerHeading';
+import type { ReadingPosition } from './readingProgressModel';
 import type { CourseData, TimelineNode } from '../types';
 import { extractMarkdownImageSections } from '../components/StyledMarkdown';
 
@@ -7,25 +9,39 @@ export interface NativeBookPage {
   chapterTitle?: string;
   title?: string;
   contentHtml: string;
+  markdown?: string;
   plainText?: string;
   imageSrc?: string;
   imageAlt?: string;
+  audioSrc?: string;
 }
+
+export type NativeReaderTheme = 'sepia' | 'light' | 'dark' | 'pink' | 'blue';
 
 export interface OpenBookOptions {
   title: string;
   bookType: string;
   pages: NativeBookPage[];
   initialPageIndex?: number;
-  theme?: 'sepia' | 'light' | 'dark';
+  initialSourceIndex?: number;
+  initialContentOffset?: number;
+  sessionId?: string;
+  theme?: NativeReaderTheme;
+  autoPlay?: boolean;
+  backgroundAudioSrc?: string;
+  fontScale?: number;
 }
 
 export interface OpenBookResult {
   closed: boolean;
   lastPageIndex: number;
+  theme?: NativeReaderTheme;
+  fontScale?: number;
+  action?: 'close' | 'prepareNarration' | 'downloadPDF' | 'downloadEPUB' | 'readingStats';
 }
 
 export interface NativeBookReaderPluginInterface {
+  addListener(event: 'readingProgress', listener: (position: ReadingPosition & { sessionId: string }) => void): Promise<PluginListenerHandle>;
   openBook(options: OpenBookOptions): Promise<OpenBookResult>;
   closeBook(): Promise<{ closed: boolean }>;
 }
@@ -124,6 +140,8 @@ export function prepareBookPagesForNativeReader(
 
   for (let idx = 0; idx < targetNodes.length; idx++) {
     const node = targetNodes[idx];
+    const title = readerHeading(node.title);
+    const heading = title ? `## ${title}\n\n` : '';
     const chapterLabel = node.type === 'retention'
       ? 'Özet'
       : (courseData.bookType === 'story'
@@ -138,8 +156,9 @@ export function prepareBookPagesForNativeReader(
       pages.push({
         pageNumber: currentPageNumber++,
         chapterTitle: chapterLabel,
-        title: node.title,
+        title,
         contentHtml: markdownToCleanHtml(rawContent),
+        markdown: `${heading}${rawContent}`,
         imageSrc: explicitImageSrc,
         imageAlt: node.title || 'İçerik görseli'
       });
@@ -151,8 +170,9 @@ export function prepareBookPagesForNativeReader(
         pages.push({
           pageNumber: currentPageNumber++,
           chapterTitle: chapterLabel,
-          title: sIdx === 0 ? node.title : undefined,
+          title: sIdx === 0 ? title : undefined,
           contentHtml,
+          markdown: `${sIdx === 0 ? heading : ''}${section.markdown}`,
           imageSrc: section.imageSrc || undefined,
           imageAlt: section.imageAlt || undefined
         });
@@ -163,8 +183,9 @@ export function prepareBookPagesForNativeReader(
       pages.push({
         pageNumber: currentPageNumber++,
         chapterTitle: chapterLabel,
-        title: node.title,
-        contentHtml: markdownToCleanHtml(rawContent)
+        title,
+        contentHtml: markdownToCleanHtml(rawContent),
+        markdown: `${heading}${rawContent}`
       });
     }
   }
@@ -181,7 +202,7 @@ export async function openNativeBookReader(
   nodes?: TimelineNode[],
   options?: {
     initialPageIndex?: number;
-    theme?: 'sepia' | 'light' | 'dark';
+    theme?: NativeReaderTheme;
     onFallback?: () => void;
   }
 ): Promise<OpenBookResult | null> {
@@ -198,7 +219,7 @@ export async function openNativeBookReader(
 
   try {
     const result = await NativeBookReader.openBook({
-      title: courseData.title || 'Fortale Kitap',
+      title: courseData.topic || 'Fortale Kitap',
       bookType: courseData.bookType || 'novel',
       pages,
       initialPageIndex: options?.initialPageIndex || 0,

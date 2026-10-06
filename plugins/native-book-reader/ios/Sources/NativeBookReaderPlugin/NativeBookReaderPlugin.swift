@@ -43,12 +43,14 @@ public class NativeBookReaderPlugin: CAPPlugin, CAPBridgedPlugin {
                 contentHtml: contentHtml,
                 plainText: plainText,
                 imageSrc: imageSrc,
-                imageAlt: imageAlt
+                imageAlt: imageAlt,
+                audioSrc: dict["audioSrc"] as? String
             ))
         }
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            guard self.activeReaderVC == nil else { call.reject("Kitap okuyucu zaten açık"); return }
             self.currentCall = call
 
             let readerVC = NativeReaderViewController(
@@ -56,15 +58,28 @@ public class NativeBookReaderPlugin: CAPPlugin, CAPBridgedPlugin {
                 bookType: bookType,
                 pages: pages,
                 initialPageIndex: initialPageIndex,
-                initialTheme: themeName
+                initialTheme: themeName,
+                autoPlay: call.getBool("autoPlay") ?? false,
+                backgroundAudioSrc: call.getString("backgroundAudioSrc"),
+                initialFontScale: call.getDouble("fontScale") ?? 1,
+                initialSourceIndex: call.getInt("initialSourceIndex"),
+                initialContentOffset: call.getInt("initialContentOffset") ?? 0
             )
 
+            let sessionId = call.getString("sessionId") ?? ""
+            readerVC.onPosition = { [weak self] position in
+                var event = position; event["sessionId"] = sessionId
+                self?.notifyListeners("readingProgress", data: event)
+            }
             readerVC.modalPresentationStyle = .fullScreen
             readerVC.modalTransitionStyle = .coverVertical
-            readerVC.onDismiss = { [weak self] lastIndex in
+            readerVC.onDismiss = { [weak self, weak readerVC] lastIndex in
                 self?.currentCall?.resolve([
                     "closed": true,
-                    "lastPageIndex": lastIndex
+                    "lastPageIndex": lastIndex,
+                    "action": readerVC?.closeAction ?? "close",
+                    "theme": readerVC?.themeValue ?? themeName,
+                    "fontScale": readerVC?.fontScaleValue ?? 1
                 ])
                 self?.currentCall = nil
                 self?.activeReaderVC = nil
@@ -78,7 +93,7 @@ public class NativeBookReaderPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func closeBook(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             if let active = self?.activeReaderVC {
-                active.dismiss(animated: true) {
+                active.closeReader {
                     call.resolve(["closed": true])
                 }
             } else {

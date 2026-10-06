@@ -13,13 +13,16 @@ import {
   SmartBookCreativeBrief,
   CourseOpenUiState
 } from '../types';
-import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Library } from 'lucide-react';
-import { cancelBookGenerationJob, CREDIT_WALLET_UPDATED_EVENT, extractDocumentContext, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
+import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Library, Languages } from 'lucide-react';
+import { cancelBookGenerationJob, CREDIT_WALLET_UPDATED_EVENT, extractDocumentContext, planBookCreation, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
-import FLogo from '../components/FLogo';
 import FortaleDropdown from '../components/FortaleDropdown';
+import FortaleMark from '../components/FortaleMark';
 import FloatIslandSheet from '../components/FloatIslandSheet';
+import BookCreationComposer from '../components/BookCreationComposer';
+import { celebrateCompletedBook, setCompanionActivity } from '../utils/companionActivity';
+import type { BookCreationDraft } from '../functions/src/bookCreationIntake';
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from '../utils/contentSafety';
 import {
   SMARTBOOK_SUBGENRE_OPTIONS,
@@ -36,7 +39,7 @@ import {
 } from '../utils/smartbookAgeGroup';
 import { getBookTypeCreateCreditCost } from '../utils/creditCosts';
 import { useUiI18n } from '../i18n/uiI18n';
-import { normalizeAppLanguageCode, type AppLanguageCode } from '../data/appLanguages';
+import { normalizeAppLanguageCode, getLocalizedLanguageName, type AppLanguageCode } from '../data/appLanguages';
 import { LITERARY_FACTS } from '../data/literaryFacts';
 import { App } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -113,7 +116,7 @@ type StickyTint = {
 const stickyTintPalette: StickyTint[] = [
   { bg: 'rgba(139, 92, 246, 0.12)', border: 'rgba(139, 92, 246, 0.45)' },
   { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.45)' },
-  { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.45)' },
+  { bg: 'rgba(192, 66, 53, 0.12)', border: 'rgba(192, 66, 53, 0.45)' },
   { bg: 'rgba(244, 63, 94, 0.12)', border: 'rgba(244, 63, 94, 0.45)' },
   { bg: 'rgba(14, 165, 233, 0.12)', border: 'rgba(14, 165, 233, 0.45)' }
 ];
@@ -825,9 +828,9 @@ type WizardCompanionHero = {
   name: string;
   gender: WizardHeroGender;
 };
-type WizardSettingTime = '' | 'past' | 'present' | 'future' | 'uncertain' | 'custom';
-type WizardSettingPlace = '' | 'city' | 'forest' | 'space' | 'school' | 'custom';
-type WizardWorldType = '' | 'real' | 'magical' | 'dystopia' | 'alternate' | 'utopia' | 'custom';
+type WizardSettingTime = '' | 'past' | 'present' | 'future' | 'uncertain' | 'custom' | 'fortale';
+type WizardSettingPlace = '' | 'city' | 'forest' | 'space' | 'school' | 'custom' | 'fortale';
+type WizardWorldType = '' | 'real' | 'magical' | 'dystopia' | 'alternate' | 'utopia' | 'custom' | 'fortale';
 type WizardPremiseMode = 'examples' | 'custom';
 type WorkbookLevel = '' | 'İlkokul' | 'Ortaokul' | 'Üniversite';
 type WizardTone = {
@@ -928,20 +931,65 @@ const WIZARD_BLACK_HOLE_TILES = Array.from({ length: 20 }, (_, index) => ({
   duration: 4.8 + (index % 5) * 0.42,
   size: 3 + (index % 4) * 1.25,
   color: index % 3 === 0
-    ? 'rgba(103,232,249,0.9)'
+    ? 'rgba(188, 213, 244, 0.85)'
     : index % 3 === 1
-      ? 'rgba(196,181,253,0.82)'
-      : 'rgba(253,224,71,0.78)'
+      ? 'rgba(244, 152, 152, 0.85)'
+      : 'rgba(247, 212, 110, 0.85)'
 }));
+
+const NATIVE_LEARNING_LANGUAGES = [
+  'English',
+  'Türkçe',
+  'Deutsch',
+  'Español',
+  'Français',
+  'Italiano',
+  'Português',
+  'Русский',
+  '日本語',
+  '한국어',
+  '中文',
+  'العربية',
+  'Nederlands',
+  'Polski',
+  'Svenska',
+  'Dansk',
+  'Suomi',
+  'Norsk',
+  'Ελληνικά',
+  'עברית',
+  'हिन्दी',
+  'Čeština',
+  'Română',
+  'Magyar',
+  'Tiếng Việt',
+  'Bahasa Indonesia',
+  'ไทย',
+  'Українська',
+  'فارسی',
+  'Català',
+  'Hrvatski',
+  'Slovenčina',
+  'Български',
+  'Српски',
+  'Lietuvių',
+  'Latviešu',
+  'Eesti',
+  'Filipino',
+  'Kiswahili',
+  'Bahasa Melayu'
+];
 
 const HERO_COUNT_OPTIONS = [1, 2, 3, 4] as const;
 const CUSTOM_WIZARD_OPTION = '__custom__';
+const FORTALE_WIZARD_OPTION = '__fortale__';
 const HERO_GENDER_OPTIONS: Array<{ value: Exclude<WizardHeroGender, ''>; label: string }> = [
   { value: 'female', label: 'Kız / Kadın' },
   { value: 'male', label: 'Erkek' },
   { value: 'other', label: 'Diğer / Belirtmek istemiyorum' }
 ];
 const SETTING_TIME_OPTIONS: Array<{ value: Exclude<WizardSettingTime, ''>; label: string }> = [
+  { value: 'fortale', label: "Fortale'e bırak" },
   { value: 'past', label: 'Geçmiş' },
   { value: 'present', label: 'Günümüz' },
   { value: 'future', label: 'Gelecek' },
@@ -949,6 +997,7 @@ const SETTING_TIME_OPTIONS: Array<{ value: Exclude<WizardSettingTime, ''>; label
   { value: 'custom', label: 'Diğer' }
 ];
 const SETTING_PLACE_OPTIONS: Array<{ value: Exclude<WizardSettingPlace, ''>; label: string }> = [
+  { value: 'fortale', label: "Fortale'e bırak" },
   { value: 'city', label: 'Şehir' },
   { value: 'forest', label: 'Orman' },
   { value: 'space', label: 'Uzay' },
@@ -956,6 +1005,7 @@ const SETTING_PLACE_OPTIONS: Array<{ value: Exclude<WizardSettingPlace, ''>; lab
   { value: 'custom', label: 'Diğer' }
 ];
 const WORLD_TYPE_OPTIONS: Array<{ value: Exclude<WizardWorldType, ''>; label: string }> = [
+  { value: 'fortale', label: "Fortale'e bırak" },
   { value: 'real', label: 'Gerçek' },
   { value: 'magical', label: 'Büyülü' },
   { value: 'dystopia', label: 'Distopya' },
@@ -1641,7 +1691,7 @@ function findLibraryMatchesByTopic(queryTopic: string, courses: CourseData[]): C
 }
 
 export default function HomeView({
-  onNavigate: _onNavigate,
+  onNavigate,
   onCourseCreate,
   onDeleteCourse,
   savedCourses,
@@ -1668,8 +1718,25 @@ export default function HomeView({
   const [bookLanguageInput, setBookLanguageInput] = useState<string>(defaultBookLanguage);
   const [selectedBookType, setSelectedBookType] = useState<SmartBookBookType>('fairy_tale');
   const [isCreationWizardOpen, setCreationWizardOpen] = useState(false);
+  const [isComposerOpen, setComposerOpen] = useState(false);
+  const [composerSession, setComposerSession] = useState(0);
+  const [composerStartsLanguageLearning, setComposerStartsLanguageLearning] = useState(false);
   const [accentedBookType, setAccentedBookType] = useState<SmartBookBookType | null>(null);
   const [selectedSubGenre, setSelectedSubGenre] = useState<string>('');
+
+  useEffect(() => {
+    const openNativeCreate = () => {
+      setCreationWizardOpen(false);
+      setCreationStep(1);
+      setAccentedBookType(null);
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('.fortale-home-create-dock .fortale-type-orb')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    };
+    window.addEventListener('fortale:native-create', openNativeCreate);
+    return () => window.removeEventListener('fortale:native-create', openNativeCreate);
+  }, []);
+
   const [selectedTheme, setSelectedTheme] = useState<string>('');
   const [customSubGenreInput, setCustomSubGenreInput] = useState('');
   const [customThemeInput, setCustomThemeInput] = useState('');
@@ -1698,6 +1765,10 @@ export default function HomeView({
   const [heroPortraitCrop, setHeroPortraitCrop] = useState<HeroPortraitCropState | null>(null);
   const [creationStep, setCreationStep] = useState<number>(1);
   const [isGenerating, setIsGenerating] = useState(false);
+  useEffect(() => {
+    setCompanionActivity('generating', isGenerating);
+    return () => setCompanionActivity('generating', false);
+  }, [isGenerating]);
   const [generationStatus, setGenerationStatus] = useState<string>('');
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [activeGeneratingBookType, setActiveGeneratingBookType] = useState<SmartBookBookType | null>(null);
@@ -1748,6 +1819,7 @@ export default function HomeView({
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [isLoginRequiredModalOpen, setLoginRequiredModalOpen] = useState(false);
   const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
+  const [fullscreenCover, setFullscreenCover] = useState<{ src: string; title: string } | null>(null);
   const [openingHomeCourseId, setOpeningHomeCourseId] = useState<string | null>(null);
   const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
   const homeGreetingRef = useRef<HTMLDivElement | null>(null);
@@ -1937,6 +2009,7 @@ export default function HomeView({
     resetSmartBookCreationForm();
     try {
       await onCourseCreate(course);
+      celebrateCompletedBook();
       setIsGenerating(false);
     } catch (error) {
       console.error('Generated book local install failed', error);
@@ -2196,7 +2269,7 @@ export default function HomeView({
     return stickyTintById.get(stickyModal.noteId) || stickyTintPalette[0];
   }, [stickyModal.noteId, stickyTintById]);
 
-  const homeShelfCourses = sortedCourses.slice(0, 12);
+  const homeShelfCourses = sortedCourses.slice(0, 10);
   const renderBootstrapShelf = () => (
     <div
       className="relative overflow-hidden rounded-[28px] border p-5 text-center"
@@ -2252,12 +2325,12 @@ export default function HomeView({
   );
 
   useEffect(() => {
+    if (selectedSubGenre === CUSTOM_WIZARD_OPTION || selectedSubGenre === FORTALE_WIZARD_OPTION) return;
     const options = SMARTBOOK_SUBGENRE_OPTIONS[selectedBookType] || [];
     if (options.length === 0) {
       setSelectedSubGenre('');
       return;
     }
-    if (selectedSubGenre === CUSTOM_WIZARD_OPTION) return;
     if (!options.includes(selectedSubGenre)) {
       setSelectedSubGenre(options[0]);
     }
@@ -2664,13 +2737,13 @@ export default function HomeView({
   };
 
   const handleBookTypeSelect = (bookType: SmartBookBookType) => {
-    if (isCreationWizardOpen && selectedBookType === bookType) {
-      setCreationWizardOpen(false);
-      setAccentedBookType(null);
-      setCreationStep(1);
-      return;
-    }
-    setCreationWizardOpen(true);
+    setComposerStartsLanguageLearning(false);
+    setCreationWizardOpen(false);
+    setComposerOpen(true);
+    setComposerSession(current => current + 1);
+    setSourceNotice(null);
+    setSourceFile(null);
+    setHeroPortraitFile(null);
     setSelectedBookType(bookType);
     setAccentedBookType(bookType);
     if (bookType === 'fairy_tale') {
@@ -2697,13 +2770,31 @@ export default function HomeView({
     }
   };
 
+  const handleLanguageLearningOpen = () => {
+    setCreationWizardOpen(false);
+    setComposerOpen(true);
+    setComposerSession(current => current + 1);
+    setComposerStartsLanguageLearning(true);
+    setSourceNotice(null);
+    setSourceFile(null);
+    setHeroPortraitFile(null);
+    setSelectedBookType('novel');
+    setAccentedBookType('novel');
+    setSelectedAgeGroup('general');
+    setCreationStep(1);
+  };
+
   const pageRange = getPageRangeByBookType(selectedBookType, selectedAgeGroup);
   const heroPortraitExtraCreditCost = selectedBookType === 'story' ? 0 : (heroPortraitFile ? 1 : 0);
   const selectedCreateCreditCost = getBookTypeCreateCreditCost(selectedBookType) + heroPortraitExtraCreditCost;
-  const effectiveSubGenre = selectedSubGenre === CUSTOM_WIZARD_OPTION
+  const effectiveSubGenre = selectedSubGenre === FORTALE_WIZARD_OPTION
+    ? ''
+    : selectedSubGenre === CUSTOM_WIZARD_OPTION
     ? compactInlineText(customSubGenreInput)
     : selectedSubGenre;
-  const effectiveTheme = selectedTheme === CUSTOM_WIZARD_OPTION
+  const effectiveTheme = selectedTheme === FORTALE_WIZARD_OPTION
+    ? ''
+    : selectedTheme === CUSTOM_WIZARD_OPTION
     ? compactInlineText(customThemeInput)
     : selectedTheme;
   const targetPageCountPreview = buildTargetPageFromBrief({
@@ -2715,18 +2806,18 @@ export default function HomeView({
     ? SMARTBOOK_THEME_OPTIONS[selectedBookType]?.[selectedSubGenre] || []
     : [];
   const ageGroupOptionsForSelectedBookType = getSmartBookAgeGroupOptionsForBookType(selectedBookType);
-  const settingTimeLabel = settingTimeChoice
+  const settingTimeLabel = settingTimeChoice && settingTimeChoice !== 'fortale'
     ? settingTimeChoice === 'custom'
       ? compactInlineText(settingTimeInput)
       : SETTING_TIME_OPTIONS.find((option) => option.value === settingTimeChoice)?.label
     : undefined;
-  const settingPlaceBaseLabel = settingPlaceChoice
+  const settingPlaceBaseLabel = settingPlaceChoice && settingPlaceChoice !== 'fortale'
     ? SETTING_PLACE_OPTIONS.find((option) => option.value === settingPlaceChoice)?.label
     : undefined;
   const settingPlaceLabel = settingPlaceChoice === 'custom'
     ? compactInlineText(settingPlaceInput)
     : settingPlaceBaseLabel;
-  const worldTypeLabel = worldTypeChoice
+  const worldTypeLabel = worldTypeChoice && worldTypeChoice !== 'fortale'
     ? worldTypeChoice === 'custom'
       ? compactInlineText(worldTypeInput)
       : WORLD_TYPE_OPTIONS.find((option) => option.value === worldTypeChoice)?.label
@@ -2773,7 +2864,7 @@ export default function HomeView({
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
     const canonicalBookLanguage = normalizeAppLanguageCode(normalizedLanguageText) || undefined;
     if (selectedBookType === 'story') {
-      const workbookCategory = effectiveSubGenre || 'Bilimsel';
+      const workbookCategory = selectedSubGenre === FORTALE_WIZARD_OPTION ? '' : effectiveSubGenre || 'Bilimsel';
       const workbookLevel = selectedWorkbookLevel || 'Ortaokul';
       const workbookExtras = [
         includeWorkbookExamples ? 'gerçek yaşam örnekleri' : undefined,
@@ -2789,6 +2880,7 @@ export default function HomeView({
       ].filter(Boolean) as string[];
       const workbookInstructionParts = [
         `Kullanici baglami (zorunlu): ${workbookFacts.join(' | ')}.`,
+        selectedSubGenre === FORTALE_WIZARD_OPTION ? 'Çalışma kitabı alt türünü konuya en uygun biçimde sen seç.' : undefined,
         'Bu üretim kurmaca hikaye değildir; bilimsel/akademik çalışma kitabıdır.',
         includeWorkbookExamples
           ? 'Gerçek yaşam ve güncel örnekleri anlatıma doğal biçimde yedir; "Örnek 1" veya "Örnek 2" gibi mekanik başlıklar kullanma.'
@@ -2847,6 +2939,8 @@ export default function HomeView({
       `Tur: ${selectedBookType}`,
       effectiveSubGenre ? `Alt tur: ${effectiveSubGenre}` : undefined,
       effectiveTheme ? `Tema: ${effectiveTheme}` : undefined,
+      selectedSubGenre === FORTALE_WIZARD_OPTION ? 'Alt türü konuya göre sen seç' : undefined,
+      selectedTheme === FORTALE_WIZARD_OPTION ? 'Temayı konuya göre sen seç' : undefined,
       normalizedHeroPortraitName ? `Ana karakter: ${normalizedHeroPortraitName}` : undefined,
       normalizedHeroAge ? `Ana karakter yasi: ${normalizedHeroAge}` : undefined,
       heroGenderLabel ? `Ana karakter cinsiyeti: ${heroGenderLabel}` : undefined,
@@ -2855,6 +2949,9 @@ export default function HomeView({
       normalizedPlace ? `Mekan: ${normalizedPlace}` : undefined,
       normalizedTime ? `Zaman: ${normalizedTime}` : undefined,
       worldTypeLabel ? `Dunya tipi: ${worldTypeLabel}` : undefined,
+      settingTimeChoice === 'fortale' ? 'Zamanı konuya göre sen seç' : undefined,
+      settingPlaceChoice === 'fortale' ? 'Mekânı konuya göre sen seç' : undefined,
+      worldTypeChoice === 'fortale' ? 'Dünya tipini konuya göre sen seç' : undefined,
       normalizedPremise ? `Hikaye cekirdegi: ${normalizedPremise}` : undefined
     ].filter(Boolean) as string[];
     const promptFactsBlock = promptFacts.length > 0
@@ -2862,6 +2959,21 @@ export default function HomeView({
       : undefined;
     const customInstructionParts = [
       promptFactsBlock,
+      [
+        selectedSubGenre === FORTALE_WIZARD_OPTION ? 'alt türü' : undefined,
+        selectedTheme === FORTALE_WIZARD_OPTION ? 'temayı' : undefined,
+        settingTimeChoice === 'fortale' ? 'zamanı' : undefined,
+        settingPlaceChoice === 'fortale' ? 'mekânı' : undefined,
+        worldTypeChoice === 'fortale' ? 'dünya tipini' : undefined
+      ].filter(Boolean).length > 0
+        ? `Kullanıcı seçimi Fortale'e bıraktı; ${[
+            selectedSubGenre === FORTALE_WIZARD_OPTION ? 'alt türü' : undefined,
+            selectedTheme === FORTALE_WIZARD_OPTION ? 'temayı' : undefined,
+            settingTimeChoice === 'fortale' ? 'zamanı' : undefined,
+            settingPlaceChoice === 'fortale' ? 'mekânı' : undefined,
+            worldTypeChoice === 'fortale' ? 'dünya tipini' : undefined
+          ].filter(Boolean).join(', ')} konuya en uygun şekilde sen belirle.`
+        : undefined,
       normalizedPortraitHeroTarget ? `Portre referansı ${normalizedPortraitHeroTarget} adlı kahramana aittir; görsellerde bu kahramanın kimlik tutarlılığı korunmalı.` : undefined,
       normalizedPremise ? `Hikaye çekirdeği: ${normalizedPremise}.` : undefined,
       normalizedLanguageText ? `Üretim dili zorunluluğu: ${normalizedLanguageText}.` : undefined
@@ -2880,19 +2992,20 @@ export default function HomeView({
     };
   };
 
-  const handleCreateSmartBook = async () => {
-    if (requireLoginForGeneration()) return;
+  const handleCreateSmartBook = async (draft?: BookCreationDraft): Promise<boolean> => {
+    if (isGenerating || requireLoginForGeneration()) return false;
 
-    const topicHint = selectedStoryPremise.trim();
-    const detailHint = selectedStoryPremise.trim();
+    const topicHint = draft?.topic || selectedStoryPremise.trim();
+    const detailHint = draft?.sourceContent || selectedStoryPremise.trim();
+    const generationAgeGroup = selectedBookType === 'fairy_tale' ? '1-6' : draft?.ageGroup || (selectedBookType === 'story' ? workbookAgeGroupForSelectedLevel : selectedAgeGroup);
     const selectedFile = sourceFile;
     const selectedHeroPortraitFile = selectedBookType === 'story' ? null : heroPortraitFile;
-    const selectedHeroPortraitName = compactInlineText(selectedPortraitHeroTarget);
-    const creativeBrief = buildCreativeBriefPayload();
+    const selectedHeroPortraitName = compactInlineText(draft ? draft.heroPortraitName : selectedPortraitHeroTarget);
+    const creativeBrief = draft?.creativeBrief || buildCreativeBriefPayload();
 
     if (selectedHeroPortraitFile && !selectedHeroPortraitName) {
       setSourceNotice(t('Portre eklenecek kahramanı seçin.'));
-      return;
+      return false;
     }
 
     const localViolation = findRestrictedBookTopicInTexts([
@@ -2921,18 +3034,19 @@ export default function HomeView({
     ]);
     if (localViolation) {
       setSourceNotice(BOOK_CONTENT_SAFETY_MESSAGE);
-      return;
+      return false;
     }
 
     if (!onRequireCredit('create', selectedCreateCreditCost)) {
       setSourceNotice(
         t('Fortale oluşturmak için {{var0}} oluşturma kredisi gerekiyor.').replace('{{var0}}', String(selectedCreateCreditCost))
       );
-      return;
+      return false;
     }
 
     stopBookGenerationPolling(true);
     writePendingBookGenerationJob(null);
+    setComposerOpen(false);
     setIsGenerating(true);
     setActiveGeneratingBookType(selectedBookType);
     const generationStartedAt = Date.now();
@@ -2973,8 +3087,12 @@ export default function HomeView({
       if (!resolvedTopic) resolvedTopic = '';
 
       const normalizedTopic = compactInlineText(resolvedTopic);
-      const allowAiBookTitleGeneration = selectedBookType === 'story' || !topicHint;
-      const generationLanguage = normalizeAppLanguageCode(bookLanguageInput) || language;
+      const isLikelySentenceOrDescription = (text: string) => {
+        const trimmed = text.trim();
+        return trimmed.length > 30 || trimmed.split(/\s+/).length > 4 || /[.!?]/.test(trimmed);
+      };
+      const allowAiBookTitleGeneration = selectedBookType === 'story' || Boolean(draft) || !topicHint || isLikelySentenceOrDescription(topicHint);
+      const generationLanguage = normalizeAppLanguageCode(creativeBrief?.languageText || bookLanguageInput) || language;
       stopBookGenerationPolling(true);
       writePendingBookGenerationJob(null);
       setActiveGeneratingBookType(selectedBookType);
@@ -2985,10 +3103,10 @@ export default function HomeView({
       const jobState = await startBookGenerationJob({
         topic: normalizedTopic || undefined,
         sourceContent,
-        ageGroup: selectedBookType === 'story' ? workbookAgeGroupForSelectedLevel : selectedAgeGroup,
+        ageGroup: generationAgeGroup,
         bookType: selectedBookType,
-        subGenre: effectiveSubGenre || undefined,
-        targetPageCount: targetPageCountPreview,
+        subGenre: draft ? draft.creativeBrief.subGenre : effectiveSubGenre || undefined,
+        targetPageCount: draft ? buildTargetPageFromBrief({ bookType: selectedBookType }, generationAgeGroup) : targetPageCountPreview,
         creativeBrief,
         allowAiBookTitleGeneration,
         heroPortraitName: selectedHeroPortraitFile ? selectedHeroPortraitName : undefined,
@@ -3018,13 +3136,15 @@ export default function HomeView({
 
       if (jobState.status === 'completed' && jobState.course) {
         await completeGeneratedBook(jobState.course);
-        return;
+        return true;
       }
 
       startBookGenerationPolling(jobState.jobId, selectedBookType);
+      return true;
     } catch (error) {
       console.error('Book generation failed', error);
       failGenerationJob(getUserFacingError(error, 'Fortale oluşturulurken bir hata oluştu.'));
+      return false;
     }
   };
 
@@ -3061,38 +3181,68 @@ export default function HomeView({
     );
   };
 
-  const renderHomeCourseCard = (course: CourseData) => {
+  const renderHome3DBook = (course: CourseData) => {
     const displayCoverImageUrl = course.deviceCoverImageUrl || course.coverImageUrl;
     const openState = courseOpenStates[course.id] || { status: 'idle', progress: 0, updatedAt: 0 };
     const isOpenDownloading = openState.status === 'downloading';
     const openProgress = Math.max(0, Math.min(100, Math.round(openState.progress || 0)));
-    const cardDescription = course.description?.trim() || deriveSmartBookDescription(
-      course.topic,
-      course.nodes,
-      course.bookType || 'novel',
-      course.subGenre
-    );
+    const isReady = openState.status === 'ready' || courseHasReadableContent(course);
+
+    const fallbackAccent = course.bookType === 'fairy_tale'
+      ? '#1d3b66'
+      : course.bookType === 'novel'
+      ? '#8d2d2a'
+      : '#7e5218';
 
     return (
-      <article key={course.id} className="fortale-book-list-item fortale-home-list-card">
-        <button type="button" onClick={() => setSelectedHomeCourse(course)} className="fortale-book-list-cover" aria-label={course.topic}>
-          <span className="fortale-book-list-cover-media">
-            {displayCoverImageUrl ? (
-              <img src={displayCoverImageUrl} alt={`${course.topic} ${t('Fortale kapağı')}`} className="h-full w-full object-cover object-center" />
-            ) : (
-              <div className="fortale-shelf-cover-empty"><BookOpen size={24} /></div>
-            )}
-            {isOpenDownloading && (
-              <span className="fortale-shelf-download-overlay">
-                <span className="fortale-shelf-download-bar"><span style={{ width: `${openProgress}%` }} /></span>
-              </span>
-            )}
-          </span>
+      <article key={course.id} className="fortale-3d-shelf-book">
+        <button
+          type="button"
+          onClick={() => setSelectedHomeCourse(course)}
+          className="fortale-3d-shelf-book-btn"
+          aria-label={course.topic}
+        >
+          {/* 3D Book Object */}
+          <div className="fortale-3d-book-obj">
+            {/* Left spine crease */}
+            <div className="fortale-3d-book-spine" aria-hidden="true" />
+
+            {/* Front Cover Face */}
+            <div className="fortale-3d-book-cover">
+              {displayCoverImageUrl ? (
+                <img
+                  src={displayCoverImageUrl}
+                  alt={course.topic}
+                  className="h-full w-full object-cover object-center block"
+                  loading="lazy"
+                />
+              ) : (
+                <div
+                  className="fortale-3d-book-fallback flex flex-col items-center justify-center p-2 text-center h-full w-full"
+                  style={{
+                    background: `linear-gradient(135deg, ${fallbackAccent} 0%, #171d26 100%)`,
+                  }}
+                >
+                  <BookOpen size={22} className="text-white/80 mb-1" />
+                  <span className="text-[10.5px] font-bold text-white line-clamp-2 leading-tight">
+                    {course.topic}
+                  </span>
+                </div>
+              )}
+
+              {/* Natural Cylindrical Book Sheen */}
+              <div className="fortale-3d-book-sheen" aria-hidden="true" />
+
+              {/* Title Plate at Bottom */}
+              <div className="fortale-3d-book-title-plate">
+                <span className="fortale-3d-book-title-text">{course.topic}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Book contact shadow on the wooden shelf */}
+          <div className="fortale-3d-book-shelf-shadow" aria-hidden="true" />
         </button>
-        <div className="fortale-book-list-info">
-          <button type="button" onClick={() => setSelectedHomeCourse(course)} className="fortale-book-list-title !mt-0">{course.topic}</button>
-          <button type="button" onClick={() => setSelectedHomeCourse(course)} className="fortale-book-list-description w-full text-left">{cardDescription}</button>
-        </div>
       </article>
     );
   };
@@ -3134,9 +3284,9 @@ export default function HomeView({
         const greeting = homeGreetingRef.current;
         const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
         if (!railStack || !greeting || !floatIsland) return;
-        const top = Math.ceil(greeting.getBoundingClientRect().bottom + 12);
-        const bottom = Math.floor(railStack.getBoundingClientRect().top - 10);
-        const height = Math.max(202, bottom - top);
+        const top = Math.ceil(greeting.getBoundingClientRect().bottom + 42);
+        const bottom = Math.floor(railStack.getBoundingClientRect().top - 12);
+        const height = Math.max(185, bottom - top);
         setHomeCreateDockBounds((current) => current?.top === top && current.height === height ? current : { top, height });
       });
     };
@@ -3192,12 +3342,12 @@ export default function HomeView({
     if (selectedBookType === 'story') {
       if (step === premiseStep) return Boolean(selectedStoryPremise.trim());
       if (step === ageGroupStep) return Boolean(selectedWorkbookLevel);
-      if (step === 2) return Boolean(effectiveSubGenre);
+      if (step === 2) return Boolean(effectiveSubGenre) || selectedSubGenre === FORTALE_WIZARD_OPTION;
       if (step === themeStep) return true;
       if (step === summaryStep) return true;
     }
-    if (step === 2) return Boolean(effectiveSubGenre);
-    if (step === themeStep) return Boolean(effectiveTheme);
+    if (step === 2) return Boolean(effectiveSubGenre) || selectedSubGenre === FORTALE_WIZARD_OPTION;
+    if (step === themeStep) return Boolean(effectiveTheme) || selectedTheme === FORTALE_WIZARD_OPTION;
     if (step === ageGroupStep) return Boolean(selectedAgeGroup);
     if (step === storyModeStep) {
       const companionNameCount = companionHeroes
@@ -3345,15 +3495,20 @@ export default function HomeView({
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5), 0 8px 18px rgba(250,204,21,0.16)'
     };
   const wizardOptionButtonStyle = (isSelected: boolean): React.CSSProperties => ({
-    borderColor: isSelected ? selectedBookTypeOptionStyle.borderColor : 'rgba(244, 248, 244, 0.68)',
-    background: isSelected ? selectedBookTypeOptionStyle.background : 'rgba(196, 204, 198, 0.42)',
+    borderColor: isSelected ? selectedBookTypeOptionStyle.borderColor : 'rgba(236, 244, 255, 0.78)',
+    background: isSelected ? selectedBookTypeOptionStyle.background : '#1b3048',
     color: isSelected ? selectedBookTypeOptionStyle.color : '#ffffff',
     WebkitTextFillColor: isSelected ? selectedBookTypeOptionStyle.color : '#ffffff',
     fontWeight: 400,
     opacity: 1,
     minHeight: 46,
-    boxShadow: isSelected ? selectedBookTypeOptionStyle.boxShadow : undefined
+    boxShadow: isSelected
+      ? selectedBookTypeOptionStyle.boxShadow
+      : 'inset 0 1px 0 rgba(255,255,255,0.14), 0 3px 8px rgba(0,0,0,0.22)'
   });
+  const wizardFortaleMark = (isSelected: boolean) => (
+    <FortaleMark size={18} dark={isSelected && selectedBookType !== 'novel'} />
+  );
   const wizardChoiceButtonClass = 'rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-all active:scale-[0.98]';
   const primaryActionButtonStyle: React.CSSProperties = selectedBookType === 'fairy_tale'
     ? {
@@ -3393,27 +3548,27 @@ export default function HomeView({
   const renderHeroPortraitPanel = () => (
     <div className="space-y-3">
       {/* Feature card */}
-      <div className="relative overflow-hidden rounded-[22px]" style={{ background: 'linear-gradient(145deg, #0e2d55 0%, #091c38 100%)', border: '1px solid rgba(155, 199, 255, 0.22)' }}>
+      <div className="relative overflow-hidden rounded-[22px]" style={{ background: 'var(--fortale-floatisland-surface)', border: '1px solid rgba(255,255,255,0.18)' }}>
         {/* Decorative glow blob */}
-        <div aria-hidden style={{ position: 'absolute', top: -24, right: -24, width: 140, height: 140, borderRadius: '50%', background: 'rgba(100, 160, 255, 0.11)', filter: 'blur(36px)', pointerEvents: 'none' }} />
+        <div aria-hidden style={{ position: 'absolute', top: -24, right: -24, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(36px)', pointerEvents: 'none' }} />
 
         <div className="relative px-4 pt-5 pb-4">
           {/* Header row */}
           <div className="flex items-center gap-3 mb-4">
-            <div className="h-[46px] w-[46px] shrink-0 rounded-[14px] flex items-center justify-center" style={{ background: 'rgba(100, 160, 255, 0.16)', border: '1px solid rgba(155, 199, 255, 0.26)' }}>
-              <UserRound size={21} style={{ color: '#9BC7FF' }} />
+            <div className="h-[46px] w-[46px] shrink-0 rounded-[14px] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)' }}>
+              <UserRound size={21} className="text-white" />
             </div>
             <div className="min-w-0">
               <p className="text-[15px] font-extrabold leading-tight text-white">{t('Kitabın Kahramanı Sen Ol')}</p>
-              <p className="mt-0.5 text-[11px]" style={{ color: 'rgba(155, 199, 255, 0.55)' }}>{t('İsteğe bağlıdır')}</p>
+              <p className="mt-0.5 text-[11px] text-white/65">{t('İsteğe bağlıdır')}</p>
             </div>
           </div>
 
           {/* Benefit */}
           <div className="mb-4">
             <div className="flex items-start gap-2">
-              <span className="mt-[3px] shrink-0 text-[9px]" style={{ color: 'rgba(155, 199, 255, 0.45)' }}>•</span>
-              <p className="text-[12px] leading-snug" style={{ color: 'rgba(190, 220, 255, 0.76)' }}>{t('Kendi fotoğrafını yükle — kitaptaki kahraman her sayfada sana benzsin')}</p>
+              <span className="mt-[3px] shrink-0 text-[9px] text-white/65">•</span>
+              <p className="text-[12px] leading-snug text-white/80">{t('Kendi fotoğrafını yükle — kitaptaki kahraman her sayfada sana benzsin')}</p>
             </div>
           </div>
 
@@ -3438,7 +3593,7 @@ export default function HomeView({
                       type="button"
                       onClick={() => heroPortraitInputRef.current?.click()}
                       className="h-8 rounded-[12px] px-3 text-[11px] font-semibold inline-flex items-center gap-1"
-                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(139, 187, 244, 0.36)', color: '#ffffff' }}
+                      style={{ background: 'var(--fortale-floatisland-surface)', border: '1px solid rgba(255,255,255,0.22)', color: '#ffffff' }}
                     >
                       {t('Değiştir')}
                     </button>
@@ -3446,7 +3601,7 @@ export default function HomeView({
                       type="button"
                       onClick={clearHeroPortrait}
                       className="h-8 w-8 rounded-[12px] inline-flex items-center justify-center"
-                      style={{ background: 'rgba(8, 25, 52, 0.84)', border: '1px solid rgba(135, 164, 197, 0.26)', color: '#ffffff' }}
+                      style={{ background: 'var(--fortale-floatisland-surface)', border: '1px solid rgba(255,255,255,0.22)', color: '#ffffff' }}
                       aria-label={t('Portreyi kaldır')}
                     >
                       <X size={13} />
@@ -3460,7 +3615,7 @@ export default function HomeView({
               type="button"
               onClick={() => heroPortraitInputRef.current?.click()}
               className="w-full rounded-[18px] border px-4 py-4 text-[14px] font-normal inline-flex items-center justify-center gap-2.5"
-              style={{ background: 'rgba(14, 45, 90, 0.7)', borderColor: 'rgba(155, 199, 255, 0.32)', borderStyle: 'dashed', color: '#ffffff' }}
+              style={{ background: 'var(--fortale-floatisland-surface)', borderColor: 'rgba(255,255,255,0.34)', borderStyle: 'dashed', color: '#ffffff' }}
             >
               <ImagePlus size={18} />
               {t('Fotoğraf Seç')}
@@ -3471,7 +3626,7 @@ export default function HomeView({
 
       {/* Hero assignment — only when portrait is added */}
       {heroPortraitFile && portraitHeroOptions.length > 0 && (
-        <div className="rounded-[22px] border p-3" style={{ borderColor: 'rgba(190, 220, 255, 0.16)', background: 'rgba(8, 36, 70, 0.46)' }}>
+        <div className="rounded-[22px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.18)', background: 'var(--fortale-floatisland-surface)' }}>
           <p className="fortale-section-kicker mb-3">{t('Portre hangi kahramana ait?')}</p>
           <div className="fortale-wizard-choice-chain-grid grid grid-cols-2 gap-2">
             {portraitHeroOptions.map((name) => {
@@ -3496,145 +3651,19 @@ export default function HomeView({
   );
   const wizardThemeVars = {} as React.CSSProperties;
   const wizardAccentColor = (activeGeneratingBookType ?? selectedBookType) === 'fairy_tale'
-    ? 'linear-gradient(90deg, rgba(255,255,255,0.98), rgba(220,236,255,0.94))'
+    ? 'linear-gradient(90deg, #E6F0FA, #D4E4F6)'
     : (activeGeneratingBookType ?? selectedBookType) === 'novel'
-    ? 'linear-gradient(90deg, rgba(239,35,47,0.98), rgba(185,18,32,0.94))'
-    : 'linear-gradient(90deg, rgba(255,236,120,0.98), rgba(250,204,21,0.94))';
+    ? 'linear-gradient(90deg, #FBC5C5, #F5A8A8)'
+    : 'linear-gradient(90deg, #FEF0B2, #FCE088)';
   const showStickyNotes = false;
   const stickyModalTop =
     stickyRowContainerRef.current
       ? `${Math.round(stickyRowContainerRef.current.getBoundingClientRect().bottom)}px`
       : STICKY_MODAL_TOP_INSET;
 
-  const homeStars = useMemo(() => [
-    { x: 7,  y: 9,  s: 1.4, dur: 2.8, delay: 0.0, lo: 0.10, hi: 0.84 },
-    { x: 17, y: 24, s: 1.0, dur: 3.5, delay: 0.6, lo: 0.08, hi: 0.68 },
-    { x: 31, y: 7,  s: 1.9, dur: 2.2, delay: 1.1, lo: 0.14, hi: 0.94 },
-    { x: 44, y: 20, s: 1.2, dur: 3.9, delay: 0.3, lo: 0.09, hi: 0.76 },
-    { x: 57, y: 5,  s: 2.0, dur: 2.6, delay: 0.9, lo: 0.16, hi: 0.96 },
-    { x: 69, y: 17, s: 1.1, dur: 4.1, delay: 0.2, lo: 0.08, hi: 0.64 },
-    { x: 81, y: 29, s: 2.3, dur: 3.0, delay: 1.4, lo: 0.18, hi: 1.00 },
-    { x: 92, y: 9,  s: 1.3, dur: 2.9, delay: 0.7, lo: 0.10, hi: 0.80 },
-    { x: 13, y: 52, s: 1.1, dur: 3.7, delay: 0.4, lo: 0.08, hi: 0.70 },
-    { x: 25, y: 40, s: 1.7, dur: 2.4, delay: 1.2, lo: 0.12, hi: 0.88 },
-    { x: 37, y: 66, s: 1.0, dur: 4.3, delay: 0.1, lo: 0.07, hi: 0.60 },
-    { x: 51, y: 46, s: 2.5, dur: 2.7, delay: 0.8, lo: 0.20, hi: 1.00 },
-    { x: 63, y: 71, s: 1.2, dur: 3.2, delay: 1.5, lo: 0.10, hi: 0.74 },
-    { x: 75, y: 56, s: 1.6, dur: 2.1, delay: 0.5, lo: 0.13, hi: 0.90 },
-    { x: 87, y: 42, s: 1.0, dur: 4.0, delay: 1.0, lo: 0.08, hi: 0.66 },
-    { x: 4,  y: 78, s: 1.8, dur: 2.5, delay: 0.3, lo: 0.14, hi: 0.86 },
-    { x: 21, y: 83, s: 1.3, dur: 4.1, delay: 0.6, lo: 0.10, hi: 0.72 },
-    { x: 39, y: 88, s: 2.0, dur: 3.3, delay: 1.3, lo: 0.16, hi: 0.92 },
-    { x: 54, y: 76, s: 1.1, dur: 2.8, delay: 0.2, lo: 0.09, hi: 0.64 },
-    { x: 67, y: 86, s: 1.5, dur: 3.6, delay: 0.9, lo: 0.12, hi: 0.80 },
-    { x: 79, y: 73, s: 1.9, dur: 2.3, delay: 1.6, lo: 0.18, hi: 0.96 },
-    { x: 94, y: 60, s: 1.2, dur: 4.2, delay: 0.4, lo: 0.10, hi: 0.70 },
-    { x: 9,  y: 36, s: 2.6, dur: 3.1, delay: 0.7, lo: 0.22, hi: 1.00 },
-    { x: 47, y: 33, s: 1.0, dur: 2.6, delay: 1.1, lo: 0.08, hi: 0.62 },
-    { x: 72, y: 38, s: 1.4, dur: 3.5, delay: 0.5, lo: 0.11, hi: 0.78 },
-    { x: 28, y: 15, s: 1.6, dur: 3.2, delay: 0.4, lo: 0.12, hi: 0.86 },
-    { x: 60, y: 92, s: 1.1, dur: 4.4, delay: 1.7, lo: 0.08, hi: 0.64 },
-    { x: 83, y: 14, s: 2.1, dur: 2.3, delay: 0.8, lo: 0.17, hi: 0.98 },
-    { x: 15, y: 68, s: 1.3, dur: 3.8, delay: 1.3, lo: 0.10, hi: 0.74 },
-    { x: 42, y: 57, s: 1.8, dur: 2.7, delay: 0.0, lo: 0.14, hi: 0.90 },
-    { x: 58, y: 23, s: 1.0, dur: 4.6, delay: 2.0, lo: 0.07, hi: 0.60 },
-    { x: 77, y: 80, s: 2.4, dur: 3.0, delay: 0.6, lo: 0.19, hi: 1.00 },
-    { x: 96, y: 45, s: 1.2, dur: 3.7, delay: 1.5, lo: 0.09, hi: 0.70 },
-  ], []);
-
-  const homeDust = useMemo(() => [
-    { x: 14, y: 58, s: 3.4, dur: 4.2, delay: 0.0, op: 0.62 },
-    { x: 27, y: 73, s: 4.0, dur: 5.1, delay: 1.0, op: 0.56 },
-    { x: 41, y: 48, s: 3.0, dur: 3.8, delay: 1.8, op: 0.70 },
-    { x: 57, y: 80, s: 4.5, dur: 4.7, delay: 0.5, op: 0.58 },
-    { x: 69, y: 63, s: 3.2, dur: 5.4, delay: 2.1, op: 0.54 },
-    { x: 82, y: 44, s: 4.0, dur: 4.0, delay: 1.3, op: 0.66 },
-    { x: 6,  y: 38, s: 3.8, dur: 4.8, delay: 0.8, op: 0.60 },
-    { x: 91, y: 76, s: 3.5, dur: 3.6, delay: 2.4, op: 0.68 },
-    { x: 35, y: 18, s: 2.8, dur: 5.0, delay: 0.3, op: 0.50 },
-    { x: 61, y: 28, s: 3.2, dur: 4.4, delay: 1.6, op: 0.61 },
-    // 2. set
-    { x: 8,  y: 92, s: 3.6, dur: 4.6, delay: 0.4, op: 0.64 },
-    { x: 20, y: 15, s: 2.6, dur: 5.2, delay: 1.2, op: 0.52 },
-    { x: 33, y: 67, s: 4.2, dur: 3.9, delay: 2.3, op: 0.68 },
-    { x: 48, y: 35, s: 3.0, dur: 4.9, delay: 0.7, op: 0.57 },
-    { x: 53, y: 55, s: 4.8, dur: 4.3, delay: 1.5, op: 0.72 },
-    { x: 74, y: 22, s: 3.4, dur: 5.6, delay: 0.2, op: 0.55 },
-    { x: 85, y: 84, s: 3.8, dur: 4.1, delay: 2.0, op: 0.63 },
-    { x: 97, y: 51, s: 2.9, dur: 3.7, delay: 0.9, op: 0.59 },
-    { x: 18, y: 42, s: 4.1, dur: 5.3, delay: 1.7, op: 0.66 },
-    { x: 44, y: 89, s: 3.3, dur: 4.0, delay: 0.6, op: 0.60 },
-    // 3. set
-    { x: 3,  y: 62, s: 3.7, dur: 4.5, delay: 1.1, op: 0.58 },
-    { x: 16, y: 30, s: 2.7, dur: 5.8, delay: 0.0, op: 0.54 },
-    { x: 29, y: 77, s: 4.3, dur: 3.6, delay: 2.5, op: 0.70 },
-    { x: 38, y: 12, s: 3.1, dur: 4.7, delay: 1.4, op: 0.56 },
-    { x: 50, y: 70, s: 4.6, dur: 5.0, delay: 0.3, op: 0.65 },
-    { x: 65, y: 40, s: 3.0, dur: 4.2, delay: 1.9, op: 0.61 },
-    { x: 78, y: 58, s: 3.9, dur: 3.8, delay: 0.5, op: 0.67 },
-    { x: 88, y: 33, s: 2.8, dur: 5.5, delay: 2.2, op: 0.53 },
-    { x: 22, y: 95, s: 4.4, dur: 4.4, delay: 0.8, op: 0.69 },
-    { x: 72, y: 88, s: 3.2, dur: 4.8, delay: 1.3, op: 0.62 },
-    // 4. set (toplam 50)
-    { x: 11, y: 47, s: 3.6, dur: 4.3, delay: 0.2, op: 0.64 },
-    { x: 24, y: 8,  s: 2.9, dur: 5.7, delay: 1.9, op: 0.51 },
-    { x: 36, y: 59, s: 4.1, dur: 3.5, delay: 0.6, op: 0.67 },
-    { x: 46, y: 24, s: 3.3, dur: 4.9, delay: 2.2, op: 0.58 },
-    { x: 59, y: 91, s: 4.7, dur: 4.0, delay: 1.0, op: 0.71 },
-    { x: 71, y: 16, s: 3.0, dur: 5.3, delay: 0.4, op: 0.54 },
-    { x: 80, y: 68, s: 3.9, dur: 4.6, delay: 1.7, op: 0.63 },
-    { x: 93, y: 37, s: 2.7, dur: 3.9, delay: 0.1, op: 0.57 },
-    { x: 2,  y: 82, s: 4.3, dur: 5.1, delay: 2.6, op: 0.65 },
-    { x: 55, y: 6,  s: 3.5, dur: 4.2, delay: 1.4, op: 0.60 },
-    { x: 43, y: 43, s: 2.8, dur: 5.6, delay: 0.7, op: 0.53 },
-    { x: 66, y: 97, s: 4.0, dur: 3.7, delay: 2.0, op: 0.68 },
-    { x: 77, y: 54, s: 3.2, dur: 4.5, delay: 0.9, op: 0.61 },
-    { x: 89, y: 20, s: 3.7, dur: 5.0, delay: 1.5, op: 0.56 },
-    { x: 31, y: 85, s: 4.5, dur: 3.8, delay: 2.3, op: 0.70 },
-    { x: 10, y: 25, s: 3.0, dur: 4.7, delay: 0.3, op: 0.55 },
-    { x: 52, y: 72, s: 3.8, dur: 5.2, delay: 1.1, op: 0.64 },
-    { x: 84, y: 8,  s: 2.6, dur: 4.1, delay: 2.8, op: 0.50 },
-    { x: 19, y: 53, s: 4.2, dur: 3.6, delay: 0.5, op: 0.66 },
-    { x: 63, y: 38, s: 3.4, dur: 4.8, delay: 1.8, op: 0.59 },
-  ], []);
 
   return (
     <div className={`view-container fortale-home-view ${isCreationIntroOnly ? 'is-intro' : ''}`}>
-      {/* Yıldız ve peri tozu — header altından tüm sayfayı kaplar */}
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden>
-        {homeStars.map((star, idx) => (
-          <span
-            key={`hs-${idx}`}
-            className="home-star"
-            style={{
-              left: `${star.x}%`,
-              top: `${star.y}%`,
-              width: `${star.s}px`,
-              height: `${star.s}px`,
-              ['--star-dur' as string]: `${star.dur}s`,
-              ['--star-delay' as string]: `${star.delay}s`,
-              ['--star-lo' as string]: `${star.lo}`,
-              ['--star-hi' as string]: `${star.hi}`,
-            } as React.CSSProperties}
-          />
-        ))}
-        {homeDust.map((dust, idx) => (
-          <span
-            key={`hd-${idx}`}
-            className="home-fairy-dust"
-            style={{
-              left: `${dust.x}%`,
-              top: `${dust.y}%`,
-              width: `${dust.s}px`,
-              height: `${dust.s}px`,
-              ['--dust-dur' as string]: `${dust.dur}s`,
-              ['--dust-delay' as string]: `${dust.delay}s`,
-              ['--dust-op' as string]: `${dust.op}`,
-            } as React.CSSProperties}
-          />
-        ))}
-      </div>
-
       <div className="app-content-width fortale-home-content space-y-4">
         {isCreationIntroOnly && (
           <div ref={homeGreetingRef} className="fortale-home-greeting">
@@ -3704,15 +3733,78 @@ export default function HomeView({
         )}
 
         {isCreationIntroOnly && (
-          <div ref={homeRailStackRef} className="fortale-home-rail-stack">
-            <section className="fortale-home-book-rail is-library-rail" aria-label={t('Son Kitaplarım')} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
-              <h2 className="fortale-home-rail-label" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>{t('Son Kitaplarım')}</h2>
-              <div ref={homeShelfScrollRef} className="fortale-home-rail-scroll touch-scroll-x" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap' }}>
-                {homeShelfCourses.length > 0
-                  ? homeShelfCourses.map((course) => renderHomeCourseCard(course))
-                  : isBootstrapping
-                    ? <div className="fortale-home-rail-loading"><FaviconSpinner size={22} /><span>{t('Kitaplar yükleniyor...')}</span></div>
-                    : <div className="fortale-home-rail-empty">{t('Henüz hiç kitap yok.')}</div>}
+          <div ref={homeRailStackRef} className="fortale-home-rail-stack fortale-bookshelf-wrapper">
+            <section className="fortale-bookshelf-section" aria-label={t('Son Okuduklarım')}>
+              <div className="fortale-bookshelf-header">
+                <div className="fortale-bookshelf-header-left">
+                  <Library size={15} className="text-[#e2ad68]" />
+                  <h2 className="fortale-bookshelf-title">{t('Son Okuduklarım')}</h2>
+                </div>
+                {homeShelfCourses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('AI_CHAT')}
+                    className="fortale-bookshelf-more-btn"
+                    title={t('Tüm Kitaplar')}
+                  >
+                    <span>{t('Tümünü Gör')}</span>
+                    <ArrowRight size={13} />
+                  </button>
+                )}
+              </div>
+
+              <div className="fortale-bookshelf-stage">
+                <div ref={homeShelfScrollRef} className="fortale-bookshelf-scroll touch-scroll-x">
+                  {homeShelfCourses.length > 0 ? (
+                    homeShelfCourses.map((course) => renderHome3DBook(course))
+                  ) : isBootstrapping ? (
+                    <div className="fortale-bookshelf-empty-state">
+                      <FaviconSpinner size={20} />
+                      <span>{t('Kitaplar yükleniyor...')}</span>
+                    </div>
+                  ) : (
+                    <div className="fortale-bookshelf-empty-shelf">
+                      <div className="fortale-3d-shelf-book is-empty-placeholder">
+                        <button
+                          type="button"
+                          onClick={() => handleBookTypeSelect('fairy_tale')}
+                          className="fortale-3d-shelf-book-btn"
+                        >
+                          <div className="fortale-3d-book-obj">
+                            <div className="fortale-3d-book-spine" aria-hidden="true" />
+                            <div
+                              className="fortale-3d-book-cover flex flex-col items-center justify-center p-2 text-center"
+                              style={{
+                                background: 'linear-gradient(135deg, rgba(226, 173, 104, 0.12) 0%, rgba(20, 26, 34, 0.85) 100%)',
+                                border: '1.5px dashed rgba(226, 173, 104, 0.5)',
+                              }}
+                            >
+                              <Plus size={22} className="text-[#e2ad68] mb-1" />
+                              <span className="text-[10px] font-bold text-white/90 leading-tight">
+                                {t('İlk Kitabını Oluştur')}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="fortale-3d-book-shelf-shadow" aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="fortale-bookshelf-empty-info">
+                        <p className="text-[12px] font-semibold text-white/80">{t('Kitaplığın henüz boş.')}</p>
+                        <p className="text-[11px] text-white/50">{t('Aşağıdan ilk kitabını oluşturmaya başla.')}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3D Wooden Shelf Plank */}
+                <div className="fortale-wood-shelf-plank" aria-hidden="true">
+                  <div className="fortale-wood-shelf-top" />
+                  <div className="fortale-wood-shelf-fascia">
+                    <div className="fortale-wood-shelf-lip-highlight" />
+                    <div className="fortale-wood-shelf-lip-shadow" />
+                  </div>
+                  <div className="fortale-wood-shelf-under-shadow" />
+                </div>
               </div>
             </section>
           </div>
@@ -3722,7 +3814,7 @@ export default function HomeView({
           className={`relative ${isCreationIntroOnly ? 'fortale-home-create-dock' : ''}`}
           style={isCreationIntroOnly ? {
             top: homeCreateDockBounds?.top ?? 0,
-            height: homeCreateDockBounds?.height ?? 202,
+            height: homeCreateDockBounds?.height ?? 160,
             visibility: homeCreateDockBounds ? 'visible' : 'hidden'
           } : undefined}
         >
@@ -3747,11 +3839,13 @@ export default function HomeView({
             className="flex flex-col rounded-[18px]"
             style={{
               height: isCreationIntroOnly
-                ? '202px'
-                : creationStep === 1
-                  ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
-                  : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
-              minHeight: isCreationIntroOnly ? '202px' : '320px',
+                ? `${homeCreateDockBounds?.height ?? 160}px`
+                : isGenerating
+                  ? 'calc(100dvh - var(--app-header-row-top, 0px) - var(--fortale-floatisland-clearance, 76px) - 20px)'
+                  : creationStep === 1
+                    ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
+                    : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
+              minHeight: isCreationIntroOnly ? '185px' : '320px',
             }}
           >
             {/* TOP BAR: generating'de gizle, intro'da invisible (layout tutmak için) */}
@@ -3796,83 +3890,165 @@ export default function HomeView({
                   : 'overflow-y-auto px-4 pb-2'
               }`}
             >
-              {/* TYPE ORB: intro ve wizard adım 1'de göster */}
+              {/* 4'LÜ BUTON IZGARASI: 2x2 DİKDÖRTGEN */}
               {(isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1)) && (
                 <div
-                  className={`fortale-type-step ${isWizardTypeStepDocked ? 'fortale-wizard-type-step-docked' : ''}`}
+                  className={`fortale-creation-grid-container ${isWizardTypeStepDocked ? 'fortale-wizard-type-step-docked' : ''}`}
                   style={isWizardTypeStepDocked && homeCreateDockBounds ? {
                     position: 'fixed',
-                    top: `${Math.round(homeCreateDockBounds.top + (homeCreateDockBounds.height - 202) / 2)}px`,
+                    top: `${Math.round(homeCreateDockBounds.top + (homeCreateDockBounds.height - 185) / 2)}px`,
                     left: '50%',
                     zIndex: 38,
-                    width: 'min(calc(100vw - 24px), 430px)',
-                    height: '202px',
-                    minHeight: '202px',
-                    padding: 0,
-                    gap: 0,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transform: 'translateX(-50%) scale(1.035)',
-                    transformOrigin: 'center center',
+                    width: 'min(calc(100vw - 28px), 480px)',
+                    transform: 'translateX(-50%)',
                     pointerEvents: 'auto'
                   } : undefined}
                 >
-                  <div className="fortale-black-hole-field" aria-hidden="true">
-                    {WIZARD_BLACK_HOLE_TILES.map((tile, index) => (
-                      <span
-                        key={index}
-                        className="fortale-black-hole-track"
-                        style={{
-                          '--tile-angle': `${tile.angle}deg`,
-                          '--tile-radius': `${tile.radius}px`,
-                          '--tile-delay': `${tile.delay}s`,
-                          '--tile-duration': `${tile.duration}s`,
-                          '--tile-size': `${tile.size}px`,
-                          '--tile-color': tile.color
-                        } as React.CSSProperties}
-                      >
-                        <i />
-                      </span>
-                    ))}
-                  </div>
                   {!isCreationIntroOnly && (
-                    <div className="fortale-type-copy">
-                      <span>{t('Kitap Türünü Seç')}</span>
+                    <div className="fortale-type-copy mb-2.5 text-center">
+                      <span className="text-[13px] font-bold text-white/90">{t('Kitap Türünü Seç')}</span>
                     </div>
                   )}
-                  <div className="fortale-type-orb" role="group" aria-label={t('Kitap Türünü Seç')}>
-                    <span className="fortale-type-divider horizontal" aria-hidden="true" />
-                    <span className="fortale-type-divider left" aria-hidden="true" />
-                    <span className="fortale-type-core" aria-hidden="true">
-                      <FLogo size={32} />
-                    </span>
-                    {HOME_SPLIT_BOOK_TYPES.map((option) => {
-                      const isSelected = isCreationWizardOpen && selectedBookType === option.value;
-                      const isAccented = accentedBookType === option.value;
-                      const Icon = option.icon;
-                      const translatedLabel = t(option.label);
-                      const labelWords = translatedLabel.trim().split(/\s+/);
-                      const labelLines = option.value === 'story' && labelWords.length > 1
-                        ? [labelWords.slice(0, -1).join(' '), labelWords[labelWords.length - 1]]
-                        : null;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => handleBookTypeSelect(option.value)}
-                          className={`fortale-type-choice ${option.placement} accent-${option.value} ${isSelected ? 'selected' : ''} ${isAccented ? 'is-accented' : ''}`}
-                          aria-pressed={isSelected}
-                          title={t(option.hint)}
-                        >
-                          <Icon size={option.placement === 'top' ? 22 : 18} strokeWidth={1.8} />
-                          <span className={`fortale-type-label ${labelLines ? 'two-line' : ''}`}>
-                            {labelLines
-                              ? labelLines.map((line) => <span key={line}>{line}</span>)
-                              : translatedLabel}
+                  <div className="fortale-creation-2x2-grid" role="group" aria-label={t('Kitap Türünü Seç')}>
+                    {/* 1. HİKAYE */}
+                    <button
+                      type="button"
+                      onClick={() => handleBookTypeSelect('novel')}
+                      className={`fortale-creation-btn fortale-btn-story ${
+                        (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'novel' && !composerStartsLanguageLearning ? 'is-selected' : ''
+                      }`}
+                      aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'novel' && !composerStartsLanguageLearning}
+                      title={t('Hikaye: Roman & Kurgu')}
+                    >
+                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
+                        <ScrollText size={20} />
+                      </div>
+                      <div className="fortale-creation-btn-content">
+                        <span className="fortale-creation-btn-title">{t('Hikaye')}</span>
+                        <span className="fortale-creation-btn-subtitle">{t('Roman & Kurgu')}</span>
+                      </div>
+                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
+                        <ArrowRight size={13} />
+                      </div>
+                    </button>
+
+                    {/* 2. MASAL */}
+                    <button
+                      type="button"
+                      onClick={() => handleBookTypeSelect('fairy_tale')}
+                      className={`fortale-creation-btn fortale-btn-fairytale ${
+                        (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'fairy_tale' ? 'is-selected' : ''
+                      }`}
+                      aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'fairy_tale'}
+                      title={t('Masal: Düşsel Masallar')}
+                    >
+                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
+                        <Feather size={20} />
+                      </div>
+                      <div className="fortale-creation-btn-content">
+                        <span className="fortale-creation-btn-title">{t('Masal')}</span>
+                        <span className="fortale-creation-btn-subtitle">{t('Düşsel Masallar')}</span>
+                      </div>
+                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
+                        <ArrowRight size={13} />
+                      </div>
+                    </button>
+
+                    {/* 3. ÇALIŞMA KİTABI */}
+                    <button
+                      type="button"
+                      onClick={() => handleBookTypeSelect('story')}
+                      className={`fortale-creation-btn fortale-btn-workbook ${
+                        (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'story' ? 'is-selected' : ''
+                      }`}
+                      aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'story'}
+                      title={t('Çalışma Kitabı: Konu & Pratik')}
+                    >
+                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
+                        <Telescope size={20} />
+                      </div>
+                      <div className="fortale-creation-btn-content">
+                        <span className="fortale-creation-btn-title">{t('Çalışma Kitabı')}</span>
+                        <span className="fortale-creation-btn-subtitle">{t('Konu & Pratik')}</span>
+                      </div>
+                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
+                        <ArrowRight size={13} />
+                      </div>
+                    </button>
+
+                    {/* 4. YABANCI DİL */}
+                    <button
+                      type="button"
+                      onClick={handleLanguageLearningOpen}
+                      className={`fortale-creation-btn fortale-btn-language ${
+                        isComposerOpen && composerStartsLanguageLearning ? 'is-selected' : ''
+                      }`}
+                      aria-pressed={isComposerOpen && composerStartsLanguageLearning}
+                      title={t('Yabancı Dil: 40 Dilde Okuma')}
+                    >
+                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
+                        <Languages size={20} />
+                      </div>
+                      <div className="fortale-creation-btn-content">
+                        <span className="fortale-creation-btn-title">{t('Yabancı Dil')}</span>
+                        <span className="fortale-creation-btn-subtitle">{t('40 Dilde Okuma')}</span>
+                      </div>
+                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
+                        <ArrowRight size={13} />
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* DÖRTLÜ YAPININ ALTINDAKİ EDİTORYAL KIRMIZI ÇİZGİ (Header'daki gibi daha uzunu) */}
+                  <div className="fortale-creation-group-underline" aria-hidden="true">
+                    <svg
+                      className="w-full h-[4px] overflow-visible pointer-events-none"
+                      viewBox="0 0 100 4"
+                      preserveAspectRatio="none"
+                      fill="none"
+                    >
+                      <path
+                        d="M 1.5 0.5 L 98.5 1.75 A 0.25 0.25 0 0 1 98.5 2.25 L 1.5 3.5 A 1.5 1.5 0 0 0 1.5 0.5 Z"
+                        fill="url(#fortale-creation-red-taper)"
+                        style={{ filter: 'drop-shadow(0 0 4px rgba(192, 66, 53, 0.45))' }}
+                      />
+                      <defs>
+                        <linearGradient id="fortale-creation-red-taper" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#c04235" stopOpacity="1" />
+                          <stop offset="65%" stopColor="#c04235" stopOpacity="0.85" />
+                          <stop offset="100%" stopColor="#c04235" stopOpacity="0.2" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+
+                  {/* KAYAN DİLLER (Kırmızı çizginin bir satır altında) */}
+                  <div
+                    className="fortale-editorial-ticker-wrap"
+                    onClick={handleLanguageLearningOpen}
+                    role="button"
+                    tabIndex={0}
+                    title={t('Desteklenen diller')}
+                    aria-label={t('Desteklenen diller')}
+                  >
+                    <div className="fortale-editorial-ticker-track">
+                      <div className="fortale-editorial-ticker-group">
+                        {NATIVE_LEARNING_LANGUAGES.map((lang, idx) => (
+                          <span key={`el1-${lang}-${idx}`} className="fortale-editorial-ticker-item">
+                            <span>{lang}</span>
+                            <span className="fortale-editorial-ticker-dot">·</span>
                           </span>
-                        </button>
-                      );
-                    })}
+                        ))}
+                      </div>
+                      <div className="fortale-editorial-ticker-group" aria-hidden="true">
+                        {NATIVE_LEARNING_LANGUAGES.map((lang, idx) => (
+                          <span key={`el2-${lang}-${idx}`} className="fortale-editorial-ticker-item">
+                            <span>{lang}</span>
+                            <span className="fortale-editorial-ticker-dot">·</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3880,7 +4056,7 @@ export default function HomeView({
               {/* GENERATING STATE */}
               {isGenerating && (
                 <div className="flex flex-col h-full min-h-0">
-                  <div className="mt-3">
+                  <div className="mt-2 shrink-0">
                     <div className="w-full overflow-hidden rounded-[18px]">
                       <video
                         className="h-auto w-full block"
@@ -3892,16 +4068,17 @@ export default function HomeView({
                         preload="auto"
                       />
                     </div>
-                    <p className="mt-3 text-center text-[15px] font-bold text-white">
+                    <div className="fortale-generation-companion-row" data-companion-generation-row aria-hidden="true" />
+                    <p className="mt-2.5 text-center text-[15px] font-bold text-white">
                       {generationStatus
                         ? translateGenerationStatusLabel(generationStatus, generationDisplayLanguage)
                         : translateGenerationStatusLabel('Sunucuda üretim başlatılıyor', generationDisplayLanguage)}
                     </p>
-                    <p className="mt-1 text-center text-[13px] text-white">
+                    <p className="mt-0.5 text-center text-[13px] text-white">
                       {formatGenerationRemainingTime(displayedGenerationMinutesRemaining, generationDisplayLanguage)}
                     </p>
                   </div>
-                  <div className="mt-4">
+                  <div className="mt-3.5 shrink-0">
                     <div className="h-1.5 overflow-hidden rounded-[18px] bg-white/10">
                       <div
                         className="h-full rounded-[18px] transition-all duration-300"
@@ -3920,6 +4097,7 @@ export default function HomeView({
                         {t('İptal')}
                       </button>
                     </div>
+                    <p className="mt-1.5 text-center text-[11px] text-white/70">{t('Kitabınız hazır olduğunda bildirim alacaksınız')}</p>
                   </div>
                   {(() => {
                     const bookType = activeGeneratingBookType ?? selectedBookType;
@@ -3927,11 +4105,11 @@ export default function HomeView({
                     if (!langFacts.length || currentLiteraryFactIndex === null) return null;
                     const fact = langFacts[currentLiteraryFactIndex % langFacts.length];
                     return (
-                      <div className="flex items-center justify-center px-2 mt-auto pt-8">
+                      <div className="generation-literary-fact flex-1 flex items-center justify-center px-4 py-3 my-auto min-h-[64px]">
                         <p
                           key={currentLiteraryFactIndex}
-                          className="text-center italic leading-relaxed text-white"
-                          style={{ fontSize: 15, animation: 'fadeIn 0.8s ease' }}
+                          className="text-center italic leading-relaxed text-white/95"
+                          style={{ fontSize: 14.5, animation: 'fadeIn 0.8s ease' }}
                         >
                           &ldquo;{fact}&rdquo;
                         </p>
@@ -3973,6 +4151,15 @@ export default function HomeView({
                               </button>
                             );
                           })}
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedSubGenre(FORTALE_WIZARD_OPTION); setSelectedTheme(FORTALE_WIZARD_OPTION); }}
+                            className={`${wizardChoiceButtonClass} text-left inline-flex items-center gap-2`}
+                            style={wizardOptionButtonStyle(selectedSubGenre === FORTALE_WIZARD_OPTION)}
+                            aria-pressed={selectedSubGenre === FORTALE_WIZARD_OPTION}
+                          >
+                            {wizardFortaleMark(selectedSubGenre === FORTALE_WIZARD_OPTION)}{t("Fortale'e bırak")}
+                          </button>
                           {selectedBookType !== 'story' && (
                             <button
                               type="button"
@@ -4060,7 +4247,7 @@ export default function HomeView({
                                 key={theme}
                                 type="button"
                                 onClick={() => setSelectedTheme(theme)}
-                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98] inline-flex items-center gap-2"
                                 style={wizardOptionButtonStyle(isSelected)}
                                 aria-pressed={isSelected}
                               >
@@ -4068,6 +4255,15 @@ export default function HomeView({
                               </button>
                             );
                           })}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTheme(FORTALE_WIZARD_OPTION)}
+                            className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98] inline-flex items-center gap-2"
+                            style={wizardOptionButtonStyle(selectedTheme === FORTALE_WIZARD_OPTION)}
+                            aria-pressed={selectedTheme === FORTALE_WIZARD_OPTION}
+                          >
+                            {wizardFortaleMark(selectedTheme === FORTALE_WIZARD_OPTION)}{t("Fortale'e bırak")}
+                          </button>
                           <button
                             type="button"
                             onClick={() => setSelectedTheme(CUSTOM_WIZARD_OPTION)}
@@ -4246,11 +4442,11 @@ export default function HomeView({
                                     setSettingTimeInput('');
                                   }
                                 }}
-                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                className={`rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98] ${option.value === 'fortale' ? 'inline-flex items-center gap-2' : ''}`}
                                 style={wizardOptionButtonStyle(isSelected)}
                                 aria-pressed={isSelected}
                               >
-                                {t(option.label)}
+                                <>{option.value === 'fortale' && wizardFortaleMark(isSelected)}{t(option.label)}</>
                               </button>
                             );
                           })}
@@ -4282,11 +4478,11 @@ export default function HomeView({
                                     setSettingPlaceInput('');
                                   }
                                 }}
-                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                className={`rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98] ${option.value === 'fortale' ? 'inline-flex items-center gap-2' : ''}`}
                                 style={wizardOptionButtonStyle(isSelected)}
                                 aria-pressed={isSelected}
                               >
-                                {t(option.label)}
+                                <>{option.value === 'fortale' && wizardFortaleMark(isSelected)}{t(option.label)}</>
                               </button>
                             );
                           })}
@@ -4318,11 +4514,11 @@ export default function HomeView({
                                     setWorldTypeInput('');
                                   }
                                 }}
-                                className="rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98]"
+                                className={`rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition-all active:scale-[0.98] ${option.value === 'fortale' ? 'inline-flex items-center gap-2' : ''}`}
                                 style={wizardOptionButtonStyle(isSelected)}
                                 aria-pressed={isSelected}
                               >
-                                {t(option.label)}
+                                <>{option.value === 'fortale' && wizardFortaleMark(isSelected)}{t(option.label)}</>
                               </button>
                             );
                           })}
@@ -4485,7 +4681,7 @@ export default function HomeView({
                       <div className="fortale-library-panel rounded-2xl border px-3.5 py-3">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-[13px] font-bold text-white">{t('Gereken Kredi')}</span>
-                          <span className="text-[14px] font-black text-amber-400">{selectedCreateCreditCost} {t('Kredi')}</span>
+                          <span className="text-[14px] font-black text-[#c04235]">{selectedCreateCreditCost} {t('Kredi')}</span>
                         </div>
                         <p className="mt-1 text-[11px] leading-snug text-white/80">
                           {t('Bu işlem için {{creditCount}} kredi kullanılacaktır.').replace('{{creditCount}}', String(selectedCreateCreditCost))}
@@ -4507,7 +4703,7 @@ export default function HomeView({
               {creationStep === portraitStep && (
                 <p
                   className="mx-4 mb-1 rounded-[16px] border px-3 py-2 text-center text-[11px] font-semibold leading-snug pointer-events-auto"
-                  style={{ borderColor: 'rgba(139,187,244,0.18)', background: 'rgba(8,36,70,0.72)', color: 'rgba(207,228,255,0.78)' }}
+                  style={{ borderColor: 'rgba(255,255,255,0.18)', background: 'var(--fortale-floatisland-surface)', color: 'rgba(255,255,255,0.78)' }}
                 >
                   {t('Fotoğrafın AI tarafından kitabın görsel stiline uyarlanır. İsteğe bağlıdır.')}
                 </p>
@@ -4518,7 +4714,7 @@ export default function HomeView({
                     type="button"
                     onClick={() => setCreationStep((prev) => getPreviousCreationStep(prev))}
                     className={`${wizardChoiceButtonClass} inline-flex w-full items-center justify-center gap-2 text-center`}
-                    style={wizardOptionButtonStyle(false)}
+                    style={{ ...wizardOptionButtonStyle(false), background: '#272d30', borderColor: 'rgba(255,255,255,0.55)', color: '#fff', WebkitTextFillColor: '#fff' }}
                   >
                     <ArrowLeft size={14} />{t('Geri')}
                   </button>
@@ -4584,6 +4780,36 @@ export default function HomeView({
         >
           <span />
         </FloatIslandSheet>
+
+        <BookCreationComposer
+          key={composerSession}
+          isOpen={isComposerOpen}
+          bookType={selectedBookType}
+          bookLanguage={bookLanguageInput}
+          initialLanguageLearning={composerStartsLanguageLearning}
+          hasPortrait={Boolean(heroPortraitFile) && selectedBookType !== 'story'}
+          sourceFileName={sourceFile?.name}
+          notice={sourceNotice}
+          suspended={Boolean(heroPortraitCrop) || isLoginRequiredModalOpen}
+          attachments={[
+            ...(heroPortraitFile && selectedBookType !== 'story' ? [{ id: 'portrait', file: heroPortraitFile, previewUrl: heroPortraitPreviewUrl || undefined }] : []),
+            ...(sourceFile ? [{ id: 'source', file: sourceFile }] : []),
+          ]}
+          onClose={() => { setComposerOpen(false); setAccentedBookType(null); }}
+          onAttach={event => {
+            setSourceNotice(null);
+            if (selectedBookType !== 'story' && event.target.files?.[0]?.type.startsWith('image/')) {
+              void handleHeroPortraitPick(event);
+            } else handleSourceFilePick(event);
+          }}
+          onRemoveAttachment={id => { setSourceNotice(null); if (id === 'portrait') clearHeroPortrait(); else clearSourceFile(); }}
+          onPlan={async context => {
+            setSourceNotice(null);
+            if (requireLoginForGeneration()) throw new Error(t('Kitap oluşturmak için giriş yapın.'));
+            return planBookCreation(context);
+          }}
+          onGenerate={handleCreateSmartBook}
+        />
 
         <FloatIslandSheet
           isOpen={Boolean(heroPortraitCrop)}
@@ -4670,6 +4896,13 @@ export default function HomeView({
               : t('İndir');
         const selectedCover = selectedHomeCourse.deviceCoverImageUrl || selectedHomeCourse.coverImageUrl;
         const selectedCanDelete = canDeleteCourse ? canDeleteCourse(selectedHomeCourse) : true;
+        const selectedLanguageName = getLocalizedLanguageName(
+          selectedHomeCourse.languageLearning?.targetLanguage || selectedHomeCourse.language,
+          locale
+        );
+        const selectedLanguageDisplayString = selectedHomeCourse.languageLearning
+          ? `${t('Dil öğrenme kitabı')} · ${selectedLanguageName} ${selectedHomeCourse.languageLearning.cefrLevel}`
+          : selectedLanguageName;
 
         return (
           <FloatIslandSheet
@@ -4721,7 +4954,12 @@ export default function HomeView({
             )}
           >
             <div className="flex gap-4">
-              <div className="w-[126px] shrink-0">
+              <button
+                type="button"
+                onClick={() => selectedCover && setFullscreenCover({ src: selectedCover, title: selectedHomeCourse.topic })}
+                className="w-[126px] shrink-0 cursor-zoom-in text-left transition-transform active:scale-95"
+                aria-label={t('Kapağı tam ekran gör')}
+              >
                 <span className="fortale-book-list-cover-media">
                   {selectedCover ? (
                     <img src={selectedCover} alt={selectedHomeCourse.topic} />
@@ -4729,12 +4967,12 @@ export default function HomeView({
                     <span className="fortale-home-rail-cover-empty"><BookOpen size={28} /></span>
                   )}
                 </span>
-              </div>
+              </button>
               <div className="min-w-0 flex-1 space-y-2 text-[11px] leading-5 text-white">
                 <span className="inline-flex rounded-full border border-white/15 bg-white/[0.08] px-2.5 py-1 text-[9px] font-black text-white">
                   {t(bookTypeToLabel(selectedHomeCourse.bookType))}
                 </span>
-                {selectedHomeCourse.language && <p>{selectedHomeCourse.language}</p>}
+                {selectedLanguageDisplayString && <p className="text-white/90">{selectedLanguageDisplayString}</p>}
                 {selectedHomeCourse.subGenre && <p>{t(selectedHomeCourse.subGenre)}</p>}
                 <p>{selectedHomeCourse.nodes.length} {t('bölüm')}</p>
               </div>
@@ -4748,6 +4986,23 @@ export default function HomeView({
           </FloatIslandSheet>
         );
       })()}
+
+      <FloatIslandSheet
+        isOpen={Boolean(fullscreenCover)}
+        onClose={() => setFullscreenCover(null)}
+        title={fullscreenCover?.title || t('Kapak Görseli')}
+        layer={1200}
+        maxWidth={520}
+        panelClassName="fortale-cover-preview-sheet"
+      >
+        {fullscreenCover && (
+          <img
+            src={fullscreenCover.src}
+            alt={fullscreenCover.title}
+            className="fortale-cover-preview-image"
+          />
+        )}
+      </FloatIslandSheet>
 
       <FloatIslandSheet
         isOpen={courseDeleteModal.isOpen}

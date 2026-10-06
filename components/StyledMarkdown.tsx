@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { createPortal } from 'react-dom';
 import remarkGfm from 'remark-gfm';
@@ -8,6 +8,7 @@ import { Download, X } from 'lucide-react';
 import { downloadFile } from '../utils/fileDownload';
 import { extractStandaloneMarkdownImages, normalizeMarkdownNarrativeLayout } from '../utils/markdownLayout';
 import { useUiI18n } from '../i18n/uiI18n';
+import type { ReadingPosition } from '../utils/readingProgressModel';
 import 'katex/dist/katex.min.css';
 
 interface StyledMarkdownProps {
@@ -19,6 +20,9 @@ interface StyledMarkdownProps {
   preserveImageAspectRatio?: boolean;
   readerMode?: 'default' | 'fairytale-fullscreen' | 'paged-fullscreen';
   fullscreenFontScale?: number;
+  readingSections?: MarkdownImageSection[];
+  initialReadingPosition?: ReadingPosition;
+  onReadingPosition?: (position: ReadingPosition) => void;
 }
 
 const MATH_COMMAND_RE = /\\(?:sum|prod|vec|frac|sqrt|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|phi|omega|Delta|Sigma|Pi|Omega|times|cdot|div|pm|mp|neq|ne|leq|geq|approx|sim|to|rightarrow|leftarrow|infty|in|notin|subseteq|subset|supseteq|cup|cap|forall|exists|therefore|because)\b/;
@@ -576,7 +580,10 @@ export default function StyledMarkdown({
   enableImageLightbox = true,
   preserveImageAspectRatio = false,
   readerMode = 'default',
-  fullscreenFontScale = 1
+  fullscreenFontScale = 1,
+  initialReadingPosition,
+  readingSections,
+  onReadingPosition
 }: StyledMarkdownProps) {
   const { t } = useUiI18n();
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
@@ -603,8 +610,13 @@ export default function StyledMarkdown({
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const pagedViewportRef = useRef<HTMLDivElement | null>(null);
   const pagedTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const [pagedSectionIndex, setPagedSectionIndex] = useState(0);
+  const [pagedSectionIndex, setPagedSectionIndex] = useState(initialReadingPosition?.sourceIndex || 0);
   const [pagedPageIndex, setPagedPageIndex] = useState(0);
+  const [turnDirection, setTurnDirection] = useState<'forward' | 'backward' | null>(null);
+  const savedOffset = useRef(initialReadingPosition?.contentStartOffset || 0);
+  const layoutSignature = useRef('');
+  const expectedPage = useRef<number | null>(null);
+  const positionCallback = useRef(onReadingPosition); positionCallback.current=onReadingPosition;
   const [pagedSectionPageCounts, setPagedSectionPageCounts] = useState<Record<number, number>>({});
   const [pagedViewportWidth, setPagedViewportWidth] = useState(0);
   const [pagedViewportHeight, setPagedViewportHeight] = useState(0);
@@ -645,6 +657,7 @@ export default function StyledMarkdown({
   );
   const isPagedReader = readerMode === 'fairytale-fullscreen' || readerMode === 'paged-fullscreen';
   const pagedSections = useMemo<MarkdownImageSection[]>(() => {
+    if (readingSections?.length) return readingSections;
     if (readerMode === 'fairytale-fullscreen' && fullscreenImageSections.length > 0) {
       return fullscreenImageSections;
     }
@@ -653,7 +666,7 @@ export default function StyledMarkdown({
       imageAlt: '',
       markdown: safeContent
     }];
-  }, [fullscreenImageSections, readerMode, safeContent]);
+  }, [fullscreenImageSections, readerMode, safeContent, readingSections]);
   const activePagedSection = pagedSections[Math.min(pagedSectionIndex, Math.max(0, pagedSections.length - 1))] || pagedSections[0];
   const totalPagedSections = Math.max(1, pagedSections.length);
   const estimatePagedSectionCount = (section: MarkdownImageSection): number => {
@@ -683,6 +696,7 @@ export default function StyledMarkdown({
   };
 
   const goToPagedNext = () => {
+    setTurnDirection('forward');
     setPagedPageIndex((current) => {
       if (current < activePagedPageCount - 1) return current + 1;
       if (pagedSectionIndex < pagedSections.length - 1) {
@@ -694,6 +708,7 @@ export default function StyledMarkdown({
   };
 
   const goToPagedPrevious = () => {
+    setTurnDirection('backward');
     setPagedPageIndex((current) => {
       if (current > 0) return current - 1;
       if (pagedSectionIndex > 0) {
@@ -706,8 +721,8 @@ export default function StyledMarkdown({
 
   useEffect(() => {
     if (!isPagedReader) return;
-    setPagedSectionIndex(0);
-    setPagedPageIndex(0);
+    setPagedSectionIndex(Math.min(pagedSections.length-1,Math.max(0,initialReadingPosition?.sourceIndex || 0)));
+    setPagedPageIndex(0); savedOffset.current=initialReadingPosition?.contentStartOffset || 0;layoutSignature.current='';
     setPagedSectionPageCounts({});
   }, [isPagedReader, safeContent]);
 
@@ -729,6 +744,7 @@ export default function StyledMarkdown({
   useEffect(() => {
     if (!isPagedReader) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
         event.preventDefault();
         goToPagedNext();
@@ -761,6 +777,33 @@ export default function StyledMarkdown({
     ));
     setPagedPageIndex((current) => Math.min(current, activePagedPageCount - 1));
   }, [activePagedPageCount, isPagedReader, pagedSectionIndex]);
+
+  useLayoutEffect(() => {
+    if (!isPagedReader || !pagedViewportWidth || !pagedViewportHeight) return;
+    const signature=`${pagedViewportWidth}:${pagedViewportHeight}:${readerScale}`;
+    if (signature===layoutSignature.current) return;
+    layoutSignature.current=signature;
+    let offset=0, target=0;
+    activePagedPages.forEach((chunk,index)=>{if(offset<=savedOffset.current) target=index;offset+=chunk.length+2;});
+    expectedPage.current=target; setPagedPageIndex(target);
+  },[isPagedReader,pagedViewportWidth,pagedViewportHeight,readerScale,activePagedPages]);
+  useEffect(()=>{
+    if(!isPagedReader || !pagedViewportWidth || !pagedViewportHeight || pagedPageIndex===9999) return;
+    if(expectedPage.current!==null && pagedPageIndex!==expectedPage.current) return;
+    expectedPage.current=null;
+    const index=Math.min(pagedPageIndex,activePagedPageCount-1);
+    const offset=activePagedPages.slice(0,index).reduce((sum,chunk)=>sum+chunk.length+2,0);
+    savedOffset.current=offset;
+    const weights=pagedSections.map(section=>Math.max(1,section.markdown.length));
+    const total=weights.reduce((a,b)=>a+b,0);
+    const before=weights.slice(0,pagedSectionIndex).reduce((a,b)=>a+b,0);
+    const counts=pagedSections.map(section=>estimatePagedSectionCount(section));
+    positionCallback.current?.({sourceIndex:pagedSectionIndex,contentStartOffset:offset,
+      pageIndex:counts.slice(0,pagedSectionIndex).reduce((a,b)=>a+b,0)+index,pageCount:counts.reduce((a,b)=>a+b,0),
+      rangeStart:(before+Math.min(weights[pagedSectionIndex],offset))/total,
+      rangeEnd:(before+(index===activePagedPageCount-1 ? weights[pagedSectionIndex] : Math.min(weights[pagedSectionIndex],offset+(activePagedPages[index]?.length || 0)+2)))/total,
+      isLast:pagedSectionIndex===pagedSections.length-1 && index===activePagedPageCount-1,fontScale:readerScale});
+  },[isPagedReader,pagedSectionIndex,pagedPageIndex,activePagedPages,pagedViewportWidth,pagedViewportHeight,readerScale]);
 
   useEffect(() => {
     if (!lightboxImage) return;
@@ -1172,7 +1215,7 @@ export default function StyledMarkdown({
                   setLightboxImage({ src: safeSrc, alt: safeAlt });
                 }}
                 title={enableImageLightbox ? t('Tam ekran aç') : undefined}
-                className={`my-4 block w-full border border-white/10 bg-black/20 transition-opacity ${
+                className={`my-4 block w-full border-0 bg-transparent transition-opacity ${
                   preserveImageAspectRatio
                     ? 'h-auto max-h-[70dvh] object-contain'
                     : 'aspect-[16/9] min-h-[210px] object-cover'
@@ -1190,7 +1233,7 @@ export default function StyledMarkdown({
   };
 
   const renderInlineImage = (src: string, alt: string, heightClass: string, options?: { bare?: boolean }) => (
-    <div className={options?.bare ? 'w-full' : 'w-full overflow-hidden border border-white/10 bg-black/20 shadow-[0_18px_40px_rgba(0,0,0,0.24)]'}>
+    <div className="w-full">
       <img
         src={src}
         alt={alt}
@@ -1202,7 +1245,7 @@ export default function StyledMarkdown({
           setLightboxImage({ src, alt });
         }}
         title={enableImageLightbox ? t('Tam ekran aç') : undefined}
-        className={`block w-full ${preserveImageAspectRatio ? 'h-auto max-h-[70dvh] object-contain' : `object-cover ${heightClass}`} ${options?.bare ? '' : 'bg-black/20'} transition-opacity ${
+        className={`block w-full bg-transparent ${preserveImageAspectRatio ? 'h-auto max-h-[70dvh] object-contain' : `object-cover ${heightClass}`} transition-opacity ${
           enableImageLightbox ? 'cursor-zoom-in hover:opacity-95' : ''
         }`}
       />
@@ -1267,7 +1310,7 @@ export default function StyledMarkdown({
             onTouchEnd={handlePagedTouchEnd}
           >
             {hasHeroImage && (
-              <div className="smartbook-paged-hero h-[30%] min-h-[172px] overflow-hidden rounded-[24px]">
+              <div className="smartbook-paged-hero h-[30%] min-h-[172px]">
                 <img
                   key={activePagedSection.imageSrc}
                   src={activePagedSection.imageSrc}
@@ -1285,7 +1328,7 @@ export default function StyledMarkdown({
               </div>
             )}
 
-            <div className={`${hasHeroImage ? 'h-[calc(70%-30px)]' : 'h-[calc(100%-30px)]'} relative mt-3 overflow-hidden px-0`}>
+            <div className={`${hasHeroImage ? 'h-[calc(70%-30px)] mt-2' : 'h-[calc(100%-30px)] mt-0'} relative overflow-hidden px-0`}>
               <button
                 type="button"
                 onClick={goToPagedPrevious}
@@ -1303,6 +1346,7 @@ export default function StyledMarkdown({
               <div ref={pagedViewportRef} className="h-full overflow-hidden px-1">
                 <div
                   key={`${pagedSectionIndex}-${clampedPageIndex}`}
+                  data-turn-direction={turnDirection || undefined}
                   className="smartbook-paged-reader-content smartbook-paged-page h-full overflow-hidden pr-1 text-left"
                 >
                   {currentPagedMarkdown.trim()

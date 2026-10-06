@@ -15,41 +15,7 @@ export const SMARTBOOK_BOOK_TYPE_OPTIONS: Array<{
     { value: 'novel', label: 'Hikaye', hint: 'Uzun anlatı, karakter ve dünya derinliği' }
   ];
 
-export const SMARTBOOK_SUBGENRE_OPTIONS: Record<SmartBookBookType, string[]> = {
-  fairy_tale: [
-    'Klasik',
-    'Modern',
-    'Macera',
-    'Mitolojik',
-    'Fantastik',
-    'Eğitici',
-    'Kültürel',
-    'Bilimkurgu'
-  ],
-  story: [
-    'Bilimsel',
-    'Genel Kültür',
-    'Ders Kitabı',
-    'Araştırma'
-  ],
-  novel: [
-    'Fantastik',
-    'Bilimkurgu',
-    'Macera',
-    'Gizem / Polisiye',
-    'Dram',
-    'Romantik',
-    'Korku',
-    'Tarihi',
-    'Gerilim',
-    'Mitolojik',
-    'Kültürel',
-    'Modern',
-    'Gençlik',
-    'Süper Kahraman',
-    'Alternatif Dünya'
-  ]
-};
+export { BOOK_SUBGENRE_OPTIONS as SMARTBOOK_SUBGENRE_OPTIONS } from '../functions/src/bookTaxonomy';
 
 const STORY_NOVEL_THEME_OPTIONS: Record<string, string[]> = {
   Fantastik: [

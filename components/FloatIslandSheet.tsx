@@ -1,8 +1,10 @@
-import React, { useEffect, useId } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
 import FLogo from './FLogo';
+import { composerViewport } from '../utils/composerViewport';
+import { NativeFloatIsland, supportsNativeFloatIsland, type NativeKeyboardState } from '../utils/nativeFloatIsland';
 
 interface FloatIslandSheetProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ interface FloatIslandSheetProps {
   showHeader?: boolean;
   showCloseButton?: boolean;
   showLogo?: boolean;
+  keyboardAware?: boolean;
   logoSize?: number;
   panelClassName?: string;
   bodyClassName?: string;
@@ -38,6 +41,7 @@ export default function FloatIslandSheet({
   showHeader = true,
   showCloseButton = true,
   showLogo = true,
+  keyboardAware = false,
   logoSize = 28,
   panelClassName = '',
   bodyClassName = 'p-4 sm:p-5',
@@ -45,6 +49,7 @@ export default function FloatIslandSheet({
 }: FloatIslandSheetProps) {
   const { t } = useUiI18n();
   const titleId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,12 +65,50 @@ export default function FloatIslandSheet({
     };
   }, [closeDisabled, isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen || !keyboardAware) return;
+    const fullHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+    let nativeKeyboard: NativeKeyboardState | undefined;
+    let keyboardListener: { remove: () => Promise<void> } | undefined;
+    let active = true;
+    const resize = () => {
+      const viewport = window.visualViewport;
+      const geometry = composerViewport(fullHeight, viewport?.height || window.innerHeight, viewport?.offsetTop || 0, nativeKeyboard);
+      const root = rootRef.current;
+      if (!root) return;
+      root.dataset.keyboard = String(geometry.keyboard);
+      root.style.setProperty('--fortale-sheet-viewport-height', `${geometry.height}px`);
+      root.style.setProperty('--fortale-sheet-viewport-top', `${geometry.top}px`);
+    };
+    resize();
+    window.visualViewport?.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('scroll', resize);
+    window.addEventListener('resize', resize);
+    if (supportsNativeFloatIsland()) {
+      void NativeFloatIsland.addListener('keyboardGeometry', state => {
+        if (active) { nativeKeyboard = state; resize(); }
+      }).then(async listener => {
+        if (!active) { void listener.remove(); return; }
+        keyboardListener = listener;
+        const state = await NativeFloatIsland.getKeyboardState();
+        if (active) { nativeKeyboard = state; resize(); }
+      }).catch(() => { /* VisualViewport remains the fallback. */ });
+    }
+    return () => {
+      active = false;
+      void keyboardListener?.remove();
+      window.visualViewport?.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('scroll', resize);
+      window.removeEventListener('resize', resize);
+    };
+  }, [isOpen, keyboardAware]);
+
   if (!isOpen || typeof document === 'undefined') return null;
 
   const resolvedMaxWidth = typeof maxWidth === 'number' ? `${maxWidth}px` : maxWidth;
 
   return createPortal(
-    <div className="fortale-floatisland-sheet-root fixed inset-0 flex items-end justify-center bg-black/68 backdrop-blur-sm" style={{ zIndex: layer }}>
+    <div ref={rootRef} className="fortale-floatisland-sheet-root fixed inset-0 flex items-end justify-center bg-black/68 backdrop-blur-sm" style={{ zIndex: layer }}>
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -110,7 +153,6 @@ export default function FloatIslandSheet({
         )}
         <div className={`fortale-sheet-body min-h-0 flex-1 overflow-y-auto ${bodyClassName}`}>{children}</div>
         {footer && <footer className="fortale-sheet-footer">{footer}</footer>}
-        <div className="fortale-sheet-island-clearance" aria-hidden="true" />
       </section>
     </div>,
     document.body

@@ -47,7 +47,7 @@ private final class ReaderChromeView: UIView {
             blurView.effect = UIBlurEffect(style: .systemUltraThinMaterialLight)
             contentView.backgroundColor = UIColor(red: 0.72, green: 0.58, blue: 0.40, alpha: 0.025)
             layer.borderColor = UIColor.black.withAlphaComponent(0.055).cgColor
-        case .light:
+        case .light, .pink, .blue:
             blurView.effect = UIBlurEffect(style: .systemUltraThinMaterialLight)
             contentView.backgroundColor = UIColor.white.withAlphaComponent(0.025)
             layer.borderColor = UIColor.black.withAlphaComponent(0.05).cgColor
@@ -63,11 +63,19 @@ public class NativeReaderViewController: UIViewController,
     public let bookTitle: String
     public let bookType: String
     public let sourcePages: [BookPageData]
+    public var onPosition: (([String: Any]) -> Void)?
+    private var initialSourceIndex: Int?
+    private var initialContentOffset: Int
+    private var progressTimer: Timer?
+    private var foregroundObserver: NSObjectProtocol?
+    private var readerVisible = false
+    private var sourceWeights: [Int] = []
     public var onDismiss: ((Int) -> Void)?
 
     private var pages: [BookPageData]
     private var pageViewController: UIPageViewController!
     private var currentPageIndex: Int = 0
+    private var initialRenderedPageIndex: Int?
     private var currentTheme: ReaderTheme = .sepia
     private var fontScale: CGFloat = 1.0
     private var lastPaginationSize: CGSize = .zero
@@ -81,18 +89,42 @@ public class NativeReaderViewController: UIViewController,
     private let closeButton = UIButton(type: .system)
     private let bookTitleLabel = UILabel()
     private let themeButton = UIButton(type: .system)
+    private let downloadButton = UIButton(type: .system)
     private let fontDecreaseButton = UIButton(type: .system)
     private let fontIncreaseButton = UIButton(type: .system)
     private let pageSlider = UISlider()
     private let pageIndicatorLabel = UILabel()
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .light)
+    private var companion: ReaderCompanionView?
+    private let listenButton = UIButton(type: .system)
+    private let musicButton = UIButton(type: .system)
+    private let narration: ReaderNarrationPlayer
+    private let startListening: Bool
+    private var narrationEnabled = false
+    private var narrationPageIndex: Int?
+    private var narrationAdvance: DispatchWorkItem?
+    private var isUserTransition = false
+    private var isClosing = false
+    private var previousIdleTimerDisabled: Bool?
+    private var backgroundObserver: NSObjectProtocol?
+    private var didAttemptAutoPlay = false
+    public private(set) var closeAction = "close"
+    public var themeValue: String { currentTheme.rawValue }
+    public var fontScaleValue: Double { Double(fontScale) }
+    private var isFairyTale: Bool { bookType == "fairy_tale" || bookType == "fairy-tale" }
+
 
     public init(
         title: String,
         bookType: String,
         pages: [BookPageData],
         initialPageIndex: Int = 0,
-        initialTheme: String = "sepia"
+        initialTheme: String = "sepia",
+        autoPlay: Bool = false,
+        backgroundAudioSrc: String? = nil,
+        initialFontScale: Double = 1,
+        initialSourceIndex: Int? = nil,
+        initialContentOffset: Int = 0
     ) {
         let fallback = BookPageData(
             pageNumber: 1,
@@ -100,11 +132,17 @@ public class NativeReaderViewController: UIViewController,
             contentHtml: "<p>İçerik yüklenemedi.</p>"
         )
         let safePages = pages.isEmpty ? [fallback] : pages
+        self.narration = ReaderNarrationPlayer(backgroundSource: backgroundAudioSrc)
+        self.startListening = autoPlay
         self.bookTitle = title
         self.bookType = bookType
         self.sourcePages = safePages
         self.pages = safePages
         self.currentPageIndex = min(max(0, initialPageIndex), safePages.count - 1)
+        self.initialSourceIndex = initialSourceIndex
+        self.initialContentOffset = initialContentOffset
+        self.initialRenderedPageIndex = max(0, initialPageIndex)
+        self.fontScale = CGFloat(min(1.5, max(0.8, initialFontScale)))
         self.currentTheme = ReaderTheme(rawValue: initialTheme) ?? .sepia
         super.init(nibName: nil, bundle: nil)
     }
@@ -130,16 +168,60 @@ public class NativeReaderViewController: UIViewController,
         view.backgroundColor = currentTheme.backgroundColor
         setupPageViewController()
         setupOverlayControls()
+        if let file = Bundle.main.url(forResource: "fortale-companion-reader", withExtension: "html", subdirectory: "public") {
+            let friend = ReaderCompanionView(file: file)
+            view.addSubview(friend)
+            friend.onStatistics = { [weak self] in self?.closeReader(action: "readingStats") }
+            companion = friend
+        }
         setupGestureRecognizers()
         updateControlsTheme()
         updatePageIndicator()
         feedbackGenerator.prepare()
+        sourceWeights = sourcePages.map { max(1, BookPagePaginator.makeAttributedContent(from: $0, theme: currentTheme, fontScale: fontScale).length) }
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in self?.reportPosition() }
+        foregroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.reportPosition() }
+        backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.reportPosition(active: false); self?.pauseNarration()
+        }
+        if isFairyTale {
+            narration.onState = { [weak self] state in self?.updateListenControl(state: state) }
+            narration.onEnded = { [weak self] in self?.scheduleNarrationAdvance() }
+            narration.onFailure = { [weak self] in
+                guard let self, !self.isClosing else { return }
+                self.pauseNarration()
+                let alert = UIAlertController(title: "Ses yüklenemedi", message: "Sayfayı değiştirmeden yeniden deneyebilirsin.", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Tamam", style: .default))
+                self.present(alert, animated: true)
+            }
+            narration.onInterrupted = { [weak self] in self?.pauseNarration() }
+
+        }
+    }
+
+    deinit {
+        narrationAdvance?.cancel()
+        progressTimer?.invalidate()
+        if let observer = foregroundObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = backgroundObserver { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        readerVisible = true
+        reportPosition()
+        if isFairyTale && startListening && !didAttemptAutoPlay {
+            didAttemptAutoPlay = true
+            narrationEnabled = true
+            playCurrentNarration()
+        }
     }
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let size = view.bounds.size
         guard size.width > 0, size.height > 0 else { return }
+        companion?.dock(in: CGRect(x: bottomBarView.frame.minX + 4, y: bottomBarView.frame.minY + 6, width: 50, height: 56))
         if abs(size.width - lastPaginationSize.width) > 1 ||
             abs(size.height - lastPaginationSize.height) > 1 {
             repaginate(force: true)
@@ -200,9 +282,33 @@ public class NativeReaderViewController: UIViewController,
         fontIncreaseButton.addTarget(self, action: #selector(handleFontIncrease), for: .touchDown)
         topContent.addSubview(fontIncreaseButton)
 
-        configureButton(themeButton, title: "◐", fontSize: 17)
-        themeButton.addTarget(self, action: #selector(handleCycleTheme), for: .touchDown)
+        configureButton(themeButton, title: "", fontSize: 17)
+        themeButton.setImage(UIImage(systemName: "paintpalette"), for: .normal)
+        themeButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .regular), forImageIn: .normal)
+        themeButton.accessibilityLabel = "Okuyucu zemini"
+        themeButton.showsMenuAsPrimaryAction = true
         topContent.addSubview(themeButton)
+        do {
+            downloadButton.translatesAutoresizingMaskIntoConstraints = false
+            downloadButton.addTarget(self, action: #selector(handleControlFeedback), for: .touchDown)
+            downloadButton.setImage(UIImage(systemName: "square.and.arrow.down"), for: .normal)
+            downloadButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .regular), forImageIn: .normal)
+            downloadButton.imageView?.contentMode = .scaleAspectFit
+            themeButton.imageView?.contentMode = .scaleAspectFit
+            downloadButton.accessibilityLabel = "İndir"
+            downloadButton.showsMenuAsPrimaryAction = true
+            downloadButton.menu = UIMenu(children: [
+                UIAction(title: "PDF indir") { [weak self] _ in self?.handleControlFeedback(); self?.closeReader(action: "downloadPDF") },
+                UIAction(title: "EPUB indir") { [weak self] _ in self?.handleControlFeedback(); self?.closeReader(action: "downloadEPUB") }
+            ])
+            topContent.addSubview(downloadButton)
+            NSLayoutConstraint.activate([
+                downloadButton.trailingAnchor.constraint(equalTo: topContent.trailingAnchor, constant: -8),
+                downloadButton.centerYAnchor.constraint(equalTo: topContent.centerYAnchor),
+                downloadButton.widthAnchor.constraint(equalToConstant: 40),
+                downloadButton.heightAnchor.constraint(equalToConstant: 40)
+            ])
+        }
 
         bottomBarView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottomBarView)
@@ -220,6 +326,29 @@ public class NativeReaderViewController: UIViewController,
         pageIndicatorLabel.textAlignment = .center
         pageIndicatorLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         bottomContent.addSubview(pageIndicatorLabel)
+        if isFairyTale {
+            for button in [listenButton, musicButton] {
+                button.translatesAutoresizingMaskIntoConstraints = false
+                bottomContent.addSubview(button)
+            }
+            listenButton.addTarget(self, action: #selector(handleListen), for: .touchUpInside)
+            musicButton.addTarget(self, action: #selector(handleMusic), for: .touchUpInside)
+            listenButton.addTarget(self, action: #selector(handleControlFeedback), for: .touchDown)
+            musicButton.addTarget(self, action: #selector(handleControlFeedback), for: .touchDown)
+            musicButton.setImage(UIImage(systemName: "speaker.wave.2.fill"), for: .normal)
+            musicButton.accessibilityLabel = "Fon müziğini kapat"
+            updateListenControl(state: "idle")
+            NSLayoutConstraint.activate([
+                listenButton.leadingAnchor.constraint(equalTo: bottomContent.leadingAnchor, constant: 54),
+                listenButton.bottomAnchor.constraint(equalTo: bottomContent.bottomAnchor, constant: -2),
+                listenButton.widthAnchor.constraint(equalToConstant: 42),
+                listenButton.heightAnchor.constraint(equalToConstant: 36),
+                musicButton.trailingAnchor.constraint(equalTo: bottomContent.trailingAnchor, constant: -6),
+                musicButton.bottomAnchor.constraint(equalTo: bottomContent.bottomAnchor, constant: -2),
+                musicButton.widthAnchor.constraint(equalToConstant: 42),
+                musicButton.heightAnchor.constraint(equalToConstant: 36)
+            ])
+        }
 
         let safeArea = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
@@ -233,7 +362,7 @@ public class NativeReaderViewController: UIViewController,
             closeButton.widthAnchor.constraint(equalToConstant: 40),
             closeButton.heightAnchor.constraint(equalToConstant: 40),
 
-            themeButton.trailingAnchor.constraint(equalTo: topContent.trailingAnchor, constant: -8),
+            themeButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -2),
             themeButton.centerYAnchor.constraint(equalTo: topContent.centerYAnchor),
             themeButton.widthAnchor.constraint(equalToConstant: 40),
             themeButton.heightAnchor.constraint(equalToConstant: 40),
@@ -258,12 +387,12 @@ public class NativeReaderViewController: UIViewController,
             bottomBarView.heightAnchor.constraint(equalToConstant: 68),
 
             pageSlider.topAnchor.constraint(equalTo: bottomContent.topAnchor, constant: 8),
-            pageSlider.leadingAnchor.constraint(equalTo: bottomContent.leadingAnchor, constant: 16),
+            pageSlider.leadingAnchor.constraint(equalTo: bottomContent.leadingAnchor, constant: 64),
             pageSlider.trailingAnchor.constraint(equalTo: bottomContent.trailingAnchor, constant: -16),
 
             pageIndicatorLabel.topAnchor.constraint(equalTo: pageSlider.bottomAnchor, constant: 3),
-            pageIndicatorLabel.leadingAnchor.constraint(equalTo: bottomContent.leadingAnchor, constant: 16),
-            pageIndicatorLabel.trailingAnchor.constraint(equalTo: bottomContent.trailingAnchor, constant: -16)
+            pageIndicatorLabel.leadingAnchor.constraint(equalTo: bottomContent.leadingAnchor, constant: isFairyTale ? 92 : 64),
+            pageIndicatorLabel.trailingAnchor.constraint(equalTo: bottomContent.trailingAnchor, constant: isFairyTale ? -48 : -16)
         ])
     }
 
@@ -285,6 +414,12 @@ public class NativeReaderViewController: UIViewController,
 
     public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let touchedView = touch.view else { return true }
+        if let companion = companion, touchedView.isDescendant(of: companion) { return false }
+        var ancestor: UIView? = touchedView
+        while let node = ancestor {
+            if let text = node as? UITextView, text.isScrollEnabled { return false }
+            ancestor = node.superview
+        }
         return !touchedView.isDescendant(of: topBarView) && !touchedView.isDescendant(of: bottomBarView)
     }
 
@@ -316,13 +451,20 @@ public class NativeReaderViewController: UIViewController,
         }
     }
 
+    @objc private func handleControlFeedback() {
+        feedbackGenerator.impactOccurred(intensity: 0.72)
+        feedbackGenerator.prepare()
+    }
+
     private func toggleControls() {
         areControlsHidden.toggle()
         topBarView.isUserInteractionEnabled = !areControlsHidden
         bottomBarView.isUserInteractionEnabled = !areControlsHidden
+        companion?.isUserInteractionEnabled = !areControlsHidden
         UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
             self.topBarView.alpha = self.areControlsHidden ? 0 : 1
             self.bottomBarView.alpha = self.areControlsHidden ? 0 : 1
+            self.companion?.alpha = self.areControlsHidden ? 0 : 1
             self.setNeedsStatusBarAppearanceUpdate()
         }
     }
@@ -335,17 +477,16 @@ public class NativeReaderViewController: UIViewController,
         fontDecreaseButton.tintColor = tint
         fontIncreaseButton.tintColor = tint
         themeButton.tintColor = tint
+        downloadButton.tintColor = tint
+        listenButton.tintColor = tint
+        musicButton.tintColor = tint
         pageSlider.minimumTrackTintColor = tint.withAlphaComponent(0.72)
         pageSlider.maximumTrackTintColor = currentTheme.secondaryTextColor.withAlphaComponent(0.22)
         pageIndicatorLabel.textColor = currentTheme.secondaryTextColor
         topBarView.apply(theme: currentTheme)
         bottomBarView.apply(theme: currentTheme)
 
-        switch currentTheme {
-        case .dark: themeButton.setTitle("☀️", for: .normal)
-        case .sepia: themeButton.setTitle("🌙", for: .normal)
-        case .light: themeButton.setTitle("📜", for: .normal)
-        }
+        updateThemeMenu()
         setNeedsStatusBarAppearanceUpdate()
     }
 
@@ -359,16 +500,17 @@ public class NativeReaderViewController: UIViewController,
         pageSlider.maximumValue = Float(max(0, total - 1))
         pageSlider.value = Float(currentPageIndex)
         pageSlider.isEnabled = total > 1
+        reportPosition()
     }
 
     private func repaginate(force: Bool) {
-        guard !isRepaginating, view.bounds.width > 0, view.bounds.height > 0 else { return }
+        guard !isRepaginating, !isProgrammaticTransition, !isUserTransition, view.bounds.width > 0, view.bounds.height > 0 else { return }
         let size = view.bounds.size
         if !force, size == lastPaginationSize { return }
         isRepaginating = true
 
         let anchor = (pageViewController.viewControllers?.first as? BookPageViewController)?.pageData
-        let paginated = BookPagePaginator.paginate(
+        let paginated = isFairyTale ? sourcePages : BookPagePaginator.paginate(
             sources: sourcePages,
             viewportSize: size,
             safeAreaInsets: view.safeAreaInsets,
@@ -378,7 +520,13 @@ public class NativeReaderViewController: UIViewController,
         pages = paginated
         lastPaginationSize = size
 
-        if let anchor {
+        if let source = initialSourceIndex {
+            currentPageIndex = pages.lastIndex(where: { $0.sourceIndex == source && $0.contentStartOffset <= initialContentOffset }) ?? 0
+            initialSourceIndex = nil; initialRenderedPageIndex = nil
+        } else if let requestedIndex = initialRenderedPageIndex {
+            currentPageIndex = min(requestedIndex, pages.count - 1)
+            initialRenderedPageIndex = nil
+        } else if let anchor {
             currentPageIndex = pages.lastIndex(where: {
                 $0.sourceIndex == anchor.sourceIndex &&
                 $0.contentStartOffset <= anchor.contentStartOffset
@@ -393,31 +541,71 @@ public class NativeReaderViewController: UIViewController,
         isRepaginating = false
     }
 
-    @objc private func handleClose() {
+    private func reportPosition(active: Bool? = nil) {
+        guard readerVisible, !isClosing, !pages.isEmpty, !sourceWeights.isEmpty else { return }
+        let page = pages[min(currentPageIndex, pages.count - 1)]
+        let source = min(max(0, page.sourceIndex), sourceWeights.count - 1)
+        let before = sourceWeights.prefix(source).reduce(0, +)
+        let total = max(1, sourceWeights.reduce(0, +))
+        let next = currentPageIndex + 1 < pages.count ? pages[currentPageIndex + 1] : nil
+        let end = next?.sourceIndex == source ? next!.contentStartOffset : sourceWeights[source]
+        onPosition?([
+            "sourceIndex": source, "contentStartOffset": page.contentStartOffset,
+            "pageIndex": currentPageIndex, "pageCount": pages.count,
+            "rangeStart": Double(before + page.contentStartOffset) / Double(total),
+            "rangeEnd": Double(before + end) / Double(total),
+            "isLast": currentPageIndex == pages.count - 1,
+            "theme": currentTheme.rawValue, "fontScale": Double(fontScale),
+            "active": active ?? (UIApplication.shared.applicationState == .active)
+        ])
+    }
+
+    @objc private func handleClose() { closeReader() }
+
+    public func closeReader(action: String = "close", completion: (() -> Void)? = nil) {
+        guard !isClosing else { completion?(); return }
+        reportPosition(active: false)
+        readerVisible = false
+        progressTimer?.invalidate()
+        isClosing = true
+        closeAction = action
+        pauseNarration()
+        narration.stop(deactivate: isFairyTale)
+        companion?.stopGame()
         dismiss(animated: true) { [weak self] in
-            guard let self else { return }
-            self.onDismiss?(self.currentPageIndex)
+            if let self { self.onDismiss?(self.currentPageIndex) }
+            completion?()
         }
     }
 
-    @objc private func handleCycleTheme() {
-        switch currentTheme {
-        case .sepia: currentTheme = .dark
-        case .dark: currentTheme = .light
-        case .light: currentTheme = .sepia
-        }
-        updateControlsTheme()
-        repaginate(force: true)
+    private func updateThemeMenu() {
+        let themes: [(ReaderTheme, String)] = [(.sepia, "Sepya"), (.light, "Açık"), (.dark, "Koyu"), (.pink, "Pembe"), (.blue, "Açık mavi")]
+        themeButton.accessibilityValue = themes.first(where: { $0.0 == currentTheme })?.1
+        themeButton.menu = UIMenu(title: "Okuyucu zemini", children: themes.map { theme, title in
+            let swatch = UIGraphicsImageRenderer(size: CGSize(width: 28, height: 28)).image { context in
+                let circle = CGRect(x: 3, y: 3, width: 22, height: 22)
+                theme.backgroundColor.setFill()
+                context.cgContext.fillEllipse(in: circle)
+                UIColor.gray.withAlphaComponent(0.5).setStroke()
+                context.cgContext.strokeEllipse(in: circle)
+            }.withRenderingMode(.alwaysOriginal)
+            return UIAction(title: title, image: swatch, state: theme == currentTheme ? .on : .off) { [weak self] _ in
+                guard let self, !self.isProgrammaticTransition, !self.isUserTransition, !self.isClosing else { return }
+                self.currentTheme = theme
+                self.updateControlsTheme()
+                self.repaginate(force: true)
+            }
+        })
     }
 
     @objc private func handleFontDecrease() {
-        guard fontScale > 0.80 else { return }
+        guard !isProgrammaticTransition, !isUserTransition, fontScale > 0.80 else { return }
         fontScale = max(0.80, fontScale - 0.10)
         repaginate(force: true)
     }
 
     @objc private func handleFontIncrease() {
-        guard fontScale < 1.50 else { return }
+        guard !isProgrammaticTransition, !isUserTransition, fontScale < 1.50 else { return }
         fontScale = min(1.50, fontScale + 0.10)
         repaginate(force: true)
     }
@@ -427,7 +615,7 @@ public class NativeReaderViewController: UIViewController,
     }
 
     private func navigate(to targetIndex: Int) {
-        guard !isProgrammaticTransition,
+        guard !isProgrammaticTransition, !isUserTransition, !isClosing,
               targetIndex >= 0,
               targetIndex < pages.count,
               targetIndex != currentPageIndex else {
@@ -435,18 +623,25 @@ public class NativeReaderViewController: UIViewController,
             return
         }
 
+        narrationAdvance?.cancel()
+        narrationAdvance = nil
+        narration.pause()
         let direction: UIPageViewController.NavigationDirection = targetIndex > currentPageIndex ? .forward : .reverse
         let targetVC = createPageViewController(for: targetIndex)
         isProgrammaticTransition = true
+        pageViewController.view.isUserInteractionEnabled = false
         pageViewController.setViewControllers([targetVC], direction: direction, animated: true) { [weak self] completed in
             guard let self else { return }
             self.isProgrammaticTransition = false
+            self.pageViewController.view.isUserInteractionEnabled = true
+            guard !self.isClosing else { return }
             if completed {
                 self.currentPageIndex = targetIndex
                 self.updatePageIndicator()
                 self.feedbackGenerator.impactOccurred(intensity: 0.55)
                 self.feedbackGenerator.prepare()
-            }
+                if self.narrationEnabled { self.playCurrentNarration() }
+            } else if self.narrationEnabled { self.resumeCurrentNarration() }
         }
     }
 
@@ -455,8 +650,15 @@ public class NativeReaderViewController: UIViewController,
         return BookPageViewController(
             pageData: pages[safeIndex],
             theme: currentTheme,
-            fontScale: fontScale
+            fontScale: fontScale,
+            preserveNarratedPage: isFairyTale
         )
+    }
+
+    public func pageViewController(_ pageViewController: UIPageViewController, willTransitionTo pendingViewControllers: [UIViewController]) {
+        isUserTransition = true
+        narrationAdvance?.cancel(); narrationAdvance = nil
+        narration.pause()
     }
 
     public func pageViewController(
@@ -485,11 +687,97 @@ public class NativeReaderViewController: UIViewController,
         previousViewControllers: [UIViewController],
         transitionCompleted completed: Bool
     ) {
-        guard completed,
-              let currentVC = pageViewController.viewControllers?.first as? BookPageViewController else { return }
+        isUserTransition = false
+        guard !isClosing else { return }
+        guard completed else {
+            if narrationEnabled { resumeCurrentNarration() }
+            return
+        }
+        guard let currentVC = pageViewController.viewControllers?.first as? BookPageViewController else { return }
         currentPageIndex = currentVC.pageData.pageNumber - 1
+        if narrationEnabled { playCurrentNarration() }
         updatePageIndicator()
         feedbackGenerator.impactOccurred(intensity: 0.55)
         feedbackGenerator.prepare()
     }
+    private func setScreenAwake(_ awake: Bool) {
+        if awake {
+            if previousIdleTimerDisabled == nil { previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled }
+            UIApplication.shared.isIdleTimerDisabled = true
+        } else if let previous = previousIdleTimerDisabled {
+            UIApplication.shared.isIdleTimerDisabled = previous
+            previousIdleTimerDisabled = nil
+        }
+    }
+
+    private func updateListenControl(state: String) {
+        listenButton.setImage(UIImage(systemName: narrationEnabled ? "pause.fill" : "play.fill"), for: .normal)
+        listenButton.accessibilityLabel = narrationEnabled ? "Sesli okumayı duraklat" : "Dinle"
+        listenButton.accessibilityValue = state == "loading" ? "Ses yükleniyor" : nil
+    }
+
+    @objc private func handleMusic() {
+        narration.musicEnabled.toggle()
+        musicButton.setImage(UIImage(systemName: narration.musicEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill"), for: .normal)
+        musicButton.accessibilityLabel = narration.musicEnabled ? "Fon müziğini kapat" : "Fon müziğini aç"
+    }
+
+    @objc private func handleListen() {
+        guard !isProgrammaticTransition, !isUserTransition, !isClosing else { return }
+        if narrationEnabled { pauseNarration(); return }
+        narrationEnabled = true
+        setScreenAwake(true)
+        resumeCurrentNarration()
+    }
+
+    private func pauseNarration() {
+        narrationEnabled = false
+        narrationAdvance?.cancel(); narrationAdvance = nil
+        narration.pause(deactivate: isFairyTale)
+        setScreenAwake(false)
+        updateListenControl(state: "paused")
+    }
+
+    private func resumeCurrentNarration() {
+        if narrationPageIndex != currentPageIndex { playCurrentNarration() }
+        else if narration.atEnd && currentPageIndex < pages.count - 1 { scheduleNarrationAdvance() }
+        else if narration.canResume { narration.resume() }
+        else { playCurrentNarration() }
+    }
+
+    private func playCurrentNarration() {
+        guard narrationEnabled, !isClosing else { return }
+        setScreenAwake(true)
+        narration.stop(deactivate: false)
+        narrationPageIndex = nil
+        guard let source = pages[currentPageIndex].audioSrc, !source.isEmpty else {
+            pauseNarration()
+            let alert = UIAlertController(title: "Seslendirme hazır değil", message: "Bu masalın sesli sürümünü hazırlayabilirsin.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "İptal", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Sesli sürümü hazırla", style: .default) { [weak self] _ in self?.closeReader(action: "prepareNarration") })
+            present(alert, animated: true)
+            return
+        }
+        narrationPageIndex = currentPageIndex
+        narration.play(source)
+        if currentPageIndex + 1 < pages.count { narration.prefetch(pages[currentPageIndex + 1].audioSrc) }
+    }
+
+    private func scheduleNarrationAdvance() {
+        guard narrationEnabled, !isClosing else { return }
+        narrationAdvance?.cancel()
+        guard currentPageIndex < pages.count - 1 else {
+            pauseNarration(); narration.stop(); return
+        }
+        let expectedPage = currentPageIndex
+        let task = DispatchWorkItem { [weak self] in
+            guard let self, self.narrationEnabled, !self.isClosing,
+                  !self.isUserTransition, self.currentPageIndex == expectedPage else { return }
+            self.narrationAdvance = nil
+            self.navigate(to: expectedPage + 1)
+        }
+        narrationAdvance = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: task)
+    }
+
 }

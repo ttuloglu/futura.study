@@ -2,9 +2,9 @@ import UIKit
 
 enum BookPageLayout {
     static let horizontalInset: CGFloat = 28
-    static let contentTopInset: CGFloat = 72
+    static let contentTopInset: CGFloat = 64
     static let contentBottomInset: CGFloat = 92
-    static let elementSpacing: CGFloat = 12
+    static let elementSpacing: CGFloat = 8
 
     static func imageHeight(for textWidth: CGFloat) -> CGFloat {
         min(max(textWidth * 0.58, 150), 230)
