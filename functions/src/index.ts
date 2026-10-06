@@ -2659,8 +2659,8 @@ function buildNarrativeTitleDirection(
 
 function buildNarrativeContentAutonomyDirective(isEn: boolean): string {
   return isEn
-    ? "Content autonomy: never force a preset topic from system/backend text. Build the narrative only from selected type/subgenre/page goals and user-provided inputs; if details are sparse, choose an original topic freely."
-    : "Icerik ozerkligi: sistem/backend tarafindan onceden belirlenmis bir konu dayatma. Anlatiyi sadece secilen tur/alt tur/sayfa hedefi ve kullanici girdileriyle kur; detay azsa konuyu ozgun bicimde serbest sec.";
+    ? "Content autonomy & originality: Never force a preset or repetitive topic from backend text. If the user provided a specific topic, strictly adhere to and develop that topic. If the creative direction was left to AI, invent a completely original, imaginative premise tailored to the chosen subgenre and characters. STRICT ANTI-CLICHE RULE: Never default to repetitive tropes such as train stations, ticking clocks, pocket watches, magical attic chests, or antique shops. Every book must feature fresh, unique worlds, distinct dilemmas, and creative storytelling."
+    : "İçerik özerkliği ve özgünlük: Asla sistem tarafından belirlenmiş veya tekrarlayan bir konu dayatma. Kullanıcı belirli bir konu girdiyse kesinlikle o konuya sadık kal ve onu geliştir. Yaratıcı yön AI'ya bırakıldıysa, seçilen alt tür ve karakterlere uygun tamamen özgün, taze ve yaratıcı bir olay örgüsü kur. KESİNLİKLE KLİŞE YASAĞI: Tren istasyonları, saatler, cep saatleri, tavan arası sandıkları veya antika dükkanları gibi kendini tekrar eden klişelere ASLA düşme. Her kitap tamamen özgün dünyalar, taze çatışmalar ve zengin karakter motivasyonları barındırmalıdır.";
 }
 
 function buildNarrativeSubGenreLiteraryDirective(
@@ -7956,7 +7956,7 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
   const bookTitleRule = lockUserProvidedBookTitle
     ? "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını aynen koru."
     : isForeignOrLanguageLearning
-      ? `11) bookTitle alanı KESİNLİKLE ${preferredLanguage === "en" ? "İngilizce" : preferredLanguage} dilinde, 2-4 kelimelik özgün, doğal ve çarpıcı bir KİTAP ADI olmalı (Örn: "The Quiet Station", "Whispers of the Forest"). KESİNLİKLE Türkçe açıklama, özet cümlesi, karakter listesi veya konu girdisini ("Tırgay, eski bir tren...") kitap adı yapma!`
+      ? `11) bookTitle alanı KESİNLİKLE ${preferredLanguage === "en" ? "İngilizce" : preferredLanguage} dilinde, 2-4 kelimelik özgün, doğal ve çarpıcı bir KİTAP ADI olmalı. KESİNLİKLE açıklama cümlesi, özet, karakter listesi veya ham konu girdisini kitap adı yapma!`
       : isWorkbookPrompt
         ? "11) bookTitle alanını AI üretmeli: konu girdisini kitap adı sanma veya aynen kopyalama. Yalnızca yazım hatalarını düzeltip konu girdisini yeniden sunma. Konunun özünü taşıyan, özgün, doğal ve profesyonel bir eğitim kitabı adı yaz; kategori etiketi, 'Çalışma Kitabı', 'Rehber', 'Workbook' veya 'Guide' gibi jenerik eklerle yetinme."
         : isNarrativePrompt
@@ -7966,7 +7966,7 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
             : "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını koru.";
 
   const prompt = `
-${normalizedTopic ? `"${normalizedTopic}" konusu için yapılandırılmış bir öğrenme yolu oluştur.` : "Kullanıcı konu başlığı belirtmedi. Sadece seçilen tür/alt tür/yaş grubu/karakter ve diğer brief alanlarına göre özgün bir akış oluştur."}
+${normalizedTopic ? `"${normalizedTopic}" konusu için yapılandırılmış bir öğrenme yolu oluştur. Kullanıcının konu, karakter ve fikir tercihlerine kesinlikle sadık kal.` : `Kullanıcı konu başlığı belirtmedi (Fortale'ye bıraktı). Seçilen alt tür (${normalizedBrief.subGenre || 'Genel'}) ve karakterlere göre tamamen ÖZGÜN, taze, sürükleyici ve yaratıcı bir akış oluştur. KESİNLİKLE İSTASYON, TREN, SAAT GİBİ TEKRAR EDEN KLİŞELERE GİRME; taze ve büyüleyici bir dünya kur.`}
 ${sourceBlock}
 ${outlineAudienceInstruction}
 ${languageInstruction(preferredLanguage)}
