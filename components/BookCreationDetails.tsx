@@ -52,10 +52,9 @@ export default function BookCreationDetails({ questions, busy, onSubmit, onChang
       {other && <input ref={otherRef} className="fortale-details-other" type="text" maxLength={300} readOnly={busy}
         value={answer?.otherText || ''} placeholder={t('Belirtin…')} aria-label={t('Belirtin…')}
         style={{
-          backgroundColor: '#ffffff',
-          color: '#171717',
-          WebkitTextFillColor: '#171717',
-          borderColor: '#ffffff',
+          color: '#ffffff',
+          WebkitTextFillColor: '#ffffff',
+          caretColor: '#ffffff',
         }}
         onChange={event => { onChange(); setAnswers(current => ({ ...current, [question.id]: { selected: BOOK_INTAKE_OTHER_KEY, otherText: event.target.value } })); }}
         onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); next(); } }} />}
