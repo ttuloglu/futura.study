@@ -1,3 +1,4 @@
+import DialogCloseButton from '../components/DialogCloseButton';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import ReactMarkdown from 'react-markdown';
@@ -26,7 +27,6 @@ import {
   SkipBack,
   Target,
   Zap,
-  X,
   Plus,
   ChevronDown,
   Compass,
@@ -3004,7 +3004,7 @@ function VisualStoryReader({
                 >
                   <Minimize2 size={14} />
                 </button>
-                <button
+                <DialogCloseButton
                   type="button"
                   className="h-10 w-10 rounded-2xl border inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
                   style={{
@@ -3018,9 +3018,7 @@ function VisualStoryReader({
                   }}
                   aria-label={t('Kapat')}
                   title={t('Kapat')}
-                >
-                  <X size={14} />
-                </button>
+                />
                 {isDownloadMenuOpen && renderVisualStoryDownloadMenu(isRotatedVisualFullscreenLayout)}
               </div>
             </div>
@@ -3175,7 +3173,7 @@ function VisualStoryReader({
             >
               <Maximize2 size={14} />
             </button>
-            <button
+            <DialogCloseButton
               type="button"
               onClick={() => {
                 stopAllVisualStoryAudio();
@@ -3185,9 +3183,7 @@ function VisualStoryReader({
               style={visualStoryGlassControlStyle}
               aria-label={t('Kapat')}
               title={t('Kapat')}
-            >
-              <X size={14} />
-            </button>
+            />
           </div>
         </div>
       </div>
@@ -4066,6 +4062,7 @@ export default function CourseFlowView({
 
     if (isTargetNativeBook && isNativeBookReaderAvailable() && courseData) {
       openNativeBookReader(courseData, orderedTabNodes, {
+        translate: t,
         initialPageIndex: 0,
         theme: 'sepia',
         onFallback: () => {
@@ -4076,7 +4073,7 @@ export default function CourseFlowView({
     }
 
     setIsReadingFullscreen(true);
-  }, [courseData, orderedTabNodes]);
+  }, [courseData, orderedTabNodes, t]);
 
   useEffect(() => {
     if (!shouldShowFullscreenImagesInContentFlow) return;
@@ -5534,15 +5531,13 @@ export default function CourseFlowView({
               )}
             </div>
 
-            <button
+            <DialogCloseButton
               type="button"
               aria-label={t('Bildirim kapat')}
               onClick={() => setActiveMilestone(null)}
               className="absolute top-3 right-3 z-10 h-8 w-8 rounded-xl border border-dashed flex items-center justify-center text-white hover:text-white active:scale-95"
               style={{ background: 'rgba(17,22,29,0.72)', borderColor: 'rgba(173,149,124,0.14)' }}
-            >
-              <X size={14} />
-            </button>
+            />
 
             <div className={`relative px-5 pr-12 ${activeMilestone.persistent ? 'py-5' : 'py-4.5'}`}>
               <div className="flex items-start gap-3.5">
@@ -5822,15 +5817,13 @@ export default function CourseFlowView({
                 >
                   <Download size={17} />
                 </button>
-                <button
+                <DialogCloseButton
                   type="button"
                   className="fortale-chrome-icon-button h-9 w-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] inline-flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
                   onClick={() => setCoverPreviewImageUrl(null)}
                   aria-label={t('Kapat')}
                   title={t('Kapat')}
-                >
-                  <X size={17} />
-                </button>
+                />
               </div>
             </div>
           </div>
@@ -6259,7 +6252,7 @@ export default function CourseFlowView({
                                         {t('Her sesi kitap dilinde dinleyip sonra seçebilirsin.')}
                                       </p>
                                     </div>
-                                    <button
+                                    <DialogCloseButton
                                       type="button"
                                       onClick={(event) => {
                                         event.stopPropagation();
@@ -6269,9 +6262,7 @@ export default function CourseFlowView({
                                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white transition-all hover:bg-white/5"
                                       aria-label={t('Kapat')}
                                       title={t('Kapat')}
-                                    >
-                                      <X size={14} />
-                                    </button>
+                                    />
                                   </div>
                                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                                     {PODCAST_VOICE_OPTIONS.map((option) => {
@@ -6412,7 +6403,7 @@ export default function CourseFlowView({
                   >
                     <ArrowUp size={14} />
                   </button>
-                  <button
+                  <DialogCloseButton
                     type="button"
                     onClick={() => setIsReadingFullscreen(false)}
                     className="h-9 w-9 rounded-xl border border-dashed inline-flex items-center justify-center text-white transition-all duration-200 active:scale-95"
@@ -6422,9 +6413,7 @@ export default function CourseFlowView({
                     }}
                     aria-label={t('Tam ekranı kapat')}
                     title={t('Tam ekranı kapat')}
-                  >
-                    <X size={14} />
-                  </button>
+                  />
                 </div>
                 <div
                   className="fixed z-[110] inline-flex items-center rounded-xl border border-dashed overflow-hidden"

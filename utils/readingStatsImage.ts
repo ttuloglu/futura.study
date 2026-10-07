@@ -1,10 +1,23 @@
+import { getLocalizedLanguageName } from '../data/appLanguages';
 import type { ReadingStats } from './readingProgressModel';
+import { getCompanionAvatar } from './companionAvatar';
+import { companionAvatar } from '../data/companionAvatars';
 export function favorite(values: Record<string,number>) { return Object.entries(values).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Henüz yok'; }
-export async function createReadingStatsImage(stats: ReadingStats): Promise<Blob> {
-  const canvas=document.createElement('canvas'); canvas.width=1200; canvas.height=1500;
+export function readingLanguageName(code: string, locale: string) {
+  if (locale.toLowerCase().startsWith('tr')) return getLocalizedLanguageName(code,locale);
+  try { return new Intl.DisplayNames([locale], { type: 'language' }).of(code) || code; }
+  catch { return getLocalizedLanguageName(code,locale); }
+}
+export async function createReadingStatsImage(stats: ReadingStats, t: (text:string) => string = text => text, locale = 'tr'): Promise<Blob> {
+  const selected=companionAvatar(getCompanionAvatar().selected);
+  const sprite=selected.id === 'dost' ? null : await new Promise<HTMLImageElement | null>(resolve=>{
+    const img=new Image(); img.onload=()=>resolve(img);img.onerror=()=>resolve(null); img.src=`/companions/${selected.id}-v1.png`;
+  });
+  const languages=Object.entries(stats.learning.languages).sort((a,b)=>b[1]-a[1]);
+  const canvas=document.createElement('canvas'); canvas.width=1200; canvas.height=1500+Math.ceil(languages.length/2)*65;
   const c=canvas.getContext('2d')!;
   const round=(x:number,y:number,w:number,h:number,r:number,color:string) => { c.fillStyle=color; c.beginPath(); c.roundRect(x,y,w,h,r); c.fill(); };
-  c.fillStyle='#f7f2ea';c.fillRect(0,0,1200,1500);
+  c.fillStyle='#22272d';c.fillRect(0,0,1200,canvas.height);
   // Same cream body, red tuft, eyes and raised hands as the app companion.
   const avatar=(x:number,y:number,s:number) => {
     c.save();c.translate(x,y);c.scale(s,s);
@@ -18,17 +31,25 @@ export async function createReadingStatsImage(stats: ReadingStats): Promise<Blob
     round(32,174,37,20,13,'#f1e8d8');round(108,174,37,20,13,'#f1e8d8');c.restore();
   };
   c.shadowColor='#46322618';c.shadowBlur=45;c.shadowOffsetY=18;
-  round(90,120,1020,1220,65,'#fffcf5');c.shadowBlur=0;c.shadowOffsetY=0;
-  c.strokeStyle='#e6dac7';c.lineWidth=4;c.stroke();
-  const text=(value:string,x:number,y:number,size:number,color='#403329',weight=600) => { c.fillStyle=color;c.font=`${weight} ${size}px system-ui, sans-serif`;c.textAlign='center';c.fillText(value,x,y,900); };
-  text('Okuma Hatıram',600,250,58);
-  text(String(stats.total),600,445,138,'#c04235',700);text('kitap bitirdim',600,515,34);
-  const columns=[['Masal',stats.types.fairy_tale || 0],['Hikaye',stats.types.novel || 0],['Çalışma kitabı',stats.types.story || 0]];
-  columns.forEach(([label,value],index)=>{ const x=300+index*300; text(String(value),x,665,62,'#c04235');text(String(label),x,720,28); });
-  text(`Bu ay ${stats.month} kitap bitirdim`,600,835,34);
-  text('En sevdiğim tür',600,945,26,'#827465',500);text(favorite(stats.genres),600,1000,36);
-  text('En sevdiğim alt tür',600,1095,26,'#827465',500);text(favorite(stats.subGenres),600,1150,36);
-  text('Fortale • Her kitap yeni bir dünya',420,1436,27,'#827465',500);
-  avatar(920,1260,.95);
+  round(90,120,1020,canvas.height-280,40,'#303337');c.shadowBlur=0;c.shadowOffsetY=0;
+  c.strokeStyle='#dad3c625';c.lineWidth=4;c.stroke();
+  const text=(value:string,x:number,y:number,size:number,color='#dad3c6',weight=600) => { c.fillStyle=color;c.font=`${weight} ${size}px system-ui, sans-serif`;c.textAlign='center';c.fillText(value,x,y,900); };
+  text(t('Okuma istatistikleri'),600,250,48);
+  text(String(stats.total),600,415,120,'#e0a394',500);text(t('Bitirilen kitap'),600,475,28);
+  text(`${t('Bu ay')}  ${stats.month}     ·     ${t('Devam edilen')}  ${stats.inProgress}`,600,555,28);
+  const columns=[['Hikaye',stats.types.novel || 0],['Masal',stats.types.fairy_tale || 0],['Çalışma kitabı',stats.types.story || 0],['Yabancı dil',stats.learning.total]];
+  columns.forEach(([label,value],index)=>{ const x=240+index*240; text(String(value),x,690,48,'#dad3c6');text(t(String(label)),x,740,24); });
+  text(t('Yabancı dilde okuma'),600,870,32);
+  if (!languages.length) text(t('Bitirdiğin yabancı dil kitapları burada görünecek.'),600,940,24,'#aaa59d',400);
+  languages.forEach(([code,count],index)=>text(`${readingLanguageName(code,locale)}  ·  ${count}`,index%2 ? 810 : 390,940+Math.floor(index/2)*65,28));
+  const offset=Math.ceil(languages.length/2)*65;
+  const levels=Object.entries(stats.learning.levels).sort((a,b)=>a[0].localeCompare(b[0])).map(([level,count])=>`${level} · ${count}`).join('     ');
+  if(levels) text(`${t('Kitap seviyeleri')}  ${levels}`,600,1005+offset,24,'#aaa59d',400);
+  text(`${t('En sevdiğim tür')}  ·  ${t(favorite(stats.genres))}`,600,1120+offset,28);
+  text(`${t('En sevdiğim alt tür')}  ·  ${t(favorite(stats.subGenres))}`,600,1180+offset,28);
+  text('Fortale',260,canvas.height-68,30,'#aaa59d',500);
+  if(sprite) {
+    c.drawImage(sprite,920,canvas.height-230,180,180);
+  } else avatar(920,canvas.height-230,.85);
   return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('PNG oluşturulamadı')),'image/png'));
 }

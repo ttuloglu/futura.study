@@ -5,8 +5,10 @@ import { BookOpen, Search, Trash2, X } from 'lucide-react';
 import { useUiI18n } from '../i18n/uiI18n';
 import { getSmartBookAgeGroupLabel } from '../utils/smartbookAgeGroup';
 import FaviconSpinner from '../components/FaviconSpinner';
+import ImagePreviewDialog from '../components/ImagePreviewDialog';
 import LibraryTypeFilter from '../components/LibraryTypeFilter';
 import FloatIslandSheet from '../components/FloatIslandSheet';
+import LibrarySearchDialog from '../components/LibrarySearchDialog';
 import { getReadingRecords, subscribeReading } from '../utils/readingProgress';
 import { libraryReadingState, sortLibraryByReading } from '../utils/readingProgressModel';
 import { APP_LANGUAGE_OPTIONS, getLocalizedLanguageName } from '../data/appLanguages';
@@ -88,7 +90,6 @@ export default function PersonalGrowthView({
   onCourseSelect,
   onDeleteCourse,
   isBootstrapping = false,
-  bootstrapMessage,
   courseOpenStates = {}
 }: PersonalGrowthViewProps) {
   const { locale, t } = useUiI18n();
@@ -97,6 +98,9 @@ export default function PersonalGrowthView({
   const [languageFilter, setLanguageFilter] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const openSearch = () => setSearchOpen(true);
+  const closeSearch = () => setSearchOpen(false);
+  const clearSearch = () => { setSearchText(''); setTypeFilter('all'); setLanguageFilter('all'); };
   const [courseDeleteModal, setCourseDeleteModal] = useState<{ isOpen: boolean; courseId: string | null; courseTitle: string }>({
     isOpen: false,
     courseId: null,
@@ -105,7 +109,6 @@ export default function PersonalGrowthView({
   const [isCourseDeleting, setIsCourseDeleting] = useState(false);
   const [previewCourse, setPreviewCourse] = useState<CourseData | null>(null);
   const [fullscreenCover, setFullscreenCover] = useState<{ src: string; title: string } | null>(null);
-  const effectiveBootstrapMessage = bootstrapMessage || t('Kitaplar yükleniyor...');
 
   const typeFilterOptions: CourseTypeFilterOption[] = useMemo(() => [
     { value: 'all', label: t('Tüm Kitaplar') },
@@ -207,41 +210,48 @@ export default function PersonalGrowthView({
         {/* Library Header Bar */}
         {savedCourses.length > 0 && (
           <section className="pt-1 pb-1">
-            <div className="flex items-center gap-1.5">
+            <div className="fortale-library-toolbar">
               <LibraryTypeFilter<CourseTypeFilter>
                 label={t('Kitap Türü')}
                 value={typeFilter}
                 options={typeFilterOptions}
                 onChange={setTypeFilter}
-                width={144}
               />
               <LibraryTypeFilter<string>
                 label={t('Kitap Dili')}
                 value={languageFilter}
                 options={languageFilterOptions}
                 onChange={setLanguageFilter}
-                width={124}
               />
-              <div className="ml-auto flex items-center gap-1.5">
-                <span className="whitespace-nowrap text-[10px] font-semibold text-white/65">{savedCourses.length} {t('kitap')}</span>
                 <button
                   type="button"
-                  onClick={() => setSearchOpen(true)}
-                  className="fortale-chrome-icon-button relative flex h-9 w-9 items-center justify-center rounded-full text-white"
-                  aria-label={t('Kitap ara')}
+                  onClick={openSearch}
+                  className="fortale-library-filter-trigger fortale-library-search-trigger"
+                  aria-label={`${t('Kitap ara')} · ${savedCourses.length} ${t('kitap')}`}
                   title={t('Kitap ara')}
+                  data-active={Boolean(searchText.trim())}
                 >
-                  <Search size={17} />
-                  {searchText.trim() && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-[#9bc7ff]" />}
+                  <Search size={14} aria-hidden="true" />
+                  <span>{t('Ara')} <span className="fortale-library-search-count">{savedCourses.length} {t('kitap')}</span></span>
                 </button>
-              </div>
             </div>
+            {searchText && <div className="fortale-library-search-results">
+              <p role="status"><strong>{t('Arama sonuçları')}</strong><span>“{searchText}” · {filteredCourses.length} {t('kitap')}</span></p>
+              <button type="button" onClick={clearSearch} aria-label={`${t('Aramayı temizle')} · ${t('Tüm Kitaplar')}`}>
+                <X size={14} aria-hidden="true"/>{t('Tüm Kitaplar')}
+              </button>
+            </div>}
           </section>
         )}
 
         {/* Book list */}
         <section className="space-y-3">
-          {filteredCourses.length === 0 ? (
+          {filteredCourses.length === 0 && isBootstrapping ? (
+            <div className="fortale-library-loading" role="status" aria-live="polite">
+              <FaviconSpinner size={64} />
+              <p>{t('Kitaplarınız yükleniyor')}</p>
+            </div>
+          ) : filteredCourses.length === 0 ? (
             <div
               className="fortale-library-panel rounded-2xl border p-5 text-center"
               style={{
@@ -251,15 +261,13 @@ export default function PersonalGrowthView({
               }}
             >
               <p className="text-[12px] text-white">
-                {isBootstrapping
-                  ? effectiveBootstrapMessage
-                  : savedCourses.length > 0
+                {savedCourses.length > 0
                     ? t('Bu filtrede kitap bulunamadı.')
                     : t('Henüz hiç kitap yok. Ana sayfadan yeni bir kitap üretebilirsiniz.')}
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-x-2.5 gap-y-4 items-start">
+            <div className="fortale-library-grid grid grid-cols-3 gap-x-2.5 gap-y-4 items-start">
               {filteredCourses.map((course) => {
                 const openUi = getCourseOpenUi(course);
                 const displayCoverImageUrl = resolveCourseCoverImageUrl(course);
@@ -267,7 +275,7 @@ export default function PersonalGrowthView({
                 const subGenreName = course.subGenre ? t(course.subGenre) : (course.category ? t(course.category) : '');
 
                 return (
-                  <article key={course.id} className="flex flex-col min-w-0">
+                  <article key={course.id} className="fortale-library-book flex flex-col min-w-0">
                     {/* Kitap görseli (yazı yok) */}
                     <button
                       type="button"
@@ -275,7 +283,7 @@ export default function PersonalGrowthView({
                       className="group relative block w-full text-left"
                       aria-label={course.topic}
                     >
-                      <div className="relative aspect-[9/13] w-full overflow-hidden rounded-[8px] bg-white/[0.04] shadow-[0_4px_14px_rgba(0,0,0,0.35)] transition-transform group-active:scale-[0.97]">
+                      <div className="fortale-library-cover relative aspect-[9/13] w-full overflow-hidden rounded-[8px] bg-white/[0.04] shadow-[0_4px_14px_rgba(0,0,0,0.35)] transition-transform group-active:scale-[0.97]">
                         {displayCoverImageUrl ? (
                           <img
                             src={displayCoverImageUrl}
@@ -317,7 +325,7 @@ export default function PersonalGrowthView({
                       type="button"
                       onClick={() => !openUi.isDownloading && onCourseSelect(course.id)}
                       disabled={openUi.isDownloading}
-                      className="mt-2 flex h-[30px] w-full items-center justify-center rounded-[8px] bg-white text-[11px] font-bold text-[#0a1c31] transition-transform active:scale-95 disabled:opacity-50"
+                      className="fortale-library-read mt-2 flex h-[30px] w-full items-center justify-center rounded-[8px] bg-white text-[11px] font-bold text-[#171717] transition-transform active:scale-95 disabled:opacity-50"
                     >
                       {openUi.isDownloading ? `${t('İndiriliyor')} %${openUi.progress}` : t('Oku')}
                     </button>
@@ -326,7 +334,7 @@ export default function PersonalGrowthView({
                     <button
                       type="button"
                       onClick={() => setPreviewCourse(course)}
-                      className="mt-1.5 truncate text-center text-[11px] font-semibold text-white/90 hover:text-white"
+                      className="fortale-library-type mt-1.5 truncate text-center text-[11px] font-semibold text-white/90 hover:text-white"
                       title={typeName}
                     >
                       {typeName}
@@ -334,7 +342,7 @@ export default function PersonalGrowthView({
 
                     {/* Altında alt tür adı */}
                     <div
-                      className="truncate text-center text-[10px] text-white/50"
+                      className="fortale-library-genre truncate text-center text-[10px] text-white/50"
                       title={subGenreName}
                     >
                       {subGenreName || '\u00A0'}
@@ -347,33 +355,8 @@ export default function PersonalGrowthView({
         </section>
       </div>
 
-      {searchOpen && (
-        <FloatIslandSheet
-          isOpen
-          onClose={() => setSearchOpen(false)}
-          title={t('Kitap ara')}
-          layer={1000}
-          keyboardAware
-          footer={(
-            <button type="button" onClick={() => setSearchOpen(false)} className="flex h-12 w-full items-center justify-center rounded-2xl bg-white text-[13px] font-black text-[#102018] shadow-[0_8px_22px_rgba(255,255,255,0.12)]">
-              {t('Ara')}
-            </button>
-          )}
-        >
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white" />
-            <input
-              type="search"
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder={t('Kitap ara')}
-              aria-label={t('Kitap ara')}
-              autoFocus
-              className="h-12 w-full rounded-2xl border border-white/12 bg-[#0a1522]/75 pl-10 pr-4 text-[13px] text-white outline-none placeholder:text-white focus:border-[#9bc7ff]/55"
-            />
-          </div>
-        </FloatIslandSheet>
-      )}
+      {searchOpen && <LibrarySearchDialog query={searchText} onClose={closeSearch}
+        onSearch={query => { setSearchText(query); setSearchOpen(false); }}/>}
 
       {previewCourse && (() => {
         const previewOpenUi = getCourseOpenUi(previewCourse);
@@ -489,22 +472,7 @@ export default function PersonalGrowthView({
         );
       })()}
 
-      <FloatIslandSheet
-        isOpen={Boolean(fullscreenCover)}
-        onClose={() => setFullscreenCover(null)}
-        title={fullscreenCover?.title || t('Kapak Görseli')}
-        layer={1200}
-        maxWidth={520}
-        panelClassName="fortale-cover-preview-sheet"
-      >
-        {fullscreenCover && (
-          <img
-            src={fullscreenCover.src}
-            alt={fullscreenCover.title}
-            className="fortale-cover-preview-image"
-          />
-        )}
-      </FloatIslandSheet>
+      <ImagePreviewDialog image={fullscreenCover} onClose={() => setFullscreenCover(null)} />
 
       {courseDeleteModal.isOpen && (
         <FloatIslandSheet isOpen onClose={closeCourseDeleteModal} title={t('Bu kitabı silmek istediğine emin misin?')} subtitle={courseDeleteModal.courseTitle} closeDisabled={isCourseDeleting} layer={1150} bodyClassName="hidden" footer={(

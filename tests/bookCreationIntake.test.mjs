@@ -16,6 +16,7 @@ const { normalizeBookIntakeResult: normalize, formatBookIntakeAnswers, BOOK_INTA
 const context = (bookType, extra = {}) => ({ bookType, language: 'tr', bookLanguage: 'Turkish', history: [
   { role: 'user', content: 'Kahraman Deniz olsun; sonunda eve dönsün.' },
   { role: 'assistant', content: 'Kaç yaşındaki okurlar için?' },
+  { role: 'user', content: `FORTALE_INTAKE_ANSWERS=${JSON.stringify([{ purpose: 'subgenre', answer: bookType === 'story' ? 'Biyoloji' : 'Macera' }])}` },
 ], newMessage: '8 yaş için, sade bir dille.', hasPortrait: false, ...extra });
 const ready = (ageGroup, extra = {}) => ({ status: 'ready', message: 'Hazır.', draft: {
   topic: 'Denizin yolculuğu', sourceContent: 'An agreed premise', ageGroup,
@@ -45,13 +46,13 @@ test('invalid or incomplete ready output cannot trigger production', () => {
     assert.throws(() => normalize(raw, context('fairy_tale')));
   }
 });
-test('every format requires a subgenre and workbooks also require their discipline', () => {
-  for (const bookType of ['fairy_tale', 'novel', 'story']) {
+test('explicit genre wins over invented genre; workbooks keep discipline separate from topic', () => {
+  for (const bookType of ['fairy_tale', 'novel']) {
     const raw = ready('general', { creativeBrief: { workbookCategory: 'Biyoloji' } });
-    assert.throws(() => normalize(raw, context(bookType)));
+    assert.equal(normalize(raw, context(bookType)).draft.creativeBrief.subGenre, 'Macera');
   }
-  assert.throws(() => normalize(ready('general', { creativeBrief: { subGenre: 'Hücre bölünmesi' } }), context('story')));
-  const result = normalize(ready('general', { creativeBrief: { workbookCategory: 'Biyoloji', subGenre: 'Hücre bölünmesi' } }), context('story'));
+  assert.throws(() => normalize(ready('general', { creativeBrief: {} }), context('story')));
+  const result = normalize(ready('general', { creativeBrief: { workbookCategory: 'Kimya', subGenre: 'Hücre bölünmesi' } }), context('story'));
   assert.equal(result.draft.creativeBrief.workbookCategory, 'Biyoloji');
   assert.equal(result.draft.creativeBrief.subGenre, 'Hücre bölünmesi');
 });
@@ -70,7 +71,8 @@ test('selected choices and Other text preserve their question context', () => {
   const content = formatBookIntakeAnswers(detailQuestions, {
     age: { selected: 'Çocuklar' }, hero: { selected: BOOK_INTAKE_OTHER_KEY, otherText: '  Kahramanın adı Elif, 8 yaşında.  ' },
   });
-  assert.equal(content, 'Kimler için?: Çocuklar\nKahraman kim olsun?: Kahramanın adı Elif, 8 yaşında.');
+  assert.equal(content.split('\nFORTALE_INTAKE_ANSWERS=')[0], 'Kimler için?: Çocuklar\nKahraman kim olsun?: Kahramanın adı Elif, 8 yaşında.');
+  assert.equal(JSON.parse(content.split('FORTALE_INTAKE_ANSWERS=')[1])[1].purpose, 'protagonist');
   const result = normalize(ready('7+'), context('fairy_tale', { newMessage: content }));
   assert.match(result.draft.sourceContent, /Kahramanın adı Elif, 8 yaşında/);
   assert.doesNotMatch(content, /__other__/);
@@ -138,4 +140,89 @@ test('audience questions are never shown for fairy tales, regardless of question
   assert.deepEqual(normalize(raw, context('fairy_tale')).questions.map(q => q.id), ['emotion']);
   assert.equal(normalize(raw, context('novel')).questions.length, 2);
   assert.throws(() => normalize({ ...raw, questions: [raw.questions[0]] }, context('fairy_tale')));
+});
+
+
+test('assistant suggestions, category prose and long conversation never count as a user genre choice', () => {
+  for (const newMessage of ['8 yaş için.', 'Kategori: Saat tamircilerinin dünyası', 'genre: mystery']) {
+    const result = normalize(ready('general'), context('novel', {
+      history: [
+        { role: 'user', content: 'Komşuların birlikte bahçe kurmasını istiyorum.' },
+        { role: 'assistant', content: 'Önerdiğim alt tür: Gizem / Polisiye' },
+        { role: 'user', content: 'Kahraman bir hemşire olsun.' },
+      ], newMessage,
+    }));
+    assert.equal(result.status, 'question');
+    assert.equal(result.questions[0].purpose, 'subgenre');
+  }
+});
+
+test('translated structured answers remain authoritative and Other is a real choice', () => {
+  const question = { id: 'genre', purpose: 'subgenre', question: 'どのジャンルにしますか？', options: ['恋愛', '喜劇'] };
+  const newMessage = formatBookIntakeAnswers([question], { genre: { selected: BOOK_INTAKE_OTHER_KEY, otherText: '家族小説' } });
+  const result = normalize(ready('general'), context('novel', { language: 'ja', history: [
+    { role: 'assistant', content: JSON.stringify([question]) },
+  ], newMessage }));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.draft.creativeBrief.subGenre, '家族小説');
+});
+
+test('last actual user selection wins; a later recommendation cannot override it', () => {
+  const newMessage = 'FORTALE_INTAKE_ANSWERS=' + JSON.stringify([{ purpose: 'subgenre', answer: 'Romantik' }]);
+  const selectedContext = context('novel', { history: [
+    ...context('novel').history, { role: 'user', content: newMessage },
+    { role: 'assistant', content: 'Alt tür: Gizem / Polisiye' },
+  ], newMessage: 'Final buruk olsun.' });
+  assert.equal(normalize(ready('general'), selectedContext).draft.creativeBrief.subGenre, 'Romantik');
+});
+
+test('missing genre reappears first even if a later question batch tries to skip it', () => {
+  const result = normalize({ status: 'question', message: 'Details', questions: detailQuestions }, context('novel', { history: [{ role: 'user', content: 'Bir hikaye yaz.' }] }));
+  assert.equal(result.questions[0].purpose, 'subgenre');
+});
+
+test('explicit art preferences and long detailed notes survive intake', () => {
+  const note = 'Karakterlerin ilişkisini ve tamir atölyesini koru. '.repeat(40);
+  const result = normalize(ready('general', { creativeBrief: { visualStyle: 'Siyah beyaz gravür, kırmızı tek vurgu.', customInstructions: note } }), context('novel'));
+  assert.equal(result.draft.creativeBrief.visualStyle, 'Siyah beyaz gravür, kırmızı tek vurgu.');
+  assert.equal(result.draft.creativeBrief.customInstructions, note.trim());
+});
+
+test('all four production paths ask for a deliberate genre and keep the selected genre and art', () => {
+  const cases = [
+    ['fairy_tale', 'Hayvan Masalları', undefined], ['novel', 'Komedi', undefined],
+    ['story', 'Bilimsel', undefined],
+    ['novel', 'Tarihi', { version: 1, purpose: 'language_learning', targetLanguage: 'ja', explanationLanguage: 'tr', cefrLevel: 'B1', audience: 'general' }],
+  ];
+  for (const [bookType, chosen, languageLearning] of cases) {
+    const unselected = context(bookType, { history: [{ role: 'user', content: 'Bir konu önerisi.' }], languageLearning });
+    assert.equal(normalize(ready('general'), unselected).questions[0].purpose, 'subgenre');
+    const result = normalize(ready('general', { creativeBrief: { subGenre: bookType === 'story' ? 'Fotosentez' : 'Gizem / Polisiye', workbookCategory: 'Araştırma', visualStyle: 'Sulu boya, açık yeşil ve krem.', languageText: 'English' } }),
+      { ...unselected, newMessage: `FORTALE_INTAKE_ANSWERS=${JSON.stringify([{ purpose: 'subgenre', answer: chosen }])}` });
+    assert.equal(result.status, 'ready');
+    assert.equal(bookType === 'story' ? result.draft.creativeBrief.workbookCategory : result.draft.creativeBrief.subGenre, chosen);
+    assert.equal(result.draft.creativeBrief.visualStyle, 'Sulu boya, açık yeşil ve krem.');
+    if (languageLearning) {
+      assert.equal(result.draft.creativeBrief.languageText, 'ja');
+      assert.equal(result.draft.creativeBrief.languageLearning.cefrLevel, 'B1');
+      assert.equal(result.draft.creativeBrief.languageLearning.audience, 'general');
+    }
+  }
+});
+test('a misleading question id cannot replace the actual genre question', () => {
+  const result = normalize({ status: 'question', message: 'Ayrıntılar.', questions: [{ id: 'book_subgenre', purpose: 'tone', question: 'Hangi ton?', options: ['Sakin', 'Neşeli'] }] }, context('novel', { history: [] }));
+  assert.equal(result.questions[0].purpose, 'subgenre');
+  assert.equal(new Set(result.questions.map(q => q.id)).size, result.questions.length);
+});
+
+test('queued and synchronous classification guard rejects missing workbook field or subject', async () => {
+  const { hasRequiredBookClassification: valid } = await import(taxonomyModule);
+  for (const bookType of ['novel', 'fairy_tale', 'story']) {
+    assert.equal(valid({ bookType }), false);
+    assert.equal(valid({ bookType, subGenre: '__fortale__' }), false);
+  }
+  assert.equal(valid({ bookType: 'story', subGenre: 'Fotosentez' }), false);
+  assert.equal(valid({ bookType: 'story', workbookCategory: 'Bilimsel' }), false);
+  assert.equal(valid({ bookType: 'story', workbookCategory: 'Bilimsel', subGenre: 'Fotosentez' }), true);
+  assert.equal(valid({ bookType: 'novel', subGenre: 'Komedi' }), true);
 });

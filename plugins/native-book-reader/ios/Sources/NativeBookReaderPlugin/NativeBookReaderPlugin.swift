@@ -66,6 +66,11 @@ public class NativeBookReaderPlugin: CAPPlugin, CAPBridgedPlugin {
                 initialContentOffset: call.getInt("initialContentOffset") ?? 0
             )
 
+            readerVC.companionInitiallyHidden = call.getBool("companionHidden") ?? false
+            readerVC.companionLabels = call.getObject("companionLabels") as? [String: String] ?? [:]
+            readerVC.companionAvatar = call.getString("companionAvatar") ?? "dost"
+            readerVC.companionLegendary = call.getBool("companionLegendary") ?? false
+
             let sessionId = call.getString("sessionId") ?? ""
             readerVC.onPosition = { [weak self] position in
                 var event = position; event["sessionId"] = sessionId
@@ -76,6 +81,7 @@ public class NativeBookReaderPlugin: CAPPlugin, CAPBridgedPlugin {
             readerVC.onDismiss = { [weak self, weak readerVC] lastIndex in
                 self?.currentCall?.resolve([
                     "closed": true,
+                    "companionHidden": readerVC?.companionIsHidden ?? false,
                     "lastPageIndex": lastIndex,
                     "action": readerVC?.closeAction ?? "close",
                     "theme": readerVC?.themeValue ?? themeName,

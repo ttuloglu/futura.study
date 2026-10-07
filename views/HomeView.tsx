@@ -1,4 +1,5 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import DialogCloseButton from '../components/DialogCloseButton';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,7 +14,7 @@ import {
   SmartBookCreativeBrief,
   CourseOpenUiState
 } from '../types';
-import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Library, Languages } from 'lucide-react';
+import { Plus, BookOpen, ChevronDown, StickyNote, X, Trash2, Check, Download, Copy, Share2, Bell, BookPlus, ArrowRight, ArrowLeft, Telescope, ScrollText, ImagePlus, UserRound, Feather, Library } from 'lucide-react';
 import { cancelBookGenerationJob, CREDIT_WALLET_UPDATED_EVENT, extractDocumentContext, planBookCreation, formatAiUsageEntryForConsole, formatBookGenerationCostSummaryForConsole, getBookGenerationJob, startBookGenerationJob, type BookGenerationJobResult } from '../ai';
 import { FREE_PLAN_LIMITS } from '../planLimits';
 import FaviconSpinner from '../components/FaviconSpinner';
@@ -21,7 +22,7 @@ import FortaleDropdown from '../components/FortaleDropdown';
 import FortaleMark from '../components/FortaleMark';
 import FloatIslandSheet from '../components/FloatIslandSheet';
 import BookCreationComposer from '../components/BookCreationComposer';
-import { celebrateCompletedBook, setCompanionActivity } from '../utils/companionActivity';
+import { celebrateCompletedBook, exciteCompanion, setCompanionActivity } from '../utils/companionActivity';
 import type { BookCreationDraft } from '../functions/src/bookCreationIntake';
 import { BOOK_CONTENT_SAFETY_MESSAGE, findRestrictedBookTopicInTexts } from '../utils/contentSafety';
 import {
@@ -1788,7 +1789,6 @@ export default function HomeView({
   const heroPortraitInputRef = useRef<HTMLInputElement | null>(null);
   const stickyRowContainerRef = useRef<HTMLElement | null>(null);
   const homeShelfScrollRef = useRef<HTMLDivElement | null>(null);
-  const homeRailStackRef = useRef<HTMLDivElement | null>(null);
   const stickyCopyTimerRef = useRef<number | null>(null);
   const stickyNoticeTimerRef = useRef<number | null>(null);
   const wizardInlineRef = useRef<HTMLDivElement | null>(null);
@@ -1821,8 +1821,6 @@ export default function HomeView({
   const [selectedHomeCourse, setSelectedHomeCourse] = useState<CourseData | null>(null);
   const [fullscreenCover, setFullscreenCover] = useState<{ src: string; title: string } | null>(null);
   const [openingHomeCourseId, setOpeningHomeCourseId] = useState<string | null>(null);
-  const [homeCreateDockBounds, setHomeCreateDockBounds] = useState<{ top: number; height: number } | null>(null);
-  const homeGreetingRef = useRef<HTMLDivElement | null>(null);
   const generationDisplayLanguage = isGenerating
     ? (activeGeneratingLanguage || normalizeAppLanguageCode(bookLanguageInput) || language)
     : language;
@@ -2331,8 +2329,8 @@ export default function HomeView({
       setSelectedSubGenre('');
       return;
     }
-    if (!options.includes(selectedSubGenre)) {
-      setSelectedSubGenre(options[0]);
+    if (selectedSubGenre && !options.includes(selectedSubGenre)) {
+      setSelectedSubGenre('');
     }
   }, [selectedBookType, selectedSubGenre]);
 
@@ -2737,6 +2735,7 @@ export default function HomeView({
   };
 
   const handleBookTypeSelect = (bookType: SmartBookBookType) => {
+    exciteCompanion();
     setComposerStartsLanguageLearning(false);
     setCreationWizardOpen(false);
     setComposerOpen(true);
@@ -2760,7 +2759,7 @@ export default function HomeView({
       setCustomSubGenreInput('');
       setCustomThemeInput('');
       if (bookType === 'story') {
-        setSelectedSubGenre('Bilimsel');
+        setSelectedSubGenre('');
         setSelectedTheme('');
       }
     }
@@ -2771,6 +2770,7 @@ export default function HomeView({
   };
 
   const handleLanguageLearningOpen = () => {
+    exciteCompanion();
     setCreationWizardOpen(false);
     setComposerOpen(true);
     setComposerSession(current => current + 1);
@@ -2864,7 +2864,7 @@ export default function HomeView({
     const normalizedLanguageText = compactInlineText(bookLanguageInput);
     const canonicalBookLanguage = normalizeAppLanguageCode(normalizedLanguageText) || undefined;
     if (selectedBookType === 'story') {
-      const workbookCategory = selectedSubGenre === FORTALE_WIZARD_OPTION ? '' : effectiveSubGenre || 'Bilimsel';
+      const workbookCategory = selectedSubGenre === FORTALE_WIZARD_OPTION ? '' : effectiveSubGenre;
       const workbookLevel = selectedWorkbookLevel || 'Ortaokul';
       const workbookExtras = [
         includeWorkbookExamples ? 'gerçek yaşam örnekleri' : undefined,
@@ -3249,7 +3249,6 @@ export default function HomeView({
 
   const hasStickyContent = Boolean(stickyModal.title.trim() || stickyModal.text.trim());
   const isCreationIntroOnly = !isCreationWizardOpen && !isGenerating;
-  const isWizardTypeStepDocked = isCreationWizardOpen && !isGenerating && creationStep === 1;
   const themeStep = 3;
   const ageGroupStep = 4;
   const storyModeStep = 5;
@@ -3269,42 +3268,6 @@ export default function HomeView({
   const currentVisibleStepIndex = currentVisibleStepIndexRaw >= 0 ? currentVisibleStepIndexRaw : 0;
   const currentVisibleStepNumber = currentVisibleStepIndex + 1;
   const totalVisibleStepCount = Math.max(1, visibleCreationSteps.length);
-
-  useLayoutEffect(() => {
-    if (!isCreationIntroOnly || typeof document === 'undefined') {
-      if (!isWizardTypeStepDocked) setHomeCreateDockBounds(null);
-      return;
-    }
-
-    let frame = 0;
-    const syncDockBounds = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        const railStack = homeRailStackRef.current;
-        const greeting = homeGreetingRef.current;
-        const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
-        if (!railStack || !greeting || !floatIsland) return;
-        const top = Math.ceil(greeting.getBoundingClientRect().bottom + 42);
-        const bottom = Math.floor(railStack.getBoundingClientRect().top - 12);
-        const height = Math.max(185, bottom - top);
-        setHomeCreateDockBounds((current) => current?.top === top && current.height === height ? current : { top, height });
-      });
-    };
-
-    syncDockBounds();
-    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncDockBounds) : null;
-    if (homeRailStackRef.current) resizeObserver?.observe(homeRailStackRef.current);
-    if (homeGreetingRef.current) resizeObserver?.observe(homeGreetingRef.current);
-    const floatIsland = document.querySelector<HTMLElement>('.floatisland-nav');
-    if (floatIsland) resizeObserver?.observe(floatIsland);
-    window.addEventListener('resize', syncDockBounds);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', syncDockBounds);
-    };
-  }, [isCreationIntroOnly, isWizardTypeStepDocked, homeLiteraryFact]);
 
   useEffect(() => {
     if (currentVisibleStepIndexRaw !== -1) return;
@@ -3342,11 +3305,11 @@ export default function HomeView({
     if (selectedBookType === 'story') {
       if (step === premiseStep) return Boolean(selectedStoryPremise.trim());
       if (step === ageGroupStep) return Boolean(selectedWorkbookLevel);
-      if (step === 2) return Boolean(effectiveSubGenre) || selectedSubGenre === FORTALE_WIZARD_OPTION;
+      if (step === 2) return Boolean(effectiveSubGenre);
       if (step === themeStep) return true;
       if (step === summaryStep) return true;
     }
-    if (step === 2) return Boolean(effectiveSubGenre) || selectedSubGenre === FORTALE_WIZARD_OPTION;
+    if (step === 2) return Boolean(effectiveSubGenre);
     if (step === themeStep) return Boolean(effectiveTheme) || selectedTheme === FORTALE_WIZARD_OPTION;
     if (step === ageGroupStep) return Boolean(selectedAgeGroup);
     if (step === storyModeStep) {
@@ -3662,7 +3625,7 @@ export default function HomeView({
     <div className={`view-container fortale-home-view ${isCreationIntroOnly ? 'is-intro' : ''}`}>
       <div className="app-content-width fortale-home-content space-y-4">
         {isCreationIntroOnly && (
-          <div ref={homeGreetingRef} className="fortale-home-greeting">
+          <div className="fortale-home-greeting">
             <h1>
               {(() => {
                 const hour = new Date().getHours();
@@ -3728,91 +3691,9 @@ export default function HomeView({
           </section>
         )}
 
-        {isCreationIntroOnly && (
-          <div ref={homeRailStackRef} className="fortale-home-rail-stack fortale-bookshelf-wrapper">
-            <section className="fortale-bookshelf-section" aria-label={t('Son Okuduklarım')}>
-              <div className="fortale-bookshelf-header">
-                <div className="fortale-bookshelf-header-left">
-                  <Library size={15} className="text-[#e2ad68]" />
-                  <h2 className="fortale-bookshelf-title">{t('Son Okuduklarım')}</h2>
-                </div>
-                {homeShelfCourses.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('AI_CHAT')}
-                    className="fortale-bookshelf-more-btn"
-                    title={t('Tüm Kitaplar')}
-                  >
-                    <span>{t('Tümünü Gör')}</span>
-                    <ArrowRight size={13} />
-                  </button>
-                )}
-              </div>
-
-              <div className="fortale-bookshelf-stage">
-                <div ref={homeShelfScrollRef} className="fortale-bookshelf-scroll touch-scroll-x">
-                  {homeShelfCourses.length > 0 ? (
-                    homeShelfCourses.map((course) => renderHome3DBook(course))
-                  ) : isBootstrapping ? (
-                    <div className="fortale-bookshelf-empty-state">
-                      <FaviconSpinner size={20} />
-                      <span>{t('Kitaplar yükleniyor...')}</span>
-                    </div>
-                  ) : (
-                    <div className="fortale-bookshelf-empty-shelf">
-                      <div className="fortale-3d-shelf-book is-empty-placeholder">
-                        <button
-                          type="button"
-                          onClick={() => handleBookTypeSelect('fairy_tale')}
-                          className="fortale-3d-shelf-book-btn"
-                        >
-                          <div className="fortale-3d-book-obj">
-                            <div className="fortale-3d-book-spine" aria-hidden="true" />
-                            <div
-                              className="fortale-3d-book-cover flex flex-col items-center justify-center p-2 text-center"
-                              style={{
-                                background: 'linear-gradient(135deg, rgba(226, 173, 104, 0.12) 0%, rgba(20, 26, 34, 0.85) 100%)',
-                                border: '1.5px dashed rgba(226, 173, 104, 0.5)',
-                              }}
-                            >
-                              <Plus size={22} className="text-[#e2ad68] mb-1" />
-                              <span className="text-[10px] font-bold text-white/90 leading-tight">
-                                {t('İlk Kitabını Oluştur')}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="fortale-3d-book-shelf-shadow" aria-hidden="true" />
-                        </button>
-                      </div>
-                      <div className="fortale-bookshelf-empty-info">
-                        <p className="text-[12px] font-semibold text-white/80">{t('Kitaplığın henüz boş.')}</p>
-                        <p className="text-[11px] text-white/50">{t('Aşağıdan ilk kitabını oluşturmaya başla.')}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3D Wooden Shelf Plank */}
-                <div className="fortale-wood-shelf-plank" aria-hidden="true">
-                  <div className="fortale-wood-shelf-top" />
-                  <div className="fortale-wood-shelf-fascia">
-                    <div className="fortale-wood-shelf-lip-highlight" />
-                    <div className="fortale-wood-shelf-lip-shadow" />
-                  </div>
-                  <div className="fortale-wood-shelf-under-shadow" />
-                </div>
-              </div>
-            </section>
-          </div>
-        )}
 
         <section
           className={`relative ${isCreationIntroOnly ? 'fortale-home-create-dock' : ''}`}
-          style={isCreationIntroOnly ? {
-            top: homeCreateDockBounds?.top ?? 0,
-            height: homeCreateDockBounds?.height ?? 160,
-            visibility: homeCreateDockBounds ? 'visible' : 'hidden'
-          } : undefined}
         >
           <input
             ref={sourceFileInputRef}
@@ -3829,19 +3710,19 @@ export default function HomeView({
             className="hidden"
           />
 
-          {/* UNIFIED CREATE CONTAINER — intro'da kısa (raf görünsün), wizard 2+'de tam yükseklik */}
+          {/* The catalog uses natural height; later wizard steps keep their viewport bounds. */}
           <div
             ref={wizardInlineRef}
             className="flex flex-col rounded-[18px]"
             style={{
               height: isCreationIntroOnly
-                ? `${homeCreateDockBounds?.height ?? 160}px`
+                ? 'auto'
                 : isGenerating
                   ? 'calc(100dvh - var(--app-header-row-top, 0px) - var(--fortale-floatisland-clearance, 76px) - 20px)'
                   : creationStep === 1
-                    ? 'min(480px, calc(100dvh - var(--app-header-row-top, 0px) - 260px - env(safe-area-inset-bottom, 0px)))'
+                    ? 'calc(100dvh - var(--app-header-row-top, 0px) - var(--fortale-floatisland-clearance, 76px) - 20px)'
                     : 'min(700px, calc(100dvh - var(--app-header-row-top, 0px) - env(safe-area-inset-bottom, 0px) - 188px))',
-              minHeight: isCreationIntroOnly ? '185px' : '320px',
+              minHeight: isCreationIntroOnly ? undefined : '320px',
             }}
           >
             {/* TOP BAR: generating'de gizle, intro'da invisible (layout tutmak için) */}
@@ -3850,14 +3731,12 @@ export default function HomeView({
                 className="flex items-center justify-between gap-3 px-4 pt-3 pb-2"
               >
                 <p className="text-[14px] font-bold text-white">{currentStepTitle}</p>
-                <button
+                <DialogCloseButton
                   type="button"
                   onClick={() => { setCreationWizardOpen(false); setCreationStep(1); setAccentedBookType(null); }}
                   className="fortale-sheet-close shrink-0"
                   aria-label={t('Kapat')}
-                >
-                  <X size={17} />
-                </button>
+                />
               </div>
             )}
 
@@ -3881,141 +3760,98 @@ export default function HomeView({
             {/* CONTENT AREA */}
             <div
               className={`flex-1 min-h-0 scrollbar-hide ${
-                (isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1))
-                  ? 'flex flex-col items-center justify-center overflow-visible'
-                  : 'overflow-y-auto px-4 pb-2'
+                isCreationIntroOnly
+                  ? 'flex flex-col items-center overflow-hidden'
+                  : (isCreationWizardOpen && !isGenerating && creationStep === 1)
+                    ? 'flex flex-col items-center overflow-y-auto'
+                    : 'overflow-y-auto px-4 pb-2'
               }`}
             >
-              {/* 4'LÜ BUTON IZGARASI: 2x2 DİKDÖRTGEN */}
+              {/* Editorial catalog: four book types share one typographic surface. */}
               {(isCreationIntroOnly || (isCreationWizardOpen && !isGenerating && creationStep === 1)) && (
-                <div
-                  className={`fortale-creation-grid-container ${isWizardTypeStepDocked ? 'fortale-wizard-type-step-docked' : ''}`}
-                  style={isWizardTypeStepDocked && homeCreateDockBounds ? {
-                    position: 'fixed',
-                    top: `${Math.round(homeCreateDockBounds.top + (homeCreateDockBounds.height - 185) / 2)}px`,
-                    left: '50%',
-                    zIndex: 38,
-                    width: 'min(calc(100vw - 28px), 480px)',
-                    transform: 'translateX(-50%)',
-                    pointerEvents: 'auto'
-                  } : undefined}
-                >
-                  {!isCreationIntroOnly && (
-                    <div className="fortale-type-copy mb-2.5 text-center">
-                      <span className="text-[13px] font-bold text-white/90">{t('Kitap Türünü Seç')}</span>
+                <div className="fortale-creation-catalog-container">
+                  <div className="fortale-creation-catalog">
+                    <div className="fortale-creation-catalog-masthead">
+                      <span className="fortale-creation-catalog-brand">Fortale</span>
+                      <span className="fortale-creation-catalog-label">{t('Yeni bir kitap')}</span>
                     </div>
-                  )}
-                  <div className="fortale-creation-2x2-grid" role="group" aria-label={t('Kitap Türünü Seç')}>
-                    {/* 1. HİKAYE */}
-                    <button
-                      type="button"
-                      onClick={() => handleBookTypeSelect('novel')}
-                      className={`fortale-creation-btn fortale-btn-story ${
-                        (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'novel' && !composerStartsLanguageLearning ? 'is-selected' : ''
-                      }`}
-                      aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'novel' && !composerStartsLanguageLearning}
-                      title={t('Hikaye: Roman & Kurgu')}
-                    >
-                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
-                        <ScrollText size={20} />
-                      </div>
-                      <div className="fortale-creation-btn-content">
-                        <span className="fortale-creation-btn-title">{t('Hikaye')}</span>
-                        <span className="fortale-creation-btn-subtitle">{t('Roman & Kurgu')}</span>
-                      </div>
-                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
-                        <ArrowRight size={13} />
-                      </div>
-                    </button>
+                    <div className="fortale-creation-catalog-entries" role="group" aria-label={t('Kitap Türünü Seç')}>
+                      {/* 1. HİKAYE */}
+                      <button
+                        type="button"
+                        onClick={() => handleBookTypeSelect('novel')}
+                        className={`fortale-creation-catalog-entry ${
+                          (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'novel' && !composerStartsLanguageLearning ? 'is-selected' : ''
+                        }`}
+                        aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'novel' && !composerStartsLanguageLearning}
+                        title={t('Hikaye: Roman & Kurgu')}
+                      >
+                        <div className="fortale-creation-catalog-copy">
+                          <span className="fortale-creation-catalog-title">{t('Hikaye')}</span>
+                          <span className="fortale-creation-catalog-subtitle">{t('Roman & Kurgu')}</span>
+                        </div>
+                        <div className="fortale-creation-catalog-arrow" aria-hidden="true">
+                          <ArrowRight size={17} />
+                        </div>
+                      </button>
 
-                    {/* 2. MASAL */}
-                    <button
-                      type="button"
-                      onClick={() => handleBookTypeSelect('fairy_tale')}
-                      className={`fortale-creation-btn fortale-btn-fairytale ${
-                        (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'fairy_tale' ? 'is-selected' : ''
-                      }`}
-                      aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'fairy_tale'}
-                      title={t('Masal: Düşsel Masallar')}
-                    >
-                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
-                        <Feather size={20} />
-                      </div>
-                      <div className="fortale-creation-btn-content">
-                        <span className="fortale-creation-btn-title">{t('Masal')}</span>
-                        <span className="fortale-creation-btn-subtitle">{t('Düşsel Masallar')}</span>
-                      </div>
-                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
-                        <ArrowRight size={13} />
-                      </div>
-                    </button>
+                      {/* 2. MASAL */}
+                      <button
+                        type="button"
+                        onClick={() => handleBookTypeSelect('fairy_tale')}
+                        className={`fortale-creation-catalog-entry ${
+                          (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'fairy_tale' ? 'is-selected' : ''
+                        }`}
+                        aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'fairy_tale'}
+                        title={t('Masal: Düşsel Masallar')}
+                      >
+                        <div className="fortale-creation-catalog-copy">
+                          <span className="fortale-creation-catalog-title">{t('Masal')}</span>
+                          <span className="fortale-creation-catalog-subtitle">{t('Düşsel Masallar')}</span>
+                        </div>
+                        <div className="fortale-creation-catalog-arrow" aria-hidden="true">
+                          <ArrowRight size={17} />
+                        </div>
+                      </button>
 
-                    {/* 3. ÇALIŞMA KİTABI */}
-                    <button
-                      type="button"
-                      onClick={() => handleBookTypeSelect('story')}
-                      className={`fortale-creation-btn fortale-btn-workbook ${
-                        (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'story' ? 'is-selected' : ''
-                      }`}
-                      aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'story'}
-                      title={t('Çalışma Kitabı: Konu & Pratik')}
-                    >
-                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
-                        <Telescope size={20} />
-                      </div>
-                      <div className="fortale-creation-btn-content">
-                        <span className="fortale-creation-btn-title">{t('Çalışma Kitabı')}</span>
-                        <span className="fortale-creation-btn-subtitle">{t('Konu & Pratik')}</span>
-                      </div>
-                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
-                        <ArrowRight size={13} />
-                      </div>
-                    </button>
+                      {/* 3. ÇALIŞMA KİTABI */}
+                      <button
+                        type="button"
+                        onClick={() => handleBookTypeSelect('story')}
+                        className={`fortale-creation-catalog-entry ${
+                          (isCreationWizardOpen || isComposerOpen) && selectedBookType === 'story' ? 'is-selected' : ''
+                        }`}
+                        aria-pressed={(isCreationWizardOpen || isComposerOpen) && selectedBookType === 'story'}
+                        title={t('Çalışma Kitabı: Konu & Pratik')}
+                      >
+                        <div className="fortale-creation-catalog-copy">
+                          <span className="fortale-creation-catalog-title">{t('Çalışma Kitabı')}</span>
+                          <span className="fortale-creation-catalog-subtitle">{t('Konu & Pratik')}</span>
+                        </div>
+                        <div className="fortale-creation-catalog-arrow" aria-hidden="true">
+                          <ArrowRight size={17} />
+                        </div>
+                      </button>
 
-                    {/* 4. YABANCI DİL */}
-                    <button
-                      type="button"
-                      onClick={handleLanguageLearningOpen}
-                      className={`fortale-creation-btn fortale-btn-language ${
-                        isComposerOpen && composerStartsLanguageLearning ? 'is-selected' : ''
-                      }`}
-                      aria-pressed={isComposerOpen && composerStartsLanguageLearning}
-                      title={t('Yabancı Dil: 40 Dilde Okuma')}
-                    >
-                      <div className="fortale-creation-btn-icon-wrap" aria-hidden="true">
-                        <Languages size={20} />
-                      </div>
-                      <div className="fortale-creation-btn-content">
-                        <span className="fortale-creation-btn-title">{t('Yabancı Dil')}</span>
-                        <span className="fortale-creation-btn-subtitle">{t('40 Dilde Okuma')}</span>
-                      </div>
-                      <div className="fortale-creation-btn-arrow" aria-hidden="true">
-                        <ArrowRight size={13} />
-                      </div>
-                    </button>
-                  </div>
-
-                  {/* DÖRTLÜ YAPININ ALTINDAKİ EDİTORYAL KIRMIZI ÇİZGİ (Header'daki gibi daha uzunu) */}
-                  <div className="fortale-creation-group-underline" aria-hidden="true">
-                    <svg
-                      className="w-full h-[4px] overflow-visible pointer-events-none"
-                      viewBox="0 0 100 4"
-                      preserveAspectRatio="none"
-                      fill="none"
-                    >
-                      <path
-                        d="M 1.5 0.5 L 98.5 1.75 A 0.25 0.25 0 0 1 98.5 2.25 L 1.5 3.5 A 1.5 1.5 0 0 0 1.5 0.5 Z"
-                        fill="url(#fortale-creation-red-taper)"
-                        style={{ filter: 'drop-shadow(0 0 4px rgba(192, 66, 53, 0.45))' }}
-                      />
-                      <defs>
-                        <linearGradient id="fortale-creation-red-taper" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#c04235" stopOpacity="1" />
-                          <stop offset="65%" stopColor="#c04235" stopOpacity="0.85" />
-                          <stop offset="100%" stopColor="#c04235" stopOpacity="0.2" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
+                      {/* 4. YABANCI DİL */}
+                      <button
+                        type="button"
+                        onClick={handleLanguageLearningOpen}
+                        className={`fortale-creation-catalog-entry ${
+                          isComposerOpen && composerStartsLanguageLearning ? 'is-selected' : ''
+                        }`}
+                        aria-pressed={isComposerOpen && composerStartsLanguageLearning}
+                        title={t('Yabancı Dil: 40 Dilde Okuma')}
+                      >
+                        <div className="fortale-creation-catalog-copy">
+                          <span className="fortale-creation-catalog-title">{t('Yabancı Dil')}</span>
+                          <span className="fortale-creation-catalog-subtitle">{t('40 Dilde Okuma')}</span>
+                        </div>
+                        <div className="fortale-creation-catalog-arrow" aria-hidden="true">
+                          <ArrowRight size={17} />
+                        </div>
+                      </button>
+                    </div>
                   </div>
 
                   {/* KAYAN DİLLER (Kırmızı çizginin bir satır altında) */}
@@ -4147,15 +3983,6 @@ export default function HomeView({
                               </button>
                             );
                           })}
-                          <button
-                            type="button"
-                            onClick={() => { setSelectedSubGenre(FORTALE_WIZARD_OPTION); setSelectedTheme(FORTALE_WIZARD_OPTION); }}
-                            className={`${wizardChoiceButtonClass} text-left inline-flex items-center gap-2`}
-                            style={wizardOptionButtonStyle(selectedSubGenre === FORTALE_WIZARD_OPTION)}
-                            aria-pressed={selectedSubGenre === FORTALE_WIZARD_OPTION}
-                          >
-                            {wizardFortaleMark(selectedSubGenre === FORTALE_WIZARD_OPTION)}{t("Fortale'e bırak")}
-                          </button>
                           {selectedBookType !== 'story' && (
                             <button
                               type="button"
@@ -4692,6 +4519,85 @@ export default function HomeView({
           </div>
         </section>
 
+        {isCreationIntroOnly && (
+          <div className="fortale-home-rail-stack fortale-bookshelf-wrapper">
+            <section className="fortale-bookshelf-section" aria-label={t('Son Okuduklarım')}>
+              <div className="fortale-bookshelf-header">
+                <div className="fortale-bookshelf-header-left">
+                  <Library size={15} className="text-[#e2ad68]" />
+                  <h2 className="fortale-bookshelf-title">{t('Son Okuduklarım')}</h2>
+                </div>
+                {homeShelfCourses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('AI_CHAT')}
+                    className="fortale-bookshelf-more-btn"
+                    title={t('Tüm Kitaplar')}
+                  >
+                    <span>{t('Tümünü Gör')}</span>
+                    <ArrowRight size={13} />
+                  </button>
+                )}
+              </div>
+
+              <div className="fortale-bookshelf-stage">
+                <div ref={homeShelfScrollRef} className="fortale-bookshelf-scroll touch-scroll-x">
+                  {homeShelfCourses.length > 0 ? (
+                    homeShelfCourses.map((course) => renderHome3DBook(course))
+                  ) : isBootstrapping ? (
+                    <div className="fortale-bookshelf-empty-state">
+                      <FaviconSpinner size={20} />
+                      <span>{t('Kitaplar yükleniyor...')}</span>
+                    </div>
+                  ) : (
+                    <div className="fortale-bookshelf-empty-shelf">
+                      <div className="fortale-3d-shelf-book is-empty-placeholder">
+                        <button
+                          type="button"
+                          onClick={() => handleBookTypeSelect('fairy_tale')}
+                          className="fortale-3d-shelf-book-btn"
+                        >
+                          <div className="fortale-3d-book-obj">
+                            <div className="fortale-3d-book-spine" aria-hidden="true" />
+                            <div
+                              className="fortale-3d-book-cover flex flex-col items-center justify-center p-2 text-center"
+                              style={{
+                                background: 'linear-gradient(135deg, rgba(226, 173, 104, 0.12) 0%, rgba(20, 26, 34, 0.85) 100%)',
+                                border: '1.5px dashed rgba(226, 173, 104, 0.5)',
+                              }}
+                            >
+                              <Plus size={22} className="text-[#e2ad68] mb-1" />
+                              <span className="text-[10px] font-bold text-white/90 leading-tight">
+                                {t('İlk Kitabını Oluştur')}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="fortale-3d-book-shelf-shadow" aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="fortale-bookshelf-empty-info">
+                        <p className="text-[12px] font-semibold text-white/80">{t('Kitaplığın henüz boş.')}</p>
+                        <p className="text-[11px] text-white/50">{t('Aşağıdan ilk kitabını oluşturmaya başla.')}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3D Wooden Shelf Plank */}
+                <div className="fortale-wood-shelf-plank" aria-hidden="true">
+                  <div className="fortale-wood-shelf-top" />
+                  <div className="fortale-wood-shelf-fascia">
+                    <div className="fortale-wood-shelf-lip-highlight" />
+                    <div className="fortale-wood-shelf-lip-shadow" />
+                  </div>
+                  <div className="fortale-wood-shelf-under-shadow" />
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+
         {/* WIZARD GERİ / İLERİ — bottom nav üstüne fixed */}
         {isCreationWizardOpen && !isGenerating && (
           <div className="wizard-footer-position fixed left-0 right-0 z-[35] pointer-events-none">
@@ -5076,13 +4982,11 @@ export default function HomeView({
                     </span>
                   )}
                 </div>
-                <button
+                <DialogCloseButton
                   type="button"
                   onClick={closeStickyModal}
                   className="w-7 h-7 rounded-lg border border-zinc-600/70 text-white hover:bg-white/10 transition-colors flex items-center justify-center"
-                >
-                  <X size={14} />
-                </button>
+                />
               </div>
 
               <div className="fortale-cosmos-modal-section flex-1 px-4 pb-4 pt-0">

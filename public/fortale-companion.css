@@ -181,3 +181,84 @@
 .fortale-composer-companion[data-pose="surprise"] .fortale-composer-companion-puppet { bottom:-23px; transform:rotate(-8deg); }
 @keyframes friend-over-the-border { 0%,100%{transform:translate(0,5px)} 35%{transform:translate(-5px,9px) rotate(-7deg)} 70%{transform:translate(5px,8px) rotate(7deg)} }
 @media(prefers-reduced-motion:reduce) { .fortale-companion-target,.fortale-composer-companion-puppet { transition:none!important; } }
+
+/* Sitting keeps the feet forward and the body low, including while reading. */
+.fortale-companion-art:is([data-mood="sit"], [data-mood="read"]) .friend-body { top:48px; height:123px; animation:friend-seated-breathe 4s ease-in-out infinite; }
+.fortale-companion-art:is([data-mood="sit"], [data-mood="read"]) .friend-foot { width:40px; height:24px; bottom:0; }
+.fortale-companion-art:is([data-mood="sit"], [data-mood="read"]) .foot-left { left:26px; transform:rotate(-22deg); }
+.fortale-companion-art:is([data-mood="sit"], [data-mood="read"]) .foot-right { right:26px; transform:rotate(22deg); }
+.fortale-companion-art[data-mood="sit"] .friend-eye { top:55px; height:16px; }
+.fortale-companion-art[data-mood="sit"] .friend-mouth { width:19px; left:64px; }
+.fortale-companion-art[data-mood="exercise"] .friend-pet { animation:friend-jumping-jack .9s ease-in-out infinite; }
+.fortale-companion-art[data-mood="exercise"] .arm-left { animation:friend-exercise-left .9s ease-in-out infinite; }
+.fortale-companion-art[data-mood="exercise"] .arm-right { animation:friend-exercise-right .9s ease-in-out infinite; }
+.fortale-companion-art[data-mood="exercise"] .foot-left { animation:friend-exercise-foot-left .9s ease-in-out infinite; }
+.fortale-companion-art[data-mood="exercise"] .foot-right { animation:friend-exercise-foot-right .9s ease-in-out infinite; }
+.fortale-companion-art[data-mood="exercise"] .friend-mouth { width:20px; height:13px; left:64px; }
+.fortale-companion-art[data-mood="excited"] .friend-pet { animation:friend-excited-bounce .55s ease-in-out infinite; }
+.fortale-companion-art[data-mood="excited"] .friend-eye { width:16px; height:24px; top:48px; animation:none; }
+.fortale-companion-art[data-mood="excited"] .friend-mouth { width:22px; height:16px; left:63px; background:var(--friend-ink); border:0; border-radius:3px 3px 50% 50%; }
+.fortale-companion-art[data-mood="excited"] .arm-left { transform:rotate(115deg); }
+.fortale-companion-art[data-mood="excited"] .arm-right { transform:rotate(-115deg); }
+.fortale-companion-art[data-mood="excited"] .friend-spark { animation:friend-sparkle .8s ease-in-out infinite; }
+.fortale-companion-art .friend-hearts { position:absolute; inset:0; pointer-events:none; }
+.fortale-companion-art .friend-hearts i { position:absolute; top:42px; left:24px; color:#df827f; font-style:normal; font-size:18px; opacity:0; }
+.fortale-companion-art .friend-hearts i:nth-child(2) { left:142px; top:52px; font-size:14px; }
+.fortale-companion-art .friend-hearts i:nth-child(3) { left:118px; top:26px; font-size:12px; }
+.fortale-companion-art:is([data-mood="read"], [data-mood="happy"])[data-affection="hearts"] .friend-hearts i { animation:friend-reading-heart 2.5s ease-out both; }
+.fortale-companion-art:is([data-mood="read"], [data-mood="happy"])[data-affection="hearts"] .friend-hearts i:nth-child(2) { animation-delay:.2s; }
+.fortale-companion-art:is([data-mood="read"], [data-mood="happy"])[data-affection="hearts"] .friend-hearts i:nth-child(3) { animation-delay:.4s; }
+@keyframes friend-seated-breathe { 0%,100%{transform:scale(1)} 50%{transform:translateY(-2px) scale(1.015,.99)} }
+@keyframes friend-jumping-jack { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-16px)} }
+@keyframes friend-exercise-left { 0%,100%{transform:rotate(19deg)} 50%{transform:rotate(145deg)} }
+@keyframes friend-exercise-right { 0%,100%{transform:rotate(-19deg)} 50%{transform:rotate(-145deg)} }
+@keyframes friend-exercise-foot-left { 0%,100%{transform:translateX(0) rotate(-12deg)} 50%{transform:translateX(-21px) rotate(-25deg)} }
+@keyframes friend-exercise-foot-right { 0%,100%{transform:translateX(0) rotate(12deg)} 50%{transform:translateX(21px) rotate(25deg)} }
+@keyframes friend-excited-bounce { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-12px) rotate(3deg)} }
+@keyframes friend-reading-heart { 0%{opacity:0;transform:translateY(4px) scale(.6)} 20%{opacity:.85} 75%{opacity:.55} 100%{opacity:0;transform:translateY(-29px) scale(1.05)} }
+.fortale-companion-menu-backdrop { position:fixed; inset:0; z-index:2147483000; pointer-events:auto; }
+.fortale-companion-menu { position:absolute; width:208px; max-width:calc(100vw - 24px); padding:6px; border:1px solid #45474a; border-radius:16px; background:#22272d; color:#dad3c6; box-shadow:0 12px 36px #0006; }
+.fortale-companion-menu button { display:flex; align-items:center; gap:11px; width:100%; min-height:42px; padding:9px 12px; border:0; border-radius:10px; background:transparent; color:inherit; text-align:start; font-size:13px; }
+.fortale-companion-menu button:is(:hover,:focus-visible) { background:#dad3c614; outline:none; }
+.fortale-companion-menu button svg { flex-shrink:0; color:#b1aaa0; }
+.fortale-companion-restore { position:absolute; z-index:80; right:18px; bottom:calc(var(--fortale-floatisland-clearance) + 4px); min-height:32px; padding:6px 10px; border:1px solid #dad3c633; border-radius:16px; color:#dad3c6; background:#22272d; font-size:11px; }
+.fortale-composer-companion-puppet { padding:0; border:0; background:transparent; pointer-events:auto; touch-action:none; -webkit-user-select:none; user-select:none; }
+@media(prefers-reduced-motion:reduce) { .fortale-companion-art .friend-hearts i { animation:none!important; } }
+.fortale-companion-target, .fortale-composer-companion-puppet, .reader-companion-dock { -webkit-touch-callout:none; }
+
+/* Approved reading companions use transparent cutouts and the existing reactions. */
+.fortale-companion-art .friend-avatar-sprite { display:none; }
+.fortale-companion-art[data-avatar]:not([data-avatar="dost"]) .friend-avatar-sprite {
+  display:block; position:absolute; inset:10px 0 auto; width:180px; height:180px;
+  background-size:100% 100%; background-position:center; background-repeat:no-repeat;
+  transform-origin:50% 90%; animation:friend-avatar-breathe 3.6s ease-in-out infinite;
+}
+.fortale-companion-art[data-avatar]:not([data-avatar="dost"]) :is(.friend-body,.friend-foot) { display:none; }
+.fortale-companion-art[data-avatar="koz"] .friend-avatar-sprite { background-image:url('companions/koz-v1.png'); }
+.fortale-companion-art[data-avatar="koala"] .friend-avatar-sprite { background-image:url('companions/koala-v1.png'); }
+.fortale-companion-art[data-avatar="panda"] .friend-avatar-sprite { background-image:url('companions/panda-v1.png'); }
+.fortale-companion-art[data-avatar="misket"] .friend-avatar-sprite { background-image:url('companions/misket-v1.png'); }
+.fortale-companion-art[data-avatar="pus"] .friend-avatar-sprite { background-image:url('companions/pus-v1.png'); }
+.fortale-companion-art[data-avatar="lumen"] .friend-avatar-sprite { background-image:url('companions/lumen-v1.png'); }
+.fortale-companion-art[data-avatar="nova"] .friend-avatar-sprite { background-image:url('companions/nova-v1.png'); }
+.fortale-companion-art :is(.friend-thought,.friend-spark,.friend-hearts) { z-index:4; }
+.fortale-companion-art .friend-book { z-index:3; }
+.fortale-companion-art:is([data-mood="read"],[data-mood="sit"]) .friend-avatar-sprite { animation:friend-avatar-seated 4s ease-in-out infinite; }
+.fortale-companion-art:is([data-mood="happy"],[data-mood="clap"],[data-mood="excited"]) .friend-avatar-sprite { animation:friend-avatar-joy .65s ease-in-out infinite; }
+.fortale-companion-art[data-mood="walk"] .friend-avatar-sprite { animation:friend-avatar-walk .7s ease-in-out infinite; }
+.fortale-companion-art[data-mood="think"] .friend-avatar-sprite { animation:friend-avatar-think 3s ease-in-out infinite; }
+.fortale-companion-art[data-mood="surprise"] .friend-avatar-sprite { animation:friend-avatar-surprise .5s ease-out both; }
+.fortale-companion-art[data-animated="false"] * { animation:none!important; }
+@keyframes friend-avatar-breathe { 0%,100% {transform:scale(1)} 50% {transform:scale(1.015,.985) translateY(1px)} }
+@keyframes friend-avatar-seated { 0%,100% {transform:translateY(7px) scale(.97,.91)} 50% {transform:translateY(8px) scale(.98,.9)} }
+@keyframes friend-avatar-joy { 0%,100% {transform:translateY(0) rotate(-3deg)} 50% {transform:translateY(-7px) rotate(3deg)} }
+@keyframes friend-avatar-walk { 0%,100% {transform:rotate(-4deg)} 50% {transform:translateY(-2px) rotate(4deg)} }
+@keyframes friend-avatar-think { 0%,100% {transform:rotate(-5deg)} 50% {transform:rotate(-2deg)} }
+@keyframes friend-avatar-surprise { 0% {transform:scale(.94)} 50% {transform:translateY(-6px) scale(1.07)} 100% {transform:scale(1)} }
+@media (prefers-reduced-motion:reduce) {
+  .fortale-companion-art .friend-avatar-sprite { animation:none!important; }
+}
+
+.fortale-companion-art[data-legendary="true"] .friend-avatar-sprite { filter:drop-shadow(0 0 7px #e6b96f70); }
+.fortale-companion-art[data-legendary="true"] .friend-spark { animation:friend-sparkle 2s ease-in-out infinite; color:#e6b96f; }
+@media (prefers-reduced-motion:reduce) { .fortale-companion-art[data-legendary="true"] .friend-spark { animation:none!important; } }

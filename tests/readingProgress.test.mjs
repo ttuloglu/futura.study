@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import ts from 'typescript';
 const source=fs.readFileSync(new URL('../utils/readingProgressModel.ts',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {mergeCoverage,mergeReadingRecords,readingStats,libraryReadingState,sortLibraryByReading}=await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+const {mergeCoverage,mergeReadingRecords,readingStats,libraryReadingState,sortLibraryByReading,encodeReadingRecord,decodeReadingRecord}=await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const base=(extra={})=>({bookId:'test',title:'Kitap',bookType:'fairy_tale',genre:'Masal',subGenre:'Dostluk',bookmarks:{},coverage:[],reachedEnd:false,updatedAt:100,...extra});
 test('jumping directly to the last page cannot count as a finished book',()=>{
  const record=mergeReadingRecords(undefined,base({coverage:[[.95,1]],reachedEnd:true}));
@@ -55,4 +55,33 @@ test('last-opened books precede unread books and opening the same page moves a b
  assert.deepEqual(sortLibraryByReading(books,records).map(book=>book.id),['first','second','new']);
  assert.equal(mergeReadingRecords(records.first,base({...records.first,lastOpenedAt:100,updatedAt:700})).lastOpenedAt,500);
  assert.deepEqual(books.map(book=>book.id),['new','first','second']);
+});
+
+test('language learning books have their own category, language and CEFR counts without double counting',()=>{
+ const records=[
+  base({bookId:'english',bookType:'novel',learningLanguage:'en',learningLevel:'A2',completedAt:100}),
+  base({bookId:'german',bookType:'story',learningLanguage:'de',learningLevel:'B1',completedAt:200}),
+  base({bookId:'second-english',learningLanguage:'en',learningLevel:'A2',completedAt:300}),
+  base({bookId:'ongoing',learningLanguage:'en',learningLevel:'B2',coverage:[[0,.4]]}),
+  base({bookId:'unread',learningLanguage:'fr',learningLevel:'A1'}),
+  base({bookId:'regular',bookType:'novel',completedAt:400})
+ ];
+ const stats=readingStats(records);
+ assert.equal(stats.total,4);assert.deepEqual(stats.types,{language_learning:3,novel:1});
+ assert.deepEqual(stats.learning,{total:3,inProgress:1,languages:{en:2,de:1},levels:{A2:2,B1:1}});
+ assert.equal(Object.values(stats.types).reduce((a,b)=>a+b,0),stats.total);
+});
+test('old reading records are enriched from library metadata including creative briefs',()=>{
+ const record=base({completedAt:100});
+ const books=[{id:'test',creativeBrief:{languageLearning:{purpose:'language_learning',targetLanguage:'fr',cefrLevel:'B2'}}}];
+ const stats=readingStats([record],new Date(),books);
+ assert.equal(stats.learning.total,1);assert.deepEqual(stats.learning.languages,{fr:1});
+ assert.deepEqual(stats.learning.levels,{B2:1});assert.equal(record.learningLanguage,undefined);
+});
+test('learning metadata survives updates from older clients and storage encoding',()=>{
+ const first=base({learningLanguage:'en',learningLevel:'A2'});
+ const merged=mergeReadingRecords(first,base({updatedAt:200}));
+ assert.equal(merged.learningLanguage,'en');assert.equal(merged.learningLevel,'A2');
+ const restored=decodeReadingRecord(encodeReadingRecord(merged));
+ assert.equal(restored.learningLanguage,'en');assert.equal(restored.learningLevel,'A2');
 });

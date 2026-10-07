@@ -1,10 +1,11 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import DialogCloseButton from './DialogCloseButton';
 import { useUiI18n } from '../i18n/uiI18n';
 import FLogo from './FLogo';
 import { composerViewport } from '../utils/composerViewport';
 import { NativeFloatIsland, supportsNativeFloatIsland, type NativeKeyboardState } from '../utils/nativeFloatIsland';
+import { lockSheetBackground } from '../utils/sheetBackground';
 
 interface FloatIslandSheetProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface FloatIslandSheetProps {
   children: React.ReactNode;
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
+  headerActions?: React.ReactNode;
   footer?: React.ReactNode;
   layer?: number;
   maxWidth?: number | string;
@@ -25,6 +27,7 @@ interface FloatIslandSheetProps {
   panelClassName?: string;
   bodyClassName?: string;
   panelRef?: React.RefObject<HTMLDivElement | null>;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 export default function FloatIslandSheet({
@@ -33,6 +36,7 @@ export default function FloatIslandSheet({
   children,
   title,
   subtitle,
+  headerActions,
   footer,
   layer = 900,
   maxWidth = 520,
@@ -45,33 +49,36 @@ export default function FloatIslandSheet({
   logoSize = 28,
   panelClassName = '',
   bodyClassName = 'p-4 sm:p-5',
-  panelRef
+  panelRef,
+  initialFocusRef
 }: FloatIslandSheetProps) {
   const { t } = useUiI18n();
   const titleId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
 
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    return lockSheetBackground();
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
-    const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !closeDisabled) onClose();
     };
-    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [closeDisabled, isOpen, onClose]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen || !keyboardAware) return;
-    const fullHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
     let nativeKeyboard: NativeKeyboardState | undefined;
     let keyboardListener: { remove: () => Promise<void> } | undefined;
     let active = true;
     const resize = () => {
+      const fullHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
       const viewport = window.visualViewport;
       const geometry = composerViewport(fullHeight, viewport?.height || window.innerHeight, viewport?.offsetTop || 0, nativeKeyboard);
       const root = rootRef.current;
@@ -103,6 +110,11 @@ export default function FloatIslandSheet({
     };
   }, [isOpen, keyboardAware]);
 
+  useLayoutEffect(() => {
+    if (!isOpen || !initialFocusRef?.current) return;
+    initialFocusRef.current.focus({ preventScroll: true });
+  }, [isOpen, initialFocusRef]);
+
   if (!isOpen || typeof document === 'undefined') return null;
 
   const resolvedMaxWidth = typeof maxWidth === 'number' ? `${maxWidth}px` : maxWidth;
@@ -121,7 +133,7 @@ export default function FloatIslandSheet({
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         className={`fortale-floatisland-sheet-panel fortale-sheet-surface relative flex w-full min-h-0 flex-col overflow-hidden ${panelClassName}`}
-        style={{ maxWidth: resolvedMaxWidth }}
+        style={{ '--fortale-sheet-max-width': resolvedMaxWidth, maxWidth: 'var(--fortale-sheet-tablet-width, var(--fortale-sheet-max-width))' } as React.CSSProperties}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="fortale-sheet-handle" aria-hidden />
@@ -138,16 +150,14 @@ export default function FloatIslandSheet({
                 {subtitle && <div className="mt-0.5 text-[11px] leading-4 text-slate-300">{subtitle}</div>}
               </div>
             </div>
+            {headerActions}
             {showCloseButton && (
-              <button
-                type="button"
+              <DialogCloseButton
                 onClick={onClose}
                 disabled={closeDisabled}
                 className="fortale-sheet-close"
                 aria-label={t('Kapat')}
-              >
-                <X size={17} />
-              </button>
+              />
             )}
           </header>
         )}

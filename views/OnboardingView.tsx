@@ -225,7 +225,7 @@ export default function OnboardingView({ onFinish, onContinueWithoutLogin, onExp
 
   return (
     <div
-      className="fixed inset-0 z-[120] overflow-hidden bg-[#030914] text-white"
+      className="fortale-onboarding-view fixed inset-0 z-[120] overflow-hidden bg-[#030914] text-white"
       dir={isRtl ? 'rtl' : 'ltr'}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}

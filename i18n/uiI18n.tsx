@@ -6,6 +6,8 @@ import { UI_TRANSLATION_SAFE_KEYS } from '../data/uiTranslationSafeKeys.generate
 import { UI_TRANSLATION_SUPPLEMENTS } from '../data/uiTranslationSupplements';
 import { COMMUNITY_UI_TRANSLATIONS } from '../data/communityUiTranslations.generated';
 import { LIBRARY_DASHBOARD_UI_TRANSLATIONS } from '../data/libraryDashboardUiTranslations';
+import { COMPANION_UI_TRANSLATIONS } from '../data/companionUiTranslations';
+import { READING_STATS_UI_TRANSLATIONS } from '../data/readingStatsUiTranslations';
 import { HOME_SHELF_UI_TRANSLATIONS } from '../data/homeShelfUiTranslations';
 import { COMMUNITY_ACTION_UI_TRANSLATIONS } from '../data/communityActionUiTranslations';
 import { CREDIT_UI_TRANSLATIONS } from '../data/creditUiTranslations';
@@ -2946,6 +2948,12 @@ function translateText(language: AppLanguageCode, value: string): string {
 
   const communityTranslation = COMMUNITY_UI_TRANSLATIONS[language]?.[value];
   if (communityTranslation) return communityTranslation;
+
+  const companionTranslation = COMPANION_UI_TRANSLATIONS[language]?.[value];
+  if (companionTranslation) return companionTranslation;
+
+  const readingStatsTranslation = READING_STATS_UI_TRANSLATIONS[language]?.[value];
+  if (readingStatsTranslation) return readingStatsTranslation;
 
   const homeShelfTranslation = HOME_SHELF_UI_TRANSLATIONS[language]?.[value];
   if (homeShelfTranslation) return homeShelfTranslation;

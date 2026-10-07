@@ -3,10 +3,10 @@ import { ChevronDown } from 'lucide-react';
 import FortaleDropdown, { type FortaleDropdownOption } from './FortaleDropdown';
 import { supportsNativeFloatIsland } from '../utils/nativeFloatIsland';
 
-export default function LibraryTypeFilter<T extends string>({ label, value, options, onChange, width = 126 }: {
-  label: string; value: T; options: FortaleDropdownOption<T>[]; onChange: (value: T) => void; width?: number;
+export default function LibraryTypeFilter<T extends string>({ label, value, options, onChange, width = '100%' }: {
+  label: string; value: T; options: FortaleDropdownOption<T>[]; onChange: (value: T) => void; width?: React.CSSProperties['width'];
 }) {
-  return <div className="relative h-9 shrink-0" style={{ width }}>
+  return <div className="fortale-library-filter-wrapper relative h-9 min-w-0" style={{ width }}>
     {supportsNativeFloatIsland() ? <>
       {/* The system selection UI opens from a trigger that stays in the scroll content. */}
       <select aria-label={label} value={value} onChange={event => onChange(event.target.value as T)}

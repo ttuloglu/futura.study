@@ -6,11 +6,11 @@
   /* Matte sticky-notes theme */
   --app-safe-top: max(env(safe-area-inset-top, 0px), 20px);
   --app-header-row-top: calc(var(--app-safe-top) - 2px);
-  --color-background: #0e1217;
-  --fortale-app-background: linear-gradient(180deg, #323b47 0%, #242b36 34%, #171c23 68%, #0e1217 100%);
+  --color-background: #14171b;
+  --fortale-app-background: linear-gradient(180deg, #303337 0%, #272b30 34%, #1d2126 68%, #14171b 100%);
   --fortale-home-background:
     radial-gradient(ellipse 520px 420px at 50% 48%, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 48%, transparent 72%),
-    linear-gradient(180deg, #323b47 0%, #242b36 34%, #171c23 68%, #0e1217 100%);
+    var(--fortale-app-background);
   --fortale-floatisland-surface: rgba(236, 248, 246, 0.14);
   --fortale-wizard-surface: var(--fortale-floatisland-surface);
   --fortale-wizard-surface-glass: transparent;
@@ -18,8 +18,8 @@
   --color-surface-card: rgba(34, 37, 42, 0.46);
   --color-surface-glass: rgba(39, 42, 47, 0.58);
 
-  --color-text-primary: #e6f2ff;
-  --color-text-secondary: #a6bdd6;
+  --color-text-primary: #dad3c6;
+  --color-text-secondary: #aaa59d;
 
   --color-accent-red: #c04235;
   --fortale-brand-accent: #c04235;
@@ -37,6 +37,13 @@
   --matte-surface-soft: rgba(31, 34, 39, 0.84);
   --matte-surface-raised: rgba(36, 40, 46, 0.9);
   --app-card-surface: rgba(17, 22, 29, 0.42);
+}
+
+/* Home and login share the catalog's graphite family. */
+:root:has(.fortale-home-view, .fortale-login-view) {
+  --color-background: #14171b;
+  --fortale-app-background: linear-gradient(180deg, #303337 0%, #272b30 34%, #1d2126 68%, #14171b 100%);
+  --fortale-home-background: var(--fortale-app-background);
 }
 
 body {
@@ -3453,6 +3460,33 @@ button.fortale-hero-inline-field {
   background: rgba(255, 255, 255, 0.95);
 }
 
+.fortale-library-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+}
+
+.fortale-library-search-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+.fortale-library-search-trigger > svg { flex-shrink: 0; }
+.fortale-library-search-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fortale-library-search-count { opacity: .7; font-weight: 500; }
+.fortale-library-search-trigger[data-active="true"] { border-color: #e0a394 !important; }
+@media (max-width: 360px) {
+  .fortale-library-toolbar .fortale-library-filter-trigger,
+  .fortale-library-toolbar .fortale-library-native-filter { padding: 0 7px !important; font-size: 10px !important; }
+  .fortale-library-toolbar .fortale-library-filter-trigger { gap: 3px; }
+  .fortale-library-toolbar .fortale-library-native-filter { padding-right: 20px !important; }
+  .fortale-library-toolbar > div > svg { right: 6px; width: 12px; }
+  .fortale-library-search-count { display: block; font-size: 9px; line-height: 1.2; }
+}
+
 .fortale-library-native-filter,
 .fortale-library-filter-trigger {
   appearance: none;
@@ -4568,8 +4602,9 @@ html.native-float-island body > #root > div.fixed:has(.onboarding-v2-stage) > ma
 }
 
 html.native-float-island {
-  --fortale-floatisland-height: 52px;
-  --fortale-floatisland-bottom: max(6px, calc(env(safe-area-inset-bottom, 0px) - 16px));
+  /* Match NativeFloatIslandPlugin: 54pt tall, 8pt above the safe-area bottom. */
+  --fortale-floatisland-height: 54px;
+  --fortale-floatisland-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
   --fortale-floatisland-clearance: calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-height) + 18px);
 }
 
@@ -5353,6 +5388,8 @@ body:has(.fortale-floatisland-sheet-root[data-keyboard="true"]) .fortale-floatis
 }
 
 .fortale-login-view {
+  --login-ink: #dad3c6;
+  --login-muted: #aaa59d;
   isolation: isolate;
   overflow-y: auto;
   background-color: var(--fortale-cosmos-color) !important;
@@ -5368,16 +5405,33 @@ body:has(.fortale-floatisland-sheet-root[data-keyboard="true"]) .fortale-floatis
 
 .fortale-login-card {
   padding: 18px;
-  border: 1px solid rgba(148, 210, 255, 0.16);
+  border: 1px solid rgba(218, 211, 198, 0.18);
   border-radius: 28px;
   background:
-    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025));
+    linear-gradient(180deg, rgba(48, 51, 55, .96), rgba(34, 39, 45, .96));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     0 24px 58px rgba(0, 0, 0, 0.34);
-  backdrop-filter: blur(18px) saturate(126%);
-  -webkit-backdrop-filter: blur(18px) saturate(126%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
+
+.fortale-login-view .text-white { color: var(--login-ink); }
+.fortale-login-view input.login-flat-input::placeholder {
+  color: var(--login-muted) !important;
+  -webkit-text-fill-color: var(--login-muted);
+  opacity: 1;
+}
+.fortale-login-view .fortale-login-submit > span:not([aria-hidden]) {
+  color: #22272d !important;
+  -webkit-text-fill-color: currentColor;
+}
+.fortale-login-view .fortale-login-field:focus-within {
+  border-color: rgba(218, 211, 198, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(184, 92, 78, 0.2) !important;
+}
+.fortale-login-view button:focus-visible { outline: 2px solid #e0a394; outline-offset: 3px; }
+.fortale-login-submit:hover:not(:disabled) { background: #eee8dd !important; }
 
 @media (max-height: 760px) {
   .fortale-login-card {
@@ -5633,6 +5687,45 @@ body:has(.fortale-floatisland-sheet-root[data-keyboard="true"]) .fortale-floatis
   background-color: var(--fortale-floatisland-surface) !important;
 }
 
+/* Native library selects and the search button use the same capsule surface. */
+#root .fortale-library-toolbar :is(.fortale-library-native-filter, .fortale-library-filter-trigger) {
+  border: 1px solid rgba(218, 211, 198, 0.22) !important;
+  border-radius: 12px !important;
+  background: #25292e !important;
+  background-color: #25292e !important;
+  background-image: none !important;
+  color: #dad3c6 !important;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+}
+#root .fortale-library-toolbar :is(.fortale-library-native-filter, .fortale-library-filter-trigger):hover {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+#root .fortale-library-toolbar :is(.fortale-library-native-filter, .fortale-library-filter-trigger):focus-visible {
+  outline: 2px solid #aaa59d !important;
+  outline-offset: 2px;
+}
+#root .fortale-library-toolbar .fortale-library-search-trigger[data-active="true"] {
+  border-color: rgba(218, 211, 198, 0.5) !important;
+  background-color: #25292e !important;
+  background-image: none !important;
+}
+
+.fortale-library-search-results {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 12px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid rgba(218,211,198,.16); background: #25292e; color: #dad3c6;
+}
+.fortale-library-search-results p { min-width: 0; display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 12px; }
+.fortale-library-search-results p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aaa59d; }
+#root .fortale-library-search-results button {
+  display: flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 8px 10px;
+  border: 1px solid rgba(218,211,198,.25) !important; border-radius: 10px;
+  background: #303337 !important; background-color: #303337 !important; background-image: none !important;
+  color: #dad3c6 !important; font-size: 11px; font-weight: 600;
+}
+
 .fortale-header-credit-button {
   border: 0 !important;
   background: transparent !important;
@@ -5698,6 +5791,10 @@ body:has(.fortale-production-composer-root[data-keyboard="true"]) .fortale-float
   transform: translateY(14px);
   color: white; background: var(--fortale-modal-surface); backdrop-filter: blur(30px) grayscale(1); -webkit-backdrop-filter: blur(30px) grayscale(1);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.22), inset 0 1px 0 rgba(255,255,255,.14), 0 14px 44px rgba(0,0,0,.22);
+}
+html.native-float-island .fortale-production-composer {
+  /* Preserve the full island clearance when a tall composer reaches its limit. */
+  transform: none;
 }
 .fortale-composer-handle { flex: 0 0 4px; width: 38px; height: 4px; border-radius: 999px; background: var(--fortale-brand-accent); align-self: center; margin: 10px 0 4px; }
 .fortale-composer-header { display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 52px; padding: 8px 14px 10px; border-bottom: 1px dashed rgba(255,255,255,.22) !important; }
@@ -5906,8 +6003,6 @@ body:has(.fortale-production-composer-root[data-keyboard="true"]) .fortale-float
 .fortale-production-composer[data-stage="details"] .fortale-composer-header { min-height: 0; padding: 12px 14px 8px; border-bottom: 1px dashed rgba(255,255,255,.22) !important; gap: 8px; }
 .fortale-production-composer[data-stage="details"] .fortale-composer-header-info strong { font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.88); }
 .fortale-production-composer[data-stage="details"] .fortale-composer-header-info small { font-weight: 500; color: rgba(255,255,255,.62); }
-.fortale-production-composer[data-stage="details"] .fortale-composer-close { width: 30px; height: 30px; flex-basis: 30px; border: 0; background: rgba(255,255,255,.92); color: #171717; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
-.fortale-production-composer[data-stage="details"] .fortale-composer-close svg { width: 14px; height: 14px; }
 .fortale-details-question { font-size: 12.5px; font-weight: 500; line-height: 1.45; color: rgba(255,255,255,.88); margin: 0 0 8px; padding: 0 2px; outline: none; }
 .fortale-details-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .fortale-details-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 12px; border-radius: 11px; font-size: 12.5px; line-height: 1.4; text-align: start; background: #fff; border: 1px solid #fff; color: #171717; transition: background .15s ease, border-color .15s ease; }
@@ -6001,23 +6096,61 @@ body .fortale-production-composer input.fortale-details-other::placeholder {
   -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
 }
 
+.fortale-floatisland-sheet-root:has(.fortale-cover-preview-sheet) {
+  align-items: center !important;
+  padding-inline: 12px !important;
+}
+body:has(.fortale-cover-preview-sheet) .fortale-modal-companion-root { display: none; }
+body:has(.fairy-book-reader) .fortale-floatisland-sheet-root:has(.fortale-cover-preview-sheet) {
+  --fortale-modal-top-clearance: calc(env(safe-area-inset-top, 0px) + 12px);
+  --fortale-floatisland-clearance: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+.fortale-floatisland-sheet-panel.fortale-cover-preview-sheet {
+  --fortale-sheet-tablet-width: 100%;
+  height: 100%;
+  max-width: 100% !important;
+  background: #25292e !important;
+}
 .fortale-cover-preview-sheet .fortale-sheet-body {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 14px 18px;
+  padding: 12px !important;
+  overflow: hidden;
 }
-
-.fortale-cover-preview-image {
+.fortale-image-viewer { width: 100%; height: 100%; min-height: 0; }
+.fortale-image-viewer .swiper-slide { height: 100%; }
+.fortale-image-viewer .fortale-cover-preview-image {
   display: block;
-  max-width: 100%;
   width: auto;
   height: auto;
-  max-height: min(62vh, 480px);
-  border-radius: 18px;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.75);
+  border-radius: 12px;
 }
+
+.fortale-library-loading {
+  position: fixed;
+  inset: var(--fortale-modal-top-clearance, 80px) 16px var(--fortale-floatisland-clearance, 100px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: #dad3c6;
+  font-size: 14px;
+}
+.fortale-image-share {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  color: #dad3c6;
+}
+.fortale-image-share:disabled { opacity: .5; }
 
 /* ==========================================================================
    3D REALISTIC WOODEN BOOKSHELF (Kitaplık Rafı)
@@ -6357,173 +6490,252 @@ body .fortale-production-composer input.fortale-details-other::placeholder {
   font-size: 12px;
 }
 
-/* ==========================================================================
-   2x2 EDITORIAL CREATION BUTTONS (4'lü Buton Izgarası)
-   ========================================================================== */
-
-.fortale-creation-grid-container {
+/* Publication catalog: warm ink, serif titles, and a single printed red rule. */
+.fortale-creation-catalog-container {
   width: 100%;
-  max-width: min(calc(100vw - 28px), 480px);
+  max-width: 440px;
+  flex: 0 0 auto;
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   pointer-events: auto;
 }
 
-.fortale-creation-2x2-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  width: 100%;
+.fortale-creation-catalog {
+  --catalog-paper: #dad3c6;
+  --catalog-muted: #b1aaa0;
+  --catalog-accent: #b85c4e;
+  --catalog-active: #e0a394;
+  padding: 18px 25px 16px;
+  background: #22272d;
+  color: var(--catalog-paper);
+  text-align: start;
 }
 
-.fortale-creation-btn {
-  position: relative;
+.fortale-creation-catalog-masthead {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 56px;
-  height: 56px;
-  padding: 0 12px;
-  border-radius: 15px;
-  text-align: left;
-  cursor: pointer;
-  outline: none;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--catalog-accent);
 }
 
-.fortale-creation-btn:active {
-  transform: scale(0.98);
-}
-
-.fortale-creation-btn-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  height: auto;
-  flex-shrink: 0;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0;
-  color: #ffffff;
-}
-
-.fortale-creation-btn-content {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  flex: 1;
-}
-
-.fortale-creation-btn-title {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 700;
-  line-height: 1.25;
-  color: #ffffff;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fortale-creation-btn-subtitle {
-  display: block;
-  font-size: 10.5px;
+.fortale-creation-catalog-brand {
+  color: var(--catalog-paper);
+  font-size: 15px;
+  line-height: 1.4;
   font-weight: 500;
-  line-height: 1.25;
-  color: rgba(255, 255, 255, 0.72);
-  margin-top: 1px;
-  white-space: nowrap;
+  letter-spacing: -0.4px;
+}
+
+.fortale-creation-catalog-label {
+  color: var(--catalog-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.4px;
+  text-transform: capitalize;
+  text-align: end;
+}
+
+.fortale-creation-catalog-entry {
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid #45474a;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 150ms ease;
+}
+
+.fortale-creation-catalog-entry:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.fortale-creation-catalog-copy { min-width: 0; }
+
+.fortale-creation-catalog-title {
+  display: block;
+  color: var(--catalog-paper);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.65px;
+  overflow-wrap: anywhere;
+  transition: color 150ms ease;
+}
+
+.fortale-creation-catalog-subtitle {
+  display: block;
+  margin-top: 3px;
+  color: var(--catalog-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.fortale-creation-catalog-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--catalog-muted);
+  transition: color 150ms ease, transform 150ms ease;
+}
+
+.fortale-creation-catalog-entry:is(:active, .is-selected) {
+  border-bottom-color: var(--catalog-accent);
+}
+
+.fortale-creation-catalog-entry:is(:active, .is-selected) :is(.fortale-creation-catalog-title, .fortale-creation-catalog-arrow) {
+  color: var(--catalog-active);
+}
+
+.fortale-creation-catalog-entry:focus-visible {
+  outline: 2px solid var(--catalog-active);
+  outline-offset: 5px;
+}
+
+@media (hover: hover) {
+  .fortale-creation-catalog-entry:hover :is(.fortale-creation-catalog-title, .fortale-creation-catalog-arrow) { color: var(--catalog-active); }
+  .fortale-creation-catalog-entry:hover .fortale-creation-catalog-arrow { transform: translateX(2px); }
+}
+
+.fortale-creation-catalog-container .fortale-editorial-ticker-wrap {
+  margin-top: 10px;
+}
+
+/* Keep the whole home screen within the viewport and the shelf above navigation. */
+.fortale-home-view.view-container.is-intro {
+  overflow: hidden !important;
+  padding-bottom: var(--fortale-floatisland-clearance) !important;
+}
+
+.fortale-home-view.view-container.is-intro .fortale-home-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 14px;
+}
+
+.fortale-home-view.is-intro .fortale-home-greeting { flex: 0 0 auto; }
+
+.fortale-home-view.is-intro .fortale-home-create-dock {
+  position: static !important;
+  order: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: flex-start;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fortale-creation-btn-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.4);
-  flex-shrink: 0;
-  margin-left: 2px;
-  transition: transform 0.15s ease, color 0.15s ease;
-}
-
-.fortale-creation-btn:hover .fortale-creation-btn-arrow,
-.fortale-creation-btn:active .fortale-creation-btn-arrow {
-  color: #ffffff;
-  transform: translateX(1px);
-}
-
-/* 1. HİKAYE — Solid Deep Terracotta / Crimson */
-.fortale-btn-story {
-  background: #8e2f2b;
-  border: 1px solid #a63833;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-}
-.fortale-btn-story:active,
-.fortale-btn-story.is-selected {
-  background: #9e3531;
-  border-color: #f87171;
-  box-shadow: 0 6px 16px rgba(162, 53, 50, 0.45);
-}
-
-/* 2. MASAL — Solid Midnight Navy / Sapphire */
-.fortale-btn-fairytale {
-  background: #1f385c;
-  border: 1px solid #2d4f80;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-}
-.fortale-btn-fairytale:active,
-.fortale-btn-fairytale.is-selected {
-  background: #264570;
-  border-color: #93c5fd;
-  box-shadow: 0 6px 16px rgba(42, 85, 148, 0.45);
-}
-
-/* 3. ÇALIŞMA KİTABI — Solid Antique Ochre / Warm Amber */
-.fortale-btn-workbook {
-  background: #82571c;
-  border: 1px solid #a16b24;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-}
-.fortale-btn-workbook:active,
-.fortale-btn-workbook.is-selected {
-  background: #946320;
-  border-color: #fcd34d;
-  box-shadow: 0 6px 16px rgba(158, 110, 36, 0.45);
-}
-
-/* 4. YABANCI DİL — Solid Botanical Pine / Dark Jade */
-.fortale-btn-language {
-  background: #1b5843;
-  border: 1px solid #25785c;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-}
-.fortale-btn-language:active,
-.fortale-btn-language.is-selected {
-  background: #216a51;
-  border-color: #6ee7b7;
-  box-shadow: 0 6px 16px rgba(32, 118, 90, 0.45);
-}
-
-/* Tapered red underline under the whole 4-button group (Header'daki gibi) */
-.fortale-creation-group-underline {
-  width: 92%;
+  width: 100%;
   max-width: 440px;
-  margin: 12px auto 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+  margin: 0 auto !important;
+  transform: none;
 }
 
+.fortale-home-create-dock > div {
+  width: 100%;
+  flex: 0 0 auto;
+  margin: auto 0;
+}
 
+.fortale-home-view.view-container.is-intro .fortale-home-rail-stack {
+  position: relative !important;
+  order: 2;
+  flex: 0 0 auto;
+  left: auto;
+  bottom: auto !important;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto !important;
+  transform: none;
+}
 
+@media (max-width: 360px) {
+  .fortale-creation-catalog { padding: 18px 20px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fortale-creation-catalog-entry,
+  .fortale-creation-catalog-title,
+  .fortale-creation-catalog-arrow { transition: none; }
+}
+
+/* A portal sheet freezes the app's scroll panes while its own body stays scrollable. */
+html.fortale-sheet-open #root {
+  pointer-events: none;
+  touch-action: none;
+}
+html.fortale-sheet-open #root .view-container {
+  overflow-y: hidden !important;
+  overscroll-behavior: none !important;
+  scroll-behavior: auto !important;
+}
+/* Focus begins at the settled position so iOS does not chase a sliding input. */
+.fortale-library-search-sheet {
+  animation: fortale-library-search-in 180ms ease-out both !important;
+}
+.fortale-floatisland-sheet-root:has(.fortale-library-search-sheet) {
+  background: #14171b !important;
+  background-color: #14171b !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body .fortale-sheet-surface.fortale-library-search-sheet {
+  background: #282c31 !important;
+  background-color: #282c31 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(218,211,198,.2) !important;
+}
+@keyframes fortale-library-search-in { from { opacity: 0; } to { opacity: 1; } }
+body .fortale-floatisland-sheet-root .fortale-sheet-surface.fortale-library-search-sheet input.fortale-library-search-input:not(.hidden) {
+  font-size: 16px !important;
+  background: #1d2126 !important;
+  background-color: #1d2126 !important;
+  background-image: none !important;
+  border-color: rgba(218,211,198,.2) !important;
+  color: #f3efe7 !important;
+  -webkit-text-fill-color: #f3efe7 !important;
+  caret-color: #f3efe7;
+}
+body .fortale-library-search-sheet .fortale-library-search-input:focus {
+  border-color: rgba(218,211,198,.5) !important;
+}
+body .fortale-library-search-sheet .fortale-library-search-input::placeholder {
+  color: #aaa59d !important;
+  -webkit-text-fill-color: #aaa59d !important;
+}
+
+/* Canonical close control: production, settings, search, statistics and lightboxes. */
+body button.fortale-dialog-close[data-dialog-close] {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important;
+  flex: 0 0 36px !important; padding: 0 !important;
+  border: .5px solid #fff !important; border-radius: 50% !important;
+  background: #fff !important; background-color: #fff !important; background-image: none !important;
+  color: #171717 !important; -webkit-text-fill-color: #171717 !important;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18) !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  filter: none !important; cursor: pointer;
+}
+body button.fortale-dialog-close[data-dialog-close] svg {
+  width: 19px !important; height: 19px !important; color: #171717 !important;
+  stroke: #171717 !important; stroke-width: 2; filter: none !important;
+}
+body button.fortale-dialog-close[data-dialog-close]:is(:hover, :active) {
+  background: #fff !important; background-color: #fff !important; color: #171717 !important;
+}
+body button.fortale-dialog-close[data-dialog-close]:focus-visible { outline: 2px solid #aaa59d !important; outline-offset: 3px; }
+body button.fortale-dialog-close[data-dialog-close]:disabled { opacity: .42; cursor: default; }

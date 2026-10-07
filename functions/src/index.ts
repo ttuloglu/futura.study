@@ -1,3 +1,5 @@
+import { hasRequiredBookClassification } from "./bookTaxonomy";
+import { createBookCreativeDirection, normalizeBookCreativeDirection, buildBookArtDirection, buildBookNarrativeDirection, buildBookUserInputDirective, buildBookEditorialReviewPrompt, parseBookEditorialReview, type BookCreativeDirection, type RecentBookReference } from "./bookCreativeDirection";
 import {communicationsEnabled,queueCommunication} from './communications';
 import { BOOK_INTAKE_SYSTEM_INSTRUCTION, normalizeBookIntakeResult, resolveBookCreationMode, type IntakeContext, type BookIntakeResult } from "./bookCreationIntake";
 import { classificationFromDraft } from "./bookTaxonomy";
@@ -62,7 +64,7 @@ const FAIRY_TALE_TOTAL_IMAGE_COUNT = 4;
 const STORY_TOTAL_IMAGE_COUNT = 2;
 const NOVEL_TOTAL_IMAGE_COUNT = 6;
 const VISUAL_FAIRY_TALE_PAGE_COUNT = 8;
-const IMAGE_PROMPT_MAX_CHARS = 4_800;
+const IMAGE_PROMPT_MAX_CHARS = 16_000;
 const PODCAST_VOICE_OPTIONS = [
   "Kore",
   "Leda",
@@ -338,7 +340,7 @@ const SYSTEM_INSTRUCTION_BASE =
 const SYSTEM_INSTRUCTION_BY_BOOK_TYPE: Partial<Record<SmartBookBookType, string>> = {
   fairy_tale: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir MASAL metnidir. Güçlü masalsı atmosfer, berrak neden-sonuç, yaşa uygun duygu akışı ve tatmin edici/umutlu kapanış kur. Masalı yapay ders metnine, aşırı mekanik şablona, karikatürize iyi-kötü ikiliğine veya zoraki büyü gösterisine çevirme. Doğal Türkçe düzyazı kullan; masalda baskın anlatıcı omurgası çoğunlukla doğal '-mış/-miş' masal sesi olabilir ama bunu her cümlede mekanik zincire dönüştürme. Arada kısa ve yerinde döşeme/tekerleme kullanılabilir; ancak metni manzum satır kırılmasına, yapay ritme veya tekdüze söz dizimine sürükleme. Gerektiğinde görülen geçmiş, geniş zaman ve yumuşak anlatı zamanı geçişlerini doğal biçimde harmanla. Dil yaş grubuna göre basit, somut ve akıcı olmalı.",
   story: SYSTEM_INSTRUCTION_BASE + " Bu içerik bilimsel/akademik bir ÇALIŞMA KİTABIDIR. Kurmaca hikaye yazma. Konuyu seçilen eğitim seviyesine uygun doğrulukta; başlıklar, alt başlıklar, tablolar, listeler, kavram ilişkileri ve somut açıklamalarla öğret. Bilimsel kesinlik düzeyini açıkça belirt, uydurma kaynak veya doğrulanmamış iddia üretme.",
-  novel: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir ROMAN metnidir. Tüm metin edebi roman üslubuyla yazılmalıdır: katmanlı karakter dönüşümü, geniş anlatı derinliği, sürekli gerilim ve tema birliğiyle ilerlemelidir. Zengin ve derin bir anlatım kur."
+  novel: SYSTEM_INSTRUCTION_BASE + " Bu içerik bir ROMAN metnidir. Tüm metin edebi roman üslubuyla yazılmalıdır: katmanlı karakterler, anlatı derinliği, türe uygun değişken tempo ve tema birliğiyle ilerlemelidir. Zengin ve derin bir anlatım kur."
 };
 
 const SYSTEM_INSTRUCTION = SYSTEM_INSTRUCTION_BASE;
@@ -680,6 +682,7 @@ interface BookBundleDescriptor {
 }
 
 interface BookBundleManifest {
+  creativeFingerprint?: Record<string, unknown>;
   schemaVersion: number;
   id: string;
   userId: string;
@@ -995,6 +998,8 @@ type VisualStoryHeroPortraitReference = {
 };
 
 interface SmartBookCreativeBrief {
+  creativeDirection?: BookCreativeDirection;
+  visualStyle?: string;
   bookType: SmartBookBookType;
   subGenre?: string;
   languageText?: string;
@@ -1746,7 +1751,7 @@ function hasTopicSignal(text: string, topic: string): boolean {
   return topicTokens.some((token) => haystack.includes(token));
 }
 
-function isGenericBookDescription(value: string, topic: string): boolean {
+function isGenericBookDescription(value: string, topic: string, requireTopicSignal = true): boolean {
   const compact = compactDescriptionText(value);
   if (!compact) return true;
   const lower = compact.toLocaleLowerCase("tr-TR");
@@ -1758,7 +1763,7 @@ function isGenericBookDescription(value: string, topic: string): boolean {
     /^smartbook (?:içeriği|content)\.?$/i
   ];
   if (genericPatterns.some((pattern) => pattern.test(lower))) return true;
-  if (!hasTopicSignal(compact, topic)) return true;
+  if (requireTopicSignal && !hasTopicSignal(compact, topic)) return true;
   const sentenceCount = compact.split(/[.!?…。！？]+/u).map((part) => part.trim()).filter(Boolean).length;
   return compact.length < 120 || sentenceCount < 2;
 }
@@ -2295,12 +2300,14 @@ function normalizeSmartBookCreativeBrief(
     subGenre,
     languageText: compactInline(record.languageText, 80),
     languageLearning: normalizeLanguageLearning(record.languageLearning),
-    characters: compactInline(record.characters, 380),
-    settingPlace: compactInline(record.settingPlace, 220),
-    settingTime: compactInline(record.settingTime, 220),
+    creativeDirection: normalizeBookCreativeDirection(record.creativeDirection),
+    visualStyle: compactInline(record.visualStyle, 600),
+    characters: compactInline(record.characters, 1000),
+    settingPlace: compactInline(record.settingPlace, 400),
+    settingTime: compactInline(record.settingTime, 400),
     endingStyle,
-    narrativeStyle: compactInline(record.narrativeStyle, 220),
-    customInstructions: compactInline(record.customInstructions, 900),
+    narrativeStyle: compactInline(record.narrativeStyle, 400),
+    customInstructions: compactInline(record.customInstructions, 4000),
     workbookLevel: compactInline(record.workbookLevel, 80),
     workbookCategory: compactInline(record.workbookCategory, 120),
     includeExamples: record.includeExamples === true,
@@ -2361,8 +2368,6 @@ function isNarrativeBookTitleTooGeneric(
   const normalizedTitle = normalizeStoryPathKey(title);
   if (!normalizedTitle || normalizedTitle.length < 3) return true;
   if (/\b(?:taslak|taslagi|draft)\b/u.test(normalizedTitle)) return true;
-  if (/^(?:[a-z0-9ğüşıöç]+)\s+(?:ve|ile)\s+(?:[a-z0-9ğüşıöç]+)(?:\s|$)/u.test(normalizedTitle)) return true;
-  if (/^(?:[a-z0-9ğüşıöç]+)(?:nin|nın|nun|nün|in|ın|un|ün)\s+/u.test(normalizedTitle)) return true;
 
   const tokens = normalizedTitle.split(" ").filter(Boolean);
   if (tokens.length > 5) return true;
@@ -2541,17 +2546,17 @@ function buildNarrativeCraftMandates(isEn: boolean): string {
     ? [
       "CHARACTER DEPTH MANDATE: Every main character must have a visible inner life — a contradiction, a fear, a desire, or a wound that shapes their decisions. Character change must be earned through plot events, not declared.",
       "GENRE ACTION MANDATE: Never dilute or skip the core action of the selected subgenre. Thriller scenes must generate real tactical pressure. Adventure must move with momentum and escalating stakes. Horror must build dread into the scene fabric. Romance must create charged proximity and longing. Every genre promise must be kept, every chapter.",
-      "SUSTAINED TENSION MANDATE: Maintain narrative energy in every scene — no filler passages, no summary transitions, no flat stretches. Each scene must end with something changed, threatened, revealed, or decided. Reader forward-pull must never go slack.",
-      "MYSTERY PRESERVATION MANDATE: Never resolve the central mystery, core threat, or central dramatic question before the final act. Partial reveals, false leads, and deepening complications must keep the reader's curiosity alive until the last pages. Premature answers kill suspense — hold them back.",
-      "ENGAGEMENT MANDATE: Open each chapter with a hook that makes stopping impossible. Use scene-level conflict, sensory specificity, and charged dialogue to maintain grip. Avoid long expository blocks; embed context into action and conversation.",
+      "SCENE PURPOSE: Every scene earns its place through a choice, relationship, consequence or meaningful observation. Vary intensity and pace; quiet reflection, comic relief and ordinary work can matter. Do not turn every genre into a thriller or end every chapter with a cliffhanger.",
+      "GENRE-APPROPRIATE INFORMATION: Do not impose a central mystery, false clues, hidden past or last-act revelation on every book. Only use them when the chosen genre and user premise call for them. In other genres, let relationships, practical consequences and emotional discoveries carry the narrative.",
+      "ENGAGEMENT: Build reader interest through character specificity, meaningful action, sensory precision and distinctive dialogue. Choose openings fitting the actual scene; do not force a suspense hook or a threatened secret into every chapter.",
       "NO-REPETITION MANDATE: Never repeat the same emotional beat, descriptive phrase, or structural move in consecutive scenes or chapters. Vary sentence rhythm, scene texture, and emotional register deliberately. Repetition signals loss of narrative momentum — treat it as an error."
     ].join(" ")
     : [
       "KARAKTER DERİNLİĞİ ZORUNLULUĞU: Her ana karakterin görünür bir iç dünyası olmalı — kararlarını biçimlendiren bir çelişki, bir korku, bir arzu veya bir yara. Karakter değişimi olay örgüsü aracılığıyla kazanılmalı, sadece ilan edilmemeli.",
       "TÜRE ÖZGÜ AKSİYON ZORUNLULUĞU: Seçilen alt türün özünü asla sulandırma ya da atlama. Gerilim sahneleri gerçek taktik baskı yaratmalı. Macera momentum ve büyüyen risklerle hareket etmeli. Korku, sahnenin dokusuna işlenmiş bir tedirginlik inşa etmeli. Romantik anlatı yüklü bir yakınlık ve özlem yaratmalı. Her türün vaadi her bölümde yerine getirilmeli.",
-      "SÜREKLI GERİLİM ZORUNLULUĞU: Her sahnede anlatı enerjisini canlı tut — dolgu pasajlar yok, özet geçişler yok, yassı kesitler yok. Her sahne bir şeyin değiştiği, tehdit altına girdiği, açığa çıktığı veya kararlaştırıldığı bir noktada bitmeli. Okuyucunun ileriye çekilme isteği hiçbir zaman gevşememeli.",
-      "GİZEM KORUMA ZORUNLULUĞU: Merkezi gizemi, ana tehdidi veya sürükleyici dramatik soruyu son perdeye kadar asla çözme. Kısmi ipuçları, yanlış izler ve derinleşen komplikasyonlar okuyucunun merakını son sayfalara kadar diri tutmalı. Erken verilen cevaplar gerilimi öldürür — bu bilgileri son ana sakla.",
-      "ETKİLEYİCİLİK ZORUNLULUĞU: Her bölüme okumayı bırakmayı imkânsız kılan bir kancayla başla. Sahne düzeyinde çatışma, duyusal özgüllük ve yüklü diyalogla tutunmayı koru. Uzun bilgi aktarım bloklarından kaçın; bağlamı eylem ve konuşma içine göm.",
+      "SAHNENİN AMACI: Her sahne bir seçim, ilişki, sonuç veya anlamlı gözlemle yerini hak etsin. Yoğunluk ve tempo değişsin; sessiz düşünme, mizahi rahatlama ve gündelik emek de anlamlı olabilir. Her türü gerilim romanına ve her bölüm sonunu cliffhanger'a dönüştürme.",
+      "TÜRE UYGUN BİLGİ AKIŞI: Her kitaba merkezi gizem, yanlış ipuçları, saklı geçmiş veya finalde sır açıklaması dayatma. Bunlar yalnızca seçilen tür ve kullanıcı fikri gerektiriyorsa kullanılır. Diğer türlerde ilişkiler, pratik sonuçlar ve duygusal keşifler anlatıyı taşısın.",
+      "OKUR İLGİSİ: Karakterin özgüllüğü, anlamlı eylem, duyusal kesinlik ve kendine özgü diyalogla ilgiyi kur. Açılışlar sahnenin ihtiyacına uysun; her bölüme gizem kancası veya saklı sır dayatma.",
       "TEKRAR YASAĞI: Aynı duygusal vuruşu, tanımlayıcı ifadeyi veya yapısal hamlemi ardışık sahnelerde ya da bölümlerde tekrarlama. Cümle ritmini, sahne dokusunu ve duygusal tonu kasıtlı olarak çeşitlendir. Tekrar anlatı momentumunun yitirildiğinin işaretidir — hata olarak değerlendir."
     ].join(" ");
 }
@@ -2660,7 +2665,7 @@ function buildNarrativeTitleDirection(
 function buildNarrativeContentAutonomyDirective(isEn: boolean): string {
   return isEn
     ? "Content autonomy & originality: Never force a preset or repetitive topic from backend text. If the user provided a specific topic, strictly adhere to and develop that topic. If the creative direction was left to AI, invent a completely original, imaginative premise tailored to the chosen subgenre and characters. STRICT ANTI-CLICHE RULE: Never default to repetitive tropes such as train stations, ticking clocks, pocket watches, magical attic chests, or antique shops. Every book must feature fresh, unique worlds, distinct dilemmas, and creative storytelling."
-    : "İçerik özerkliği ve özgünlük: Asla sistem tarafından belirlenmiş veya tekrarlayan bir konu dayatma. Kullanıcı belirli bir konu girdiyse kesinlikle o konuya sadık kal ve onu geliştir. Yaratıcı yön AI'ya bırakıldıysa, seçilen alt tür ve karakterlere uygun tamamen özgün, taze ve yaratıcı bir olay örgüsü kur. KESİNLİKLE KLİŞE YASAĞI: Tren istasyonları, saatler, cep saatleri, tavan arası sandıkları veya antika dükkanları gibi kendini tekrar eden klişelere ASLA düşme. Her kitap tamamen özgün dünyalar, taze çatışmalar ve zengin karakter motivasyonları barındırmalıdır.";
+    : "İçerik özerkliği ve özgünlük: Asla sistem tarafından belirlenmiş veya tekrarlayan bir konu dayatma. Kullanıcı belirli bir konu girdiyse kesinlikle o konuya sadık kal ve onu geliştir. Yaratıcı yön AI'ya bırakıldıysa, seçilen alt tür ve karakterlere uygun tamamen özgün, taze ve yaratıcı bir olay örgüsü kur. KESİNLİKLE KLİŞE YASAĞI: Kullanıcı açıkça istemediyse tren istasyonu, saat, cep saati, tavan arası sandığı ve antika dükkanı varsayılanına düşme. Kullanıcı bunlardan birini istediyse koru; özgünlüğü motivasyon, nedensellik ve çözümde kur. Her kitap tamamen özgün dünyalar, taze çatışmalar ve zengin karakter motivasyonları barındırmalıdır.";
 }
 
 function buildNarrativeSubGenreLiteraryDirective(
@@ -2671,6 +2676,15 @@ function buildNarrativeSubGenreLiteraryDirective(
   const key = normalizeStoryPathKey(subGenre);
 
   if (bookType === "fairy_tale") {
+    if (key.includes("uyku")) return isEn
+      ? "Literary craft: a gentle restful arc with reassuring sensory detail and a peaceful ending; no suspense, sudden threats or high-energy chase."
+      : "Edebi işçilik: güven veren duyusal ayrıntılarla sakinleşen bir akış ve huzurlu kapanış kur; gerilim, ani tehdit veya hızlı kovalamaca dayatma.";
+    if (key.includes("hayvan")) return isEn
+      ? "Literary craft: animal characters have distinct habits and wishes; let cooperation emerge from a concrete gentle problem, not a moral lecture."
+      : "Edebi işçilik: hayvanların kendilerine özgü alışkanlıkları ve istekleri olsun; işbirliği somut, yumuşak bir sorundan doğsun, ahlak dersinden değil.";
+    if (key.includes("doga") || key.includes("dostluk")) return isEn
+      ? "Literary craft: show care for living things or friendship through small consequential actions; keep the wonder concrete and emotionally safe."
+      : "Edebi işçilik: canlılara özeni veya dostluğu sonuç doğuran küçük eylemlerle göster; hayreti somut ve duygusal olarak güvenli tut.";
     if (key.includes("klasik")) return isEn
       ? "Literary craft: use a timeless but natural fairy-tale flow, archetypal desire/fear, memorable symbolic objects, and clear emotional progression without nursery-rhyme stiffness."
       : "Edebi işçilik: zamansız ama doğal akan bir masal sesi kur; arketipsel arzu/korku, akılda kalan sembolik nesneler ve berrak duygusal ilerleme kullan; bunu tekerleme sertliğine çevirme.";
@@ -2701,10 +2715,10 @@ function buildNarrativeSubGenreLiteraryDirective(
     if (key.includes("korku")) return isEn
       ? "Literary craft: fear should grow through atmosphere, delay, implication, and sensory unease rather than constant explicit threat."
       : "Edebi işçilik: korku sürekli açık tehditten değil; atmosfer, gecikme, ima ve duyusal huzursuzluktan büyümeli.";
-    if (key.includes("bilim kurgu")) return isEn
+    if ((key.includes("bilim kurgu") || key.includes("bilimkurgu"))) return isEn
       ? "Literary craft: center one strong speculative idea and show its human consequences scene by scene."
       : "Edebi işçilik: tek güçlü spekülatif fikri merkeze al ve onun insani sonuçlarını sahne sahne göster.";
-    if (key.includes("distopik")) return isEn
+    if ((key.includes("distopik") || key.includes("distopya"))) return isEn
       ? "Literary craft: foreground system pressure in daily life; resistance, compliance, and fear must shape character behavior."
       : "Edebi işçilik: sistem baskısını gündelik hayat içinde görünür kıl; direniş, uyum ve korku karakter davranışını belirlemeli.";
     if (key.includes("utopik")) return isEn
@@ -2731,6 +2745,9 @@ function buildNarrativeSubGenreLiteraryDirective(
   }
 
   if (bookType === "novel") {
+    if (key.includes("alternatif")) return isEn
+      ? "Literary craft: change one foundational world rule, follow its practical social and personal consequences consistently, and build a character-driven conflict rather than an explanatory tour."
+      : "Edebi işçilik: dünyanın tek temel kuralını değiştir; gündelik, toplumsal ve kişisel sonuçlarını tutarlı izle, açıklama turu yerine karakter seçimlerinden doğan çatışma kur.";
     if (key.includes("dram")) return isEn
       ? "Literary craft: let emotional conflicts accumulate across chapters; consequences should linger and reshape relationships."
       : "Edebi işçilik: duygusal çatışmalar bölümler boyunca birikmeli; sonuçlar ilişkileri yeniden biçimlendirmeli.";
@@ -2740,16 +2757,16 @@ function buildNarrativeSubGenreLiteraryDirective(
     if (key.includes("korku")) return isEn
       ? "Literary craft: novel-horror should corrode certainty over time; dread deepens before terror peaks."
       : "Edebi işçilik: roman korkusunda kesinlik zamanla aşınmalı; dehşet yükselmeden önce tedirginlik derinleşmeli.";
-    if (key.includes("bilim kurgu")) return isEn
+    if ((key.includes("bilim kurgu") || key.includes("bilimkurgu"))) return isEn
       ? "Literary craft: speculative systems need social, ethical, and personal consequences layered over long-form character arcs."
       : "Edebi işçilik: spekülatif sistemler toplumsal, etik ve kişisel sonuçlarla uzun anlatı karakter yayına bağlanmalı.";
-    if (key.includes("distopik")) return isEn
+    if ((key.includes("distopik") || key.includes("distopya"))) return isEn
       ? "Literary craft: show how the system occupies space, language, routine, fear, and desire; private life must bear public pressure."
       : "Edebi işçilik: sistemin mekanı, dili, rutini, korkuyu ve arzuyu nasıl işgal ettiğini göster; kamusal baskı özel hayatı ezmeli.";
     if (key.includes("utopik")) return isEn
       ? "Literary craft: utopian fiction needs tension in perfection itself; expose hidden cost, exclusion, or moral fragility."
       : "Edebi işçilik: ütopik anlatı kusursuzluğun iç gerilimini göstermeli; gizli bedel, dışlama veya ahlaki kırılganlığı açığa çıkarmalı.";
-    if (key.includes("tarihsel")) return isEn
+    if ((key.includes("tarihsel") || key.includes("tarihi"))) return isEn
       ? "Literary craft: period texture must appear in gesture, material life, institutions, and social expectation, not costume alone."
       : "Edebi işçilik: dönem dokusu sadece kostümde değil; jestte, maddi yaşamda, kurumlarda ve toplumsal beklentide görünmeli.";
     if (key.includes("polisiye")) return isEn
@@ -2799,10 +2816,10 @@ function buildNovelSubGenrePathDirective(subGenre: string | undefined, isEn: boo
   if (key.includes("dram")) return isEn ? "Subgenre path lock (Drama): multi-layered emotional conflicts and long-form character consequences." : "Alt tür yolu kilidi (Dram): çok katmanlı duygusal çatışma ve uzun vadeli karakter sonuçları.";
   if (key.includes("komedi")) return isEn ? "Subgenre path lock (Comedy): sustained humorous tone with meaningful long-form character change." : "Alt tür yolu kilidi (Komedi): sürdürülebilir mizahi ton ve anlamlı karakter dönüşümü.";
   if (key.includes("korku")) return isEn ? "Subgenre path lock (Horror): long-burn dread, escalating threat, psychological unease." : "Alt tür yolu kilidi (Korku): yavaş yükselen dehşet, artan tehdit, psikolojik huzursuzluk.";
-  if (key.includes("bilim kurgu")) return isEn ? "Subgenre path lock (Sci-Fi): deep world rules, layered causality, multi-thread plot." : "Alt tür yolu kilidi (Bilim Kurgu): derin dünya kuralları, katmanlı neden-sonuç, çok hatlı olay örgüsü.";
-  if (key.includes("distopik")) return isEn ? "Subgenre path lock (Dystopian): system-level oppression, resistance arc, social consequence layers." : "Alt tür yolu kilidi (Distopik): sistem baskısı, direniş hattı, toplumsal sonuç katmanları.";
+  if ((key.includes("bilim kurgu") || key.includes("bilimkurgu"))) return isEn ? "Subgenre path lock (Sci-Fi): deep world rules, layered causality, multi-thread plot." : "Alt tür yolu kilidi (Bilim Kurgu): derin dünya kuralları, katmanlı neden-sonuç, çok hatlı olay örgüsü.";
+  if ((key.includes("distopik") || key.includes("distopya"))) return isEn ? "Subgenre path lock (Dystopian): system-level oppression, resistance arc, social consequence layers." : "Alt tür yolu kilidi (Distopik): sistem baskısı, direniş hattı, toplumsal sonuç katmanları.";
   if (key.includes("utopik") || key.includes("utopik")) return isEn ? "Subgenre path lock (Utopian): ideal order stress-tested through moral and structural fractures." : "Alt tür yolu kilidi (Ütopik): ideal düzenin ahlaki ve yapısal kırılmalarla sınanması.";
-  if (key.includes("tarihsel")) return isEn ? "Subgenre path lock (Historical): period authenticity, social texture, era-accurate causality." : "Alt tür yolu kilidi (Tarihsel): dönem otantitesi, toplumsal doku, çağa uygun neden-sonuç.";
+  if ((key.includes("tarihsel") || key.includes("tarihi"))) return isEn ? "Subgenre path lock (Historical): period authenticity, social texture, era-accurate causality." : "Alt tür yolu kilidi (Tarihsel): dönem otantitesi, toplumsal doku, çağa uygun neden-sonuç.";
   if (key.includes("polisiye")) return isEn ? "Subgenre path lock (Crime/Detective): evidence chain, procedural logic, layered reveal." : "Alt tür yolu kilidi (Polisiye): kanıt zinciri, prosedürel mantık, katmanlı çözülme.";
   if (key.includes("fantastik")) return isEn ? "Subgenre path lock (Fantasy): rich world-building, magic-system consistency, character evolution through trials." : "Alt tür yolu kilidi (Fantastik): zengin dünya kurma, büyü sistemi tutarlılığı, sınavlarla karakter evrimi.";
   if (key.includes("macera")) return isEn ? "Subgenre path lock (Adventure): high momentum with multi-stage journeys and evolving stakes." : "Alt tür yolu kilidi (Macera): çok aşamalı yolculuklar ve büyüyen risklerle yüksek tempo.";
@@ -2831,7 +2848,7 @@ function buildNovelSinglePathDirective(
     ? [
       `Single-path lock: ${pathId}`,
       "Novel hard constraints: 30-35 pages (minimum 30), one coherent long-form arc, layered conflict, world-building, and character transformation.",
-      "Novel architecture lock (6 stages): Preparation/World-building -> Act I Setup (ordinary world + inciting incident + threshold crossing) -> Act II Confrontation I (allies/enemies + midpoint) -> Act II Confrontation II (escalation and strategic pressure) -> Act II Confrontation III (lowest point and pre-climax commitment) -> Act III Resolution/Final (climax + new ordinary world).",
+      "Novel architecture: six chapters are a delivery format, not six compulsory plot stages. Choose a structure fitting this particular premise and user tone; no mandatory threshold, allies, midpoint, lowest point or new ordinary world.",
       "Craft lock: show-don't-tell, stable POV discipline, and scene-level conflict in every chapter.",
       ageLine,
       genreLine,
@@ -2841,60 +2858,13 @@ function buildNovelSinglePathDirective(
     : [
       `Tek-yol kilidi: ${pathId}`,
       "Roman sabit kuralları: 30-35 sayfa (alt sınır 30), tek ve kesintisiz roman akışı, çok katmanlı çatışma, dünya kurma ve karakter dönüşümü.",
-      "Roman mimarisi (6 adım): Hazırlık/Dünya İnşası -> I. Perde Kurulum (sıradan dünya + tetikleyici olay + eşiği geçiş) -> II. Perde Yüzleşme I (müttefik/düşman + midpoint) -> II. Perde Yüzleşme II (risk artışı ve stratejik baskı) -> II. Perde Yüzleşme III (en alt nokta ve doruk öncesi geri dönülmez karar) -> III. Perde Çözüm/Final (doruk hesaplaşma + yeni denge).",
+      "Roman mimarisi: altı bölüm teknik teslim biçimidir; altı zorunlu olay aşaması değildir. Bu kitaba özgü yapı seç; eşik geçişi, müttefikler, midpoint, en alt nokta ve yeni sıradan dünya her kitaba dayatılmaz.",
       "Yazım tekniği kilidi: Gösterme-Anlat, POV tutarlılığı ve her sahnede aktif çatışma zorunlu.",
       ageLine,
       genreLine,
       craftMandates,
       "Masal veya kısa hikaye moduna kayma. Sadece ROMAN modunda kal."
     ].join(" ");
-}
-
-function buildNarrativeSubGenreVisualCue(subGenre: string | undefined): string {
-  const key = normalizeStoryPathKey(subGenre);
-  if (key.includes("fantastik")) return "luminous spell-light effects, magical creature surface details, enchanted environment glow, wonder-first scene hierarchy";
-  if (key.includes("masal") || key.includes("klasik")) return "glowing lantern warmth, fairy-dust particle trails, enchanted forest depth, storybook golden-hour light";
-  if (key.includes("bilimkurgu") || key.includes("bilim")) return "gleaming technology surfaces, deep-space star luminosity, futuristic architecture with human warmth, holographic color accents";
-  if (key.includes("distopik")) return "concrete surveillance geometry, fractured skyline symbolism, crowd-scale pressure, bright rebel color accent against structured city tones";
-  if (key.includes("utopik")) return "crystalline utopian architecture, soft idealized light, harmonic crowd choreography, subtle systemic tension cracks";
-  if (key.includes("korku")) return "suspenseful discovery mood, moonlit clarity, misty atmosphere with colorful rim light, warm guiding light, readable character reactions";
-  if (key.includes("gizem") || key.includes("polisiye")) return "hidden clue details embedded in scene corners, investigative visual tension, warm lamplit atmosphere, confident color contrast";
-  if (key.includes("romantik")) return "golden-hour soft bloom, warm light connecting two figures, characters leaning toward each other, rose-and-amber color story";
-  if (key.includes("macera")) return "hero in motion against epic backdrop, destination visible on horizon, environmental scale dwarfing character, kinetic energy lines";
-  if (key.includes("psikolojik")) return "symbolic object placement, expressive close character acting, clear emotional contrast, ordered visual metaphors, polished editorial intrigue";
-  if (key.includes("gerilim")) return "urgent cinematic composition, strong directional movement, countdown-tension pressure, crisp readable lighting, decisive action framing";
-  if (key.includes("aile")) return "warm golden domestic light, generational connection body language, home-texture detail, trust-and-belonging visual warmth";
-  if (key.includes("dram")) return "expressive character faces with authentic emotion, touch-point between figures, real-world texture weight, intimate cinematic framing";
-  if (key.includes("komedi") || key.includes("mizah")) return "rubberhose-style pose exaggeration, visual punchline timing, bright ironic color contrast, elastic surprised expressions";
-  if (key.includes("tarihsel")) return "authentic period costume stitching detail, era-specific light sources (candle/torch/gaslamp), aged parchment color warmth, historical architecture texture";
-  if (key.includes("mitolojik")) return "divine light rays, mythic scale figures towering against ancient skies, rune and mosaic pattern details, god-among-mortals composition";
-  if (key.includes("kulturel") || key.includes("kultural")) return "intricate cultural textile patterns woven into environment, authentic regional architecture, ceremonial color palette, cultural costume authenticity";
-  if (key.includes("super") || key.includes("kahraman")) return "explosive kinetic energy lines, heroic silhouette against city skyline, cape and costume motion dynamics, impact-frame composition";
-  if (key.includes("alternati") || key.includes("dunya")) return "world-unique impossible architecture, alien flora and fauna details, rule-breaking physics visible in scene, discovery-map composition";
-  if (key.includes("genclik")) return "youthful expressive faces, peer-group dynamics energy, contemporary environment texture, coming-of-age emotional clarity";
-  return "rich scene detail supporting narrative, clear focal character, genre-faithful color atmosphere";
-}
-
-function buildFairyTaleSafeSubGenreVisualCue(subGenre: string | undefined): string {
-  const key = normalizeStoryPathKey(subGenre);
-  if (key.includes("fantastik")) return "rainbow spell-light effects, friendly magical creature details, enchanted glow, wonder-first cheerful scene hierarchy";
-  if (key.includes("masal") || key.includes("klasik")) return "golden fairy-tale light, friendly enchanted forest or palace details, magical sparkle, timeless storybook warmth";
-  if (key.includes("bilimkurgu") || key.includes("bilim")) return "friendly rounded technology, toy-like spacecraft, glowing planets, optimistic cosmic wonder, bright holographic accents";
-  if (key.includes("korku") || key.includes("gerilim")) return "gentle spooky playfulness made safe with warm lantern light, smiling/curious characters, colorful highlights, no horror mood";
-  if (key.includes("gizem") || key.includes("polisiye")) return "warm clue-finding adventure, sparkling discovery trail, friendly suspense, bright lantern-lit details";
-  if (key.includes("romantik")) return "warm friendship and affection, golden-hour soft glow, kind body language, rose-and-amber color warmth";
-  if (key.includes("macera")) return "friendly motion, sunny quest path, destination visible on horizon, colorful open scenic scale";
-  if (key.includes("psikolojik")) return "simple emotion-symbol details made child-readable, warm reassuring colors, no surreal distortion or unease";
-  if (key.includes("aile")) return "warm home or community light, trust-and-bond body language, cozy texture detail, belonging";
-  if (key.includes("dram")) return "gentle emotion, expressive kind faces, comforting touch-point between figures, warm real-world texture";
-  if (key.includes("komedi") || key.includes("mizah")) return "playful exaggerated poses, visual punchline timing, bright color contrast, elastic surprised expressions";
-  if (key.includes("tarihsel")) return "bright period costume details, friendly era-specific props, warm candle/sun light, historical architecture texture";
-  if (key.includes("mitolojik")) return "golden mythic light, friendly legendary scale, simple ancient motifs, child-safe wonder";
-  if (key.includes("kulturel") || key.includes("kultural")) return "joyful cultural textile patterns, authentic regional architecture, celebratory bright palette, respectful costume detail";
-  if (key.includes("super") || key.includes("kahraman")) return "heroic playful motion, colorful costume dynamics, bright city or fantasy backdrop, child-safe impact-frame composition";
-  if (key.includes("alternati") || key.includes("dunya")) return "unique whimsical architecture, friendly unusual flora and fauna, colorful discovery-map composition";
-  if (key.includes("genclik")) return "youthful expressive faces, friend-group energy, cheerful contemporary texture, clear growing-up emotion";
-  return "bright magical scene detail, clear focal character, cheerful genre-faithful color atmosphere";
 }
 
 function buildNarrativePedagogyDirective(
@@ -2973,368 +2943,15 @@ function buildNarrativeVisualStyleDirective(
   bookType: SmartBookBookType,
   audienceLevel: SmartBookAudienceLevel,
   subGenre?: string,
-  isCover = false
+  isCover = false,
+  creativeBrief?: SmartBookCreativeBrief
 ): string {
-  const key = normalizeStoryPathKey(subGenre);
-  const cue = bookType === "fairy_tale"
-    ? buildFairyTaleSafeSubGenreVisualCue(subGenre)
-    : buildNarrativeSubGenreVisualCue(subGenre);
-  const fairyTaleAgeStyle =
-    audienceLevel === "1-3" || audienceLevel === "1-6"
-      ? "Age style: preschool-safe design with large rounded shapes, soft plush-like characters, simple readable faces, one clear focal action, and extra warm daylight."
-      : audienceLevel === "4-6"
-        ? "Age style: early-childhood design with rounded expressive characters, playful props, clear silhouettes, and bright inviting color blocks."
-        : "Age style: richer 7+ animated-feature detail with lively environments, dynamic poses, layered but readable scene storytelling, and still fully child-safe emotion.";
-  const fairyTaleBrightLock =
-    "Global visual lock: premium bright family animated-feature look, polished 3D cartoon / high-end children's storybook illustration, saturated joyful colors, soft daylight or warm glowing lantern light, clear appealing character expressions, rounded friendly shapes, magical sparkle, clean readable staging. Strictly avoid gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, realistic photography, and uncanny faces. If the scene is night, mystery, or danger, make it safe and luminous with warm lanterns, moon-sparkle, colorful highlights, and wonder-first mood.";
-  const fairyTaleForm = isCover
-    ? "front cover with a strong joyful hero composition"
-    : "storybook page illustration with a concrete readable story moment";
-  const storyNovelVisualLock = audienceLevel === "general"
-    ? "Global visual lock: mature premium narrative cover/illustration for a general audience, saturated but tasteful palette, clear readable lighting, warm or luminous accent light, natural adult-facing character design, crisp silhouettes, balanced contrast, polished cinematic clarity, bright full color range. No child-book look, no cute mascot design, no chibi, no plush-like rounded characters, no preschool/YA cartoon styling, no childish animated-feature language."
-    : "Global visual lock: vivid premium narrative illustration, saturated but tasteful palette, clear readable lighting, warm or luminous accent light, appealing natural faces, crisp silhouettes, balanced contrast, polished cinematic clarity, bright full color range.";
-
-  // ─── MASAL ──────────────────────────────────────────────────────────────────
-  if (bookType === "fairy_tale") {
-    // Klasik
-    if (key.includes("klasik")) {
-      return `Style: classic enchanted ${fairyTaleForm} — sunlit palace/forest charm, golden storybook glow, sapphire/rose/sunflower accents, hand-painted warmth over polished cartoon character rendering, timeless magical invitation. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Modern
-    if (key.includes("modern")) {
-      return `Style: modern colorful ${fairyTaleForm} — contemporary kid-friendly world, crisp rounded forms, cheerful urban/nature details, candy-bright accents, polished CG-cartoon finish with tactile storybook texture. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Macera
-    if (key.includes("macer")) {
-      return `Style: bright magical-adventure ${fairyTaleForm} — open sunny vistas, energetic but friendly action poses, clear travel/quest path, turquoise sky, emerald landscapes, coral and golden highlights, playful momentum. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Mitolojik
-    if (key.includes("mitolojik")) {
-      return `Style: luminous mythic ${fairyTaleForm} — golden sun rays, friendly legendary scale, simple ancient motifs, mosaic-inspired color details, bright ivory/turquoise/crimson accents, ceremonial wonder without darkness. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Fantastik
-    if (key.includes("fantastik")) {
-      return `Style: dazzling fantasy ${fairyTaleForm} — rainbow spell-light, sparkling floating details, friendly magical creatures, bright enchanted architecture, soft glow effects, prismatic teal/gold/pink/violet palette kept cheerful and readable. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Kültürel
-    if (key.includes("kulturel") || key.includes("kultural")) {
-      return `Style: vibrant cultural-folklore ${fairyTaleForm} — celebratory regional motifs, textile/pattern details, warm saffron, peacock teal, ruby, ivory, leaf green, joyful festival-like color harmony, respectful crafted texture. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Bilimkurgu
-    if (key.includes("bilimkurgu") || key.includes("bilim")) {
-      return `Style: cheerful sci-fi fairy-tale ${fairyTaleForm} — friendly rounded robots, toy-like spacecraft, glowing planets, bright cyan/magenta/sun-yellow accents, optimistic cosmic wonder, clean futuristic shapes. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Eğitici
-    if (key.includes("egitici") || key.includes("eğitici")) {
-      return `Style: joyful educational ${fairyTaleForm} — discovery-first clarity, friendly props, clean readable objects, sky blue, sunflower yellow, leaf green, peach and coral accents, reassuring expressions and warm classroom/nature light. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Gizem (catch-all for mystery-adjacent)
-    if (key.includes("gizem")) {
-      return `Style: bright enchanted-mystery ${fairyTaleForm} — curious clue-finding mood, warm lantern glow, sparkling breadcrumb trails, jewel-colored but not dark environment, friendly suspense, inviting discovery details. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Default masal (Klasik olmayan / belirtilmemiş)
-    return `Style: premium magical ${fairyTaleForm} — colorful animated-family-film warmth, polished cartoon characters, bright scenic color, soft magical glow, expressive joyful faces, inviting storybook detail. ${fairyTaleBrightLock} ${fairyTaleAgeStyle} Non-photorealistic. Visual cue: ${cue}.`;
-  }
-
-  // ─── HİKAYE ─────────────────────────────────────────────────────────────────
-  if (bookType === "story") {
-    // Yaş: 7-11
-    if (audienceLevel === "7-11") {
-      return isCover
-        ? `Style: vibrant animated-film storybook cover — bold saturated palette, clear expressive character silhouette, colorful environment, premium family-animation energy. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
-        : `Style: vibrant animated-film storybook illustration — bold saturated colors, expressive characters, clear readable scene, animated-movie warmth. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Yaş: 12-18
-    if (audienceLevel === "12-18") {
-      return isCover
-        ? `Style: cinematic anime-influenced cover — dynamic composition, expressive luminous lighting (teal, amber, coral), strong character presence, polished contemporary animation finish. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
-        : `Style: cinematic anime-influenced illustration — expressive luminous lighting, dynamic character framing, richly colored backgrounds, emotional clarity, polished contemporary animation energy. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Fantastik
-    if (key.includes("fantastik")) {
-      return isCover
-        ? `Style: epic fantasy cover illustration — bright cobalt sky, golden magical glow, intricate world-building environmental detail, heroic character silhouette, painterly premium finish. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: epic fantasy scene illustration — luminous magical lighting, saturated cobalt, warm gold, teal and vibrant magenta palette, detailed world-building environment, dynamic character staging. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Bilimkurgu
-    if (key.includes("bilimkurgu") || key.includes("bilim")) {
-      return isCover
-        ? `Style: cinematic sci-fi cover — sweeping cosmic vista, luminous technology aesthetics, teal, purple and warm amber accent light, pristine futuristic design, epic scale. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: cinematic sci-fi scene illustration — glowing holographic environments, luminous spectrum palette with warm human focal light, futuristic design language, sense of discovery and scale. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Macera
-    if (key.includes("macer")) {
-      return isCover
-        ? `Style: cinematic adventure cover — hero in bold motion against sweeping epic landscape, warm golden backlight, colorful sky, environmental scale and forward momentum. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: cinematic adventure scene illustration — kinetic composition, environmental grandeur, clear luminous lighting, characters in purposeful action against richly detailed world. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Gizem / Polisiye
-    if (key.includes("gizem") || key.includes("polisiye")) {
-      return isCover
-        ? `Style: stylish mystery cover — rich teal-amber-crimson palette, warm lamplit perspective, hidden visual details inviting scrutiny, modern color confidence and elegant investigative composition. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: stylish mystery scene illustration — warm lamplit clarity, rich color contrast, clue-laden scene details, visual tension with compositional elegance. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Dram
-    if (key.includes("dram")) {
-      return isCover
-        ? `Style: painterly emotional drama cover — warm cinematic lighting, expressive character face as focal point, rich amber, sienna and teal color depth, human connection radiating from composition. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: painterly drama illustration — rich warm lighting, expressive authentic character emotion, grounded real-world texture, intimate cinematic framing. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Romantik
-    if (key.includes("romantik")) {
-      return isCover
-        ? `Style: luminous romantic cover — golden-hour soft bloom, warm rose-and-amber color story, two figures in intimate composition, soft focal lighting, beautiful and emotionally inviting. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: luminous romantic scene illustration — golden soft-focus light, warm rose-and-amber palette, emotion-first framing, warmth radiating between characters. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Korku
-    if (key.includes("korku")) {
-      return isCover
-        ? `Style: suspense-adventure cover — crisp moonlit clarity, warm guiding light, vivid crimson, silver and teal accents, elegant tension, readable character emotion, no gratuitous imagery. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: suspense-adventure scene illustration — clear moonlit atmosphere, warm practical light, vivid color accents, elegant tension, readable character emotion and setting detail. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Tarihi
-    if (key.includes("tarihsel")) {
-      return isCover
-        ? `Style: rich historical period cover — tapestry-like texture, authentic period costuming, warm parchment, jewel and sunlit tones, museum-quality painted composition, era-specific atmosphere. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: rich historical period illustration — painterly period-authentic detail, warm candlelit or sunlit atmosphere, era-correct architecture and costume, museum-quality texture. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Gerilim
-    if (key.includes("gerilim")) {
-      return isCover
-        ? `Style: high-tension action-suspense cover — bold depth composition, crisp directional lighting, vivid teal-and-amber palette, kinetic visual momentum, stylish cinematic tension. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: high-tension action-suspense scene — crisp cinematic contrast, directional practical lighting, compressed-space composition, relentless visual momentum. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Mitolojik
-    if (key.includes("mitolojik")) {
-      return isCover
-        ? `Style: mythological epic cover — divine golden radiance, heroic figures at mythic scale, rich ancient mosaic palette (gold, crimson, cobalt), ornate compositional grandeur. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: mythological epic scene illustration — heroic scale, divine lighting, ancient ornamental detail, rich warm-gold-and-crimson palette. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Kültürel
-    if (key.includes("kulturel") || key.includes("kultural")) {
-      return isCover
-        ? `Style: vibrant cultural literary cover — regional color tradition in full bloom, intricate cultural patterns as compositional elements, authentic costuming, celebratory visual richness. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: vibrant cultural scene illustration — authentic regional motifs and colors, intricate pattern details, cultural costuming, celebratory warmth. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Gençlik
-    if (key.includes("genclik")) {
-      return isCover
-        ? `Style: dynamic YA cover — bold colorful palette, energetic cinematic composition, strong youthful character presence, contemporary illustration style with emotional impact. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: dynamic YA scene illustration — bold color story, expressive youthful characters, contemporary visual language, high emotional energy. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Süper Kahraman
-    if (key.includes("super") || key.includes("kahraman")) {
-      return isCover
-        ? `Style: dynamic superhero graphic-novel cover — bold ink outlines, saturated primary-and-electric palette, explosive kinetic composition, heroic character staging, premium comic-art polish. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: dynamic superhero graphic-novel scene — bold linework, saturated color, kinetic impact-frame composition, heroic staging. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Psikolojik
-    if (key.includes("psikolojik")) {
-      return isCover
-        ? `Style: psychological intrigue cover — visually rich symbolic composition, jewel-toned palette, polished editorial clarity, introspective visual intrigue, ordered metaphorical details. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: psychological intrigue scene illustration — symbolically rich composition, vivid palette, ordered visual metaphors, internal emotion made clear through concrete objects and expression. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Distopik
-    if (key.includes("distopik")) {
-      return isCover
-        ? `Style: dystopian cinematic cover — bold graphic civic architecture as visual backdrop, single vivid rebel accent color cutting through structured city tones, powerful cinematic lighting, graphically striking. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: dystopian cinematic scene — powerful architectural scale, single accent color point of resistance against structured city tones, dramatic but readable directional lighting. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Alternatif Dünya
-    if (key.includes("alternati")) {
-      return isCover
-        ? `Style: world-building wonder cover — impossible unique architecture establishing new reality rules, rich alien-yet-inviting color palette, discovery-map composition, sense of boundless new world. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: world-building scene illustration — unique environmental language, alien flora and architecture, rich color establishing distinct world rules, discovery energy. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Komedi / Mizah
-    if (key.includes("komedi") || key.includes("mizah")) {
-      return isCover
-        ? `Style: bold comedic cover — elastic character poses mid-expression, bright ironic color contrast, visual punchline timing in composition, lively upbeat energy. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: bold comedic illustration — rubberhose-inspired expressive poses, bright warm palette, visual comedy timing, elastic and joyful. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Genel yetişkin fallback
-    return isCover
-      ? `Style: premium cinematic cover illustration — rich luminous lighting, vivid color story, strong character composition, painterly texture with photographic clarity. ${storyNovelVisualLock} Visual cue: ${cue}.`
-      : `Style: premium cinematic scene illustration — luminous lighting, rich color palette, expressive characters, detailed environment, painterly quality. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-  }
-
-  // ─── ROMAN ──────────────────────────────────────────────────────────────────
-  if (bookType === "novel") {
-    // Yaş: 7-11
-    if (audienceLevel === "7-11") {
-      return isCover
-        ? `Style: vibrant illustrated novel cover — bold saturated palette, clear compelling character composition, animated-film quality illustration. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
-        : `Style: vibrant illustrated novel scene — rich saturated colors, clear expressive characters, cinematic storybook quality. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Yaş: 12-18
-    if (audienceLevel === "12-18") {
-      return isCover
-        ? `Style: cinematic graphic-novel cover — strong luminous composition, dramatic character staging, expressive illustrative lighting. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`
-        : `Style: cinematic graphic-novel scene — expressive luminous lighting, strong character presence, detailed environments, emotional clarity. ${storyNovelVisualLock} Non-photorealistic. Visual cue: ${cue}.`;
-    }
-    // Fantastik
-    if (key.includes("fantastik")) {
-      return isCover
-        ? `Style: premium epic fantasy novel cover — expansive world-building visual architecture, mythic scale, rich magical atmosphere (bright cobalt, luminous gold, vivid teal), painterly oil-finish quality. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: premium epic fantasy illustration — luminous magical environments, richly detailed world, clear magical color accents, premium painterly quality. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Bilimkurgu
-    if (key.includes("bilimkurgu") || key.includes("bilim")) {
-      return isCover
-        ? `Style: premium sci-fi novel cover — stunning speculative architecture, cool luminous palette (space blue, teal, soft amber), pristine futuristic design with human emotional anchor, epic scale. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: premium sci-fi illustration — luminous technology aesthetics, space-blue palette with warm human focal light, speculative world detail, sense of wonder and discovery. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Macera
-    if (key.includes("macer")) {
-      return isCover
-        ? `Style: cinematic adventure novel cover — sweeping epic landscape, heroic character in bold composition, colorful sky, environmental scale and forward-motion energy. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: cinematic adventure illustration — kinetic composition, grand environmental scale, luminous lighting, decisive character action. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Romantik
-    if (key.includes("romantik")) {
-      return isCover
-        ? `Style: luminous romantic novel cover — soft golden-hour bloom, rose-and-amber color story, intimate character composition, emotionally warm and beautifully rendered. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: luminous romantic illustration — warm soft-focus light, emotional character framing, rich rose-and-gold palette, relational visual warmth. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Tarihi
-    if (key.includes("tarihsel")) {
-      return isCover
-        ? `Style: museum-quality historical novel cover — rich period-authentic painted detail, tapestry-warm color palette, authentic costuming and architecture, aged-gold elegance. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: museum-quality historical illustration — painterly period detail, warm era-authentic lighting, rich material textures, architectural and costume authenticity. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Psikolojik
-    if (key.includes("psikolojik")) {
-      return isCover
-        ? `Style: visually striking psychological novel cover — symbolically rich composition, jewel-toned palette, emotionally charged negative space, polished editorial clarity, introspective visual power. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: visually striking psychological illustration — symbolically layered scene, jewel-toned palette, ordered visual poetry, internal world made visually compelling through concrete details. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Distopik
-    if (key.includes("distopik")) {
-      return isCover
-        ? `Style: powerful dystopian novel cover — monumental civic architecture as backdrop, single vivid accent color (crimson, electric blue) as point of resistance, powerful cinematic lighting, graphically striking. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: powerful dystopian illustration — architectural scale and social pressure, readable contrast lighting, vivid accent color against structured city palette, graphically bold. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Komedi / Mizah
-    if (key.includes("komedi") || key.includes("mizah")) {
-      return isCover
-        ? `Style: literary comedic novel cover — elegant wit in visual composition, memorable character silhouette with expressive irony, refined saturated palette, smart humor translated to premium illustration. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: literary comedic illustration — refined expressive character acting, witty visual composition, elegant color palette, sustained intelligent humor. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Korku
-    if (key.includes("korku")) {
-      return isCover
-        ? `Style: suspense novel cover — crisp moonlit clarity with dramatic color accent light (crimson, silver, teal), elegant tension, readable character emotion, polished cinematic intrigue. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: suspense illustration — clear moonlit atmosphere with vivid accent light, elegant tension, rich readable color palette, polished cinematic intrigue. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Gerilim
-    if (key.includes("gerilim")) {
-      return isCover
-        ? `Style: cinematic action-suspense novel cover — sharp directional lighting, bold depth composition, vivid teal-and-amber palette, visual momentum and tension. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: cinematic action-suspense scene illustration — crisp contrast, directional practical lighting, compressed composition, relentless visual tension. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Gizem / Polisiye
-    if (key.includes("gizem") || key.includes("polisiye")) {
-      return isCover
-        ? `Style: stylish literary mystery cover — rich teal-amber-crimson palette, warm lamplit depth, sophisticated investigative elegance with modern color confidence. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: stylish literary mystery illustration — warm lamplit scenes, rich color contrast, visual intrigue embedded in scene details. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Mitolojik
-    if (key.includes("mitolojik")) {
-      return isCover
-        ? `Style: epic mythological novel cover — divine golden radiance, heroic figures at mythic scale, rich ancient palette, ornate compositional grandeur. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: epic mythological illustration — divine light, ancient ornamental richness, heroic compositional scale, warm gold-and-crimson palette. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Kültürel
-    if (key.includes("kulturel") || key.includes("kultural")) {
-      return isCover
-        ? `Style: rich cultural literary novel cover — regional visual tradition elevated to premium illustration, intricate cultural patterns, authentic costuming, celebratory color richness. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: rich cultural illustration — intricate authentic regional motifs, ceremonial color palette, cultural costuming, opulent visual richness. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Gençlik
-    if (key.includes("genclik")) {
-      return isCover
-        ? `Style: dynamic YA novel cover — bold colorful palette, strong youthful character presence, energetic contemporary composition, emotional cinematic impact. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: dynamic YA illustration — bold color story, expressive youthful characters, high emotional energy, contemporary visual language. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Süper Kahraman
-    if (key.includes("super") || key.includes("kahraman")) {
-      return isCover
-        ? `Style: premium superhero novel cover — bold ink-and-color graphic art, saturated electric palette, explosive heroic composition, premium illustrated impact. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: premium superhero illustration — bold linework, saturated color story, kinetic heroic staging, graphic-novel polish. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Alternatif Dünya
-    if (key.includes("alternati")) {
-      return isCover
-        ? `Style: world-building novel cover — unique impossible architecture establishing entirely new reality, rich alien-yet-inviting palette, boundless discovery energy. ${storyNovelVisualLock} Visual cue: ${cue}.`
-        : `Style: world-building illustration — unique environmental language, alien-yet-coherent world rules visible in scene, rich distinctive color palette. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-    }
-    // Genel yetişkin fallback
-    return isCover
-      ? `Style: premium literary novel cover — rich luminous cinematic lighting, vivid expressive color palette, strong character composition, painterly texture with photographic depth. ${storyNovelVisualLock} Visual cue: ${cue}.`
-      : `Style: premium literary illustration — luminous lighting, rich color depth, expressive character presence, detailed environment, painterly quality. ${storyNovelVisualLock} Visual cue: ${cue}.`;
-  }
-
-  // ─── Genel fallback ──────────────────────────────────────────────────────────
-  return isCover
-    ? `Style: premium illustrated cover — rich cinematic lighting, vivid expressive palette, compelling character composition, painterly quality. Visual cue: ${cue}.`
-    : `Style: premium illustration — atmospheric lighting, rich color palette, expressive characters, detailed environment. Visual cue: ${cue}.`;
+  return buildBookArtDirection(creativeBrief?.creativeDirection, bookType, audienceLevel, subGenre, isCover)
+    + (creativeBrief?.visualStyle ? `\nEXPLICIT USER VISUAL STYLE (takes precedence): ${creativeBrief.visualStyle}` : "");
 }
 
-function buildCoverTitleTypographyDirective(
-  bookType: SmartBookBookType,
-  subGenre?: string
-): string {
-  const key = normalizeStoryPathKey(subGenre);
-
-  if (bookType === "fairy_tale") {
-    return "Baslik tipografisi masalsi, illustratif, buyulu ve ozel tasarlanmis display lettering gibi gorunmeli. Duz daktilo, jenerik serif/sans veya sonradan eklenmis altyazi gorunumu YASAK.";
-  }
-
-  if (bookType === "story") {
-    if (key.includes("komedi") || key.includes("mizah")) {
-      return "Baslik tipografisi kivrak, oyunlu, enerjik ve stilize display lettering olmali. Duz daktilo veya ofis yazisi gibi durmamali.";
-    }
-    if (key.includes("distopik")) {
-      return "Baslik tipografisi distopik dunyaya uygun, geometrik, sert, kontrollu ve tasarlanmis poster lettering hissi vermeli. Ince duz caption veya daktilo yazisi YASAK.";
-    }
-    if (key.includes("gizem") || key.includes("polisiye") || key.includes("gerilim")) {
-      return "Baslik tipografisi gizem/gerilim tonuna uygun, keskin, sinematik ve enerjik stilize lettering olmali. Basit duz metin gibi yazilip gecilmemeli.";
-    }
-    if (key.includes("romantik")) {
-      return "Baslik tipografisi romantik tona uygun, zarif, duygulu ve tasarimli olmali; editoriyal kapak lettering hissi vermeli. Jenerik daktilo veya mekanik metin YASAK.";
-    }
-    if (key.includes("macera")) {
-      return "Baslik tipografisi macera hissini guclendiren cesur, dinamik ve stilize kapak yazisi olmali. Duz metin etiketi gibi gorunmemeli.";
-    }
-    if (key.includes("psikolojik")) {
-      return "Baslik tipografisi psikolojik tona uygun, rafine, katmanli ve stilize editoriyal lettering olmali. Duz daktilo gibi gecistirilmemeli.";
-    }
-    return "Baslik tipografisi hikaye alt turune uygun, ozel tasarlanmis, stilize display/editoriyal kapak yazisi olmali. Duz daktilo, jenerik sistem fontu veya sonradan eklenmis caption gorunumu YASAK.";
-  }
-
-  if (bookType === "novel") {
-    if (key.includes("komedi") || key.includes("mizah")) {
-      return "Baslik tipografisi edebi-komik tona uygun, zeki, karakterli ve premium kapak lettering hissi vermeli. Ucuz veya daktilo benzeri gorunum YASAK.";
-    }
-    if (key.includes("distopik")) {
-      return "Baslik tipografisi distopik romana uygun, guclu, sert, tasarlanmis ve mimari his tasiyan bir lettering olmali. Duz daktilo/caption gorunumu YASAK.";
-    }
-    if (key.includes("psikolojik")) {
-      return "Baslik tipografisi psikolojik romana uygun, rafine, katmanli, editoriyal ve stilize olmali; kapaga edebi agirlik vermeli. Mekanik duz yazi gibi gorunmemeli.";
-    }
-    if (key.includes("tarihsel")) {
-      return "Baslik tipografisi tarihsel romana uygun, donem hissi veren, zarif ve ozel tasarlanmis olmali. Duz daktilo, modern caption veya sade tek satir metin YASAK.";
-    }
-    if (key.includes("fantastik")) {
-      return "Baslik tipografisi fantastik romana uygun, dunyayi genisleten, buyulu ve premium display lettering olmali. Baslik siradan daktilo gibi yazilmamali.";
-    }
-    if (key.includes("romantik")) {
-      return "Baslik tipografisi romantik romana uygun, sofistike, duygulu ve stilize editoriyal lettering olmali. Duz sistem fontu veya daktilo gorunumu YASAK.";
-    }
-    return "Baslik tipografisi roman alt turune uygun, kapagi tasiyan premium editoriyal/display lettering olmali. Basit daktilo yazisi, duz caption veya word-processor gorunumu YASAK.";
-  }
-
-  return "Baslik tipografisi ozel tasarlanmis, profesyonel ve kapakla butunlesik gorunmeli; duz daktilo/caption gorunumu YASAK.";
+function buildCoverTitleTypographyDirective(_bookType: SmartBookBookType, _subGenre?: string): string {
+  return "Başlığı seçilen görsel tekniğiyle bütünleşen okunaklı editoryal harflerle tasarla. Sade serif/sans, elle çizilmiş, baskı veya fırça harfleri sanat yönüne göre geçerlidir. Otomatik altın, metal kabartma, kıvrımlı süsleme veya film afişi yazısı kullanma. Başlık dışında metin ekleme.";
 }
 
 function buildCoverCompositionAntiClicheDirective(
@@ -3423,7 +3040,8 @@ function buildCreativeBriefInstruction(
     if (brief.customInstructions) {
       lines.push(isEn ? `Custom notes: ${brief.customInstructions}` : `Ek notlar: ${brief.customInstructions}`);
     }
-    if (brief.languageLearning) lines.push(learningInstruction(brief.languageLearning));
+    lines.push(buildBookUserInputDirective(brief.creativeDirection));
+  if (brief.languageLearning) lines.push(learningInstruction(brief.languageLearning));
     return `${lockedBlock.join("\n")}\n\n${lines.join("\n")}`;
   }
 
@@ -3456,6 +3074,7 @@ function buildCreativeBriefInstruction(
   if (brief.customInstructions) {
     lines.push(isEn ? `Custom notes: ${brief.customInstructions}` : `Ek notlar: ${brief.customInstructions}`);
   }
+  lines.push(buildBookUserInputDirective(brief.creativeDirection));
   if (brief.languageLearning) lines.push(learningInstruction(brief.languageLearning));
   return `${lockedBlock.join("\n")}\n\n${lines.join("\n")}`;
 }
@@ -3536,6 +3155,7 @@ function buildNarrativeBriefBlock(
   lines.push(buildNarrativePedagogyDirective(brief.bookType, audienceLevel, isEn ? "en" : "tr"));
   lines.push(buildNarrativeTitleDirection(brief.bookType, brief.subGenre, isEn));
   lines.push(buildNarrativeContentAutonomyDirective(isEn));
+  lines.push(buildBookNarrativeDirection(brief.creativeDirection));
   lines.push(buildNarrativeSubGenreLiteraryDirective(brief.bookType, brief.subGenre, isEn));
   if (isFairyTale) {
     lines.push(buildFairyTaleSinglePathDirective(brief, audienceLevel, isEn));
@@ -4739,7 +4359,7 @@ function buildFairyTaleSectionImagePrompt(
   const settingPlace = compactInline(creativeBrief?.settingPlace, 120) || "Masalın geçtiği ana mekan";
   const settingTime = compactInline(creativeBrief?.settingTime, 120) || "Belirsiz masal zamanı";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || "Masal";
-  const styleLine = buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, subGenre, false);
+  const styleLine = buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, subGenre, false, creativeBrief);
   const heroPortraitDirective = heroPortraitName
     ? buildNarrativeHeroPortraitDirective(heroPortraitName)
     : "";
@@ -4827,8 +4447,8 @@ Rules:
 13) Keep the mood child-friendly, vivid, readable, and visually coherent for a fairy tale book.
 14) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
 15) Do not invent substitute animals. The protagonist species and identity from the character roster/story continuity are locked.
-16) Hard visual ban: no gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, photorealism, realistic photo faces, uncanny faces, or scary monster framing.
-17) If the scene is night, mystery, conflict, or danger, render it as safe wonder with warm lantern light, sparkling moon/snow/glow accents, friendly readable expressions, and bright color highlights.
+16) Hard visual ban: no horror, frightening distortions, impenetrable darkness, photorealistic people, uncanny faces or scary monster framing. Quiet colors and visible paper are valid.
+17) If the scene is night, mystery, conflict, or danger, keep it emotionally safe and readable within the chosen medium. No forced lanterns, sparkles or magic glow absent from the actual scene.
 18) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
   }
@@ -4879,8 +4499,8 @@ Rules:
 9) Use rich visual storytelling quality: expressive faces/poses, clear staging, detailed environment, and coherent lighting.
 10) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
 11) Do not invent substitute animals. The protagonist species and identity from the character roster/story continuity are locked.
-12) Hard visual ban: no gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, photorealism, realistic photo faces, uncanny faces, or scary monster framing.
-13) If the scene is night, mystery, conflict, or danger, render it as safe wonder with warm lantern light, sparkling moon/snow/glow accents, friendly readable expressions, and bright color highlights.
+12) Hard visual ban: no horror, frightening distortions, impenetrable darkness, photorealistic people, uncanny faces or scary monster framing. Quiet colors and visible paper are valid.
+13) If the scene is night, mystery, conflict, or danger, keep it emotionally safe and readable within the chosen medium. No forced lanterns, sparkles or magic glow absent from the actual scene.
 14) Absolutely no prompt/system/backend/meta text in visuals.
   `.trim();
 }
@@ -4963,7 +4583,7 @@ async function generateLessonImages(
   const brainAllowed = isBrainRelatedTopic(topic, nodeTitle);
   const lectureHints = extractLectureInfographicHints(languageEvidenceText);
 
-  if (bookType === "academic") {
+  if (bookType === "academic" || bookType === "story") {
     if (!openAiApiKey) {
       throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured.");
     }
@@ -4974,7 +4594,8 @@ async function generateLessonImages(
       ? lectureHints.summaryBullets.map((item) => `- ${item}`).join("\n")
       : "";
     const prompt = `
-Create exactly ${imageCount} horizontal scientific infographic image(s) (16:9, 2K) for a Fortale academic introduction section.
+Create exactly ${imageCount} horizontal educational illustration(s) (16:9) for this actual workbook subject. Diagrams, observational plates or practical process drawings as appropriate.
+${buildNarrativeVisualStyleDirective(bookType, audienceLevel, creativeBrief?.subGenre, false, creativeBrief)}
 
 Subject and focus:
 - Main topic: ${topic}
@@ -4985,7 +4606,7 @@ ${keywordBlock ? `Relevant topic keywords:\n${keywordBlock}` : ""}
 ${summaryBlock ? `Important summary points to visualize:\n${summaryBlock}` : ""}
 
 Rules:
-1) Output must be scientific infographic/poster quality, technically accurate, and academically rigorous.
+1) Output must be educationally accurate and clear in the selected art medium; show the subject rather than decorative symbolism.
 2) Composition must be horizontal 16:9 only.
 3) Visualize concept relations, mechanisms, structures, process flow, comparison axes, and causal links.
 4) No decorative poster style, no mascot/cartoon, no random sci-fi motifs.
@@ -5061,7 +4682,7 @@ ${brainAllowed
   const settingPlace = compactInline(creativeBrief?.settingPlace, 120) || "Konuya uygun birincil mekan";
   const settingTime = compactInline(creativeBrief?.settingTime, 120) || "Konuya uygun dönem";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
-  const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
+  const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false, creativeBrief);
   const heroPortraitDirective = heroPortraitImage
     ? buildNarrativeHeroPortraitDirective(heroPortraitName)
     : "";
@@ -5177,13 +4798,13 @@ ${brainAllowed
       const sequenceIndex = sectionSequenceStart + i + 1;
       const sequenceTotal = Math.max(sequenceIndex, narrativeSequenceTotal || imageCount);
       const shouldUseFourPanelComposite =
-        (bookType === "story" || bookType === "novel") &&
+        (bookType === "novel") &&
         useFourPanelCompositeForSection &&
         i === Math.max(0, imageCount - 1);
 
       const chunkPromptBase = shouldUseFourPanelComposite
         ? `
-Create exactly 1 horizontal 16:9 ${bookType === "story" ? "story" : "novel"} illustration for the active narrative section.
+Create exactly 1 horizontal 16:9 novel illustration for the active narrative section.
 
 Book context:
 - Topic: ${topic}
@@ -5232,9 +4853,9 @@ Rules:
 7) Keep only the thin central cross divider visible; no outer border, no thick gutter, no inset frame.
 8) Every panel must render concrete scene details from the section excerpt: visible actions, emotional acting, props, spatial relations, and setting clues.
 9) If the section centers on a named/main character, that character must stay visually prominent and recognizable across the relevant panels.
-10) Use rich visual storytelling quality: expressive character acting, detailed environments, readable staging, and strong cinematic clarity.
+10) Use rich visual storytelling quality: expressive character acting, detailed environments, readable staging, and clear scene-specific visual storytelling.
 11) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
-12) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+12) ${audienceLevel === "general" ? "Adult audience: mature editorial treatment in the chosen art medium. Print, drawing, collage and graphic narrative are valid; no preschool mascot/chibi style. Photographic realism is not required." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
 13) Absolutely no prompt/system/backend/meta text in visuals.
       `.trim()
         : `
@@ -5272,9 +4893,9 @@ Rules:
 8) Keep details coherent across images (same objects remain recognizable).
 9) Render the scene fully and specifically: show the key characters clearly, include the important props and setting details, and make the emotion/action readable at a glance.
 10) If the section centers on a named/main character, that character must be visually prominent and immediately recognizable.
-11) Use rich visual storytelling quality: expressive faces/poses, detailed environment, coherent lighting, and strong cinematic staging.
+11) Use rich visual storytelling quality: expressive faces/poses, detailed environment, coherent lighting, and deliberate staging in the selected art medium.
 12) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
-13) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+13) ${audienceLevel === "general" ? "Adult audience: mature editorial treatment in the chosen art medium. Print, drawing, collage and graphic narrative are valid; no preschool mascot/chibi style. Photographic realism is not required." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
 14) Absolutely no prompt/system/backend/meta text in visuals.
       `.trim();
 
@@ -5358,9 +4979,9 @@ Rules:
 7.1) If multiple images are requested, each image must move to the next event step and must not repeat earlier scene actions.
 8) Render the scene(s) fully and specifically: show key characters clearly, include important props and environment details, and make action/emotion readable at a glance.
 9) If the section centers on a named/main character, that character must be visually prominent and immediately recognizable.
-10) Use rich visual storytelling quality: expressive character acting, detailed environment, coherent lighting, and strong cinematic staging.
+10) Use rich visual storytelling quality: expressive character acting, detailed environment, coherent lighting, and deliberate staging in the selected art medium.
 11) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
-12) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
+12) ${audienceLevel === "general" ? "Adult audience: mature editorial treatment in the chosen art medium. Print, drawing, collage and graphic narrative are valid; no preschool mascot/chibi style. Photographic realism is not required." : "Do not produce anime style or chibi style unless explicitly requested by the selected path."}
 13) Absolutely no prompt/system/backend/meta text in visuals.
     `.trim();
 
@@ -5414,7 +5035,7 @@ Rules:
       ? Math.max(sequenceIndex, resolvedNarrativeSequenceTotal)
       : imageCount;
     const isFourPanelFairy = bookType === "fairy_tale" && useFourPanelCompositeForSection && index === 0;
-    const isFourPanelNarrative = (bookType === "story" || bookType === "novel") && useFourPanelCompositeForSection && index === Math.max(0, imageCount - 1);
+    const isFourPanelNarrative = (bookType === "novel") && useFourPanelCompositeForSection && index === Math.max(0, imageCount - 1);
     const panelHint = isFourPanelFairy || isFourPanelNarrative ? " - 4 panel: 1->2->3->4 olay akışı" : "";
     return {
       dataUrl,
@@ -5567,7 +5188,7 @@ ${brainAllowed
   const settingPlace = compactInline(creativeBrief?.settingPlace, 120) || "Infer a specific story-faithful place.";
   const settingTime = compactInline(creativeBrief?.settingTime, 120) || "Infer a story-faithful time or era.";
   const subGenre = compactInline(creativeBrief?.subGenre, 120) || (bookType === "fairy_tale" ? "Masal" : "Anlatı");
-  const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false);
+  const styleLine = buildNarrativeVisualStyleDirective(bookType, audienceLevel, subGenre, false, creativeBrief);
   const conceptHints = hintPool.length ? hintPool.map((item, idx) => `${idx + 1}) ${item}`).join("\n") : "";
   const prompt = `
 Create exactly ${imageCount} horizontal 16:9 narrative illustration(s) for a Fortale details section.
@@ -5589,9 +5210,9 @@ Rules:
 5) Visuals must illustrate concrete actions/events tied to the topic and section details.
 6) Avoid repetitive framing and avoid random unrelated scenery.
 7) Render the scene(s) fully and specifically: show key characters clearly, include important props and environment details, and make action/emotion readable at a glance.
-8) Use rich visual storytelling quality: expressive character acting, detailed environment, coherent lighting, and strong cinematic staging.
+8) Use rich visual storytelling quality: expressive character acting, detailed environment, coherent lighting, and deliberate staging in the selected art medium.
 9) HARD ban for inside-book illustrations: no written words or letters anywhere in the image, including signs, labels, posters, UI, captions, speech bubbles, comic balloons, book pages, or decorative typography.
-10) ${audienceLevel === "general" ? "Adult audience lock: no cartoon, anime, comic, graphic-novel, or child-book look. Keep cinematic realism and grounded believable rendering." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not generate anime/chibi style unless explicitly requested by the selected path."}
+10) ${audienceLevel === "general" ? "Adult audience: mature editorial treatment in the chosen art medium. Print, drawing, collage and graphic narrative are valid; no preschool mascot/chibi style. Photographic realism is not required." : bookType === "story" ? "Anime-inspired style is allowed, but chibi style is not allowed." : "Do not generate anime/chibi style unless explicitly requested by the selected path."}
 11) Never render prompt/system/backend/meta text.
     `.trim();
 
@@ -5662,6 +5283,10 @@ async function generateCourseCover(
 
   const brainAllowed = isBrainRelatedTopic(topic);
   const titleText = String(topic || "").replace(/\s+/g, " ").trim();
+  creativeBrief = normalizeSmartBookCreativeBrief(creativeBrief, bookType, creativeBrief?.subGenre);
+  if (!creativeBrief.creativeDirection) creativeBrief.creativeDirection = createBookCreativeDirection(
+    `legacy:${bookType}:${titleText}`, bookType, [], "", creativeBrief.visualStyle || "", audienceLevel, creativeBrief.subGenre || ""
+  );
   const requestedLanguage = resolveVisualContentLanguage(creativeBrief, coverContext, titleText);
   const titleLanguage = contentLanguageLabel(requestedLanguage);
   const isFairyTale = bookType === "fairy_tale";
@@ -5674,7 +5299,8 @@ async function generateCourseCover(
     isStory ? "story" : isNovel ? "novel" : isFairyTale ? "fairy_tale" : "academic",
     audienceLevel,
     subGenre,
-    true
+    true,
+    creativeBrief
   );
   const coverTitleTypographyDirective = buildCoverTitleTypographyDirective(
     isStory ? "story" : isNovel ? "novel" : isFairyTale ? "fairy_tale" : "academic",
@@ -5699,15 +5325,15 @@ Bölüm: ${firstInterior.title}
 ${heroPortraitDirective}
 
 ${isFairyTale
-      ? "Sadece 1 adet çocuklara yönelik, masalsı, sevimli, 2D animasyon veya suluboya tarzında (ASLA FOTOGERÇEKÇİ OLMAYAN) bir masal kitabı kapağı üret."
+      ? "Sadece 1 adet çocuklara yönelik, seçilen kitap sanat tekniğinde, duygusal olarak güvenli ve fotogerçekçi olmayan bir masal kitabı kapağı üret."
       : isStory
         ? (audienceLevel === "general"
           ? "Sadece 1 adet genel/yetişkin hikaye kapağı üret. Görsel, seçilen alt türün tonunu premium kapak diliyle taşımalı; çocuksu çizgi film, sevimli maskot, chibi, çocuk kitabı ve okul çağı animasyon estetiği kullanma."
           : "Sadece 1 adet yaş grubuna uygun hikaye kapağı üret. Görsel, seçilen alt türün görsel tonunu taşımalı; hikayenin duygusal merkezini, baskın çatışmasını ve atmosferini özgün biçimde hissettirmeli.")
         : isNovel
           ? (audienceLevel === "general"
-            ? "Sadece 1 adet genel/yetişkin roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren olgun, premium, sinematik/sanatsal bir kapak olmalı; çocuksu çizgi film, sevimli maskot, chibi, çocuk kitabı ve okul çağı animasyon estetiği kullanma."
-            : "Sadece 1 adet yaş grubuna uygun roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren sinematik/sanatsal bir kapak olmalı.")
+            ? "Sadece 1 adet genel/yetişkin roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren olgun, seçilen sanat tekniğine sadık bir kapak olmalı; çocuksu çizgi film, sevimli maskot, chibi, çocuk kitabı ve okul çağı animasyon estetiği kullanma."
+            : "Sadece 1 adet yaş grubuna uygun roman kapağı üret. Görsel çok katmanlı anlatı, dünya kurma ve karakter evrimini hissettiren, seçilen sanat tekniğine sadık bir kapak olmalı.")
           : "Sadece 1 adet modern, profesyonel, bilimsel ve konuya doğrudan bağlı Fortale kapak görseli üret."}
 Stil yönü: ${narrativeVisualStyle}
 Alt türe özel başlık tipografisi: ${coverTitleTypographyDirective}
@@ -5724,12 +5350,12 @@ ${isFairyTale
       ? "2) Kapak tasarımı minik çocuklar için sevimli, renkli ve fantastik olmalı. Kesinlikle karanlık, korkutucu veya fotogerçekçi (photorealistic) olmamalı."
       : isStory
         ? (audienceLevel === "general"
-          ? "2) Kapak tasarımı hikaye alt türüne sadık olmalı; genel/yetişkin okur için olgun sinematik illüstrasyon veya premium gerçekçi kapak dili kullan. Çocuk kitabı, çizgi film, anime, chibi, oyuncak/plush karakter ve sevimli maskot görünümü YASAK."
-          : "2) Kapak tasarımı hikaye alt türüne ve seçilen yaş grubuna sadık olmalı; yaşa uygun çizgi film/anime/sinematik illüstrasyon dili kullan.")
+          ? "2) Kapak tasarımı hikaye alt türüne sadık olmalı; genel/yetişkin okur için seçilen kitap sanat yönüne sadık olgun editoryal anlatım kullan. Baskı, çizim, kolaj ve grafik anlatı geçerlidir; bebeksi maskot/chibi üslubu kullanma."
+          : "2) Kapak tasarımı hikaye alt türüne ve seçilen yaş grubuna sadık olmalı; yaşa uygun biçimde atanmış sanat tekniğini kullan.")
       : isNovel
           ? (audienceLevel === "general"
-            ? "2) Kapak tasarımı roman alt türüne sadık olmalı; genel/yetişkin okur için olgun sinematik illüstrasyon, premium gerçekçi kapak dili veya renkli sanatsal üslup kullan. Çocuk kitabı, çizgi film, anime, chibi, oyuncak/plush karakter ve sevimli maskot görünümü YASAK."
-            : "2) Kapak tasarımı roman alt türüne ve seçilen yaş grubuna sadık olmalı; yaş grubuna göre sinematik illüstrasyon veya renkli sanatsal üslup optimize edilmeli.")
+            ? "2) Kapak tasarımı roman alt türüne sadık olmalı; genel/yetişkin okur için atanmış sanat tekniğini kullan; olgun çizim, baskı, kolaj veya resim geçerlidir. Fotoğraf gerçekçiliği zorunlu değildir; bebeksi maskot/chibi kullanma."
+            : "2) Kapak tasarımı roman alt türüne ve seçilen yaş grubuna sadık olmalı; yaş grubuna uygun biçimde atanmış sanat tekniği korunmalı.")
           : "2) Kapak tasarımı akademik ve bilimsel hissi vermeli; rastgele soyut ikonlardan kaçın."}
 ${isFairyTale || ((isStory || isNovel) && (audienceLevel === "7-11" || audienceLevel === "12-18"))
       ? "2.1) KESİN KURAL: Photorealistic/foto-gerçekçi görünüm YASAK. Kapak mutlaka çizgi film/illüstrasyon stilinde olmalı."
@@ -6136,6 +5762,24 @@ function getUserBookRef(uid: string, bookId: string) {
 
 function getUserBooksCollection(uid: string) {
   return firestore.collection("users").doc(uid).collection("books");
+}
+
+async function loadRecentBookCreativeReferences(uid: string): Promise<RecentBookReference[]> {
+  const snapshot = await getUserBooksCollection(uid).orderBy("createdAt", "desc").limit(12).get();
+  return snapshot.docs.map(doc => {
+    const book = doc.data();
+    const fingerprint = isRecord(book.creativeFingerprint) ? book.creativeFingerprint : {};
+    return {
+      title: String(book.title || book.topic || "").slice(0, 120),
+      description: String(book.description || "").slice(0, 800),
+      subGenre: String(book.subGenre || "").slice(0, 120),
+      artProfileId: typeof fingerprint.artProfileId === "string" ? fingerprint.artProfileId : undefined,
+      palette: typeof fingerprint.palette === "string" ? fingerprint.palette : undefined,
+      composition: typeof fingerprint.composition === "string" ? fingerprint.composition : undefined,
+      worldLens: typeof fingerprint.worldLens === "string" ? fingerprint.worldLens : undefined,
+      narrativeSignature: typeof fingerprint.narrativeSignature === "string" ? fingerprint.narrativeSignature : undefined
+    };
+  }).filter(book => Boolean(book.title));
 }
 
 function buildPodcastJobId(uid: string, topic: string, script: string): string {
@@ -7282,7 +6926,7 @@ function parseJsonObject(
   }
 }
 
-function sanitizeHistory(value: unknown): ChatHistoryMessage[] {
+function sanitizeHistory(value: unknown, maxContentLength = 1500): ChatHistoryMessage[] {
   if (!Array.isArray(value)) {
     throw new HttpsError("invalid-argument", "Invalid chat history.");
   }
@@ -7299,7 +6943,7 @@ function sanitizeHistory(value: unknown): ChatHistoryMessage[] {
       throw new HttpsError("invalid-argument", `Invalid role at history index ${index}`);
     }
 
-    const content = asString(item.content, `history[${index}].content`, 1500);
+    const content = asString(item.content, `history[${index}].content`, maxContentLength);
     return { role, content };
   });
 }
@@ -7854,13 +7498,39 @@ Sadece JSON nesnesi döndür:
   }
 }
 
+function combineBookPlanUsage(first: UsageReportEntry, second: UsageReportEntry): UsageReportEntry {
+  return { ...first, inputTokens: first.inputTokens + second.inputTokens, outputTokens: first.outputTokens + second.outputTokens,
+    totalTokens: first.totalTokens + second.totalTokens, estimatedCostUsd: roundUsd(first.estimatedCostUsd + second.estimatedCostUsd) };
+}
+
+function throwBookEditorialFailure(usageEntry: UsageReportEntry): never {
+  throw new HttpsError("failed-precondition", "Kitap planı özgünlük ve kullanıcı tercihleri kontrolünü geçemedi; tekrarlı kitap yayımlanmadı. Lütfen yeniden deneyin.",
+    { usage: buildUsageReport("generateCourseOutline", [usageEntry]) });
+}
+
+async function reviewBookCreativePlan(ai: GoogleGenAI, candidate: unknown, brief: SmartBookCreativeBrief): Promise<{
+  accepted: boolean; revision: string; usageEntry: UsageReportEntry;
+}> {
+  const prompt = buildBookEditorialReviewPrompt(candidate, brief.creativeDirection!, brief.subGenre || "", brief.bookType);
+  const response = await ai.models.generateContent({
+    model: GEMINI_QUALITY_MODEL, contents: prompt,
+    config: { thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG, temperature: 0.2, maxOutputTokens: 2400, responseMimeType: "application/json" }
+  });
+  const result = parseBookEditorialReview(parseJsonObject(response.text, "Invalid book editorial review."));
+  logger.info("Book literary plan review completed", { bookType: brief.bookType, accepted: result.accepted });
+  return { ...result, usageEntry: buildGeminiUsageEntry("Edebi plan ve tekrar kontrolü", GEMINI_QUALITY_MODEL,
+    (response as unknown as { usageMetadata?: unknown }).usageMetadata, prompt, response.text || "") };
+}
+
 async function generateCourseOutline(
   ai: GoogleGenAI,
   topic?: string,
   sourceContent?: string,
   audienceLevel: SmartBookAudienceLevel = "general",
   creativeBrief?: SmartBookCreativeBrief,
-  allowAiBookTitleGeneration: boolean = false
+  allowAiBookTitleGeneration: boolean = false,
+  editorialFeedback?: string,
+  editorialAttempt = 0
 ): Promise<{ outline: TimelineNode[]; courseMeta: CourseOutlineMeta; usageEntry: UsageReportEntry }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, creativeBrief?.bookType, creativeBrief?.subGenre);
   const normalizedTopic = String(topic || "").trim();
@@ -7894,7 +7564,7 @@ async function generateCourseOutline(
     ? `
 Kaynak Doküman Özeti:
 """
-${sourceContent.slice(0, 9000)}
+${sourceContent.slice(0, 30000)}
 """
 `
     : "";
@@ -7929,16 +7599,10 @@ Podcast, reinforce, retention, quiz veya exam tipinde ayrı adım üretme; quiz 
 Başlıklar konuya özgü ve öğretici olmalı; "Bölüm 1", "Giriş", "Detaylar", "Final" gibi jenerik başlıklar kullanma.`;
   } else if (isNovelPrompt) {
     expectedChapterCount = NOVEL_CHAPTER_COUNT;
-    structureRules = `KRİTİK KURAL: Roman akışını TAM OLARAK ${NOVEL_CHAPTER_COUNT} ADIM olarak üret:
-1) Hazırlık / Dünya İnşası (tema, karakter arzusu-korkusu, dünya kuralları)
-2) I. Perde Kurulum (sıradan dünya + tetikleyici olay + eşiği geçiş)
-3) II. Perde Yüzleşme I (keşif, müttefikler/düşmanlar, midpoint)
-4) II. Perde Yüzleşme II (risklerin ikiye katlanması, stratejik baskı ve geri dönüşsüz gerilim)
-5) II. Perde Yüzleşme III (en alt nokta ve doruğa zorlayan kritik karar)
-6) III. Perde Çözüm / Final (doruk hesaplaşma + yeni denge)
-Her adımın type değeri MUTLAKA "lecture" olmalı.
-KRİTİK BAŞLIK KURALI: title alanlarında "Giriş", "Bölüm 1", "Perde I", "Çözüm", "Final" gibi teknik etiketleri YAZMA; her biri doğal/edebi roman başlığı olmalı.
-Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bölümden bölüme tutarlı kalmalı.`;
+    structureRules = `Romanı TAM OLARAK ${NOVEL_CHAPTER_COUNT} lecture bölümüyle planla. Bölüm sayısı teknik formattır; olayları zorunlu kahraman yolculuğu, ipucu zinciri veya altı aşamalı perde şemasına sokma.
+Her bölüm description alanında 3-5 somut cümleyle karakterin isteğini, yaptığı seçimi, sahnenin olayını, sonuç/bedeli ve sonraki bölüme etkisini belirt. Mekan-zaman ve önemli nesneler kitaba özgü olsun; tanıtım blurb'u yazma.
+Birbirinden farklı yapıları değerlendir; kullanıcı girdilerine ve alt türe en iyi hizmet edenini seç. Altı bölüm aynı anlatıcı, bilgi dağılımı veya tempo kalıbını gerektirmez.
+Başlıklar doğal/edebi olsun; teknik bölüm veya perde etiketi kullanma. Karakter bilgisi ve neden-sonuç zinciri tutarlı kalsın.`;
   } else {
     structureRules = `Toplam 4 adım olacak ve tür sırası şu şekilde kalacak:
 1) lecture
@@ -7966,12 +7630,13 @@ Roman tek ana anlatı hattında akmalı; karakter arkı ve dünya kuralları bö
             : "11) bookTitle alanı kullanıcı başlığını yeniden adlandırmamalı; konu başlığını koru.";
 
   const prompt = `
-${normalizedTopic ? `"${normalizedTopic}" konusu için yapılandırılmış bir öğrenme yolu oluştur. Kullanıcının konu, karakter ve fikir tercihlerine kesinlikle sadık kal.` : `Kullanıcı konu başlığı belirtmedi (Fortale'ye bıraktı). Seçilen alt tür (${normalizedBrief.subGenre || 'Genel'}) ve karakterlere göre tamamen ÖZGÜN, taze, sürükleyici ve yaratıcı bir akış oluştur. KESİNLİKLE İSTASYON, TREN, SAAT GİBİ TEKRAR EDEN KLİŞELERE GİRME; taze ve büyüleyici bir dünya kur.`}
+${normalizedTopic ? `"${normalizedTopic}" konusu için seçilen kitap formatında ayrıntılı bir bölüm planı oluştur. Kullanıcının konu, karakter ve fikir tercihlerine kesinlikle sadık kal.` : `Kullanıcı konu başlığı belirtmedi (Fortale'ye bıraktı). Seçilen alt tür (${normalizedBrief.subGenre || 'Genel'}) ve karakterlere göre tamamen ÖZGÜN, taze, sürükleyici ve yaratıcı bir akış oluştur. Kullanıcı istemediyse varsayılan istasyon, tren, saat ve gizem şemasından uzaklaş; taze ve büyüleyici bir dünya kur.`}
 ${sourceBlock}
 ${outlineAudienceInstruction}
 ${languageInstruction(preferredLanguage)}
 Kitap brief:
 ${creativeBriefInstruction}
+${editorialFeedback ? `EDITORIAL REVISION REQUIRED:\n${editorialFeedback}` : ""}
 ${isWorkbookPrompt ? "KRİTİK KURAL (KALİTE): Bu bir ÇALIŞMA KİTABI üretimidir. Kurmaca yazma. Yaklaşık 12-15 sayfalık bilimsel açıklama planla; 20 sayfa üst sınırı yalnızca yumuşak hedeftir, tamamlanmış içeriği kesme. Başlık, alt başlık, tablo ve liste kullanımını bölümlere dengeli dağıt." : ""}
 ${isNovelPrompt ? "KRİTİK KURAL (KALİTE): Bu bir ROMAN üretimidir. Roman 30-35 sayfa bandında planlanmalı; 30 sayfa altına düşmemeli ve olay örgüsünde derinlik korunmalı." : ""}
 ${isNovelPrompt ? "KRİTİK KURAL (KALİTE): Bölüm başlıkları teknik etiket olamaz. 'Bölüm 1', 'Giriş', 'Perde I' gibi başlıklar yerine doğal/edebi başlıklar kullan." : ""}
@@ -7995,7 +7660,7 @@ JSON nesnesi alanları:
 - subGenre (string) -> brief ile uyumlu kısa alt tür adı
 - targetPageCount (number) -> brief hedef aralığına uygun toplam sayfa hedefi
 - searchTags (string[]) -> arama için 6-10 kısa etiket
-- outline (array) -> ${isFairyTalePrompt ? "tam olarak 5 blok: Döşeme, Giriş, Gelişme 1, Gelişme 2, Sonuç (title alanları teknik etiket değil doğal masal başlıkları olmalı)" : (isWorkbookPrompt ? "tam olarak 5 akademik lecture bölümü; temel kavramlardan uygulama ve final özetine ilerleyen konuya özgü başlıklar" : (isNovelPrompt ? `tam olarak ${NOVEL_CHAPTER_COUNT} adım: Hazırlık/Dünya İnşası, I. Perde Kurulum, II. Perde Yüzleşme I, II. Perde Yüzleşme II, II. Perde Yüzleşme III, III. Perde Çözüm/Final (title alanları teknik etiket değil doğal roman başlıkları olmalı)` : (isNarrativePrompt ? `hedef uzunluğa ulaşacak kadar en az 3-10 adımlık hikaye akışı (Beklenen: ~${expectedChapterCount} bölüm)` : "4 adımlık akış")))}
+- outline (array) -> ${isFairyTalePrompt ? "tam olarak 5 blok: Döşeme, Giriş, Gelişme 1, Gelişme 2, Sonuç (title alanları teknik etiket değil doğal masal başlıkları olmalı)" : (isWorkbookPrompt ? "tam olarak 5 akademik lecture bölümü; temel kavramlardan uygulama ve final özetine ilerleyen konuya özgü başlıklar" : (isNovelPrompt ? `tam olarak ${NOVEL_CHAPTER_COUNT} kitaba özgü lecture bölümü; somut olaylar, karakter kararları ve nedensel sonuçlar description alanında ayrıntılı olmalı` : (isNarrativePrompt ? `hedef uzunluğa ulaşacak kadar en az 3-10 adımlık hikaye akışı (Beklenen: ~${expectedChapterCount} bölüm)` : "4 adımlık akış")))}
 
 Sabit kategori listesi (SADECE bunlardan biri seçilecek):
 ${categoryListBlock}
@@ -8004,7 +7669,7 @@ Kurallar:
 1) Eğer kaynak doküman verildiyse başlık ve açıklamaları o içeriğin önemli alt başlıklarına göre planla.
 2) retention aşaması final özet ve hızlı tekrar bölümüdür (kurgusal değilse).
 3) Akışta quiz/sınav adımı OLMAYACAK.
-4) description alanları kısa ama net olsun.
+4) Kurmaca description alanları sahne, karar, neden-sonuç ve devamlılık içeren 3-5 somut cümle olsun. Eğitim kitabında konuya özgü kapsamı net belirt.
 5) bookCategory alakasız bir alan olmasın; konuya en yakın kategoriyi yukarıdaki sabit listeden seç.
 6) searchTags tekrar etmeyen, aranabilir kısa etiketlerden oluşsun.
 7) bookDescription mutlaka konuya özgü, 2-3 doğal cümle ve yaklaşık 160-320 karakter olsun; "konunun temel çerçevesi, ana kavramları..." gibi şablon/generic cümle kullanma.
@@ -8024,7 +7689,7 @@ ${statusRules}
     config: {
       thinkingConfig: GEMINI_PLANNING_THINKING_CONFIG,
       temperature: 1,
-      maxOutputTokens: 3500,
+      maxOutputTokens: isNovelPrompt ? 6500 : 3500,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -8171,24 +7836,9 @@ ${statusRules}
       "Çatışmayı çöz ve açıkta kalan soruları cevapla.",
       "Finalde karakter değişimini ve dünyadaki etkisini göster."
     ];
-  const novelStageDescriptions = useEnglishScaffold
-    ? [
-      "Build the core premise: theme, world rules, and the protagonist's desire-fear axis.",
-      "Run Act I setup through ordinary world, inciting incident, and threshold crossing.",
-      "Expand Act II with allies-enemies dynamics and a clear midpoint shift.",
-      "Drive Act II deeper with escalation, strategic pressure, and irreversible stakes.",
-      "Push the protagonist to the lowest point and force the decisive pre-climax commitment.",
-      "Deliver Act III climax and establish the transformed new ordinary world."
-    ]
-    : [
-      "Temayı, dünya kurallarını ve karakterin arzu-korku eksenini kur.",
-      "I. Perde kurulumunu sıradan dünya, tetikleyici olay ve eşiği geçişle tamamla.",
-      "II. Perdede müttefik-düşman dinamiğini kur ve midpoint kırılmasını görünür yap.",
-      "II. Perdede riskleri büyüt, stratejik baskıyı tırmandır ve geri dönüşsüz bedelleri görünür kıl.",
-      "Kahramanı en alt noktaya indir ve doruk öncesi belirleyici karara zorla.",
-      "III. Perdede doruğu çözüp yeni sıradan dünyayı karakter değişimiyle kur."
-    ];
-  const sanitizeFairyTaleOutlineTitle = (value: string): string =>
+  const novelStageDescriptions = Array.from({ length: NOVEL_CHAPTER_COUNT }, () => useEnglishScaffold
+    ? "Develop the concrete chapter events from the book-specific plan, preserving motives and causal consequences."
+    : "Kitaba özgü plandaki somut olayları, karakter motivasyonlarını ve nedensel sonuçları geliştir.");  const sanitizeFairyTaleOutlineTitle = (value: string): string =>
     String(value || "")
       .replace(/^(?:bölüm|chapter|kısım|kisim|part)\s*\d+\s*[:\-–]?\s*/iu, "")
       .replace(/^(?:d[öo]şeme|serim|giriş|giris|geli[şs]me(?:\s*[12])?|d[üu]ğüm|dugum|ç[öo]züm|cozum|dilek|sonu[çc]|introduction|masal)\s*(?:bölümü|bolumu|kısmı|kismi|section)?\s*[:\-–]?\s*/iu, "")
@@ -8337,7 +7987,8 @@ ${statusRules}
     );
     const shouldRepairBookDescription = !rawBookDescriptionValue.trim() || isGenericBookDescription(
       rawBookDescriptionValue,
-      normalizedTopic || rawBookTitleValue
+      normalizedTopic || rawBookTitleValue,
+      !narrativeBrief
     );
     if (!shouldRepairBookTitle && !shouldRepairBookDescription && missingOrTechnicalTitleCount === 0) {
       return {
@@ -8799,7 +8450,7 @@ JSON şeması:
   );
   const safeBookDescription = isNarrativeBookType || isWorkbookPrompt
     ? (
-      !repairedBookDescription || isGenericBookDescription(repairedBookDescription, normalizedTopic || finalBookTitle)
+      !repairedBookDescription || isGenericBookDescription(repairedBookDescription, normalizedTopic || finalBookTitle, !isNarrativeBookType)
         ? fallbackBookDescription
         : ensureDescriptionSentence(repairedBookDescription)
     )
@@ -8845,6 +8496,16 @@ JSON şeması:
     estimatedCostUsd: roundUsd(usageEntries.reduce((sum, entry) => sum + entry.estimatedCostUsd, 0))
   };
 
+  if (normalizedBrief.creativeDirection && (isNovelPrompt || isFairyTalePrompt)) {
+    const review = await reviewBookCreativePlan(ai, { courseMeta, outline }, normalizedBrief);
+    const reviewedUsage = combineBookPlanUsage(usageEntry, review.usageEntry);
+    if (!review.accepted) {
+      if (editorialAttempt >= 2) throwBookEditorialFailure(reviewedUsage);
+      const revised = await generateCourseOutline(ai, topic, sourceContent, audienceLevel, normalizedBrief, allowAiBookTitleGeneration, review.revision, editorialAttempt + 1);
+      return { ...revised, usageEntry: combineBookPlanUsage(reviewedUsage, revised.usageEntry) };
+    }
+    return { outline, courseMeta, usageEntry: reviewedUsage };
+  }
   return { outline, courseMeta, usageEntry };
 }
 
@@ -8947,23 +8608,7 @@ function selectVisualStoryTitleSeed(...values: Array<unknown>): string {
   return "";
 }
 
-const CLASSIC_FAIRY_TALE_REFERENCE_TITLES = [
-  "Külkedisi",
-  "Pamuk Prenses",
-  "Kırmızı Başlıklı Kız",
-  "Uyuyan Güzel",
-  "Kibritçi Kız",
-  "Çirkin Ördek Yavrusu",
-  "Küçük Deniz Kızı",
-  "Hansel ve Gretel",
-  "Rapunzel",
-  "Kurbağa Prens",
-  "Bremen Mızıkacıları",
-  "Keloğlan masalları",
-  "Ali Baba ve Kırk Haramiler",
-  "Aladdin ve Sihirli Lamba",
-  "Nasreddin Hoca hikayeleri"
-];
+
 
 type VisualFairyTaleAudienceBucket = "1-6" | "7+";
 
@@ -9040,66 +8685,10 @@ function buildVisualFairyTaleSubGenreNarrativeDirective(
 function buildVisualFairyTaleStyleAnchor(
   subGenre: string | undefined,
   audienceLevel: SmartBookAudienceLevel,
-  preferredLanguage: PreferredLanguage
+  _preferredLanguage: PreferredLanguage,
+  creativeBrief?: SmartBookCreativeBrief
 ): string {
-  const isEn = usesEnglishPromptScaffold(preferredLanguage);
-  const bucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
-  const key = normalizeStoryPathKey(subGenre);
-  const brightLock = isEn
-    ? "premium bright family animated-feature look, polished 3D cartoon / children's picture-book finish, saturated joyful colors, soft daylight, warm magical glow, rounded appealing characters, clear readable staging; never gloomy, gothic, horror, noir, surrealist, bleak, muted, grey-brown, heavily shadowed, photorealistic, or uncanny"
-    : "premium parlak aile animasyon filmi görünümü, cilalı 3D çizgi film / çocuk resimli kitabı bitişi, doygun neşeli renkler, yumuşak gün ışığı, sıcak büyülü ışıma, yuvarlak sevimli karakterler, net okunaklı sahneleme; asla kasvetli, gotik, korku, noir, sürrealist, soluk, gri-kahverengi, ağır gölgeli, fotogerçekçi veya tekinsiz değil";
-  if (key.includes("klasik")) {
-    return bucket === "7+"
-      ? (isEn
-        ? `classic enchanted fairy-tale animation illustration, sunlit palace/forest charm, golden storybook glow, sapphire/rose/sunflower accents, richer environment detail for ages 7+, ${brightLock}`
-        : `klasik büyülü masal animasyon ilustrasyonu, güneşli saray/orman cazibesi, altın hikaye kitabı ışıması, safir/pembe/ayçiçeği aksanları, 7+ için daha zengin çevre detayı, ${brightLock}`)
-      : (isEn
-        ? `vivid classic storybook cartoon illustration, big rounded shapes, golden daylight, warm fairy-tale charm, simple readable focal action, ${brightLock}`
-        : `canlı klasik hikaye kitabı çizgi film ilustrasyonu, büyük yuvarlak şekiller, altın gün ışığı, sıcak masal cazibesi, basit okunaklı odak eylem, ${brightLock}`);
-  }
-  if (key.includes("modern")) {
-    return bucket === "7+"
-      ? (isEn
-        ? `detailed modern animated-feature illustration, crisp rounded CG-cartoon rendering, cheerful contemporary world, saturated playful palette, expressive 7+ children's-book energy, ${brightLock}`
-        : `detaylı modern animasyon filmi ilustrasyonu, temiz yuvarlak CG-çizgi film renderı, neşeli çağdaş dünya, doygun oyunlu palet, 7+ çağdaş çocuk kitabı enerjisi, ${brightLock}`)
-      : (isEn
-        ? `bright modern storybook cartoon illustration, clean rounded shapes, colorful contemporary warmth, lively kid-friendly polish, ${brightLock}`
-        : `parlak modern hikaye kitabı çizgi film ilustrasyonu, temiz yuvarlak formlar, renkli çağdaş sıcaklık, canlı çocuk dostu cila, ${brightLock}`);
-  }
-  if (key.includes("macer")) {
-    return bucket === "7+"
-      ? (isEn
-        ? `bright magical-adventure cartoon illustration, open sunny vistas, detailed environment storytelling, dynamic friendly movement, heroic child-safe animated action, ${brightLock}`
-        : `parlak büyülü macera çizgi film ilustrasyonu, açık güneşli manzaralar, detaylı çevre hikaye anlatımı, dinamik ve dostça hareket, kahramansı ama çocuk güvenli animasyon aksiyonu, ${brightLock}`)
-      : (isEn
-        ? `vivid magical adventure storybook illustration, bold friendly motion, bright scenic rhythm, readable quest energy, ${brightLock}`
-        : `canlı büyülü macera hikaye kitabı ilustrasyonu, cesur ve dostça hareket, parlak sahne ritmi, okunaklı görev/yolculuk enerjisi, ${brightLock}`);
-  }
-  if (key.includes("mitolojik")) {
-    return bucket === "7+"
-      ? (isEn
-        ? `luminous mythic animated illustration, friendly legendary scale, golden sun rays, bright ancient motifs, detailed fantasy cartoon worldbuilding, ${brightLock}`
-        : `ışıklı mitolojik animasyon ilustrasyonu, dostça efsanevi ölçek, altın güneş ışınları, parlak kadim motifler, detaylı fantastik çizgi film dünya kurma, ${brightLock}`)
-      : (isEn
-        ? `luminous mythic storybook cartoon illustration, magical glow, simple ancient motifs, child-safe legendary wonder, ${brightLock}`
-        : `ışıklı mitolojik hikaye kitabı çizgi film ilustrasyonu, büyülü parlama, sade kadim motifler, çocuk güvenli efsanevi hayranlık, ${brightLock}`);
-  }
-  if (key.includes("eğitici") || key.includes("egitici")) {
-    return bucket === "7+"
-      ? (isEn
-        ? `detailed discovery-cartoon illustration, bright educational adventure look, tactile nature/object details, joyful animated clarity, ${brightLock}`
-        : `detaylı keşif-çizgi film ilustrasyonu, parlak eğitici macera görünümü, dokulu doğa/nesne ayrıntıları, neşeli animasyon berraklığı, ${brightLock}`)
-      : (isEn
-        ? `vivid educational storybook cartoon illustration, cheerful discovery mood, clean readable objects, bright reassuring colors, ${brightLock}`
-        : `canlı eğitici hikaye kitabı çizgi film ilustrasyonu, neşeli keşif havası, temiz okunaklı nesneler, parlak güven veren renkler, ${brightLock}`);
-  }
-  return bucket === "7+"
-    ? (isEn
-      ? `detailed colorful children's animation illustration, rich bright cartoon environments, lively child-safe fantasy warmth, polished family animated-feature finish, ${brightLock}`
-      : `detaylı renkli çocuk animasyon ilustrasyonu, zengin parlak çizgi film çevreleri, canlı ve çocuk güvenli fantastik sıcaklık, cilalı aile animasyon filmi bitişi, ${brightLock}`)
-    : (isEn
-      ? `vivid colorful children's storybook cartoon illustration, warm magical cartoon look, simple rounded shapes, ${brightLock}`
-      : `canlı renkli çocuk hikaye kitabı çizgi film ilustrasyonu, sıcak büyülü çizgi film görünümü, sade yuvarlak şekiller, ${brightLock}`);
+  return buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, subGenre, false, creativeBrief);
 }
 
 function stripVisualStoryCoverHeading(value: string, title: string): string {
@@ -9202,32 +8791,33 @@ async function generateVisualFairyTalePlan(
   creativeBrief: SmartBookCreativeBrief | undefined,
   allowAiBookTitleGeneration: boolean,
   audienceLevel: SmartBookAudienceLevel,
-  options?: { heroPortraitName?: string }
+  options?: { heroPortraitName?: string; editorialFeedback?: string; editorialAttempt?: number }
 ): Promise<{ plan: VisualStoryPlan; courseMeta: CourseOutlineMeta; usageEntry: UsageReportEntry }> {
   const normalizedBrief = normalizeSmartBookCreativeBrief(creativeBrief, "fairy_tale", creativeBrief?.subGenre);
   const preferredLanguage = resolvePreferredLanguageFromBrief(normalizedBrief, topic, sourceContent);
   const audienceBucket = resolveVisualFairyTaleAudienceBucket(audienceLevel);
   const sentenceTargets = getVisualFairyTaleSentenceTargets(audienceLevel);
-  const referenceTitles = CLASSIC_FAIRY_TALE_REFERENCE_TITLES.join(", ");
   const promptBase = `
 ${topic ? `"${topic}" girdisi için ${audienceBucket} yaş görsel masal metni üret.` : `${audienceBucket} yaş görsel masal metni üret.`}
-${sourceContent ? `Kaynak özeti:\n"""\n${sourceContent.slice(0, 7000)}\n"""\n` : ""}
+${sourceContent ? `Kaynak özeti:\n"""\n${sourceContent.slice(0, 30000)}\n"""\n` : ""}
 ${buildVisualFairyTalePlanInputBlock(normalizedBrief, preferredLanguage, audienceLevel, options)}
+${buildBookNarrativeDirection(normalizedBrief.creativeDirection)}
+${options?.editorialFeedback ? `EDITORIAL REVISION REQUIRED:\n${options.editorialFeedback}` : ""}
 
 Kurallar:
 1) storyText alanına tek parça, özgün, ${sentenceTargets.minTotal}-${sentenceTargets.maxTotal} cümlelik bir masal yaz.
 2) Masal seçilen alt türde olsun, ama alt tür adını bookTitle olarak kullanma.
 3) ${allowAiBookTitleGeneration ? "bookTitle özgün, doğal ve kitap adı gibi olsun. Genelde 2-4 kelime olmalı; 5 kelime sadece gerçekten doğal ve güçlü ise kullanılabilir. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma. 'Klasik Masal', 'Modern Masal', 'Macera Masalı', 'Eğitici Masal', 'Masal Kitabı', 'Hikaye' gibi alt tür/jenerik adlar yasak." : "Kullanıcı başlığını bozma; ama başlık alt tür veya jenerik etiket gibi kaldıysa 2-4 kelimelik doğal ve özgün kitap adına yumuşat. 've', 'ile', 'bir', 'the/of/and' gibi bağlaç/dolgu kelimeleri başlığı uzatmak için kullanma."}
-4) Üslup referansı: ${referenceTitles}. Bu masallar gibi zamansız, net, akılda kalan ve çocukların takip edebileceği bir masal yaz; bu eserlerden karakter, olay veya cümle kopyalama.
+4) Çocukların izleyebileceği somut olaylar, sesli okumaya uygun ritim, karaktere özgü konuşma ve yaşa uygun hayal gücü kullan. Hazır masal veya ortak eser listesi taklit etme.
 5) ${buildVisualFairyTaleAudienceNarrativeDirective(audienceLevel, preferredLanguage)}
 6) ${buildVisualFairyTaleSubGenreNarrativeDirective(normalizedBrief.subGenre, preferredLanguage)}
 7) Görsel sayfa metinleri backend tarafından 8 parçaya bölünecek. Bu yüzden her doğal anlatı bloğu sayfa başına yaklaşık ${sentenceTargets.minPerPage}-${sentenceTargets.maxPerPage} cümle taşıyacak kadar dengeli aksın.
-8) Dünya masalı rafı hissi ver: Grimm, Andersen, Keloğlan, Nasreddin Hoca, Binbir Gece gibi kaynakların zamansız tadını anımsa; ama hiçbirini taklit etme veya kopyalama.
+8) Duygusal odağı karakterin somut isteği ve kendi eylemleriyle kur; iyilik dersi, gizem çözme veya hazine bulma şemasını her masala dayatma.
 9) Olay örgüsü için sana kalıp verilmiyor. Zorunlu problem/çözüm, zorunlu kahraman tipi, zorunlu ders veya aşama şeması yok. Yaratıcı kararı kendin ver.
 10) storyText dışındaki alanlara hikaye metnini bölme. Bölmeyi backend yapacak.
 11) coverText sadece kapak içindir: ilk satır bookTitle olsun; altında en fazla 1 kısa kapak cümlesi olabilir.
 12) characterBible alanında yalnızca görsel tutarlılığı için karakterlerin değişmeyen fiziksel özelliklerini kısa yaz.
-13) styleAnchor alanında yalnızca çocuk kitabı görsel stilini kısa yaz.
+13) styleAnchor alanına aşağıdaki atanmış kitap sanat yönünü kısa ve sadık biçimde yaz; kendi başına başka teknik seçme.\n${buildNarrativeVisualStyleDirective("fairy_tale", audienceLevel, normalizedBrief.subGenre, false, normalizedBrief)}
 14) ${languageInstruction(preferredLanguage)}
 15) ${options?.heroPortraitName ? `${options.heroPortraitName} portreyle eşleştirilen kahramandır; characterBible alanında bu karakteri görsel tutarlılık için net tanımla.` : "Ana karakter storyText, bookDescription ve characterBible içinde net tanımlanmalı."}
 16) bookDescription kitabın özgün çatışmasını, ana karakterini ve atmosferini anlatan 2-3 doğal cümlelik metadata metni olsun; genel uygulama tanıtımı veya mekanik şablon kullanma.
@@ -9341,7 +8931,7 @@ Sadece JSON döndür.
       { maxSentences: 1 }
     ),
     characterBible: String(parsed.characterBible || normalizedBrief.characters || "ana karakter").replace(/\s+/g, " ").trim(),
-    styleAnchor: buildVisualFairyTaleStyleAnchor(normalizedBrief.subGenre, audienceLevel, preferredLanguage),
+    styleAnchor: buildVisualFairyTaleStyleAnchor(normalizedBrief.subGenre, audienceLevel, preferredLanguage, normalizedBrief),
     pages
   };
   const usageEntry: UsageReportEntry = {
@@ -9353,6 +8943,18 @@ Sadece JSON döndür.
     totalTokens: usageEntries.reduce((sum, entry) => sum + entry.totalTokens, 0),
     estimatedCostUsd: roundUsd(usageEntries.reduce((sum, entry) => sum + entry.estimatedCostUsd, 0))
   };
+  if (normalizedBrief.creativeDirection) {
+    const review = await reviewBookCreativePlan(ai, { bookTitle, bookDescription, storyText: parsed.storyText }, normalizedBrief);
+    const reviewedUsage = combineBookPlanUsage(usageEntry, review.usageEntry);
+    if (!review.accepted) {
+      if ((options?.editorialAttempt || 0) >= 2) throwBookEditorialFailure(reviewedUsage);
+      const revised = await generateVisualFairyTalePlan(ai, topic, sourceContent, normalizedBrief, allowAiBookTitleGeneration, audienceLevel, {
+        ...options, editorialFeedback: review.revision, editorialAttempt: (options?.editorialAttempt || 0) + 1
+      });
+      return { ...revised, usageEntry: combineBookPlanUsage(reviewedUsage, revised.usageEntry) };
+    }
+    Object.assign(usageEntry, reviewedUsage);
+  }
   return {
     plan,
     courseMeta: {
@@ -9392,19 +8994,7 @@ function buildVisualStoryPageImagePrompt(params: {
     params.bookTitle,
     params.pageText
   ));
-  const subGenreKey = normalizeStoryPathKey(params.creativeBrief?.subGenre);
-  const subGenreVisualRule =
-    subGenreKey.includes("klasik")
-      ? "Subgenre image rule: timeless fairy-tale glow, elegant sunlit storybook staging, classic magical charm, bright gold/sapphire/rose color accents."
-      : subGenreKey.includes("modern")
-        ? "Subgenre image rule: polished contemporary cartoon finish, crisp forms, bright upbeat energy, and fresh present-day appeal."
-        : subGenreKey.includes("macer")
-          ? "Subgenre image rule: dynamic friendly movement, quest energy, open sunny scenic scale, and bold adventurous rhythm."
-          : subGenreKey.includes("mitolojik")
-            ? "Subgenre image rule: luminous golden mythic atmosphere, simple ancient-symbol feel, ceremonial wonder, and legendary child-safe grandeur without darkness."
-            : subGenreKey.includes("eğitici") || subGenreKey.includes("egitici")
-              ? "Subgenre image rule: discovery-first visual clarity, bright curiosity, tactile objects/nature details, and playful learning warmth."
-              : "Subgenre image rule: vivid magical children's-book appeal with strong readability, saturated cheerful colors, and family animated-feature warmth.";
+  const subGenreVisualRule = buildNarrativeVisualStyleDirective("fairy_tale", params.audienceLevel, params.creativeBrief?.subGenre, Boolean(params.isCover), params.creativeBrief);
   return `
 ${params.isCover
     ? "Create exactly 1 portrait children's book cover illustration, also used as the first story-page illustration."
@@ -9416,7 +9006,7 @@ ${params.isCover ? `Required cover title language: ${coverLanguage}\nThe ONLY vi
 Scene prompt: ${params.scenePrompt}
 Page story: ${params.pageText}
 Character continuity: ${params.characterBible}
-Style anchor: ${params.styleAnchor}
+Style continuity: ${params.styleAnchor}
 Character roster: ${compactInline(params.creativeBrief?.characters, 220) || "main child character"}
 Place: ${compactInline(params.creativeBrief?.settingPlace, 160) || "storybook setting"}
 Time: ${compactInline(params.creativeBrief?.settingTime, 160) || "gentle fairy tale time"}
@@ -9429,8 +9019,8 @@ Rules:
     ? "Portrait book-cover composition only. Depict this first page's actual scene, with the required title integrated into the artwork as polished storybook lettering. No separate text panel, pasted caption, or empty title placeholder."
     : "Landscape 15:10 only. Wide picture-book spread composition."}
 2) ${audienceBucket === "7+"
-    ? "Detailed bright animated-feature / premium 3D cartoon storybook illustration for ages 7+. Rich environment storytelling, expressive lighting, readable detail, and slightly more layered visual ideas are welcome, but keep the mood colorful, safe, and inviting."
-    : "Beautiful bright children's storybook / polished 3D cartoon illustration for ages 1-6. Keep shapes readable and rounded, expressions warm, props concrete, colors saturated, and the focal action instantly understandable."}
+    ? "Age-appropriate picture-book illustration for ages 7+, in the selected book art medium. Readable detail, expressive faces and safe inviting scenes."
+    : "Preschool picture-book illustration in the selected art medium. Keep expressions gentle, props concrete and focal action readable; watercolor, print, collage, pencil and textile are valid."}
 3) Depict the requested event clearly, warmly, and with one readable focal action.
 4) ${subGenreVisualRule}
 5) ${params.isCover
@@ -9439,8 +9029,8 @@ Rules:
 6) Keep recurring characters visually identical across pages.
 7) Keep the composition clean and uncluttered so separate story text can be read comfortably in the app.
 8) STRICTLY non-photorealistic. Lively, colorful, child-safe illustration only.
-9) Hard visual ban: no gloomy, gothic, horror, noir, bleak, surrealist dream-distortion, muted grey/brown palette, heavy shadows, deep darkness, photorealism, realistic photo faces, uncanny faces, or scary monster framing.
-10) If the scene is night, mystery, conflict, or danger, render it as safe wonder with warm lantern light, sparkling moon/snow/glow accents, friendly readable expressions, and bright color highlights.
+9) Hard visual ban: no horror, frightening distortions, impenetrable darkness, photorealistic people, uncanny faces or scary monster framing. Quiet colors and visible paper are valid.
+10) If the scene is night, mystery, conflict, or danger, keep it emotionally safe and readable within the chosen medium. No forced lanterns, sparkles or magic glow absent from the actual scene.
 11) No prompt/system/backend/meta text anywhere.
 `.trim();
 }
@@ -10663,6 +10253,8 @@ async function generateLectureContent(
     outlinePositions: { current: number; total: number };
     previousChapterContent?: string;
     storySoFarContent?: string;
+    chapterPlan?: string;
+    bookOutline?: string;
   },
   deferImageGeneration: boolean = false,
   heroPortraitImage?: OpenAiImageReference,
@@ -10688,7 +10280,11 @@ async function generateLectureContent(
     chapterCount,
     audienceLevel
   );
-  const briefInstruction = buildCreativeBriefInstruction(normalizedBrief, preferredLanguage, targetPageCount, audienceLevel);
+  const briefInstruction = [
+    buildCreativeBriefInstruction(normalizedBrief, preferredLanguage, targetPageCount, audienceLevel),
+    narrativeContext?.bookOutline ? `APPROVED BOOK PLAN (keep causality and payoffs, do not reveal later events early):\n${narrativeContext.bookOutline}` : "",
+    narrativeContext?.chapterPlan ? `CURRENT CHAPTER EVENTS TO DEVELOP INTO PROSE:\n${narrativeContext.chapterPlan}` : ""
+  ].filter(Boolean).join("\n\n");
   const heroPortraitNarrativeInstruction = heroPortraitName
     ? `PORTRE KİMLİK KİLİDİ: Kullanıcının eklediği portredeki kişi "${heroPortraitName}" adlı seçili kahramandır. Bu karakter göründüğü sahnelerde portredeki kimlik ipuçlarıyla tutarlı kalmalı; portre başka karakterlere uygulanmamalı.`
     : "";
@@ -10772,25 +10368,6 @@ async function generateLectureContent(
     else if (/doruk|kritik\s*an|zirve|climax/i.test(normalizedNodeTitle)) storyStage = "doruk";
     else if (/geli[şs]me|d[üu]ğ[üu]m|dugum/i.test(normalizedNodeTitle)) storyStage = "gelisme";
     else if (/giriş|serim|intro/i.test(normalizedNodeTitle)) storyStage = "giris";
-  }
-  const novelStageOrder = ["hazirlik", "kurulum", "yuzlesme1", "yuzlesme2", "yuzlesme3", "cozum"] as const;
-  type NovelStage = typeof novelStageOrder[number];
-  const novelStageLabelTr: Record<NovelStage, string> = {
-    hazirlik: "Hazırlık / Dünya İnşası",
-    kurulum: "I. Perde Kurulum",
-    yuzlesme1: "II. Perde Yüzleşme I",
-    yuzlesme2: "II. Perde Yüzleşme II",
-    yuzlesme3: "II. Perde Yüzleşme III",
-    cozum: "III. Perde Çözüm / Final"
-  };
-  let novelStage: NovelStage = novelStageOrder[Math.max(0, Math.min(novelStageOrder.length - 1, chapterPosition - 1))];
-  if (isNovel) {
-    if (/haz[ıi]rl[ıi]k|hazirlik|d[üu]nya\s*in[şs]a|world[\s_-]?building|tema|theme/i.test(normalizedNodeTitle)) novelStage = "hazirlik";
-    else if (/kurulum|act\s*i|perde\s*i|s[ıi]radan\s*d[üu]nya|tetikleyici|eşi[kğ]\s*ge[çc]i[şs]|threshold/i.test(normalizedNodeTitle)) novelStage = "kurulum";
-    else if (/y[üu]zle[şs]me\s*[1i]|act\s*ii|perde\s*ii|midpoint|m[üu]ttefik|d[üu][şs]man/i.test(normalizedNodeTitle)) novelStage = "yuzlesme1";
-    else if (/y[üu]zle[şs]me\s*2|risk\s*art[ıi][şs][ıi]|escalation|stratejik\s*bask[ıi]/i.test(normalizedNodeTitle)) novelStage = "yuzlesme2";
-    else if (/y[üu]zle[şs]me\s*3|en\s*alt\s*nokta|lowest\s*point|kriz|c[oö]k[üu][şs]/i.test(normalizedNodeTitle)) novelStage = "yuzlesme3";
-    else if (/ç[öo]z[üu]m|cozum|doruk|climax|hesapla[şs]ma|final|sonu[çc]/i.test(normalizedNodeTitle)) novelStage = "cozum";
   }
   const stripNarrativeSystemImageLines = (value: string | undefined): string =>
     String(value || "")
@@ -10889,8 +10466,8 @@ ${previousChapterSnippet ? `- Son bölümün kaldığı yer:\n"""\n${previousCha
   const novelContextInstruction = !isNovel
     ? ""
     : `ÖNEMLİ BAĞLAM (ROMAN BÜTÜNLÜĞÜ):
-- Bu kitap ${NOVEL_CHAPTER_COUNT} aşamalı TEK ROMANDIR: Hazırlık/Dünya İnşası -> I. Perde Kurulum -> II. Perde Yüzleşme I -> II. Perde Yüzleşme II -> II. Perde Yüzleşme III -> III. Perde Çözüm/Final.
-- Şu an ${chapterPosition}/${NOVEL_CHAPTER_COUNT} bölümündesin (${novelStageLabelTr[novelStage]}).
+- Bu kitap ${chapterCount} bölümlük tek bir romandır. Olay yapısını onaylanmış kitaba özgü plandan al; zorunlu kahraman yolculuğu/perde şeması uygulama.
+- Şu an ${chapterPosition}/${chapterCount} bölümündesin; bu bölümün olaylarını onaylanmış özgün plandan al.
 - Teknik başlık kullanma: "1. Giriş", "Bölüm 3", "Perde II" gibi etiketleri yazma.
 - Gerekirse doğal/edebi bir bölüm başlığı kullan.
 ${storySoFarSnippet ? `- Şimdiye kadarki roman (kısa bağlam):\n"""\n${storySoFarSnippet}\n"""` : ""}
@@ -10925,19 +10502,9 @@ ${previousChapterSnippet ? `- Son bölümün kaldığı yer:\n"""\n${previousCha
           : storyStage === "cozum"
             ? "Bu adım Çözüm'dür: doruk sonrası çatışmayı kapat ve açık soruları cevapla."
             : "Bu adım Final'dir: karakterin baştaki hali ile sondaki hali arasındaki değişimi görünür kıl.";
-  const novelStepInstruction = !isNovel
-    ? ""
-    : novelStage === "hazirlik"
-      ? "Bu adım Hazırlık/Dünya İnşasıdır: tema, dünya kuralları ve karakterin arzu-korku eksenini net kur."
-      : novelStage === "kurulum"
-        ? "Bu adım I. Perde Kurulumudur: sıradan dünyayı göster, tetikleyici olayı çalıştır ve kahramanı geri dönülmez eşiği geçirmeye zorla."
-        : novelStage === "yuzlesme1"
-          ? "Bu adım II. Perde Yüzleşme I'dir: müttefik/düşman dinamiğini kur, riskleri büyüt ve midpoint kırılmasını açıkça yaz."
-          : novelStage === "yuzlesme2"
-            ? "Bu adım II. Perde Yüzleşme II'dir: stratejik baskıyı tırmandır, bedelleri büyüt ve geri dönüşsüz gerilim kur."
-            : novelStage === "yuzlesme3"
-              ? "Bu adım II. Perde Yüzleşme III'tür: kahramanı en alt noktaya indir ve doruk öncesi belirleyici kararı zorla."
-            : "Bu adım III. Perde Çözüm/Final'dir: doruk hesaplaşmayı bitir, ana çatışmayı çöz ve yeni sıradan düzeni kur.";
+  const novelStepInstruction = isNovel
+    ? "Bu bölümü onaylanan planın olayları, karakter kararları ve sonuçlarına göre yaz. Bölüm numarasından hazır perde aşaması çıkarma; önceki kitaplardan motif taşıma. Sahne içinde alt metin, karaktere özgü diyalog ve somut değişim olsun."
+    : "";
 
   const contextInstruction = isFairyTale
     ? (isSinglePartFairyTale
@@ -12728,6 +12295,7 @@ function normalizeBookMetadataForClient(
     title,
     topic: title,
     description: firstNonEmptyString(payload.description),
+    creativeFingerprint: isRecord(payload.creativeFingerprint) ? payload.creativeFingerprint : undefined,
     creatorName: firstNonEmptyString(payload.creatorName),
     language: firstNonEmptyString(payload.language),
     languageLearning: normalizeLanguageLearning(payload.languageLearning),
@@ -12958,6 +12526,7 @@ async function buildAndPublishBookBundle(params: {
     userId: uid,
     title,
     description: firstNonEmptyString(sourcePayload.description),
+    creativeFingerprint: isRecord(sourcePayload.creativeFingerprint) ? sourcePayload.creativeFingerprint : undefined,
     creatorName: firstNonEmptyString(sourcePayload.creatorName),
     language: firstNonEmptyString(sourcePayload.language),
     languageLearning: normalizeLanguageLearning(sourcePayload.languageLearning),
@@ -13093,6 +12662,7 @@ async function buildAndPublishBookBundle(params: {
     title,
     topic: title,
     description: firstNonEmptyString(sourcePayload.description),
+    creativeFingerprint: isRecord(sourcePayload.creativeFingerprint) ? sourcePayload.creativeFingerprint : undefined,
     creatorName: firstNonEmptyString(sourcePayload.creatorName),
     language: firstNonEmptyString(sourcePayload.language),
     languageLearning: normalizeLanguageLearning(sourcePayload.languageLearning),
@@ -13654,7 +13224,20 @@ function buildGeneratedBookCoursePayload(params: {
     ageGroup: params.ageGroup,
     bookType: params.bookType,
     subGenre,
-    creativeBrief: params.creativeBrief ? omitUndefinedRecord(params.creativeBrief) : undefined,
+    creativeBrief: params.creativeBrief ? omitUndefinedRecord({
+      ...params.creativeBrief,
+      // Personal history and source conversation are job-private, never published in a book bundle.
+      creativeDirection: params.creativeBrief.creativeDirection
+        ? { ...params.creativeBrief.creativeDirection, userRequest: "", recentBooks: [] }
+        : undefined
+    }) : undefined,
+    creativeFingerprint: params.creativeBrief?.creativeDirection ? {
+      artProfileId: params.creativeBrief.creativeDirection.artProfileId,
+      palette: params.creativeBrief.creativeDirection.palette,
+      composition: params.creativeBrief.creativeDirection.composition,
+      worldLens: params.creativeBrief.creativeDirection.worldLens,
+      narrativeSignature: params.nodes.map(node => `${node.title}: ${String(node.pageText || node.description || "").slice(0, 190)}`).join("\n").slice(0, 1800)
+    } : undefined,
     targetPageCount: params.targetPageCount,
     category,
     searchTags,
@@ -15108,6 +14691,7 @@ export const aiGateway = onCall(
     const ai = createGoogleGenAiClient();
     const imageApiKey = resolveOpenAiApiKey();
 
+    let operationCreativeDirection: BookCreativeDirection | undefined;
     const executeOperation = async (): Promise<AiGatewayResponse> => {
       switch (operation) {
         case "planBookCreation": {
@@ -15120,8 +14704,8 @@ export const aiGateway = onCall(
             bookLanguage: asString(payload.bookLanguage, "bookLanguage", 80),
             languageLearning: normalizeLanguageLearning(payload.languageLearning),
             creationMode: resolveBookCreationMode(payload.bookType as IntakeContext["bookType"], payload.creationMode),
-            history: sanitizeHistory(payload.history),
-            newMessage: asString(payload.newMessage, "newMessage", 1500),
+            history: sanitizeHistory(payload.history, 6000),
+            newMessage: asString(payload.newMessage, "newMessage", 6000),
             hasPortrait: payload.hasPortrait === true,
             sourceFileName: asOptionalString(payload.sourceFileName, "sourceFileName", 180),
             knownTaxonomy: await loadBookTaxonomy(),
@@ -15194,6 +14778,13 @@ export const aiGateway = onCall(
             subGenre,
             targetPageCountRaw
           );
+          if (!hasRequiredBookClassification(creativeBrief)) {
+            throw new HttpsError("invalid-argument", "Kitap üretmeden önce alt tür seçin.");
+          }
+          if (!operationCreativeDirection) operationCreativeDirection = createBookCreativeDirection(
+            randomUUID(), bookType, await loadRecentBookCreativeReferences(uid), sourceContent || topic || "", creativeBrief.visualStyle || "", ageGroup, [creativeBrief.workbookCategory, creativeBrief.subGenre].filter(Boolean).join(" / ")
+          );
+          creativeBrief.creativeDirection = operationCreativeDirection;
           const isSentenceOrPremise = (val?: string | null) => {
             const t = String(val || "").trim();
             return t.length > 30 || t.split(/\s+/).filter(Boolean).length > 4 || /[.!?]$/.test(t);
@@ -15935,6 +15526,9 @@ export const startBookGenerationJob = onCall(
       subGenre,
       targetPageCountRaw
     );
+    if (!hasRequiredBookClassification(creativeBrief)) {
+      throw new HttpsError("invalid-argument", "Kitap üretmeden önce alt tür seçin.");
+    }
     const isSentenceOrPremise = (val?: string | null) => {
       const t = String(val || "").trim();
       return t.length > 30 || t.split(/\s+/).filter(Boolean).length > 4 || /[.!?]$/.test(t);
@@ -15977,6 +15571,10 @@ export const startBookGenerationJob = onCall(
     const jobRef = getBookJobRef(jobId);
 
     await ensureCreditAvailable(uid, { action: "create", cost: bookCreateCreditCost });
+    const recentBooks = await loadRecentBookCreativeReferences(uid);
+    creativeBrief.creativeDirection = createBookCreativeDirection(
+      jobId, bookType, recentBooks, sourceContent || topic || "", creativeBrief.visualStyle || "", ageGroup, [creativeBrief.workbookCategory, creativeBrief.subGenre].filter(Boolean).join(" / ")
+    );
     try {
       const visualHeroPortrait = heroPortraitUpload
         ? await saveVisualHeroPortraitReference({ uid, courseId, upload: heroPortraitUpload })
@@ -16947,7 +16545,9 @@ async function runBookContentStage(
           {
             outlinePositions: { current: index + 1, total: state.lectureNodes.length },
             previousChapterContent,
-            storySoFarContent
+            storySoFarContent,
+            chapterPlan: node.description,
+            bookOutline: JSON.stringify(state.lectureNodes.map(({ title, description }) => ({ title, description })))
           },
           true,
           undefined,
@@ -17563,7 +17163,9 @@ async function runBookGenerationJobTask(
           {
             outlinePositions: { current: index + 1, total: lectureNodes.length },
             previousChapterContent: previousChapterContent || undefined,
-            storySoFarContent: storySoFarContent || undefined
+            storySoFarContent: storySoFarContent || undefined,
+            chapterPlan: node.description,
+            bookOutline: JSON.stringify(lectureNodes.map(({ title, description }) => ({ title, description })))
           },
           false,
           heroPortraitImage,

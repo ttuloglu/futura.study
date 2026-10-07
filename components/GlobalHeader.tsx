@@ -46,7 +46,7 @@ export default function GlobalHeader({
 
   return (
     <header
-      className="fixed left-0 right-0 z-40 pointer-events-none transition-opacity duration-300"
+      className="fortale-global-header fixed left-0 right-0 z-40 pointer-events-none transition-opacity duration-300"
       style={{
         paddingTop: 'max(2px, env(safe-area-inset-top, 0px))'
       }}
@@ -59,7 +59,7 @@ export default function GlobalHeader({
         }}
       >
         <div className="app-chrome-width">
-          <div className="relative flex w-full items-center justify-between pt-0.5 pb-1 px-2 gap-2">
+          <div className="fortale-global-header-row relative flex w-full items-center justify-between pt-0.5 pb-1 px-2 gap-2">
             <div className="fortale-global-header-status relative z-10 mr-auto pointer-events-auto transition-opacity duration-200 flex items-center">
               <div
                 className={`inline-flex flex-col items-start select-none ${showBackButton && onBack ? 'cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all' : ''}`}

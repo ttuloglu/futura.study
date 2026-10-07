@@ -148,7 +148,7 @@ export default function ProfileView({
   }, []);
 
   return (
-    <div className="view-container">
+    <div className="view-container fortale-profile-view">
       <FloatIslandSheet
         isOpen={Boolean(pendingDangerAction && dangerModalMeta)}
         onClose={() => setPendingDangerAction(null)}

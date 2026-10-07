@@ -1,11 +1,14 @@
+import { setCompanionHidden } from '../utils/companionActivity';
+import DialogCloseButton from './DialogCloseButton';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Download, Palette, X } from 'lucide-react';
+import { Download, Palette } from 'lucide-react';
 import type { CourseData, TimelineNode } from '../types';
-import { NativeBookReader, prepareBookPagesForNativeReader, type NativeReaderTheme } from '../utils/nativeBookReader';
+import { companionReaderOptions, NativeBookReader, prepareBookPagesForNativeReader, type NativeReaderTheme } from '../utils/nativeBookReader';
 import { createNativeReaderMediaSession } from '../utils/nativeReaderMedia';
 import { useBookReading } from '../hooks/useBookReading';
 import { showReadingStats } from '../utils/readingStatsDialog';
+import { showCompanionAvatarPicker } from '../utils/companionAvatarDialog';
 import ReaderCompanion from './ReaderCompanion';
 import type { PluginListenerHandle } from '@capacitor/core';
 import StyledMarkdown from './StyledMarkdown';
@@ -71,16 +74,18 @@ export default function BookReader(props: Props) {
         listener=await NativeBookReader.addListener('readingProgress',position=>{ if(active && position.sessionId===sessionId) reading.observe(position); });
         if (!active) { await listener.remove(); return; }
         opened = true;
-        const result = await NativeBookReader.openBook({ title: current.course.topic || t('Kitap'), bookType: current.course.bookType || 'novel',
+        const result = await NativeBookReader.openBook({ ...companionReaderOptions(t), title: current.course.topic || t('Kitap'), bookType: current.course.bookType || 'novel',
           pages, sessionId, initialPageIndex: request.index,
           ...(request.token===0 && reading.initial ? {initialSourceIndex:reading.initial.sourceIndex,initialContentOffset:reading.initial.contentStartOffset,
             ...(reading.initial.theme ? {theme:reading.initial.theme as NativeReaderTheme} : {}),...(reading.initial.fontScale ? {fontScale:reading.initial.fontScale} : {})} : readerStyle.current) });
         opened = false;
         if (!active) return;
+        if (typeof result.companionHidden === 'boolean') setCompanionHidden(result.companionHidden);
         if (result.theme) setTheme(result.theme);
         if (result.fontScale) setFontScale(result.fontScale);
-        if (result.action === 'readingStats') {
-          await showReadingStats();
+        if (result.action === 'readingStats' || result.action === 'changeAvatar') {
+          if (result.action === 'changeAvatar') await showCompanionAvatarPicker();
+          else await showReadingStats();
           if(active) setRequest(value=>({token:value.token+1,index:result.lastPageIndex}));
         } else if (result.action === 'downloadPDF' || result.action === 'downloadEPUB') {
           setDownloading(true);
@@ -112,7 +117,7 @@ export default function BookReader(props: Props) {
   };
   return <section className="fairy-book-reader book-reader" data-theme={theme} style={{ '--fairy-paper': colors.paper, '--fairy-ink': colors.ink } as React.CSSProperties}>
     <header className="fairy-reader-chrome">
-      <button aria-label={t('Kapat')} onClick={props.onBack}><X size={20}/></button><strong>{props.course.topic}</strong>
+      <DialogCloseButton aria-label={t('Kapat')} onClick={props.onBack}/><strong>{props.course.topic}</strong>
       <button aria-label={t('Yazıyı küçült')} onClick={() => setFontScale(value => Math.max(.8, value - .1))}>A−</button>
       <button aria-label={t('Yazıyı büyüt')} onClick={() => setFontScale(value => Math.min(1.5, value + .1))}>A+</button>
       <details className="fairy-reader-download"><summary aria-label={t('Okuyucu zemini')}><Palette size={20}/></summary><div>
@@ -123,7 +128,7 @@ export default function BookReader(props: Props) {
         <button disabled={downloading} onClick={() => void download('epub')}>{t('EPUB indir')}</button>
       </div></details>
     </header>
-    <div ref={readerContentRef} className="book-reader-content"><StyledMarkdown content={content} readerMode="fairytale-fullscreen" variant="inline" fullscreenFontScale={fontScale} preserveImageAspectRatio enableImageLightbox={false} readingSections={readingSections} initialReadingPosition={reading.initial} onReadingPosition={position => {reading.observe({...position,theme,fontScale});setWebPage({index:position.pageIndex,count:position.pageCount});}}/></div>
+    <div ref={readerContentRef} className="book-reader-content"><StyledMarkdown content={content} readerMode="fairytale-fullscreen" variant="inline" fullscreenFontScale={fontScale} preserveImageAspectRatio enableImageLightbox imagePreviewMode="sheet" readingSections={readingSections} initialReadingPosition={reading.initial} onReadingPosition={position => {reading.observe({...position,theme,fontScale});setWebPage({index:position.pageIndex,count:position.pageCount});}}/></div>
     <footer className="fairy-reader-chrome book-reader-footer"><ReaderCompanion/><span>{t('Sayfa')} {webPage.index+1} / {webPage.count}</span></footer>
   </section>;
 }

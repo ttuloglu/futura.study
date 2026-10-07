@@ -7,7 +7,7 @@ const { defaultBookTaxonomy, mergeBookTaxonomy, canonicalBookClassification } = 
 
 test('all existing formats supply their seed categories to planning', () => {
   const catalog = defaultBookTaxonomy();
-  assert.ok(catalog.some(c => c.bookType === 'fairy_tale' && c.subGenre === 'Eğitici'));
+  assert.ok(catalog.some(c => c.bookType === 'fairy_tale' && c.subGenre === 'Eğitici Masal'));
   assert.ok(catalog.some(c => c.bookType === 'novel' && c.subGenre === 'Bilimkurgu'));
   assert.ok(catalog.some(c => c.bookType === 'story' && c.genre === 'Araştırma'));
 });
@@ -23,7 +23,7 @@ test('category names retain canonical spelling and ignore whitespace/case duplic
   const first = { bookType: 'novel', genre: 'Hikaye', subGenre: 'Distopik' };
   const catalog = mergeBookTaxonomy([first, { ...first, genre: ' hikaye ', subGenre: ' distopik ' }]);
   assert.equal(catalog.filter(c => c.subGenre === 'Distopik').length, 1);
-  assert.equal(canonicalBookClassification('fairy_tale', '', ' eğitici ').subGenre, 'Eğitici');
+  assert.equal(canonicalBookClassification('fairy_tale', '', ' eğitici  masal ').subGenre, 'Eğitici Masal');
 });
 test('missing classification cannot become a generation-ready plan', () => {
   for (const type of ['fairy_tale', 'novel', 'story']) assert.throws(() => canonicalBookClassification(type, 'Biyoloji', ''));

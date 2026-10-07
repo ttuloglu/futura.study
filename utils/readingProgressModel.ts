@@ -14,6 +14,7 @@ export interface ReadingPosition {
 export interface ReadingBookmark extends ReadingPosition { updatedAt: number; platform: 'native' | 'web' }
 export interface ReadingRecord {
   bookId: string; title: string; bookType: string; genre: string; subGenre: string;
+  learningLanguage?: string; learningLevel?: string;
   bookmarks: Partial<Record<'native' | 'web', ReadingBookmark>>;
   coverage: [number, number][]; reachedEnd: boolean; completedAt?: number; lastOpenedAt?: number; updatedAt: number;
 }
@@ -40,7 +41,11 @@ export function mergeReadingRecords(previous: ReadingRecord | undefined, next: R
   const complete = coverage.reduce((sum,[a,b]) => sum+b-a, 0) >= .85 && reachedEnd;
   const completedAt = previous?.completedAt || next.completedAt || (complete ? next.updatedAt : undefined);
   const lastOpenedAt = Math.max(previous?.lastOpenedAt || 0, next.lastOpenedAt || 0);
-  return { ...newer, bookmarks, coverage, reachedEnd, ...(completedAt ? { completedAt } : {}), ...(lastOpenedAt ? { lastOpenedAt } : {}), updatedAt: Math.max(previous?.updatedAt || 0,next.updatedAt) };
+  const learningLanguage = newer.learningLanguage || next.learningLanguage || previous?.learningLanguage;
+  const learningLevel = newer.learningLevel || next.learningLevel || previous?.learningLevel;
+  return { ...newer, bookmarks, coverage, reachedEnd,
+    ...(learningLanguage ? { learningLanguage } : {}), ...(learningLevel ? { learningLevel } : {}),
+    ...(completedAt ? { completedAt } : {}), ...(lastOpenedAt ? { lastOpenedAt } : {}), updatedAt: Math.max(previous?.updatedAt || 0,next.updatedAt) };
 }
 
 export function libraryReadingState(record?: ReadingRecord) {
@@ -58,13 +63,37 @@ export function sortLibraryByReading<T extends { id: string; lastActivity?: Date
     return Number(second.started)-Number(first.started) || second.lastOpenedAt-first.lastOpenedAt || activity(b)-activity(a);
   });
 }
-export interface ReadingStats { total: number; month: number; types: Record<string,number>; genres: Record<string,number>; subGenres: Record<string,number>; inProgress: number }
-export function readingStats(records: ReadingRecord[], now = new Date()): ReadingStats {
-  const stats: ReadingStats = { total:0, month:0, types:{}, genres:{}, subGenres:{}, inProgress:0 };
+export interface ReadingBookMetadata {
+  id: string;
+  languageLearning?: { purpose: string; targetLanguage: string; cefrLevel: string };
+  creativeBrief?: { languageLearning?: ReadingBookMetadata['languageLearning'] };
+}
+export interface ReadingStats {
+  total: number; month: number; types: Record<string,number>; genres: Record<string,number>; subGenres: Record<string,number>; inProgress: number;
+  learning: { total: number; inProgress: number; languages: Record<string,number>; levels: Record<string,number> };
+}
+export function readingStats(records: ReadingRecord[], now = new Date(), books: ReadingBookMetadata[] = []): ReadingStats {
+  const stats: ReadingStats = { total:0, month:0, types:{}, genres:{}, subGenres:{}, inProgress:0,
+    learning: { total:0, inProgress:0, languages:{}, levels:{} } };
+  const metadata = new Map(books.map(book => [book.id, book.languageLearning || book.creativeBrief?.languageLearning]));
   for (const record of records) {
-    if (!record.completedAt) { if (record.coverage.length) stats.inProgress++; continue; }
+    // Enrich older bookmarks from library metadata without changing their reading history.
+    const profile = metadata.get(record.bookId);
+    const language = record.learningLanguage || (profile?.purpose === 'language_learning' ? profile.targetLanguage : '');
+    const level = record.learningLevel || (profile?.purpose === 'language_learning' ? profile.cefrLevel : '');
+    const learning = Boolean(language || record.bookType === 'language_learning');
+    if (!record.completedAt) {
+      if (record.coverage.length) { stats.inProgress++; if (learning) stats.learning.inProgress++; }
+      continue;
+    }
     stats.total++;
-    stats.types[record.bookType] = (stats.types[record.bookType] || 0)+1;
+    const type = learning ? 'language_learning' : record.bookType;
+    stats.types[type] = (stats.types[type] || 0)+1;
+    if (learning) {
+      stats.learning.total++;
+      if (language) stats.learning.languages[language] = (stats.learning.languages[language] || 0)+1;
+      if (level && /^(A[12]|B[12]|C[12])$/.test(level)) stats.learning.levels[level] = (stats.learning.levels[level] || 0)+1;
+    }
     if (record.genre) stats.genres[record.genre] = (stats.genres[record.genre] || 0)+1;
     if (record.subGenre) stats.subGenres[record.subGenre] = (stats.subGenres[record.subGenre] || 0)+1;
     const date = new Date(record.completedAt);

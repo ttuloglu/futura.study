@@ -11,7 +11,7 @@ const app = initializeApp({ projectId: 'demo-fortale-reading' }, 'taxonomy-test'
 const db = getFirestore(app);
 try {
   const initial = await loadBookTaxonomy(db);
-  assert.ok(initial.some(entry => entry.bookType === 'fairy_tale' && entry.subGenre === 'Eğitici'));
+  assert.ok(initial.some(entry => entry.bookType === 'fairy_tale' && entry.subGenre === 'Eğitici Masal'));
   const workbook = { bookType: 'story', genre: 'Biyoloji', subGenre: 'Hücre bölünmesi' };
   await rememberBookClassification(workbook, db);
   await Promise.all([
@@ -24,7 +24,7 @@ try {
   const nextPlanCatalog = await loadBookTaxonomy(db);
   assert.deepEqual(canonicalBookClassification('story', 'biyoloji', 'hücre bölünmesi', nextPlanCatalog), workbook);
   assert.ok(nextPlanCatalog.some(entry => entry.subGenre === 'Distopik'));
-  assert.ok(nextPlanCatalog.some(entry => entry.subGenre === 'Uyku masalı'));
+  assert.ok(nextPlanCatalog.some(entry => entry.subGenre === 'Uyku Masalı'));
   console.log('Catalog persists across planning calls, retains all three formats and deduplicates concurrent additions.');
 } finally {
   await db.terminate();

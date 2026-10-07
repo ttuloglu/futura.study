@@ -2,6 +2,10 @@ import type { AppLanguageCode } from './appLanguages';
 
 export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<string, string>> = {
   ar: {
+    "Kitaplarınız yükleniyor": "جارٍ تحميل كتبك",
+    "Görsel paylaşılamadı.": "تعذر مشاركة الصورة.",
+    'Arama sonuçları': 'نتائج البحث',
+    'Aramayı temizle': 'مسح البحث',
     'Topluluk istatistikleri yükleniyor...': 'جارٍ تحميل إحصاءات المجتمع...',
     'yayında': 'منشور',
     'Takipçi': 'المتابعون',
@@ -11,6 +15,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'صفحة'
   },
   da: {
+    "Kitaplarınız yükleniyor": "Dine bøger indlæses",
+    "Görsel paylaşılamadı.": "Billedet kunne ikke deles.",
+    'Arama sonuçları': 'Søgeresultater',
+    'Aramayı temizle': 'Ryd søgning',
     'Topluluk istatistikleri yükleniyor...': 'Indlæser fællesskabsstatistik...',
     'yayında': 'udgivet',
     'Takipçi': 'Følgere',
@@ -20,6 +28,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 's.'
   },
   de: {
+    "Kitaplarınız yükleniyor": "Deine Bücher werden geladen",
+    "Görsel paylaşılamadı.": "Das Bild konnte nicht geteilt werden.",
+    'Arama sonuçları': 'Suchergebnisse',
+    'Aramayı temizle': 'Suche löschen',
     'Topluluk istatistikleri yükleniyor...': 'Community-Statistiken werden geladen...',
     'yayında': 'veröffentlicht',
     'Takipçi': 'Follower',
@@ -29,6 +41,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'S.'
   },
   el: {
+    "Kitaplarınız yükleniyor": "Τα βιβλία σας φορτώνονται",
+    "Görsel paylaşılamadı.": "Δεν ήταν δυνατή η κοινοποίηση της εικόνας.",
+    'Arama sonuçları': 'Αποτελέσματα αναζήτησης',
+    'Aramayı temizle': 'Εκκαθάριση αναζήτησης',
     'Topluluk istatistikleri yükleniyor...': 'Φόρτωση στατιστικών κοινότητας...',
     'yayında': 'δημοσιευμένα',
     'Takipçi': 'Ακόλουθοι',
@@ -38,6 +54,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'σελ.'
   },
   en: {
+    "Kitaplarınız yükleniyor": "Your books are loading",
+    "Görsel paylaşılamadı.": "The image could not be shared.",
+    'Arama sonuçları': 'Search results',
+    'Aramayı temizle': 'Clear search',
     'Topluluk istatistikleri yükleniyor...': 'Loading community statistics...',
     'yayında': 'published',
     'Takipçi': 'Followers',
@@ -47,6 +67,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'pages'
   },
   es: {
+    "Kitaplarınız yükleniyor": "Tus libros se están cargando",
+    "Görsel paylaşılamadı.": "No se pudo compartir la imagen.",
+    'Arama sonuçları': 'Resultados de búsqueda',
+    'Aramayı temizle': 'Borrar búsqueda',
     'Topluluk istatistikleri yükleniyor...': 'Cargando estadísticas de la comunidad...',
     'yayında': 'publicados',
     'Takipçi': 'Seguidores',
@@ -56,6 +80,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'pág.'
   },
   fi: {
+    "Kitaplarınız yükleniyor": "Kirjojasi ladataan",
+    "Görsel paylaşılamadı.": "Kuvaa ei voitu jakaa.",
+    'Arama sonuçları': 'Hakutulokset',
+    'Aramayı temizle': 'Tyhjennä haku',
     'Topluluk istatistikleri yükleniyor...': 'Ladataan yhteisötilastoja...',
     'yayında': 'julkaistu',
     'Takipçi': 'Seuraajat',
@@ -65,6 +93,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 's.'
   },
   fr: {
+    "Kitaplarınız yükleniyor": "Vos livres se chargent",
+    "Görsel paylaşılamadı.": "Impossible de partager cette image.",
+    'Arama sonuçları': 'Résultats de recherche',
+    'Aramayı temizle': 'Effacer la recherche',
     'Topluluk istatistikleri yükleniyor...': 'Chargement des statistiques de la communauté...',
     'yayında': 'publiés',
     'Takipçi': 'Abonnés',
@@ -74,6 +106,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'p.'
   },
   hi: {
+    "Kitaplarınız yükleniyor": "आपकी पुस्तकें लोड हो रही हैं",
+    "Görsel paylaşılamadı.": "चित्र साझा नहीं किया जा सका।",
+    'Arama sonuçları': 'खोज परिणाम',
+    'Aramayı temizle': 'खोज साफ़ करें',
     'Topluluk istatistikleri yükleniyor...': 'समुदाय के आँकड़े लोड हो रहे हैं...',
     'yayında': 'प्रकाशित',
     'Takipçi': 'फ़ॉलोअर',
@@ -83,6 +119,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'पृष्ठ'
   },
   id: {
+    "Kitaplarınız yükleniyor": "Buku Anda sedang dimuat",
+    "Görsel paylaşılamadı.": "Gambar tidak dapat dibagikan.",
+    'Arama sonuçları': 'Hasil pencarian',
+    'Aramayı temizle': 'Hapus pencarian',
     'Topluluk istatistikleri yükleniyor...': 'Memuat statistik komunitas...',
     'yayında': 'diterbitkan',
     'Takipçi': 'Pengikut',
@@ -92,6 +132,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'hlm.'
   },
   it: {
+    "Kitaplarınız yükleniyor": "Caricamento dei tuoi libri",
+    "Görsel paylaşılamadı.": "Impossibile condividere l’immagine.",
+    'Arama sonuçları': 'Risultati di ricerca',
+    'Aramayı temizle': 'Cancella ricerca',
     'Topluluk istatistikleri yükleniyor...': 'Caricamento delle statistiche della community...',
     'yayında': 'pubblicati',
     'Takipçi': 'Follower',
@@ -101,6 +145,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'pag.'
   },
   ja: {
+    "Kitaplarınız yükleniyor": "本を読み込んでいます",
+    "Görsel paylaşılamadı.": "画像を共有できませんでした。",
+    'Arama sonuçları': '検索結果',
+    'Aramayı temizle': '検索をクリア',
     'Topluluk istatistikleri yükleniyor...': 'コミュニティ統計を読み込み中...',
     'yayında': '公開中',
     'Takipçi': 'フォロワー',
@@ -110,6 +158,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'ページ'
   },
   ko: {
+    "Kitaplarınız yükleniyor": "책을 불러오는 중입니다",
+    "Görsel paylaşılamadı.": "이미지를 공유할 수 없습니다.",
+    'Arama sonuçları': '검색 결과',
+    'Aramayı temizle': '검색 지우기',
     'Topluluk istatistikleri yükleniyor...': '커뮤니티 통계를 불러오는 중...',
     'yayında': '게시됨',
     'Takipçi': '팔로워',
@@ -119,6 +171,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': '페이지'
   },
   nl: {
+    "Kitaplarınız yükleniyor": "Je boeken worden geladen",
+    "Görsel paylaşılamadı.": "De afbeelding kon niet worden gedeeld.",
+    'Arama sonuçları': 'Zoekresultaten',
+    'Aramayı temizle': 'Zoekopdracht wissen',
     'Topluluk istatistikleri yükleniyor...': 'Communitystatistieken laden...',
     'yayında': 'gepubliceerd',
     'Takipçi': 'Volgers',
@@ -128,6 +184,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'p.'
   },
   no: {
+    "Kitaplarınız yükleniyor": "Bøkene dine lastes inn",
+    "Görsel paylaşılamadı.": "Bildet kunne ikke deles.",
+    'Arama sonuçları': 'Søkeresultater',
+    'Aramayı temizle': 'Tøm søk',
     'Topluluk istatistikleri yükleniyor...': 'Laster fellesskapsstatistikk...',
     'yayında': 'publisert',
     'Takipçi': 'Følgere',
@@ -137,6 +197,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 's.'
   },
   pl: {
+    "Kitaplarınız yükleniyor": "Twoje książki są ładowane",
+    "Görsel paylaşılamadı.": "Nie udało się udostępnić obrazu.",
+    'Arama sonuçları': 'Wyniki wyszukiwania',
+    'Aramayı temizle': 'Wyczyść wyszukiwanie',
     'Topluluk istatistikleri yükleniyor...': 'Ładowanie statystyk społeczności...',
     'yayında': 'opublikowanych',
     'Takipçi': 'Obserwujący',
@@ -146,6 +210,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'str.'
   },
   'pt-BR': {
+    "Kitaplarınız yükleniyor": "Seus livros estão carregando",
+    "Görsel paylaşılamadı.": "Não foi possível compartilhar a imagem.",
+    'Arama sonuçları': 'Resultados da pesquisa',
+    'Aramayı temizle': 'Limpar pesquisa',
     'Topluluk istatistikleri yükleniyor...': 'Carregando estatísticas da comunidade...',
     'yayında': 'publicados',
     'Takipçi': 'Seguidores',
@@ -155,6 +223,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'pág.'
   },
   sv: {
+    "Kitaplarınız yükleniyor": "Dina böcker laddas",
+    "Görsel paylaşılamadı.": "Bilden kunde inte delas.",
+    'Arama sonuçları': 'Sökresultat',
+    'Aramayı temizle': 'Rensa sökning',
     'Topluluk istatistikleri yükleniyor...': 'Laddar communitystatistik...',
     'yayında': 'publicerade',
     'Takipçi': 'Följare',
@@ -164,6 +236,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 's.'
   },
   th: {
+    "Kitaplarınız yükleniyor": "กำลังโหลดหนังสือของคุณ",
+    "Görsel paylaşılamadı.": "ไม่สามารถแชร์รูปภาพได้",
+    'Arama sonuçları': 'ผลการค้นหา',
+    'Aramayı temizle': 'ล้างการค้นหา',
     'Topluluk istatistikleri yükleniyor...': 'กำลังโหลดสถิติชุมชน...',
     'yayında': 'เผยแพร่แล้ว',
     'Takipçi': 'ผู้ติดตาม',
@@ -173,6 +249,10 @@ export const LIBRARY_DASHBOARD_UI_TRANSLATIONS: Record<AppLanguageCode, Record<s
     'sf': 'หน้า'
   },
   tr: {
+    "Kitaplarınız yükleniyor": "Kitaplarınız yükleniyor",
+    "Görsel paylaşılamadı.": "Görsel paylaşılamadı.",
+    'Arama sonuçları': 'Arama sonuçları',
+    'Aramayı temizle': 'Aramayı temizle',
     'Topluluk istatistikleri yükleniyor...': 'Topluluk istatistikleri yükleniyor...',
     'yayında': 'yayında',
     'Takipçi': 'Takipçi',

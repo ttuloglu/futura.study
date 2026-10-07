@@ -18,6 +18,11 @@ export interface NativeFloatIslandState {
 export interface NativeKeyboardState { visible: boolean; top: number }
 
 interface NativeFloatIslandPlugin {
+  showLibrarySearch(options: { requestId: string; query: string; labels: { title: string; search: string; cancel: string } }): Promise<{ submitted: boolean; query: string }>;
+  dismissLibrarySearch(options: { requestId: string }): Promise<void>;
+  setPageScrollLocked(options: { locked: boolean }): Promise<void>;
+  showCompanionMenu(options: { requestId: string; rect: { x: number; y: number; width: number; height: number }; labels: Record<string, string> }): Promise<{ action: string }>;
+  dismissCompanionMenu(options: { requestId: string }): Promise<void>;
   show(options: NativeFloatIslandState): Promise<void>;
   update(options: NativeFloatIslandState): Promise<void>;
   hide(): Promise<void>;

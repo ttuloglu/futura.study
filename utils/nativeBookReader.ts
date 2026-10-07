@@ -1,4 +1,9 @@
 import { registerPlugin, Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { getCompanionActivity, setCompanionHidden } from './companionActivity';
+import { showReadingStats } from './readingStatsDialog';
+import { getCompanionAvatar } from './companionAvatar';
+import { showCompanionAvatarPicker } from './companionAvatarDialog';
+import { NOVA_STAR_BOOKS } from '../data/companionAvatars';
 import { readerHeading } from './readerHeading';
 import type { ReadingPosition } from './readingProgressModel';
 import type { CourseData, TimelineNode } from '../types';
@@ -30,6 +35,10 @@ export interface OpenBookOptions {
   autoPlay?: boolean;
   backgroundAudioSrc?: string;
   fontScale?: number;
+  companionHidden?: boolean;
+  companionLabels?: Record<string, string>;
+  companionAvatar?: string;
+  companionLegendary?: boolean;
 }
 
 export interface OpenBookResult {
@@ -37,13 +46,25 @@ export interface OpenBookResult {
   lastPageIndex: number;
   theme?: NativeReaderTheme;
   fontScale?: number;
-  action?: 'close' | 'prepareNarration' | 'downloadPDF' | 'downloadEPUB' | 'readingStats';
+  companionHidden?: boolean;
+  action?: 'close' | 'prepareNarration' | 'downloadPDF' | 'downloadEPUB' | 'readingStats' | 'changeAvatar';
 }
 
 export interface NativeBookReaderPluginInterface {
   addListener(event: 'readingProgress', listener: (position: ReadingPosition & { sessionId: string }) => void): Promise<PluginListenerHandle>;
   openBook(options: OpenBookOptions): Promise<OpenBookResult>;
   closeBook(): Promise<{ closed: boolean }>;
+}
+
+export function companionReaderOptions(t: (text: string) => string = text => text) {
+  const avatar=getCompanionAvatar();
+  return { companionHidden: getCompanionActivity().hidden, companionAvatar: avatar.selected,
+    companionLegendary: avatar.selected === 'nova' && avatar.completed >= NOVA_STAR_BOOKS, companionLabels: {
+      share: t('Paylaş'),
+    avatar: t('Avatarı değiştir'),
+    menu: t('Avatar menüsü'), hide: t('Gizle'), sit: t('Otur'), walk: t('Gezin'), exercise: t('Spor yap'),
+    statistics: t('İstatistik göster'), auto: t('Kendi haline bırak'), show: t('Avatarı göster'), cancel: t('Kapat'),
+  } };
 }
 
 export const NativeBookReader = registerPlugin<NativeBookReaderPluginInterface>('NativeBookReader');
@@ -203,7 +224,9 @@ export async function openNativeBookReader(
   options?: {
     initialPageIndex?: number;
     theme?: NativeReaderTheme;
+    fontScale?: number;
     onFallback?: () => void;
+    translate?: (text: string) => string;
   }
 ): Promise<OpenBookResult | null> {
   if (!isNativeBookReaderAvailable()) {
@@ -219,12 +242,23 @@ export async function openNativeBookReader(
 
   try {
     const result = await NativeBookReader.openBook({
+      ...companionReaderOptions(options?.translate),
       title: courseData.topic || 'Fortale Kitap',
       bookType: courseData.bookType || 'novel',
       pages,
       initialPageIndex: options?.initialPageIndex || 0,
-      theme: options?.theme || 'sepia'
+      theme: options?.theme || 'sepia',
+      fontScale: options?.fontScale
     });
+    if (typeof result.companionHidden === 'boolean') setCompanionHidden(result.companionHidden);
+    if (result.action === 'readingStats' || result.action === 'changeAvatar') {
+      if (result.action === 'changeAvatar') await showCompanionAvatarPicker();
+      else await showReadingStats();
+      return openNativeBookReader(courseData, nodes, {
+        ...options, initialPageIndex: result.lastPageIndex,
+        theme: result.theme || options?.theme, fontScale: result.fontScale || options?.fontScale,
+      });
+    }
     return result;
   } catch (error) {
     console.warn('NativeBookReader.openBook failed, falling back to web reader:', error);

@@ -86,7 +86,7 @@ public class NativeReaderViewController: UIViewController,
     private let topBarView = ReaderChromeView()
     private let bottomBarView = ReaderChromeView()
 
-    private let closeButton = UIButton(type: .system)
+    private let closeButton = UIButton(type: .custom)
     private let bookTitleLabel = UILabel()
     private let themeButton = UIButton(type: .system)
     private let downloadButton = UIButton(type: .system)
@@ -95,6 +95,11 @@ public class NativeReaderViewController: UIViewController,
     private let pageSlider = UISlider()
     private let pageIndicatorLabel = UILabel()
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .light)
+    public var companionInitiallyHidden = false
+    public var companionLabels: [String: String] = [:]
+    public var companionAvatar = "dost"
+    public var companionLegendary = false
+    public var companionIsHidden: Bool { companion?.characterHidden ?? companionInitiallyHidden }
     private var companion: ReaderCompanionView?
     private let listenButton = UIButton(type: .system)
     private let musicButton = UIButton(type: .system)
@@ -104,6 +109,7 @@ public class NativeReaderViewController: UIViewController,
     private var narrationPageIndex: Int?
     private var narrationAdvance: DispatchWorkItem?
     private var isUserTransition = false
+    private var imagePreviewOpen = false
     private var isClosing = false
     private var previousIdleTimerDisabled: Bool?
     private var backgroundObserver: NSObjectProtocol?
@@ -169,9 +175,10 @@ public class NativeReaderViewController: UIViewController,
         setupPageViewController()
         setupOverlayControls()
         if let file = Bundle.main.url(forResource: "fortale-companion-reader", withExtension: "html", subdirectory: "public") {
-            let friend = ReaderCompanionView(file: file)
+            let friend = ReaderCompanionView(file: file, hidden: companionInitiallyHidden, labels: companionLabels, avatar: companionAvatar, legendary: companionLegendary)
             view.addSubview(friend)
             friend.onStatistics = { [weak self] in self?.closeReader(action: "readingStats") }
+            friend.onChangeAvatar = { [weak self] in self?.closeReader(action: "changeAvatar") }
             companion = friend
         }
         setupGestureRecognizers()
@@ -263,7 +270,17 @@ public class NativeReaderViewController: UIViewController,
         view.addSubview(topBarView)
         let topContent = topBarView.contentView
 
-        configureButton(closeButton, title: "✕", fontSize: 17)
+        configureButton(closeButton, title: "", fontSize: 17)
+        closeButton.setImage(Self.dialogCloseIcon(), for: .normal)
+        closeButton.backgroundColor = .white
+        closeButton.layer.cornerRadius = 18
+        closeButton.layer.borderWidth = 0.5
+        closeButton.layer.borderColor = UIColor.white.cgColor
+        closeButton.layer.shadowColor = UIColor.black.cgColor
+        closeButton.layer.shadowOpacity = 0.18
+        closeButton.layer.shadowRadius = 5
+        closeButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        closeButton.accessibilityLabel = companionLabels["cancel"] ?? "Kapat"
         closeButton.addTarget(self, action: #selector(handleClose), for: .touchDown)
         topContent.addSubview(closeButton)
 
@@ -359,8 +376,8 @@ public class NativeReaderViewController: UIViewController,
 
             closeButton.leadingAnchor.constraint(equalTo: topContent.leadingAnchor, constant: 10),
             closeButton.centerYAnchor.constraint(equalTo: topContent.centerYAnchor),
-            closeButton.widthAnchor.constraint(equalToConstant: 40),
-            closeButton.heightAnchor.constraint(equalToConstant: 40),
+            closeButton.widthAnchor.constraint(equalToConstant: 36),
+            closeButton.heightAnchor.constraint(equalToConstant: 36),
 
             themeButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -2),
             themeButton.centerYAnchor.constraint(equalTo: topContent.centerYAnchor),
@@ -396,6 +413,21 @@ public class NativeReaderViewController: UIViewController,
         ])
     }
 
+    // Match the 19-point, two-point rounded cross used by DialogCloseButton on the web.
+    private static func dialogCloseIcon() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 19, height: 19)).image { renderer in
+            let context = renderer.cgContext
+            context.setStrokeColor(UIColor.black.cgColor)
+            context.setLineWidth(2)
+            context.setLineCap(.round)
+            context.move(to: CGPoint(x: 14.25, y: 4.75))
+            context.addLine(to: CGPoint(x: 4.75, y: 14.25))
+            context.move(to: CGPoint(x: 4.75, y: 4.75))
+            context.addLine(to: CGPoint(x: 14.25, y: 14.25))
+            context.strokePath()
+        }.withRenderingMode(.alwaysTemplate)
+    }
+
     private func configureButton(_ button: UIButton, title: String, fontSize: CGFloat) {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setTitle(title, for: .normal)
@@ -417,6 +449,7 @@ public class NativeReaderViewController: UIViewController,
         if let companion = companion, touchedView.isDescendant(of: companion) { return false }
         var ancestor: UIView? = touchedView
         while let node = ancestor {
+            if let image = node as? UIImageView, image.isUserInteractionEnabled { return false }
             if let text = node as? UITextView, text.isScrollEnabled { return false }
             ancestor = node.superview
         }
@@ -472,7 +505,7 @@ public class NativeReaderViewController: UIViewController,
     private func updateControlsTheme() {
         view.backgroundColor = currentTheme.backgroundColor
         let tint = currentTheme.textColor
-        closeButton.tintColor = tint
+        closeButton.tintColor = UIColor(white: 23 / 255, alpha: 1)
         bookTitleLabel.textColor = tint
         fontDecreaseButton.tintColor = tint
         fontIncreaseButton.tintColor = tint
@@ -556,7 +589,7 @@ public class NativeReaderViewController: UIViewController,
             "rangeEnd": Double(before + end) / Double(total),
             "isLast": currentPageIndex == pages.count - 1,
             "theme": currentTheme.rawValue, "fontScale": Double(fontScale),
-            "active": active ?? (UIApplication.shared.applicationState == .active)
+            "active": active ?? (UIApplication.shared.applicationState == .active && !imagePreviewOpen)
         ])
     }
 
@@ -647,12 +680,34 @@ public class NativeReaderViewController: UIViewController,
 
     private func createPageViewController(for index: Int) -> BookPageViewController {
         let safeIndex = min(max(0, index), pages.count - 1)
-        return BookPageViewController(
+        let controller = BookPageViewController(
             pageData: pages[safeIndex],
             theme: currentTheme,
             fontScale: fontScale,
             preserveNarratedPage: isFairyTale
         )
+        controller.onImagePreview = { [weak self] image, title in self?.showImagePreview(image, title: title) }
+        return controller
+    }
+
+    private func showImagePreview(_ image: UIImage, title: String) {
+        guard !isClosing, !isUserTransition, !isProgrammaticTransition, presentedViewController == nil else { return }
+        let resumeListening = narrationEnabled
+        pauseNarration()
+        reportPosition(active: false)
+        imagePreviewOpen = true
+        let preview = ReaderImagePreviewController(image: image, title: title,
+            closeLabel: companionLabels["cancel"] ?? "Close", shareLabel: companionLabels["share"] ?? "Share")
+        preview.onClose = { [weak self] in
+            guard let self else { return }
+            self.imagePreviewOpen = false
+            self.reportPosition()
+            if resumeListening, !self.isClosing, UIApplication.shared.applicationState == .active {
+                self.narrationEnabled = true
+                self.resumeCurrentNarration()
+            }
+        }
+        present(preview, animated: true)
     }
 
     public func pageViewController(_ pageViewController: UIPageViewController, willTransitionTo pendingViewControllers: [UIViewController]) {

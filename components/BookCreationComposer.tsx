@@ -1,10 +1,14 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import BookCreationDetails from './BookCreationDetails';
+import BookInspirations from './BookInspirations';
+import { getInspirationCategory, type BookInspiration } from '../utils/bookInspirations';
+import { lockSheetBackground } from '../utils/sheetBackground';
 import FortaleDropdown from './FortaleDropdown';
 import FaviconSpinner from './FaviconSpinner';
 import { setCompanionActivity } from '../utils/companionActivity';
-import { ArrowRight, ArrowUp, ChevronDown, Feather, Languages, Paperclip, ScrollText, Telescope, Trash2, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, ChevronDown, Feather, Languages, Paperclip, ScrollText, Telescope, Trash2 } from 'lucide-react';
+import DialogCloseButton from './DialogCloseButton';
 import { useUiI18n } from '../i18n/uiI18n';
 import { APP_LANGUAGE_OPTIONS } from '../data/appLanguages';
 import type { PluginListenerHandle } from '@capacitor/core';
@@ -34,6 +38,7 @@ export default function BookCreationComposer(props: Props) {
   const { t, language } = useUiI18n();
   const titleId = useId();
   const [input, setInput] = useState('');
+  const [inspirationListOpen, setInspirationListOpen] = useState(false);
   const [entryStage, setEntryStage] = useState<'choice' | 'prompt' | 'guided'>(() => getBookCreationEntryStage(props.bookType));
   const [creationMode, setCreationMode] = useState<BookCreationMode>('custom');
   const [languageLearning, setLanguageLearning] = useState(Boolean(props.initialLanguageLearning));
@@ -70,10 +75,10 @@ export default function BookCreationComposer(props: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const entryChoiceRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const suspendedRef = useRef(props.suspended);
-  suspendedRef.current = props.suspended;
+  suspendedRef.current = props.suspended || inspirationListOpen;
   const closeRef = useRef(props.onClose);
   closeRef.current = props.onClose;
   const signature = props.attachments.map(item => `${item.id}:${item.file.name}:${item.file.lastModified}`).join('|');
@@ -85,13 +90,12 @@ export default function BookCreationComposer(props: Props) {
     locked.current = false;
     setBusy(false);
     const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const fullHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+    const releaseBackground = lockSheetBackground();
     let nativeKeyboard: NativeKeyboardState | undefined;
     let keyboardListener: PluginListenerHandle | undefined;
     let active = true;
     const resize = () => {
+      const fullHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
       const viewport = window.visualViewport;
       const geometry = composerViewport(fullHeight, viewport?.height || window.innerHeight, viewport?.offsetTop || 0, nativeKeyboard);
       if (rootRef.current) rootRef.current.dataset.keyboard = String(geometry.keyboard);
@@ -102,9 +106,9 @@ export default function BookCreationComposer(props: Props) {
       if (suspendedRef.current || Array.from(document.querySelectorAll('.fortale-floatisland-sheet-root')).some(sheet => Number(getComputedStyle(sheet).zIndex) > 1000)) return;
       if (event.key === 'Escape') closeRef.current();
       if (event.key !== 'Tab') return;
-      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled),textarea:not(:disabled),input:not([type="file"]):not(:disabled)') || []);
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled):not([tabindex="-1"]),textarea:not(:disabled),input:not([type="file"]):not(:disabled),select:not(:disabled)') || []);
       const first = controls[0], last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     const handleScroll = () => {
@@ -139,13 +143,12 @@ export default function BookCreationComposer(props: Props) {
         if (active) { nativeKeyboard = state; resize(); }
       }).catch(() => { /* VisualViewport remains the fallback. */ });
     }
-    if (inputRef.current) inputRef.current.focus({ preventScroll: true });
-    else entryChoiceRef.current?.focus({ preventScroll: true });
+    dialogRef.current?.focus({ preventScroll: true });
     return () => {
       active = false;
       void keyboardListener?.remove();
       requestVersion.current += 1;
-      document.body.style.overflow = previousOverflow;
+      releaseBackground();
       window.visualViewport?.removeEventListener('resize', resize);
       window.visualViewport?.removeEventListener('scroll', resize);
       window.removeEventListener('resize', resize);
@@ -155,9 +158,16 @@ export default function BookCreationComposer(props: Props) {
       previousFocus?.focus();
     };
   }, [props.isOpen]);
-  useEffect(() => {
-    if (props.isOpen && entryStage === 'prompt' && questions.length === 0) inputRef.current?.focus({ preventScroll: true });
-  }, [props.isOpen, entryStage, questions.length]);
+  const chooseInspiration = (inspiration: BookInspiration) => {
+    if (busy || props.suspended) return;
+    setInspirationListOpen(false);
+    setCreationMode('custom');
+    setEntryStage('prompt');
+    setReadyDraft(null);
+    setError(null);
+    setInput(inspiration.brief);
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  };
 
   const send = async (detailAnswers?: string, mode: BookCreationMode = creationMode) => {
     if (locked.current || props.suspended) return;
@@ -182,7 +192,7 @@ export default function BookCreationComposer(props: Props) {
         } satisfies LanguageLearningProfile } : {}),
       });
       if (version !== requestVersion.current) return;
-      setPlanningHistory(current => [...current, { role: 'user', content }, { role: 'assistant', content: result.status === 'question' ? result.questions.map(question => question.question).join('\n') : result.message }]);
+      setPlanningHistory(current => [...current, { role: 'user', content }, { role: 'assistant', content: result.status === 'question' ? JSON.stringify(result.questions.map(({ id, purpose, question }) => ({ id, purpose, question }))) : result.message }]);
       setInput('');
       setPlannedAttachmentSignature(signature);
       if (result.status === 'ready') {
@@ -215,16 +225,20 @@ export default function BookCreationComposer(props: Props) {
   };
   const Icon = languageLearning && props.bookType === 'novel' ? Languages : props.bookType === 'fairy_tale' ? Feather : props.bookType === 'novel' ? ScrollText : Telescope;
   return createPortal(
-    <div ref={rootRef} className="fortale-production-composer-root" aria-hidden={props.suspended || undefined} inert={props.suspended || undefined}>
+    <div ref={rootRef} className="fortale-production-composer-root" aria-hidden={props.suspended || inspirationListOpen || undefined} inert={props.suspended || inspirationListOpen || undefined}>
       <button className="fortale-composer-backdrop" type="button" aria-label={t('Kapat')} onClick={props.onClose} tabIndex={-1} />
-      <section ref={dialogRef} className="fortale-production-composer" data-stage={questions.length ? 'details' : entryStage} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={dialogRef} className="fortale-production-composer-stack" tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        {questions.length === 0 && entryStage !== 'guided' && <BookInspirations
+          category={getInspirationCategory(props.bookType, languageLearning)} isOpen={props.isOpen}
+          disabled={busy || Boolean(props.suspended)} onSelect={chooseInspiration} onBrowseChange={setInspirationListOpen}/>}
+      <section className="fortale-production-composer" data-stage={questions.length ? 'details' : entryStage}>
         <span className="fortale-composer-handle" aria-hidden="true" />
         <header className="fortale-composer-header">
           <div className="fortale-composer-header-info">
             {questions.length === 0 && <Icon size={24} />}
             <div><strong id={titleId}>{title}</strong><small>{questions.length ? t('Ayrıntıları Belirle') : t('Kitap Yaz')}</small></div>
           </div>
-          <button type="button" className="fortale-composer-close" onClick={props.onClose} aria-label={t('Kapat')}><X size={19} /></button>
+          <DialogCloseButton className="fortale-composer-close" onClick={props.onClose}/>
         </header>
         <div className="fortale-composer-body">
           {languageLearning && <section className="fortale-learning-settings" aria-label={t('Dil öğrenme ayarları')}>
@@ -299,6 +313,7 @@ export default function BookCreationComposer(props: Props) {
             }}><span>{t('Fortale’ye bırak')}</span><ArrowRight size={17} /></button>
             <button type="button" className="fortale-creation-entry-option" onClick={() => {
               setCreationMode('custom'); setEntryStage('prompt'); setError(null);
+              requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
             }}><span>{t('Detay gir')}</span><ArrowRight size={17} /></button>
           </div>}
           {isGuidedWaiting && <div className="fortale-creation-guided-waiting">
@@ -333,6 +348,7 @@ export default function BookCreationComposer(props: Props) {
           </form>
         </div>
       </section>
+      </div>
     </div>, document.body,
   );
 }

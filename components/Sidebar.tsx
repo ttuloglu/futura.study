@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, LayoutGrid, List, Library, Activity, User, LogOut } from 'lucide-react';
+import { LayoutGrid, List, Library, Activity, User, LogOut } from 'lucide-react';
+import DialogCloseButton from './DialogCloseButton';
 import FLogo from './FLogo';
 import BrandWordmark from './BrandWordmark';
 import { ViewState } from '../types';
@@ -59,9 +60,7 @@ export default function Sidebar({
                   <BrandWordmark size="md" className="block font-bold text-white" />
                 </div>
               </div>
-              <button onClick={onClose} className="fortale-sheet-close transition-all">
-                <X size={16} />
-              </button>
+              <DialogCloseButton onClick={onClose} className="fortale-sheet-close"/>
             </div>
 
             <div className="rounded-2xl glass-panel bg-white/5 px-4 py-4 border border-white/5 flex items-center justify-between gap-4">

@@ -2,12 +2,17 @@ import UIKit
 
 enum BookPageLayout {
     static let horizontalInset: CGFloat = 28
+    static let maximumTextWidth: CGFloat = 740
     static let contentTopInset: CGFloat = 64
     static let contentBottomInset: CGFloat = 92
     static let elementSpacing: CGFloat = 8
 
+    static func textWidth(for viewportWidth: CGFloat) -> CGFloat {
+        min(maximumTextWidth, max(120, viewportWidth - horizontalInset * 2))
+    }
+
     static func imageHeight(for textWidth: CGFloat) -> CGFloat {
-        min(max(textWidth * 0.58, 150), 230)
+        min(max(textWidth * 0.58, 150), textWidth >= 640 ? 360 : 230)
     }
 }
 
@@ -19,7 +24,7 @@ enum BookPagePaginator {
         theme: ReaderTheme,
         fontScale: CGFloat
     ) -> [BookPageData] {
-        let textWidth = max(120, viewportSize.width - (BookPageLayout.horizontalInset * 2))
+        let textWidth = BookPageLayout.textWidth(for: viewportSize.width)
         let pageHeight = max(
             180,
             viewportSize.height

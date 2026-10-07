@@ -10,3 +10,6 @@ functions/lib/
 build/
 .build/
 *.zip
+/tmp/inspiration-translations-*/
+firebase-debug*.log
+firestore-debug*.log

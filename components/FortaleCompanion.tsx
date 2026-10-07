@@ -1,19 +1,31 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { showReadingStats } from '../utils/readingStatsDialog';
-import { getCompanionActivity, subscribeCompanionActivity } from '../utils/companionActivity';
+import { getCompanionActivity, setCompanionHidden, subscribeCompanionActivity } from '../utils/companionActivity';
 import { useUiI18n } from '../i18n/uiI18n';
 
-type Mood = 'idle' | 'walk' | 'march' | 'clap' | 'think' | 'read' | 'happy' | 'surprise' | 'banner';
+import { randomCompanionMood, resolveCompanionMood, type CompanionMood as Mood } from '../utils/companionBehavior';
+import CompanionMenu, { useCompanionMenu } from './CompanionMenu';
+import { supportsNativeFloatIsland } from '../utils/nativeFloatIsland';
+import { getCompanionAvatar, subscribeCompanionAvatar } from '../utils/companionAvatar';
+import { NOVA_STAR_BOOKS, type CompanionAvatarId } from '../data/companionAvatars';
 type Play = 'none' | 'flee' | 'hide' | 'peek' | 'found' | 'fall';
 
-export function CompanionCharacter({ mood, wink = '', affection = '', size = 88 }: { mood: Mood; wink?: string; affection?: string; size?: number }) {
-  return <span className="fortale-companion-art" data-mood={mood} data-wink={wink} data-affection={affection}
+export function CompanionCharacter({ mood, wink = '', affection = '', size = 88, avatarId, animated = true }: {
+  mood: Mood; wink?: string; affection?: string; size?: number; avatarId?: CompanionAvatarId; animated?: boolean;
+}) {
+  const selection = useSyncExternalStore(subscribeCompanionAvatar, getCompanionAvatar, getCompanionAvatar);
+  const avatar = avatarId || selection.selected;
+  return <span className="fortale-companion-art" data-avatar={avatar} data-animated={animated}
+    data-legendary={avatar === 'nova' && selection.completed >= NOVA_STAR_BOOKS}
+    data-mood={mood} data-wink={wink} data-affection={affection}
     style={{ width: size, height: size * 190 / 180 }} aria-hidden="true">
     <span className="friend-canvas" style={{ transform: `scale(${size / 180})` }}>
       <span className="friend-shadow" />
       <span className="friend-pet">
+        <span className="friend-avatar-sprite" />
         <span className="friend-spark s1">✦</span><span className="friend-spark s2">✦</span><span className="friend-spark s3">✧</span>
         <span className="friend-thought"><b /><b /><b /></span>
+        <span className="friend-hearts"><i>♥</i><i>♥</i><i>♥</i></span>
         <span className="friend-body">
           <span className="friend-tuft" />
           <span className="friend-arm arm-left" /><span className="friend-arm arm-right" />
@@ -32,7 +44,7 @@ export function CompanionCharacter({ mood, wink = '', affection = '', size = 88 
 }
 
 // Shared expressions also run in the modal; all reactions stay on this device.
-export function useCompanionExpressions(reading: boolean, enabled = true) {
+export function useCompanionExpressions(reading: boolean, enabled = true, joyful = false) {
   const [wink, setWink] = useState('');
   const [affection, setAffection] = useState('');
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -53,14 +65,14 @@ export function useCompanionExpressions(reading: boolean, enabled = true) {
       winkTimer = setTimeout(blink, 9500 + Math.random() * 7000);
     };
     const enjoy = () => {
-      setAffection(Math.random() < .6 ? 'sigh' : 'delighted');
+      setAffection(joyful || Math.random() < .65 ? 'hearts' : 'delighted');
       resetTimer = setTimeout(() => setAffection(''), 2800);
-      affectionTimer = setTimeout(enjoy, 12000 + Math.random() * 10000);
+      affectionTimer = setTimeout(enjoy, joyful ? 5000 + Math.random() * 4000 : 12000 + Math.random() * 10000);
     };
     winkTimer = setTimeout(blink, 4500);
-    if (reading) affectionTimer = setTimeout(enjoy, 7000);
+    if (reading || joyful) affectionTimer = setTimeout(enjoy, joyful ? 300 : 7000);
     return () => { [winkTimer, openTimer, affectionTimer, resetTimer].forEach(clearTimeout); };
-  }, [reading, enabled, reducedMotion]);
+  }, [reading, enabled, reducedMotion, joyful]);
   return { wink, affection, reducedMotion };
 }
 
@@ -89,13 +101,15 @@ export default function FortaleCompanion({ reading, hidden = false }: { reading:
   const [play, setPlay] = useState<Play>('none');
   const [celebrating, setCelebrating] = useState(false);
   const [clapping, setClapping] = useState(false);
-  const [generationMood, setGenerationMood] = useState<Mood>('think');
-  const visible = !hidden && !activity.composerOpen && !activity.modalOpen;
-  const { wink, affection, reducedMotion } = useCompanionExpressions(reading, visible && play === 'none' && !held);
-  const paused = !visible || held || (reading && rows[context] === undefined) || celebrating || clapping || play !== 'none' || activity.planning;
+  const [spontaneous, setSpontaneous] = useState<Mood>('idle');
+  const menu = useCompanionMenu();
+  const available = !hidden && !activity.composerOpen && !activity.modalOpen;
+  const visible = available && !activity.hidden;
+  const { wink, affection, reducedMotion } = useCompanionExpressions(reading, visible && play === 'none' && !held, activity.generating || celebrating);
+  const paused = !visible || held || (reading && rows[context] === undefined) || celebrating || clapping || play !== 'none' || activity.planning || Boolean(menu.anchor) || activity.excited;
   const mood: Mood = held || play === 'fall' || play === 'flee' ? 'surprise' : play === 'peek' ? 'idle'
-    : play === 'found' || celebrating ? 'happy' : clapping ? 'clap' : reading ? 'read'
-    : activity.generating ? generationMood : activity.planning ? 'think' : wandering ? 'walk' : 'idle';
+    : play === 'found' || celebrating ? 'happy' : clapping ? 'clap'
+    : resolveCompanionMood({ reading, generating: activity.generating, planning: activity.planning, excited: activity.excited, command: activity.command, spontaneous });
   const defaultY = activity.generating ? geometry.generation : geometry.floor;
   const y = rows[context] === undefined ? defaultY : geometry.ceiling + rows[context]! * (geometry.floor - geometry.ceiling);
   const clearPlayTimers = () => { playTimers.current.forEach(clearTimeout); playTimers.current = []; };
@@ -121,62 +135,22 @@ export default function FortaleCompanion({ reading, hidden = false }: { reading:
   }, [visible, context]);
 
   useEffect(() => {
-    if (paused || reducedMotion || activity.generating) { setWandering(false); return; }
-    let moveTimer: ReturnType<typeof setTimeout>, stopTimer: ReturnType<typeof setTimeout>;
-    const roam = () => {
-      setWandering(true);
-      setPosition(current => current > 50 ? 18 + Math.random() * 12 : 70 + Math.random() * 12);
-      stopTimer = setTimeout(() => setWandering(false), 2600);
-      moveTimer = setTimeout(roam, 6000 + Math.random() * 3000);
-    };
-    moveTimer = setTimeout(roam, 2200);
-    return () => { clearTimeout(moveTimer); clearTimeout(stopTimer); };
-  }, [paused, reducedMotion, activity.generating]);
-
-  useEffect(() => {
-    if (!activity.generating || !visible || held || play !== 'none' || reducedMotion) {
-      setGenerationMood('think');
-      return;
-    }
-    const actions: Array<{ mood: Mood; duration: number; moveTarget?: number }> = [
-      { mood: 'think', duration: 4000 },
-      { mood: 'walk', duration: 2400, moveTarget: 25 },
-      { mood: 'read', duration: 4500 },
-      { mood: 'surprise', duration: 2000 },
-      { mood: 'clap', duration: 3000 },
-      { mood: 'march', duration: 2400, moveTarget: 75 },
-      { mood: 'happy', duration: 3500 },
-      { mood: 'walk', duration: 2200, moveTarget: 50 },
-      { mood: 'think', duration: 3800 },
-      { mood: 'read', duration: 4200 },
-      { mood: 'clap', duration: 2800 },
-      { mood: 'march', duration: 2400, moveTarget: 28 },
-      { mood: 'surprise', duration: 1800 },
-      { mood: 'happy', duration: 3400 },
-    ];
-    let stepIndex = 0;
+    setWandering(false);
+    if (paused || reducedMotion || activity.generating || (reading && activity.command === 'auto')) return;
     let timer: ReturnType<typeof setTimeout>;
-    let stopWanderTimer: ReturnType<typeof setTimeout>;
-    const runNext = () => {
-      const step = actions[stepIndex % actions.length];
-      stepIndex += 1;
-      setGenerationMood(step.mood);
-      if (step.moveTarget !== undefined) {
-        setWandering(true);
-        setPosition(step.moveTarget + (Math.random() * 8 - 4));
-        stopWanderTimer = setTimeout(() => setWandering(false), step.duration - 200);
-      } else {
-        setWandering(false);
-      }
-      timer = setTimeout(runNext, step.duration);
+    let previous: Mood = 'idle';
+    const act = () => {
+      const next: Mood = activity.command === 'auto' ? randomCompanionMood(previous) : activity.command;
+      previous = next;
+      setSpontaneous(next);
+      setWandering(next === 'walk');
+      if (next === 'walk') setPosition(current => current > 50 ? 18 + Math.random() * 12 : 70 + Math.random() * 12);
+      timer = setTimeout(act, next === 'walk' ? 2800 : 4500 + Math.random() * 4500);
     };
-    runNext();
-    return () => {
-      clearTimeout(timer);
-      clearTimeout(stopWanderTimer);
-      setWandering(false);
-    };
-  }, [activity.generating, visible, held, play, reducedMotion]);
+    if (activity.command !== 'auto') act();
+    else timer = setTimeout(act, 3000 + Math.random() * 3500);
+    return () => { clearTimeout(timer); setWandering(false); };
+  }, [paused, reducedMotion, activity.generating, reading, activity.command]);
 
   useEffect(() => {
     if (activity.completedBooks === previousCompleted.current) return;
@@ -216,13 +190,15 @@ export default function FortaleCompanion({ reading, hidden = false }: { reading:
     clearPlayTimers();
     const rect = event.currentTarget.getBoundingClientRect(), parent = rail.current.getBoundingClientRect();
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left - parent.left + 48, top: rect.top - parent.top, moved: false };
+    menu.startPress(event);
     suppressClick.current = false; setWandering(false); setHeld(true);
     setPosition(drag.current.left / geometry.width * 100); setHeight(drag.current.top);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const pointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    menu.movePress(event);
     const start = drag.current;
-    if (!start || start.id !== event.pointerId) return;
+    if (!start || start.id !== event.pointerId || menu.anchor) return;
     const dx = event.clientX - start.x, dy = event.clientY - start.y;
     if (Math.hypot(dx, dy) > 6) start.moved = true;
     if (!start.moved) return;
@@ -233,10 +209,11 @@ export default function FortaleCompanion({ reading, hidden = false }: { reading:
   const pointerEnd = (event: React.PointerEvent<HTMLButtonElement>, cancelled = false) => {
     const start = drag.current;
     if (!start || start.id !== event.pointerId) return;
+    const openedMenu = menu.endPress();
     drag.current = null; setHeld(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    suppressClick.current = start.moved || cancelled;
-    if(!start.moved && !cancelled) {
+    suppressClick.current = start.moved || cancelled || openedMenu;
+    if(!start.moved && !cancelled && !openedMenu && !supportsNativeFloatIsland()) {
       const now=Date.now();
       if(lastStatsTap.current && now-lastStatsTap.current<350) {
         lastStatsTap.current=0;clearTimeout(clickTimer.current);clearPlayTimers();setPlay('none');suppressClick.current=true;void showReadingStats();
@@ -250,18 +227,27 @@ export default function FortaleCompanion({ reading, hidden = false }: { reading:
     }
   };
 
+  useEffect(() => {
+    if (menu.anchor) { clearTimeout(clickTimer.current); clearPlayTimers(); setPlay('none'); setHeld(false); }
+  }, [menu.anchor]);
+
   const offscreen = play === 'flee' || play === 'hide' || play === 'peek';
-  return <div ref={rail} className="fortale-companion-rail" hidden={!visible}
+  return <>
+    {available && activity.hidden && <button type="button" className="fortale-companion-restore" onClick={() => setCompanionHidden(false)}>{t('Avatarı göster')}</button>}
+    <CompanionMenu anchor={menu.anchor} onClose={menu.close} />
+    <div ref={rail} className="fortale-companion-rail" hidden={!visible}
     data-play={play} data-held={held} data-reading={reading} data-wandering={wandering} data-reduced-motion={reducedMotion}>
     <span ref={floorProbe} className="fortale-companion-floor" aria-hidden="true" />
     <span ref={ceilingProbe} className="fortale-companion-ceiling" aria-hidden="true" />
     <button ref={target} type="button" className="fortale-companion-target" aria-label={t('Fortale’nin küçük dostu')}
-      onClick={event => { if (event.detail === 0) { suppressClick.current = false; void showReadingStats(); return; } clearTimeout(clickTimer.current); clickTimer.current=setTimeout(escape,300); }}
-      onDoubleClick={() => { clearTimeout(clickTimer.current); if (!suppressClick.current) { void showReadingStats(); } }} onPointerDown={pointerDown} onPointerMove={pointerMove}
+      aria-haspopup="menu" aria-expanded={Boolean(menu.anchor)}
+      onContextMenu={event => { event.preventDefault(); menu.open(event.currentTarget); }}
+      onClick={event => { if (menu.anchor || suppressClick.current) { suppressClick.current = false; return; } clearTimeout(clickTimer.current); menu.open(event.currentTarget); }}
+      onDoubleClick={() => { clearTimeout(clickTimer.current); if (!supportsNativeFloatIsland() && !suppressClick.current) { void showReadingStats(); } }} onPointerDown={pointerDown} onPointerMove={pointerMove}
       onPointerUp={event => pointerEnd(event)} onPointerCancel={event => pointerEnd(event, true)}
       style={{ left: offscreen ? `${position}%` : `clamp(48px, ${position}%, calc(100% - 48px))`, top: y,
         '--companion-travel': `${Math.min(2600, geometry.width * 5)}ms` } as React.CSSProperties}>
       <CompanionCharacter mood={mood} wink={wink} affection={affection} />
     </button>
-  </div>;
+  </div></>;
 }

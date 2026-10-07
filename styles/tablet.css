@@ -1,0 +1,232 @@
+/* Use the available window width, including iPad multitasking, rather than device identity. */
+@media (min-width: 480px) and (max-width: 699px) {
+  .app-shell-width,
+  .app-content-width { max-width: none; }
+  .app-chrome-width { width: calc(100% - 32px); max-width: none; }
+}
+
+@media (min-width: 700px) {
+  :root,
+  html.native-float-island {
+    --tablet-gutter: clamp(24px, 3vw, 40px);
+    --fortale-floatisland-width: clamp(420px, 46vw, 560px);
+    --fortale-floatisland-height: 64px;
+    --fortale-floatisland-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    --fortale-floatisland-clearance: calc(var(--fortale-floatisland-bottom) + var(--fortale-floatisland-height) + 18px);
+    --fortale-modal-top-clearance: calc(var(--app-header-row-top) + 64px);
+  }
+
+  .app-shell-width { max-width: none; }
+  .app-content-width { max-width: 1200px; }
+  .app-chrome-width {
+    width: 100%;
+    max-width: none;
+    padding-inline: max(var(--tablet-gutter), env(safe-area-inset-left, 0px)) max(var(--tablet-gutter), env(safe-area-inset-right, 0px));
+  }
+  .fortale-global-header-row { min-height: 58px; padding-inline: 0; }
+  .fortale-global-header-status .text-\[17px\] { font-size: 21px; }
+  .fortale-header-credit-button { height: 44px; gap: 8px; }
+  .fortale-header-credit-button span { font-size: 14px; }
+  .fortale-header-credit-button svg { width: 18px; height: 18px; }
+  .fortale-global-header .fortale-chrome-icon-button { width: 44px; height: 44px; }
+  .fortale-global-header .fortale-chrome-icon-button svg { width: 22px; height: 22px; }
+
+  .view-container,
+  .fortale-home-view.view-container.is-intro {
+    padding-top: calc(var(--app-header-row-top) + 64px) !important;
+    padding-inline: max(var(--tablet-gutter), env(safe-area-inset-left, 0px)) max(var(--tablet-gutter), env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(var(--fortale-floatisland-clearance) + 12px);
+    scroll-padding-bottom: var(--fortale-floatisland-clearance);
+  }
+
+  .floatisland-nav {
+    width: var(--fortale-floatisland-width);
+    min-width: 0;
+    max-width: none;
+    height: var(--fortale-floatisland-height);
+    padding: 6px;
+    gap: 6px;
+  }
+  .floatisland-item { flex: 1 1 0; min-width: 0; height: 52px; padding-inline: 14px; gap: 8px; }
+  .floatisland-item.active { flex-grow: 2; }
+  .floatisland-label { font-size: 13px; }
+  .floatisland-item:not(.tab-home) svg { width: 22px; height: 22px; }
+  html.native-float-island body > #root > div.fixed:has(.onboarding-v2-stage) > footer { transform: translateY(-80px); }
+  html.native-float-island body > #root > div.fixed:has(.onboarding-v2-stage) > main { padding-bottom: calc(128px + var(--fortale-floatisland-clearance)); }
+  .fortale-onboarding-view > header { max-width: none; padding-inline: var(--tablet-gutter); }
+  .fortale-onboarding-intro-stage { min-height: 0; }
+  .fortale-onboarding-intro-collage { min-height: 0; height: min(calc(100dvh - 220px), 700px); }
+  html.native-float-island .fortale-onboarding-intro-collage { height: min(calc(100dvh - 224px - var(--fortale-floatisland-clearance) - env(safe-area-inset-top, 0px)), 700px); }
+
+  .fortale-home-view.is-intro .fortale-home-content { max-width: none; gap: clamp(16px, 2dvh, 28px); }
+  .fortale-home-greeting { padding-top: 8px; }
+  .fortale-home-greeting h1 { font-size: clamp(24px, 2.7vw, 30px); }
+  .fortale-home-greeting p { max-width: 680px; font-size: 15px; margin-top: 10px; }
+  .fortale-home-view.is-intro .fortale-home-create-dock { max-width: 900px; }
+  .fortale-creation-catalog-container { max-width: none; }
+  .fortale-creation-catalog { padding: 24px 32px 18px; }
+  .fortale-creation-catalog-brand { font-size: 18px; }
+  .fortale-creation-catalog-label { font-size: 13px; }
+  .fortale-creation-catalog-masthead { padding-bottom: 14px; }
+  .fortale-creation-catalog-entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fortale-creation-catalog-entry,
+  .fortale-creation-catalog-entry:last-child { min-height: 102px; padding: 18px 24px; }
+  .fortale-creation-catalog-entry:nth-child(odd) { padding-left: 0; border-right: 1px solid #45474a; }
+  .fortale-creation-catalog-entry:nth-child(even) { padding-right: 0; }
+  .fortale-creation-catalog-entry:nth-child(n+3) { border-bottom: 0; }
+  .fortale-creation-catalog-title { font-size: clamp(28px, 3vw, 36px); }
+  .fortale-creation-catalog-subtitle { margin-top: 6px; font-size: 14px; }
+  .fortale-creation-catalog-container .fortale-editorial-ticker-wrap { margin-top: 14px; }
+
+  .fortale-home-view.view-container.is-intro .fortale-home-rail-stack { max-width: none; }
+  .fortale-bookshelf-header { padding: 0 8px 12px; }
+  .fortale-bookshelf-title { font-size: 17px; }
+  .fortale-bookshelf-more-btn { min-height: 36px; font-size: 13px; padding: 6px 8px; }
+  .fortale-bookshelf-scroll { gap: 18px; padding-inline: 18px; }
+  .fortale-3d-shelf-book {
+    --tablet-shelf-cover-width: clamp(110px, 14vw, 174px);
+    flex-basis: var(--tablet-shelf-cover-width);
+    width: var(--tablet-shelf-cover-width);
+  }
+  .fortale-3d-book-obj {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 9 / 13;
+  }
+  .fortale-bookshelf-empty-state { height: 180px; font-size: 14px; }
+
+  .fortale-library-content { max-width: none; padding-bottom: 12px; }
+  .fortale-library-toolbar { gap: 12px; margin-bottom: 24px; }
+  .fortale-library-filter-wrapper { height: 44px; }
+  #root .fortale-library-toolbar :is(.fortale-library-filter-trigger, .fortale-library-native-filter) {
+    height: 44px !important;
+    font-size: 14px !important;
+    padding-inline: 18px !important;
+  }
+  #root .fortale-library-toolbar .fortale-library-native-filter { padding-right: 38px !important; }
+  .fortale-library-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 24px clamp(12px, 1.5vw, 22px); }
+  .fortale-library-cover { border-radius: 12px; }
+  .fortale-library-read { height: 40px; margin-top: 10px; font-size: 13px; border-radius: 10px; }
+  .fortale-library-type { font-size: 13px; margin-top: 8px; }
+  .fortale-library-genre { font-size: 12px; line-height: 1.5; }
+
+  .fortale-floatisland-sheet-root:not([data-keyboard="true"]) { align-items: center !important; }
+  .fortale-floatisland-sheet-root { padding-inline: var(--tablet-gutter) !important; }
+  .fortale-floatisland-sheet-panel {
+    /* Expand each sheet proportionally, retaining the narrower confirmation dialogs. */
+    --fortale-sheet-tablet-width: min(760px, calc(var(--fortale-sheet-max-width) * 1.3));
+    transform-origin: center;
+  }
+  .fortale-sheet-header { padding: 18px 24px; }
+  .fortale-sheet-header h2 { font-size: 20px; }
+  .fortale-sheet-header h2 + div { font-size: 13px; line-height: 1.5; }
+  .fortale-sheet-body { padding: 22px 24px; }
+  .fortale-sheet-footer { padding: 16px 24px; }
+  .fortale-production-composer-root { padding-inline: var(--tablet-gutter); padding-top: var(--fortale-modal-top-clearance); }
+  .fortale-production-composer { width: min(100%, 640px); transform: none; }
+  .fortale-composer-header,
+  .fortale-production-composer[data-stage="details"] .fortale-composer-header { padding: 14px 22px; min-height: 64px; }
+  .fortale-composer-header-info strong,
+  .fortale-production-composer[data-stage="details"] .fortale-composer-header-info strong { font-size: 18px; }
+  .fortale-composer-header-info small { font-size: 13px; }
+  .fortale-composer-body { padding: 14px 22px 22px; }
+  .fortale-editorial-language-card { max-width: 520px; }
+  .fortale-library-search-sheet { --fortale-sheet-tablet-width: 640px; }
+  .fortale-floatisland-sheet-root[data-keyboard="true"] { padding-inline: var(--tablet-gutter) !important; }
+
+  .reading-stats-overlay { padding-top: var(--fortale-modal-top-clearance); }
+  .reading-stats-dialog { width: min(100%, 680px); }
+  .reading-stats-header { padding: 24px; }
+  .reading-stats-heading h2 { font-size: 21px; }
+  .reading-stats-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; padding: 28px; }
+  .reading-stats-summary,
+  .reading-stats-favorites,
+  .reading-stats-empty,
+  .reading-stats-error { grid-column: 1 / -1; }
+  .reading-stats-summary dt { font-size: 13px !important; }
+  .reading-stats-section h3 { font-size: 15px; }
+  .reading-stats-track { width: 54px; }
+  .reading-stats-languages { grid-template-columns: 1fr; }
+  .reading-stats-section-heading { flex-wrap: wrap; }
+  .reading-stats-favorites { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reading-stats-favorites > div { flex-direction: column; gap: 6px; }
+  .companion-avatar-content { padding: 24px; }
+  .companion-avatar-grid { gap: 12px; }
+  body .companion-avatar-card { padding: 18px 8px 16px; gap: 7px; }
+  .companion-avatar-card > strong { font-size: 15px; }
+  body .companion-avatar-card :is(.companion-avatar-milestone, .companion-avatar-status) { font-size: 11px; }
+  body .companion-avatar-note { font-size: 12px; }
+
+  .fortale-profile-view .app-content-width { max-width: 1040px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+  .fortale-profile-view .app-content-width > :first-child { grid-column: 1 / -1; }
+  .fortale-profile-view .app-content-width > * { margin-top: 0 !important; }
+  .fortale-profile-view .app-content-width > section { padding: 24px; }
+
+  .fortale-login-content { max-width: 1000px; }
+  .fortale-login-covers { top: calc(env(safe-area-inset-top, 0px) + max(56px, 12dvh)) !important; transform: translateX(-50%) scale(1.25); }
+  .fortale-login-form-layout { padding-top: calc(env(safe-area-inset-top, 0px) + max(270px, 31dvh)); padding-bottom: 24px; }
+  .fortale-login-card { padding: 28px; }
+
+  /* Keep reading lines comfortable while letting the reader chrome span the screen. */
+  .book-reader .smartbook-paged-shell { max-width: 796px; margin-inline: auto; }
+  body .fairy-book-reader { padding-inline: var(--tablet-gutter); }
+}
+
+/* Low landscape windows need less vertical spacing, not a scrolling home page. */
+@media (min-width: 700px) and (max-height: 850px) {
+  .fortale-home-view.is-intro .fortale-home-content { gap: 12px; }
+  .fortale-home-greeting { padding-top: 0; }
+  .fortale-home-greeting h1 { font-size: 24px; }
+  .fortale-home-greeting p { font-size: 13px; margin-top: 6px; }
+  .fortale-creation-catalog { padding: 16px 28px 12px; }
+  .fortale-creation-catalog-masthead { padding-bottom: 10px; }
+  .fortale-creation-catalog-entry,
+  .fortale-creation-catalog-entry:last-child { min-height: 78px; padding-block: 12px; }
+  .fortale-creation-catalog-title { font-size: 28px; }
+  .fortale-creation-catalog-subtitle { font-size: 12px; margin-top: 4px; }
+  .fortale-creation-catalog-container .fortale-editorial-ticker-wrap { margin-top: 8px; }
+  .fortale-bookshelf-header { padding-bottom: 6px; }
+  .fortale-3d-shelf-book { --tablet-shelf-cover-width: clamp(90px, 17dvh, 132px); }
+  .fortale-bookshelf-empty-state { height: 130px; }
+  .fortale-login-covers { left: 25%; top: 35% !important; transform: translateX(-50%) scale(1.3); }
+  .fortale-login-form-layout { justify-content: flex-end; align-items: center; padding-top: max(24px, env(safe-area-inset-top, 0px)); }
+  .fortale-login-card { width: 48%; margin: 0; padding: 22px; }
+}
+
+@media (min-width: 700px) and (orientation: landscape) {
+  .fortale-login-covers { left: 25%; top: 35% !important; transform: translateX(-50%) scale(1.3); }
+  .fortale-login-form-layout { justify-content: flex-end; align-items: center; padding-top: max(24px, env(safe-area-inset-top, 0px)); }
+  .fortale-login-card { width: 48%; margin: 0; padding: 22px; }
+  .onboarding-v2-stage > section.grid { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 28px; }
+  .onboarding-v2-stage > section.grid > div.relative { height: min(440px, 50dvh); }
+}
+
+@media (min-width: 700px) and (max-width: 1023px) and (orientation: portrait) {
+  .onboarding-v2-stage > section.grid > div.relative { height: min(360px, 32dvh); }
+}
+
+@media (min-width: 700px) and (max-height: 650px) {
+  .fortale-home-greeting p { display: none; }
+  .fortale-home-view.is-intro .fortale-home-content { gap: 8px; }
+  .fortale-creation-catalog { padding: 8px 24px; }
+  .fortale-creation-catalog-entry,
+  .fortale-creation-catalog-entry:last-child { min-height: 64px; padding-block: 8px; }
+  .fortale-creation-catalog-title { font-size: 26px; }
+  .fortale-bookshelf-header { padding-bottom: 2px; }
+  .fortale-bookshelf-title { font-size: 14px; }
+  .fortale-3d-shelf-book { --tablet-shelf-cover-width: clamp(54px, 10dvh, 66px); }
+  .fortale-bookshelf-empty-state { height: 100px; }
+}
+
+@media (min-width: 700px) and (max-height: 560px) {
+  .fortale-home-view.is-intro .fortale-home-greeting,
+  .fortale-creation-catalog-container .fortale-editorial-ticker-wrap { display: none; }
+  .fortale-creation-catalog-brand { font-size: 15px; }
+  .fortale-creation-catalog-masthead { padding-bottom: 6px; }
+  .fortale-creation-catalog-entry,
+  .fortale-creation-catalog-entry:last-child { min-height: 56px; padding-block: 6px; }
+  .fortale-creation-catalog-title { font-size: 22px; }
+  .fortale-creation-catalog-subtitle { font-size: 11px; }
+  .fortale-3d-shelf-book { --tablet-shelf-cover-width: 44px; }
+  .fortale-bookshelf-empty-state { height: 76px; }
+}

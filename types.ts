@@ -1,3 +1,4 @@
+import type { BookCreativeDirection } from './functions/src/bookCreativeDirection';
 import type { LanguageLearningProfile } from './functions/src/languageLearning';
 export type ViewState =
   | 'HOME'
@@ -26,6 +27,8 @@ export type SmartBookBookType = 'fairy_tale' | 'story' | 'novel';
 export type SmartBookEndingStyle = 'happy' | 'bittersweet' | 'twist';
 
 export interface SmartBookCreativeBrief {
+  creativeDirection?: BookCreativeDirection;
+  visualStyle?: string;
   bookType: SmartBookBookType;
   subGenre?: string;
   languageText?: string;

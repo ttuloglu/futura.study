@@ -1,10 +1,11 @@
 import { isReadingStatsOpen } from '../utils/readingStatsDialog';
+import { isCompanionAvatarPickerOpen } from '../utils/companionAvatarDialog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CourseData } from '../types';
 import { getReadingOwner, loadReadingRecord, saveReadingRecord } from '../utils/readingProgress';
 import { mergeReadingRecords, type ReadingPosition, type ReadingRecord } from '../utils/readingProgressModel';
 
-export function useBookReading(course: Pick<CourseData,'id'|'topic'|'bookType'|'category'|'subGenre'>, platform: 'native'|'web') {
+export function useBookReading(course: Pick<CourseData,'id'|'topic'|'bookType'|'category'|'subGenre'|'languageLearning'|'creativeBrief'>, platform: 'native'|'web') {
   const [ready,setReady] = useState(false);
   const [initial,setInitial] = useState<ReadingRecord>();
   const session = useRef<{ owner:string; record:ReadingRecord; openedAt:number; position?:ReadingPosition; since:number; qualified:boolean } | undefined>(undefined);
@@ -12,7 +13,8 @@ export function useBookReading(course: Pick<CourseData,'id'|'topic'|'bookType'|'
   const qualify = useCallback(() => {
     const current = session.current, position = current?.position;
     if (!current || !position || current.qualified || Date.now()-current.since < 3000) return;
-    if (platform === 'web' && (document.hidden || isReadingStatsOpen())) return;
+    if (isReadingStatsOpen() || isCompanionAvatarPickerOpen()) return;
+    if (platform === 'web' && document.hidden) return;
     if (position.active === false) return;
     current.qualified = true;
     current.record = mergeReadingRecords(current.record,{ ...current.record,
@@ -35,7 +37,8 @@ export function useBookReading(course: Pick<CourseData,'id'|'topic'|'bookType'|'
     };
     document.addEventListener('visibilitychange',onVisibility);
     window.addEventListener('fortale:reading-stats',onVisibility);window.addEventListener('fortale:reading-stats-closed',onVisibility);
-    return () => { active=false; qualify(); clearInterval(timer); document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('fortale:reading-stats',onVisibility);window.removeEventListener('fortale:reading-stats-closed',onVisibility); session.current=undefined; };
+    window.addEventListener('fortale:companion-avatar-picker',onVisibility);window.addEventListener('fortale:companion-avatar-picker-closed',onVisibility);
+    return () => { active=false; qualify(); clearInterval(timer); document.removeEventListener('visibilitychange',onVisibility);window.removeEventListener('fortale:reading-stats',onVisibility);window.removeEventListener('fortale:reading-stats-closed',onVisibility);window.removeEventListener('fortale:companion-avatar-picker',onVisibility);window.removeEventListener('fortale:companion-avatar-picker-closed',onVisibility); session.current=undefined; };
   },[course.id,qualify]);
   const observe = useCallback((position:ReadingPosition) => {
     const current = session.current;
@@ -48,7 +51,9 @@ export function useBookReading(course: Pick<CourseData,'id'|'topic'|'bookType'|'
     if (!same || position.active !== current.position?.active) { current.since=Date.now(); current.qualified=false; }
     current.position=position;
     const now=Date.now(), info=metadata.current;
+    const learning=info.languageLearning || info.creativeBrief?.languageLearning;
     current.record=mergeReadingRecords(current.record,{...current.record,lastOpenedAt:current.openedAt,title:info.topic || '',genre:info.category || ({fairy_tale:'Masal',novel:'Hikaye',story:'Çalışma kitabı'}[info.bookType || 'novel']),subGenre:info.subGenre || '',
+      ...(learning?.purpose === 'language_learning' ? {learningLanguage:learning.targetLanguage,learningLevel:learning.cefrLevel} : {}),
       bookmarks:{[platform]:{...position,platform,updatedAt:now}},coverage:[],reachedEnd:false,updatedAt:now});
     saveReadingRecord(current.record,current.owner);
   },[platform,qualify]);

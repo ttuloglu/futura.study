@@ -1,0 +1,1406 @@
+{
+  "status": "awaiting_user_approval",
+  "locale": "tr",
+  "entries": [
+    {
+      "id": "masal-01",
+      "category": "masal",
+      "label": "Aladdin’in sihirli lambası gibi, dileklerin dostlukla anlam kazandığı büyülü bir masal olsun.",
+      "brief": "Dilekleri yerine getiren bir nesne bulan çocuğun, istediği şeylerle gerçekten ihtiyaç duyduğu şeyleri ayırmasını anlat. Büyünün küçük ve anlaşılır bir kuralı olsun; her dilek beklenmedik ama güvenli bir sonuç doğursun. Çözüm son bir sihirden değil, çocuğun paylaşmayı seçmesinden gelsin. Yeni kişiler ve yeni olaylarla, sıcak ve hayret uyandıran özgün bir masal kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-02",
+      "category": "masal",
+      "label": "Kibritçi Kız’ın çağrıştırdığı sıcaklık arayışını, güvenli bir yuva ve dayanışmayla buluşturan bir masal olsun.",
+      "brief": "Soğuk bir akşamda komşularına sıcak bir köşe hazırlamak isteyen bir çocuğu izle. Her karşılaşma ona bir eşya yerine farklı bir yardım ve yakınlık getirsin. Yalnızlık duygusunu kısa tut; yetişkin desteği ve güvenli barınma somut biçimde görünür olsun. Acı sonu veya ölüm sahnelerini yeniden üretmeden, birlikte ısınmanın sevincine ulaş.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-03",
+      "category": "masal",
+      "label": "Heidi’nin çağrıştırdığı doğa sevgisi ve umut, yepyeni bir dostluğa dönüşsün.",
+      "brief": "Yeni bir yere taşınan çocuğun ilk günlerde çevresini yadırgamasını anlat. Bir tepe, küçük bir bahçe ve sabırlı bir arkadaş, çocuğun buraya bağlanmasını sağlayan ayrı deneyimler olsun. Doğayı her sorunu sihirle çözen bir güç yapma; alışma sürecini çocuğun küçük girişimleriyle ilerlet. Tanıdık karakterleri kullanmadan, ferah ve umutlu bir aidiyet masalı yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-04",
+      "category": "masal",
+      "label": "Keloğlan’ın neşesi gibi, küçümsenen bir kahraman zekâsı ve iyi kalbiyle yolunu bulsun.",
+      "brief": "Herkesin beceriksiz sandığı bir çocuğa, köy şenliğinin hazırlığında küçük bir görev ver. Çocuğun alışılmadık çözümü önce gülümsetsin, sonra başkalarının işini gerçekten kolaylaştırsın. Mizahı insanların görünüşüyle alay ederek değil, ters giden planlar ve yaratıcı düzeltmelerle kur. Kahramanını başkalarını yenerek değil, birlikte başarmanın sevincini çoğaltarak büyüt.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-05",
+      "category": "masal",
+      "label": "Ayakkabılarını bulutlardan yapan bir terzinin, yeryüzüne inmek isteyen bir bulutla dostluğu anlatılsın.",
+      "brief": "Gökyüzünde çalışan terzinin eline hiçbir kalıba girmeyen küçük bir bulut gelsin. Bulutun isteği güzel bir ayakkabı olmak değil, bir bahçeye yağmur taşıyabilmek olsun. Terzi yardım etmeye çalışırken arkadaşının isteğini dinlemeyi öğrensin. Yumuşak görüntüler ve oyuncu diyaloglarla, başkasına kendi hayalimizi dayatmamanın masalını kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-06",
+      "category": "masal",
+      "label": "Karanlıktan çekinen küçük bir yıldız, geceyi aydınlatmadan önce dinlemeyi öğrensin.",
+      "brief": "İlk kez gökyüzüne çıkan yıldız, gecenin bütün seslerini korkutucu sansın. Bir baykuş ve uykulu bir ev, duyduğu seslerin nereden geldiğini ona göstersin. Yıldızın cesareti bir anda değil, her güvenli karşılaşmada biraz artsın. Sonunda geceyi yok etmeye çalışmadan, kendi küçük ışığıyla huzurlu bir yer bulsun.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-07",
+      "category": "masal",
+      "label": "Uçamayan bir ejderha, arkadaşlarına yardım etmenin başka yollarını keşfetsin.",
+      "brief": "Kanatları henüz onu taşıyamayan bir ejderhanın, uçuş oyunlarına katılmak istemesini anlat. Ejderha yerde gördüğü ayrıntılar sayesinde arkadaşlarının kayıp uçurtmasını bulmaya katkı sağlasın. Başarıyı son anda mucizevi biçimde uçmasına bağlama. Farklı becerilerin birlikte işe yaradığı, neşeli ve güven veren bir son kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-08",
+      "category": "masal",
+      "label": "Her rengi bir duyguya dönüşen bir bahçede, küçük bir ressam kendi rengini arasın.",
+      "brief": "Bir çocuk, duygular değiştikçe çiçeklerin renk değiştirdiği bir bahçeye girsin. Neşeyi, özlemi ve şaşkınlığı ayrı küçük olaylarda deneyimlesin. Hiçbir duyguyu kötü ya da yasak ilan etme; hepsinin geçebileceğini ve anlatılabileceğini göster. Çocuğun kendi rengini tek bir renge sığmak yerine bir arada yaşamayı öğrenerek bulmasını sağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-09",
+      "category": "masal",
+      "label": "Kabuğunu paylaşmak isteyen bir kaplumbağa, misafirperverliğin sınırlarını öğrensin.",
+      "brief": "Kaplumbağa yağmurdan kaçan bütün arkadaşlarını kabuğuna çağırınca içeride yer kalmasın. Yardım etmek istemesiyle dinlenmeye ihtiyaç duyması arasında küçük bir sorun doğsun. Arkadaşları birlikte geniş bir yaprak barınağı kurarak sorumluluğu paylaşsın. İyiliği kendini tamamen unutmakla eşitlemeden, nazikçe sınır koymanın sıcak bir masalını anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-10",
+      "category": "masal",
+      "label": "Yanlış zamanda öten bir horoz, köyün alışılmadık müzik grubuna katılsın.",
+      "brief": "Horoz sabah yerine öğleden sonra ötünce köyde komik karışıklıklar yaşansın. Onu susturmak isteyenler, sesinin yaklaşan şenlik için yeni bir ritim oluşturabileceğini fark etsin. Horoz da başkalarını dinleyip ne zaman ses vereceğini çalışsın. Farklılığı olduğu gibi bırakmakla birlikte uyum kurmanın dengelendiği, ritimli bir masal yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-11",
+      "category": "masal",
+      "label": "Denize hiç gitmemiş bir yağmur damlasının yolculuğu merak ve neşeyle anlatılsın.",
+      "brief": "Bir damla, buluttan ayrıldıktan sonra yaprakta, derede ve kıyıda farklı dostlarla karşılaşsın. Yolculuğun her durağında çevresine küçük bir katkı yapsın ve yeni bir şey öğrensin. Doğanın akışını anlaşılır tut; bilimsel bir ders yerine duyusal keşifleri öne çıkar. Sonu ayrılık korkusuyla değil, yeniden buluşabilecek olmanın güveniyle tamamla.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-12",
+      "category": "masal",
+      "label": "Konuşamayan bir çiçeğin isteğini, sabırlı bir çocuk davranışlarından anlasın.",
+      "brief": "Bir çocuk pencere önündeki çiçeğin neden boynunu büktüğünü merak etsin. Hemen büyülü bir açıklama bulmak yerine suyu, ışığı ve toprağı gözlemlesin. Yardım etme çabaları ufak hatalarla ve sabırlı düzeltmelerle ilerlesin. Bakımı sadece sevmek değil, dikkatle fark etmek olarak gösteren yumuşak bir masal kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-13",
+      "category": "masal",
+      "label": "Birbirinin sesini ödünç alan orman hayvanları, kendi seslerinin değerini fark etsin.",
+      "brief": "Ormandaki hayvanlar bir gün seslerini değiş tokuş ederek oyun oynasın. Küçük hayvanın kocaman sesi ve büyük hayvanın ince sesi zararsız, komik durumlar yaratsın. Birlikte söyleyecekleri şarkıda herkesin farklı sesine ihtiyaç duyulsun. Kimseyi üstün ilan etmeden, kendi olmanın ve başkasını denemenin neşesini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-14",
+      "category": "masal",
+      "label": "Yalnızca paylaşıldığında büyüyen bir ekmek, küçük bir mahallenin sofrasını birleştirsin.",
+      "brief": "Bir fırıncı çırağı, bölündükçe biraz büyüyen bir ekmek bulsun. Ekmeği saklamaya çalıştığında büyümenin durduğunu, birlikte sofraya oturduklarında yeniden başladığını fark etsin. Yardımı tek kahramana bağlama; herkes sofraya başka bir katkı getirsin. Büyünün açık kuralıyla, paylaşmanın somut sevincini veren özgün bir masal yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-15",
+      "category": "masal",
+      "label": "Büyülü bir okul çantası, sahibine her şeyi taşımak zorunda olmadığını öğretsin.",
+      "brief": "Çocuğun çantası, yardım etmek istediği herkesten bir eşya alarak giderek ağırlaşsın. Çocuk yorulduğunu söylemeye çekinsin, fakat bir arkadaşının desteğiyle bunu dile getirsin. Çantanın hafiflemesi eşyaları sihirle yok etmek yerine sahiplerinin sorumluluğu paylaşmasına bağlı olsun. İlk okul deneyimlerini güvenli, hareketli ve neşeli bir masala dönüştür.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-16",
+      "category": "masal",
+      "label": "Bir salyangoz, aceleyle hazırlanan şenliğin unutulmuş güzelliklerini bulsun.",
+      "brief": "Ormandakiler şenliğe yetişmeye çalışırken yavaş yürüyen salyangoz geride kalsın. Yol boyunca fark ettiği kokular ve küçük ihtiyaçlar, şenliğin eksiklerini tamamlamasına yarasın. Yavaşlığını herkesi geçmek için kullanılan gizli bir üstünlüğe dönüştürme. Farklı hızlarda yaşayan arkadaşların birlikte keyif alabildiği bir buluşmayla bitir.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-17",
+      "category": "masal",
+      "label": "Gölgesini kaybettiğini sanan bir çocuk, güneşle oynayarak cesaret bulsun.",
+      "brief": "Bulutlu bir sabahta gölgesini göremeyen çocuk, onun başka bir yere gittiğini düşünsün. Güvendiği bir yetişkinle ışığın ve gölgenin değişmesini oyunla keşfetsin. Merakını küçümsemeden, gerçek gözlemlerle hayal arasında sıcak bir anlatı kur. Gölgenin geri gelişi bir tehlikenin çözümü değil, yeni bir oyun arkadaşının bulunması gibi hissedilsin.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-18",
+      "category": "masal",
+      "label": "Kırılan oyuncakları onaran bir tavşan, kusursuz olmayan şeylerin de sevilebildiğini görsün.",
+      "brief": "Tavşan bir oyuncağı eskisi gibi yapamayınca sahibinin onu istemeyeceğini düşünsün. Çocuğun oyuncağın yeni görünüşüne kendi hikâyesini eklemesi tavşanı şaşırtsın. Onarma sürecinde sabır, deneme ve birlikte karar verme görünür olsun. Kusuru değer kaybı saymayan, ellerin ve malzemelerin sıcaklığını taşıyan bir masal yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-19",
+      "category": "masal",
+      "label": "Küçük bir ahtapot, aynı anda her oyuna yetişmeye çalışmaktan vazgeçsin.",
+      "brief": "Ahtapot bütün arkadaşlarını sevindirmek için sekiz koluyla sekiz işe girişsin. İşler birbirine karışınca üzülmesini kısa, anlaşılır ve güvenli bir sahnede göster. Bir arkadaşından yardım isteyip oyunları sıraya koyarak yeniden keyif alsın. Dinlenmeye yer açmanın arkadaşlıktan uzaklaşmak olmadığını, renkli bir deniz macerasıyla anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-20",
+      "category": "masal",
+      "label": "Bir köyün bütün kapıları bir gün şarkı söylesin; en sessiz kapının hikâyesi de duyulsun.",
+      "brief": "Köydeki kapılar açıldıkça farklı melodiler çalsın ve çocuklar bunlarla oyun kursun. Hiç ses çıkarmayan küçük bir kapı, grubun dışında kalmış gibi görünsün. Bir çocuk onun sessizliğinin başka sesleri duyabilmek için değerli olduğunu fark etsin. Sonuçta sessiz kapıyı zorla şarkı söylettirmeden, ortak oyuna katılan bir rol bul.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-21",
+      "category": "masal",
+      "label": "Kışın uyanan bir kirpi, baharı beklerken küçük sevinçler biriktirsin.",
+      "brief": "Kirpi erken uyanınca arkadaşlarının çoğunu uyurken bulsun. Güvenli bir yuvaya dönmeden önce karın sesini ve kış kokularını kısa bir gezide keşfetsin. Yalnız kalma duygusuna sakin bir yetişkin hayvanın eşliğiyle karşılık ver. Baharı zorla getirmek yerine, beklemenin içinde de huzur bulunduğunu göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-22",
+      "category": "masal",
+      "label": "Bir çocuğun ektiği tohum, her gün başka bir sabır oyunu başlatsın.",
+      "brief": "Çocuk tohumun hemen büyümesini beklesin ve her sabah toprağa bakmaya koşsun. Beklerken sulama, gözlem ve günleri resimle işaretleme gibi küçük işler öğrensin. Filizlenme doğal bir süreç olsun; masalsı yan, toprağın altındaki hayal edilen sohbetlerden gelsin. Sabırla bakımın birbirini tamamladığı, açık ve sevgi dolu bir son yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-23",
+      "category": "masal",
+      "label": "Ay ışığını ceplerinde taşıyan bir çocuk, uykusu kaçan arkadaşlarına sakinlik götürsün.",
+      "brief": "Bir çocuk gece lambasının ışığını küçük ceplerinde taşıyabildiğini hayal etsin. Her arkadaşına aynı çözümü vermek yerine birinin hikâye, diğerinin sessizlik istediğini öğrensin. Geceyi güvenli evler, tanıdık sesler ve yavaşlayan hareketlerle anlat. Işıklar azalırken herkes kendi rahatlama yolunu bulsun ve masal huzurla kapansın.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-24",
+      "category": "masal",
+      "label": "Hiç kimsenin kral olmadığı bir oyuncak ülkesinde, oyunları birlikte seçsinler.",
+      "brief": "Oyuncaklar hangi oyunu oynayacaklarına karar veremeyince sırayla fikir anlatsın. Birinin önerisi eğlenceli olsa da başka bir oyuncağın katılamadığını fark etsinler. Kuralları değiştirip herkesin yapabileceği ortak bir oyun geliştirsinler. Uzun öğütler vermeden, birlikte karar almanın neşeli denemelerini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-25",
+      "category": "masal",
+      "label": "Bir balık, hep aynı yönde yüzülen bir sürüye yeni bir manzara göstersin.",
+      "brief": "Balık arkadaşlarının alıştığı güvenli rotadan farklı bir koyu merak etsin. Merakının sorumluluğunu alarak önce güvendiği bir büyükle yolu tanısın. Yeni yere gitmek eski arkadaşları terk etmek anlamına gelmesin. Keşfetme isteğiyle güvenli davranışı bir arada tutan, ferah bir deniz masalı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-26",
+      "category": "masal",
+      "label": "Yırtık bir uçurtma, rüzgârı yeniden tanıyarak farklı biçimde uçsun.",
+      "brief": "Çocuk uçurtmasının yırtılmasına üzülünce arkadaşlarıyla onu onarmayı denesin. Yeni yama uçurtmanın dengesini değiştirsin ve birkaç nazik deneme gerektirsin. Sonunda uçurtma daha yüksek değil, kendine özgü bir hareketle uçabilsin. Onarmanın ve yeniden denemenin sevincini, canlı ama sakin bir gökyüzü hikâyesiyle anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-27",
+      "category": "masal",
+      "label": "Bir panda, bambu ormanında kaybettiği oyunu yeni arkadaşlarla yeniden kursun.",
+      "brief": "Panda tek başına bildiği oyunu oynamak isterken oyun parçalarından birini bulamasın. Yeni tanıştığı hayvanların farklı önerileri ilk başta ona yabancı gelsin. Herkesin eklediği bir kural sayesinde eski oyundan başka, birlikte sevilen bir oyun doğsun. Dostluğu kayıp nesnenin bulunmasına değil, ortak hayal kurmaya bağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-28",
+      "category": "masal",
+      "label": "Bir koala, sevdiği ağacın dışında da kendine güvenli köşeler bulsun.",
+      "brief": "Koala alıştığı dal bakım için kapanınca başka bir yerde dinlenmek zorunda kalsın. Güvendiği arkadaşıyla farklı ağaçların kokularını ve gölgelerini tanısın. Eski yerini özlemesine izin ver; yeni yere alışmayı hemen sevinmesiyle eşitleme. Sonunda yanında taşıdığı küçük bir alışkanlık sayesinde başka bir dalı da ev gibi hissetsin.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-29",
+      "category": "masal",
+      "label": "Bir köstebek, görmeden de güzellikleri keşfedebilen bir bahçe rehberi olsun.",
+      "brief": "Bahçeye gelen hayvanlar yalnızca çiçeklerin renklerinden söz ederken köstebek sessiz kalsın. Sonra onları kokuların, toprağın dokusunun ve yaprak seslerinin peşine davet etsin. Farklı duyuları bir eksiklik yarışına çevirmeden herkesin keşfini zenginleştir. Bahçenin birden fazla yolla tanınabildiğini, birlikte yaşanan bir gezide göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-30",
+      "category": "masal",
+      "label": "Bir tavus kuşu, en gösterişli tüyünden vazgeçmeden paylaşmayı öğrensin.",
+      "brief": "Tavus kuşu sevdiği tüyü bir arkadaşının süsüne vermek istemesin. Suçluluk duymak yerine başka biçimde yardımcı olabileceğini düşünmeye başlasın. Birlikte renkli yapraklardan yeni bir süs yapmaları ikisini de sevindirsin. Paylaşmayı kişisel sınırları yok etmekle karıştırmadan, yaratıcı dayanışmanın masalını yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-31",
+      "category": "masal",
+      "label": "Bir arı, çiçekler arasında duyduğu farklı dilleri dansla buluştursun.",
+      "brief": "Arı bir bahçedeki böceklerle anlaşamayınca kendi bildiği sesi daha yüksek çıkarsın. Bunun işe yaramadığını görünce hareketleri ve işaretleri gözlemlesin. Küçük bir dans ortak bir buluşma yerini anlatmalarına yardımcı olsun. Başkalarının iletişim biçimine dikkat etmenin neşesini, renkli hareketlerle kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-32",
+      "category": "masal",
+      "label": "Bir çocuğun çizdiği ev, içine giren herkesin ihtiyacına göre değişsin.",
+      "brief": "Çizilen evin kapısı bir arkadaş için genişlesin, başka biri için sessiz bir oda açılsın. Çocuk değişiklikleri kontrol etmeye çalışınca evde küçük karışıklıklar yaşansın. Arkadaşlarının neye ihtiyaç duyduğunu dinleyerek evi birlikte düzenlesinler. Herkese yer açmanın yalnızca daha büyük bina yapmak olmadığını, hayal dolu sahnelerle anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-33",
+      "category": "masal",
+      "label": "Bir tilki, kazanmak yerine birlikte oynamanın tadını keşfetsin.",
+      "brief": "Tilki orman oyunlarında sürekli birinci olmak için kuralları kendi lehine değiştirsin. Arkadaşlarının keyfinin azaldığını görünce neden yalnız kaldığını anlamaya çalışsın. Bir sonraki oyunda herkese farklı görev vererek birlikte tamamlanan bir hedef kursun. Dönüşümünü bir öğüt cümlesiyle değil, yeniden başlayan kahkahalarla göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-34",
+      "category": "masal",
+      "label": "Bir çocuğun özür dilemesi, konuşan bir taşın yardımıyla küçük bir cesaret yolculuğuna dönüşsün.",
+      "brief": "Çocuk arkadaşının yaptığı şeyi yanlışlıkla bozunca söylemekten çekinsin. Cebindeki hayali taş ona hazır sözler vermek yerine ne olduğunu hatırlamasına yardım etsin. Çocuk özür dileyip onarmayı teklif etsin; arkadaşı da duygusunu ifade edebilsin. Barışmayı hemen unutmak saymadan, güvenin küçük eylemlerle yenilendiğini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-35",
+      "category": "masal",
+      "label": "Bir örümceğin ağı, kaybolan böcekler için nazik bir yol haritasına dönüşsün.",
+      "brief": "Örümcek ağını örerken bahçedeki patikaların yerini fark etsin. Arkadaşlarının kaybolduğunu duyunca iplikleriyle güvenli yön işaretleri hazırlasın. Ağın başkaları tarafından beğenilmesi tek amaç olmasın; işe yaradığını görmek ona sevinç versin. Küçük bir becerinin ortak hayatı kolaylaştırdığı, korkutmayan bir bahçe masalı anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-36",
+      "category": "masal",
+      "label": "İki kardeş, aynı hayale farklı yollarla ulaşabileceklerini görsün.",
+      "brief": "Kardeşler evde bir gemi oyunu kurmak istesin, ama biri çizerek diğeri parçaları birleştirerek çalışsın. Hangisinin yönteminin doğru olduğu konusunda küçük bir anlaşmazlık yaşansın. Çizimin ve yapının birbirine ihtiyaç duyduğunu denemeler sırasında fark etsinler. Kardeşliği herkesin aynı düşünmesiyle eşitlemeden, birlikte kurdukları gemiyle bitir.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-37",
+      "category": "masal",
+      "label": "Bir ayı, öfkesini kükremeden de anlatabileceğini öğrensin.",
+      "brief": "Ayının oyuncağı izinsiz alındığında öfkelenmesini doğal ve anlaşılır biçimde göster. Bir arkadaşının yardımıyla durup bedenindeki sıkışmayı fark etsin. Oyuncağını geri isterken ne hissettiğini kısa sözlerle anlatabilsin. Öfkeyi yok etmeyi değil, başkasına zarar vermeden ifade etmeyi merkeze alan güvenli bir masal yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-38",
+      "category": "masal",
+      "label": "Bir tavşanın ilk yalnız alışverişi, küçük bir güven ve sorumluluk macerası olsun.",
+      "brief": "Tavşan çok yakın bir tezgâhtan ekmek almak üzere ailesinden küçük bir görev alsın. Yol üzerindeki tanıdık ayrıntılar ona güven versin ve unuttuğu şeyi sormasına yardımcı olsun. Tehlikeli yabancılar veya kaybolma gerilimi yerine, küçük kararsızlıklara yer ver. Eve dönüşünde övgüden çok kendi başardığını fark ettiği içten bir sevinç bulunsun.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-39",
+      "category": "masal",
+      "label": "Bir kar tanesi, diğerlerine benzemediği için üzülürken birlikte bir örtü oluşturduklarını görsün.",
+      "brief": "Kar tanesi, biçimini başka tanelerle karşılaştırarak kendini eksik sansın. Düşerken karşılaştığı tanelerin de farklı izler bıraktığını fark etsin. Yerde bir araya geldiklerinde herkesin şekli ortak bir güzelliğin parçası olsun. Aynılık aramadan aidiyet bulmayı, yumuşak ve sakin görüntülerle anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-40",
+      "category": "masal",
+      "label": "Bir çocuğun ilk gözlüğü, dünyadaki küçük ayrıntılarla yeni bir dostluk başlatsın.",
+      "brief": "Çocuk yeni gözlüğüne alışırken yüzünde yabancı bir şey varmış gibi hissetsin. Güvendiği biriyle yürüyüşe çıktığında yapraktaki çizgileri ve uzaktaki kuşu daha rahat fark etsin. Gözlüğü sihirli üstünlük sağlamasın; günlük hayatı kolaylaştıran bir destek olarak kalsın. Değişen görünüşünü benimsemesini sıcak, gösterişsiz sahnelerle anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-41",
+      "category": "masal",
+      "label": "Bir müzik kutusu, aynı melodiyi farklı duygularla söylemeyi öğrensin.",
+      "brief": "Kutu her gün neşeli bir şarkı çalsın, fakat üzgün arkadaşına bunun iyi gelmediğini fark etsin. Şarkının hızını, sesini ve aralarını değiştirerek farklı eşlikler denesin. Arkadaşının duygusunu hemen düzeltmek zorunda olmadığını öğrensin. Dinlemenin ve yanında durmanın da bir armağan olduğunu, yumuşak bir müzik masalıyla göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-42",
+      "category": "masal",
+      "label": "Bir çocuğun balkondaki küçük bostanı, komşular arasında yeni bir arkadaşlık kursun.",
+      "brief": "Çocuk balkonunda yetişen ilk domatesi kiminle paylaşacağını düşünürken komşularını tanısın. Biri saksı, biri toprak, biri bakım bilgisi getirerek bostana katkı versin. Küçük alanın bolluğunu mucizevi hasatla değil, ortak emekle anlat. Sofrada yenilen birkaç domatesin herkese büyük bir yakınlık hissettirdiği bir son kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-43",
+      "category": "masal",
+      "label": "Kendi adını beğenmeyen bir kuş, adının taşıdığı güzel anıları öğrensin.",
+      "brief": "Kuş adını başkalarının adlarıyla karşılaştırıp değiştirmek istesin. Ailesinden ve arkadaşlarından, onun adıyla hatırladıkları küçük anıları dinlesin. Yeni bir ad seçme isteğini yasaklama; adın değerini sevgi ve deneyimle ilişkilendir. Son kararı kuşa bırakarak, kendini tanımaya alan açan bir masal yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-44",
+      "category": "masal",
+      "label": "Denizin dibindeki sessiz bir kütüphane, her canlıya farklı biçimde hikâye anlatsın.",
+      "brief": "Kütüphanedeki kitaplar kimi canlıya sesle, kimine resimle, kimine dokunmayla açılsın. Yeni gelen bir canlı kendisine uygun kitabı bulamayınca diğerleri yardım etmeye çalışsın. Birlikte yeni bir anlatma biçimi geliştirsinler ve kütüphaneyi değiştirsinler. Herkesin katılabilmesinin farklı yollar gerektirebileceğini, büyülü ama anlaşılır bir keşifle göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-45",
+      "category": "masal",
+      "label": "Bir çocuğun valizi, taşınırken geride bırakmadığı anıları taşısın.",
+      "brief": "Çocuk yeni eve giderken bütün sevdiği eşyaları valize sığdırmak istesin. Ailesiyle hangi anıları resme, hangilerini bir şarkıya dönüştürebileceğini denesin. Eski evini özlemesini hemen geçecek bir sorun sayma. Yeni odada açtığı küçük bir köşenin geçmişle geleceği birlikte barındırdığı sıcak bir son yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-46",
+      "category": "masal",
+      "label": "Rüzgârı saklamaya çalışan bir çocuk, özgür bırakmanın da sevgi olduğunu fark etsin.",
+      "brief": "Çocuk çok sevdiği esintiyi bir kavanoza almak istesin. Rüzgâr durduğunda uçurtmaların, yaprakların ve serinliğin de eksildiğini fark etsin. Kavanozu açarken kaybetmek yerine birlikte yaşamanın başka bir yolunu bulsun. Sahip olmayı sevmekle eşitlemeyen, hareketli ve hafif bir masal anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-47",
+      "category": "masal",
+      "label": "Bir fener, en parlak ışık olmak yerine doğru yere ışık tutmayı öğrensin.",
+      "brief": "Küçük fener şenlikte büyük lambalar arasında sönük kaldığını düşünsün. Bir çocuğun yere düşen küçük düğmesini bulmasına yardım edince ışığının başka bir işe yaradığını görsün. Parlaklığını artıran mucizeler yerine, dikkat ve yakınlıkla değer kazansın. Gösterişten uzak ama içten bir başarı duygusuyla masalı tamamla.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-48",
+      "category": "masal",
+      "label": "Bir penguen, buz üzerinde dans ederken kendi dengesini keşfetsin.",
+      "brief": "Penguen arkadaşlarının gösterdiği hareketleri yapamayınca geride durmayı seçsin. Daha yavaş adımlarla çalıştığında bedenine uygun bir ritim bulsun. Arkadaşları onun hareketlerini kopyalamak yerine ortak dansa farklı adımlar eklesin. Bedenler arasındaki farkları başarısızlık saymadan, birlikte hareket etmenin neşesini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-49",
+      "category": "masal",
+      "label": "Bir çocuğun unuttuğu ninni, ailece yeniden yazılan bir şarkıya dönüşsün.",
+      "brief": "Çocuk sevdiği ninninin bir bölümünü hatırlayamayınca uyumakta zorlandığını söylesin. Ailesindeki herkes hatırladığı küçük bir parçayı paylaşsın ve boş kalan yere yeni bir dize eklesin. Ninni eski hâlinin aynısı olmasa da tanıdık bir güven taşısın. Yavaşlayan sesler ve rahatlatıcı ayrıntılarla, huzurlu bir uyku masalı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "masal-50",
+      "category": "masal",
+      "label": "Bir orman şenliğinde hiçbir hayvan seyirci kalmasın; herkes kendine uygun bir rol bulsun.",
+      "brief": "Şenlik hazırlığında yüksek sesleri sevmeyen, hızlı koşamayan ve kalabalıkta çekinen hayvanlar da yer alsın. Onlara hazır roller dayatmak yerine hangi işi yapmak istediklerini sor. Hazırlıklar bu cevaplara göre değişsin ve her katkı görünür olsun. Kutlamayı en gösterişli kişinin başarısı değil, birlikte kurulan rahat bir alan olarak anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-01",
+      "category": "hikaye",
+      "label": "Tekerleğin hiç icat edilmediği bir dünyada, uzak bir şehre ulaşmanın yolu aransın.",
+      "brief": "Tekerleksiz bir toplumun taşımacılığını, sokaklarını ve mesleklerini tutarlı biçimde kur. Bir kuryenin acil ama kişisel bir teslimatı, bu düzenin sınırlarını görünür kılsın. Çözümü gizlice tekerlek icat ederek kolaylaştırma; mevcut malzemeler ve toplumsal işbirliğiyle gelişsin. Dünya fikrini açıklama metnine dönüştürmeden, yolculuk boyunca değişen bir ilişki üzerinden anlat.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-02",
+      "category": "hikaye",
+      "label": "Paranın hiç icat edilmediği bir dünyada, emeğin ve adaletin değeri tartışılsın.",
+      "brief": "Paranın bulunmadığı toplumda ihtiyaçların nasıl karşılandığına dair anlaşılır bir düzen oluştur. Bir bakım çalışanı, görünmez emeğinin karşılıksız kaldığını fark ederek ortak paylaşım sistemini sorgulasın. Takası kusursuz çözüm sayma; güvenin, ayrıcalığın ve kıtlığın etkilerini karakter seçimleriyle göster. Çatışma, hazır bir ütopya veya felaket yerine emek ve yakınlık arasında somut bir karar doğursun.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-03",
+      "category": "hikaye",
+      "label": "İnsanlık Dünya yerine Mars’ta doğmuş olsaydı, ilk okyanus hayali nasıl kurulurdu?",
+      "brief": "İnsanların Mars'ta ortaya çıktığı varsayımını açıkça kurgu kabul ederek kendi yaşam düzenini oluştur. Hiç deniz görmemiş bir haritacı, sıvı suyla ilgili bir keşif nedeniyle ailesinin gelecek planını değiştirmek zorunda kalsın. Kaynaklar, barınma ve toplumsal alışkanlıklar bu dünyanın koşullarından doğsun. Dünya'yı gizli gerçek yuva yapan alışılmış dönüş yerine, Mars'a ait bir aidiyet hikâyesi anlat.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-04",
+      "category": "hikaye",
+      "label": "Sesli konuşmanın hiç gelişmediği bir dünyada, iki yabancı nasıl güven kurardı?",
+      "brief": "İnsanların işaret, dokunuş, yazı veya başka kanallarla zengin biçimde iletişim kurduğu bir toplum tasarla. Birlikte çalışmak zorunda kalan iki kişinin ortak işaretleri aynı anlamda yorumlamaması olayları başlatsın. Sesli konuşmanın yokluğunu düşünce ya da kültür eksikliği gibi sunma. Güvenin, dikkat ve karşılıklı öğrenmeyle oluştuğu güçlü bir ilişki hikâyesi kur.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-05",
+      "category": "hikaye",
+      "label": "Kimsenin yalan söyleyemediği bir dünyada, mahremiyet nasıl korunurdu?",
+      "brief": "Yalan söylemenin fiziksel olarak mümkün olmadığı dünyada susma ve sınır koyma hakkının nasıl düzenlendiğini düşün. Bir arabulucu, dürüstlüğün başkasını incitmek için kullanıldığı bir anlaşmazlığa dahil olsun. Her gerçeğin herkese söylenmesi gerektiği varsayımını karakterlerin gerçek ihtiyaçlarıyla sınamaya aç. Sonuç, dürüstlük ile şefkat arasında basit bir kazanan ilan etmeden gelişsin.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-06",
+      "category": "hikaye",
+      "label": "Uykunun hiç olmadığı bir dünyada, dinlenme hakkını kim savunurdu?",
+      "brief": "İnsanların uyumadığı fakat yorulup dinlenmeye ihtiyaç duyduğu bir toplum oluştur. Kesintisiz çalışan bir şehirde dinlenme alanı açmak isteyen bir mimarın hayatını merkeze al. Verimlilik baskısının dostluklara ve bakım ilişkilerine etkisini gündelik sahnelerle göster. Biyolojik varsayımı tutarlı koruyarak, durabilmenin değerini kişisel bir mücadeleyle anlat.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-07",
+      "category": "hikaye",
+      "label": "Yerçekimi her akşam azalsaydı, bir mahallenin hayatı nasıl değişirdi?",
+      "brief": "Yerçekiminin belirli saatlerde azaldığı bir dünyanın açık ve değişmeyen kurallarını kur. Çatı onarımında çalışan bir usta, akşamları güvenli geçiş sağlayan ortak düzenin bozulmasıyla karşılaşsın. Hafifleyen nesneler kadar sorumlulukların ve eşitsizliğin de kimlere yüklendiğini göster. Gerilimi rastgele fizik değişikliklerinden değil, bu kurallara verilen insan tepkilerinden üret.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-08",
+      "category": "hikaye",
+      "label": "Hiçbir kentin duvarı olmasaydı, insan kendine ait bir yer nasıl bulurdu?",
+      "brief": "Evlerin kapalı duvarlar yerine başka sınırlarla ayrıldığı bir toplum tasarla. Kalabalık bir ailede yaşayan genç bir ses tasarımcısı, yalnız kalabileceği alanı ararken yeni bir ilişki kursun. Mahremiyetin mimari, alışkanlık ve karşılıklı izinle nasıl sağlandığını sahnelerde göster. Açıklayıcı bir şehir turu yerine, kişisel bir ihtiyacın somut sonuçlarını izle.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-09",
+      "category": "hikaye",
+      "label": "Kitapların hiç basılmadığı bir dünyada, bir hikâye kuşaklara nasıl ulaşırdı?",
+      "brief": "Bilginin basılı kitaplar yerine başka yollarla saklandığı köklü bir kültür oluştur. Yaşlanan bir anlatıcının çırağı, unutulmak üzere olan bir hikâyeyi aktarmak için farklı tanıkları bulsun. Sözlü aktarımı yoksul veya ilkel gösterme; kendi uzmanlıklarını ve güven sorunlarını geliştir. Yolculuk sonunda değişen şey yalnızca kayıt yöntemi değil, hikâyenin kime ait olduğu olsun.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-10",
+      "category": "hikaye",
+      "label": "İnsanlar yalnızca bir şeyi tamamen anladıklarında onu görebilseydi, dünya nasıl görünürdü?",
+      "brief": "Anlamayla görme arasında bağ kuran fantastik kuralı açıkça tanımla. Genç bir zanaatkâr, sevdiği kişinin yaptığı işi görememesi nedeniyle aralarındaki mesafeyi fark etsin. Bilmek ile anlamak arasındaki fark somut deneyimler üzerinden gelişsin. Kuralı son anda bozmak yerine, karakterin dinleme ve emek verme süreciyle yeni bir görüş oluştur.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-11",
+      "category": "hikaye",
+      "label": "Denizlerin tatlı su olduğu bir dünyada, yaşam ve ticaret nasıl örgütlenirdi?",
+      "brief": "Denizlerin tatlı su olduğu varsayımsal dünyada ekolojik ve toplumsal sonuçları tutarlı bir çerçevede düşün. Bir kıyı kooperatifinin yeni üyesi, ortak kaynak kullanımındaki anlaşmazlıkla karşılaşsın. Suyu sonsuz ve herkes için eşit erişilebilir kabul etme; erişim yollarının getirdiği güç farkını göster. Hikâyeyi bir ailenin geçimiyle kamusal sorumluluk arasındaki seçime bağla.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-12",
+      "category": "hikaye",
+      "label": "İnsanlar bütün anılarını paylaşabilseydi, unutulmak isteyen biri ne yapardı?",
+      "brief": "Anı paylaşımının kapsamını, gönüllülüğünü ve sınırlarını belirleyen bir teknoloji kur. Bir arşiv çalışanı, başkasının hayatında kalmış kendi anısını geri çekmek isteyince beklenmedik bir anlaşmazlık yaşasın. Ortak anılarla kişisel mahremiyetin çatışmasını yakın ilişkiler içinde göster. Gizli suç veya hafıza kaybı kalıbına sığınmadan, rıza ve aidiyet üzerine özgün bir olay örgüsü yaz.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-13",
+      "category": "hikaye",
+      "label": "Bütün insanlar yüz yıl aynı yaşta kalsaydı, büyümek ne anlama gelirdi?",
+      "brief": "Bedenlerin uzun süre değişmediği fakat deneyimin biriktiği toplumun aile ve iş düzenini oluştur. Aynı görünüşteki bir anne ile kızı, rollerini değiştirecek ortak bir işe girişsin. Yaşı görünüşten tahmin etmenin mümkün olmamasını sosyal ilişkilerde gerçek bir etken yap. Dönüşümü fiziksel yaşlanma yerine, karakterlerin sorumluluk ve özgürlük seçimleriyle göster.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-14",
+      "category": "hikaye",
+      "label": "Mevsimler insanların ortak kararlarıyla değişseydi, baharı kim seçerdi?",
+      "brief": "Mevsimlerin belli kurallarla toplumsal oylamaya bağlı olduğu fantastik bir dünya kur. Bahar isteyen bir öğretmenle daha uzun kışa ihtiyaç duyan bir üretici, aynı mahallede birlikte karar almak zorunda kalsın. Her isteğin ekonomik ve duygusal nedenlerini görünür tut. Tek doğru mevsim ilan etmek yerine, anlaşmanın bedelleriyle yaşayan bir ilişki hikâyesi yaz.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-15",
+      "category": "hikaye",
+      "label": "Hiç kimse mülkiyet sahibi olamasaydı, aile yadigârı bir eşya kime ait olurdu?",
+      "brief": "Bütün eşyaların ortak kullanımda olduğu, fakat kişisel bağların sürdüğü bir toplum oluştur. Bir tamirci, ailesinden kalan bir nesnenin başka bir ihtiyaca ayrılmasına itiraz etsin. Ortak faydayı ve duygusal bağlılığı karikatürleştirmeden iki tarafın gerekçelerini geliştir. Çözüm, eşyanın gerçek işlevi ve insanların birbirine gösterdiği özen üzerinden doğsun.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-16",
+      "category": "hikaye",
+      "label": "İnsanlar göç etmek zorunda olmasaydı, gitmek isteyen biri nasıl karşılanırdı?",
+      "brief": "Bütün temel ihtiyaçların yerelde karşılandığı fakat özgürce seyahat edilebildiği bir dünya düşün. Bir genç, zorunlu bir neden olmadan başka yerde yaşamak istediğini ailesine açıklasın. Gitme arzusunu ihanet, kalmayı da korkaklık saymadan iki seçimin duygusal karşılığını kur. Yolculuğun asıl çatışması ekonomik zorunluluk değil, bağların yeniden biçimlenmesi olsun.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-17",
+      "category": "hikaye",
+      "label": "Gündüz ve gece hiç değişmeseydi, iki toplum nasıl buluşurdu?",
+      "brief": "Bir bölgesi sürekli aydınlık, diğeri sürekli karanlık olan bir gezegende iki yaşam düzeni oluştur. Ortak bir üretim projesine seçilen iki kişi çalışma ve dinlenme alışkanlıklarını uzlaştırmaya çalışsın. Bölgeleri iyi ve kötü olarak ayırma; her birinin güçlü yanlarını ve sınırlamalarını göster. İlişkileri, çevresel farkları gerçek bir gündelik sorun olarak aşarken gelişsin.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-18",
+      "category": "hikaye",
+      "label": "İnsanların gölgeleri bağımsız meslekler seçseydi, aynı hayatı paylaşmak mümkün olur muydu?",
+      "brief": "Gölgenin kişiden ayrılabildiği ama belirli sorumlulukları paylaştığı fantastik düzeni tanımla. Bir fırıncı ile müzik yapmak isteyen gölgesinin zaman ve gelir anlaşmazlığını izle. Gölgeyi gizli kötülük veya bilinçaltı açıklamasına indirgeme. Bir arada yaşamanın pazarlık ve saygı gerektirdiği, oyuncu ama duygusal derinliği olan bir hikâye kur.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-19",
+      "category": "hikaye",
+      "label": "Her insan hayatında yalnızca bir yolculuk yapabilseydi, nereye giderdi?",
+      "brief": "Yaşam boyunca yalnızca bir uzun yolculuğa izin veren dünyanın gerekçesini ve kurallarını oluştur. Yolculuk hakkını yakınını ziyaret etmekle kendi hayalini gerçekleştirmek arasında kullanacak bir karakter seç. İki seçeneği de anlamlı kişiler ve somut ihtiyaçlarla destekle. Çözüm kuralın gizlice kaldırılmasına değil, karakterin seçiminin uzun vadeli sonuçlarına dayansın.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-20",
+      "category": "hikaye",
+      "label": "İnternet hiç ortaya çıkmasaydı, uzak iki arkadaş birbirinin hayatında nasıl kalırdı?",
+      "brief": "İnternetsiz ama kendi iletişim araçları gelişmiş çağdaş bir dünya kur. İki arkadaşın ortak bir işi farklı şehirlerden sürdürmesi, haberleşmenin gecikmesini belirleyici hâle getirsin. Eksik bilgi nedeniyle oluşan yanlış anlamaları tesadüf yığınına dönüştürme. Dostluğu, bekleme süresinde verilen pratik kararların sonuçları üzerinden anlat.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-21",
+      "category": "hikaye",
+      "label": "Şehirler her yıl yer değiştirseydi, ev hissi neye bağlanırdı?",
+      "brief": "Yılın belirli zamanında konum değiştiren şehirlerin ulaşım ve ortak yaşam kurallarını tutarlı tasarla. Bir okul aşçısı, taşınma sırasında mahalle sofrasını korumaya çalışsın. Ev fikrini bina kadar kokulara, alışkanlıklara ve insanlara bağla. Şehir hareketini gösterişli fon olmaktan çıkarıp karakterin gerçek seçimlerine etki eden bir koşul yap.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-22",
+      "category": "hikaye",
+      "label": "İnsanlar renkleri yalnızca birlikteyken görebilseydi, yalnızlık nasıl yaşanırdı?",
+      "brief": "Rengin görünmesinin belirli bir birlikte olma koşuluna bağlı olduğu dünyayı kur. Tek başına çalışmayı seven bir dokumacı, ortak üretime davet edildiğinde kendi sınırlarını korumaya çalışsın. Yalnızlığı kusur sayma; yalnız zamanın ve yakınlığın farklı değerlerini göster. Görsel kuralı ilişkiyi zorlayan bir araç olarak kullanırken, duygusal çözümü karşılıklı saygıyla oluştur.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-23",
+      "category": "hikaye",
+      "label": "Herkes doğduğu yerdeki dili değil, seçtiği topluluğun dilini konuşsaydı, aidiyet nasıl değişirdi?",
+      "brief": "Topluluğa katılmanın yeni bir dili öğrenmeyi veya kazanmayı gerektirdiği bir dünya oluştur. İki topluluğa birden bağlı kalmak isteyen bir kişinin günlük hayatını izle. Dil değişiminin iş, aile ve dostluk ilişkilerinde farklı bedelleri olsun. Hikâyeyi doğru kimliği bulma dersine indirgemeden, birden fazla yere ait olmanın gerilimini anlat.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-24",
+      "category": "hikaye",
+      "label": "Çocuklar yetişkinlere meslek seçseydi, bir aile bu düzene nasıl uyum sağlardı?",
+      "brief": "Belirli bir yaş grubunun yetişkinlerin işlerini seçtiği alternatif toplumun işleyişini ve sınırlarını açıkla. Seçilen yeni işi sevmeyen bir ebeveynle kararını savunan çocuğunu merkeze al. Çocukları bilge, yetişkinleri beceriksiz klişesine dönüştürmeden her iki tarafın eksik bilgisini göster. Birlikte sorumluluk almayı gerektiren somut bir iş üzerinden çatışmayı geliştir.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-25",
+      "category": "hikaye",
+      "label": "İnsanlar geleceğe söz vermeden bir şey satın alamasaydı, güven nasıl ölçülürdü?",
+      "brief": "Alışverişin gelecekte tutulacak kişisel sözlere bağlı olduğu bir ekonomik düzen tasarla. Bir müzisyen, ailesinin ihtiyacını karşılamak için veremeyeceği bir sözü vermeye yaklaşsın. Sistemin günlük kolaylıklarını ve insanları sıkıştıran yanlarını birlikte göster. Sonucu bir büyük dolandırıcılık yerine, sözün bedeli ve dayanışmanın sınırları üzerinden kur.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-26",
+      "category": "hikaye",
+      "label": "Dünyada hiçbir harita çizilmeseydi, yollar nasıl hatırlanırdı?",
+      "brief": "Yön bilgisinin resimli haritalar yerine ritim, koku veya anlatıyla aktarıldığı bir kültür oluştur. Yeni bir güzergâh öğrenen karakterin belleğiyle deneyimi arasındaki fark yolculuğu etkilesin. Bu yöntemlerin kendi uzmanlıklarını göster; yazılı harita bulunmamasını cehalet gibi sunma. Karakterin başkalarının bilgisine güvenmeyi öğrendiği, olaylı ama tutarlı bir hikâye yaz.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-27",
+      "category": "hikaye",
+      "label": "İnsanlar isimlerini her yıl değiştirseydi, eski bir dost nasıl bulunurdu?",
+      "brief": "İsimlerin yıllık değiştiği toplumda kayıt, tanışma ve hatırlama pratiklerini tasarla. Bir kişi, yıllar önce yarım bıraktığı ortak işi tamamlamak için eski dostuna ulaşmaya çalışsın. Arayış bir kimlik bilmecesinden çok, dostluğun hangi özelliklerle tanındığını açığa çıkarsın. İsimlerden bağımsız alışkanlıklar ve ortak emek, buluşmanın duygusal temelini oluştursun.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-28",
+      "category": "hikaye",
+      "label": "Ağaçlar insanların şehir planlarına oy verebilseydi, bir mahalle nasıl kurulurdu?",
+      "brief": "Ağaçların belirli bir yöntemle görüş bildirdiği fantastik toplumda ortak karar süreci oluştur. Yeni bir sağlık merkezine ihtiyaç duyan mahalleyle eski korunun talepleri karşı karşıya gelsin. Çevreyi ve insan ihtiyacını tek taraflı iyi veya kötü ilan etme. Çatışmayı tasarım, bakım ve uzlaşmanın somut bedelleri üzerinden geliştiren özgün bir hikâye yaz.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-29",
+      "category": "hikaye",
+      "label": "Bütün meslekler her yıl kura ile değişseydi, deneyimin değeri nasıl korunurdu?",
+      "brief": "Mesleklerin yıllık kura ile dağıtıldığı toplumda eğitim ve güvenlik düzenini açıkça kur. İşini çok seven bir usta, yeni mesleğine geçerken bilgisini devretmek zorunda kalsın. Yeni başlayan birinin farklı bakışı hem zorlayıcı hem yararlı sonuçlar doğursun. Ustalığın sahip olmak mı paylaşmak mı olduğu sorusunu, iki karakterin ortak işi üzerinden anlat.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-30",
+      "category": "hikaye",
+      "label": "Bir günü yeniden yaşama hakkı herkese yalnızca bir kez verilseydi, kim kullanırdı?",
+      "brief": "Bir günü tekrarlamanın kapsamını ve sonrasını belirleyen açık kurallar koy. Hak sahibi kişi, büyük bir felaket yerine küçük ama önemli bir ilişki anını düzeltmek istesin. Değişikliğin başkalarının kararlarını da etkilemesi seçimini karmaşıklaştırsın. Kusursuz geçmiş üretmek yerine, sonuçlarıyla yaşamayı öğrenen bir karakter hikâyesi kur.",
+      "counterfactual": true
+    },
+    {
+      "id": "hikaye-31",
+      "category": "hikaye",
+      "label": "Robinson Crusoe’yu çağrıştıran bir hayatta kalma öyküsü, dayanıklılık kadar işbirliğini de anlatsın.",
+      "brief": "Issız bir yerde kalmış karakterin barınma, su ve yiyecek sorunlarını somut ayrıntılarla kur. Karakterin becerileri kadar sınırlamaları ve yanlış kararları da sonuç doğursun. Kurtuluşu tesadüfi mucizeye bağlama; gözlem, deneme ve başkalarının emeğine değer verme öne çıksın. Tanıdık olayları kopyalamadan, yalnızlığın kişiyi nasıl değiştirdiğini anlatan özgün bir macera yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-32",
+      "category": "hikaye",
+      "label": "Tom Amca’nın Kulübesi’ni çağrıştıran insan onuru ve dayanışma, özgün bir hikâyenin kalbi olsun.",
+      "brief": "Eşitsiz bir düzende birbirine destek olan insanların kişisel seçimlerini merkeze al. Yardımı üstün konumdaki bir kurtarıcının başarısına indirgeme; destek alanların iradesi ve becerileri belirleyici olsun. Tarihsel bir bağlam seçilirse gerçek koşulları romantikleştirmeden araştırmaya dayalı biçimde ele al. Tanıdık karakterleri yeniden kullanmadan, şefkatin ve adalet arayışının bedelini taşıyan bir anlatı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-33",
+      "category": "hikaye",
+      "label": "Bir dağ köyünde ortak fırını yeniden açan iki eski arkadaşın hesaplaşması anlatılsın.",
+      "brief": "Yıllar sonra aynı köye dönen iki arkadaş, kapanmış ortak fırını işletmeye karar versin. Aralarındaki eski kırgınlık, para paylaşımı ve çalışma biçimleri üzerinden yeniden belirsin. Çatışmayı saklı bir sırla değil, geçmişteki davranışların bugün süren etkisiyle kur. Fırının açılması ilişkilerinin otomatik düzelmesi olmasın; onarım emek ve dürüst seçimler gerektirsin.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-34",
+      "category": "hikaye",
+      "label": "Bir kadın, ailesinin teknesini satmak yerine kıyıdaki kadınlarla yeni bir işe dönüştürsün.",
+      "brief": "Geçim sıkıntısı içindeki bir tekne sahibi, komşularıyla küçük bir kıyı hizmeti kurmayı denesin. Ortaklıkta risk, emeğin karşılığı ve karar verme hakkı üzerine anlaşmazlıklar çıksın. Deniz manzarasını dekor yerine çalışma koşullarını etkileyen canlı bir çevre yap. Başarıyı bir zengin yatırımcının gelişiyle değil, ortakların değişen ilişkileri ve somut kararlarıyla oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-35",
+      "category": "hikaye",
+      "label": "Bir tiyatro grubunun tek gecelik gösterisi, eski dostlukları beklenmedik biçimde değiştirsin.",
+      "brief": "Amatör bir ekip, mahalle salonunu kaybetmeden önce son bir gösteri hazırlasın. Provalarda kimin görünür olduğu ve kimin emeğinin unutulduğu üzerine gerilim biriksin. Gösteri günü yaşanan aksilikler karakterlerin önceki seçimlerinden doğsun. Alkışla bütün sorunları silmeden, birlikte çalışmanın bıraktığı kalıcı değişimi anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-36",
+      "category": "hikaye",
+      "label": "Bir aşçı, babasının tariflerini aynen sürdürmekle kendi mutfağını kurmak arasında kalsın.",
+      "brief": "Aile lokantasını devralan aşçı, tanıdık müşterilerle yeni fikirleri arasında sıkışsın. Tarifler geçmişin sıcaklığını taşısın, fakat değişmeden korunmaları tek doğru seçenek olmasın. Maliyetler, çalışma temposu ve ekip ilişkileri kararlarını gerçek biçimde zorlasın. Yemek kokularıyla ve küçük jestlerle, mirası dönüştürmenin duygusal bedelini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-37",
+      "category": "hikaye",
+      "label": "Bir bahçe anlaşmazlığı, birbirini hiç dinlememiş iki komşuyu aynı masaya oturtsun.",
+      "brief": "İki komşu ortak avluyu farklı ihtiyaçlarla kullanmak istesin. Gürültü, su ve gölge üzerine küçük sorunlar geçmiş önyargılarını büyütsün. Her karakterin makul gerekçesini kendi gündelik hayatında göster. Çözüm birinin tamamen vazgeçmesinden değil, birlikte geliştirdikleri ama emek isteyen bir düzenle doğsun.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-38",
+      "category": "hikaye",
+      "label": "Bir müzisyen, yıllardır çalamadığı eseri bir çocuğun beklenmedik yorumuyla yeniden keşfetsin.",
+      "brief": "Bir müzisyen öğretmen, kendisi için önemli bir eseri öğrenci konserine hazırlasın. Öğrencisinin farklı yorumu, kontrol etme isteğiyle dinleme becerisini karşı karşıya getirsin. Çocuğu mucizevi dâhi yapma; öğrenmenin sabrını ve küçük denemelerini göster. Müzisyenin dönüşümünü sahne başarısına değil, müziğe ve öğretmeye yeniden bağlanmasına dayandır.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-39",
+      "category": "hikaye",
+      "label": "Bir spor takımında yedek kalan oyuncu, liderliğin başka bir yolunu bulsun.",
+      "brief": "Küçük bir takımda forma şansı azalan oyuncunun öfkesini ve sorumluluklarını anlat. Takımın zorlandığı dönemde gözlem ve iletişim becerileri önem kazansın. Onu son saniyede tek başına zafer getiren kahramana dönüştürme. Rekabetle aidiyet arasındaki gerilimi, takım arkadaşlarıyla değişen ilişkileri üzerinden geliştir.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-40",
+      "category": "hikaye",
+      "label": "Yeni bir şehre taşınan bir çevirmen, tek bir kelimenin yarattığı anlaşmazlığı çözmeye çalışsın.",
+      "brief": "Bir çevirmen, küçük bir mahalle projesinde tarafların aynı kelimeyi farklı anlamlarda kullandığını fark etsin. Sorun sözlükten bakılarak değil, her grubun deneyimini dinleyerek anlaşılabilsin. Çevirmenin kendi yerleşme ve aidiyet arayışı işiyle iç içe ilerlesin. Dilin taşıdığı güç ve yakınlığı, doğal diyaloglar ve somut kararlarla anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-41",
+      "category": "hikaye",
+      "label": "Bir tamir atölyesinde, yıllar önce ayrılmış iki kardeş birlikte çalışmak zorunda kalsın.",
+      "brief": "Kardeşler devraldıkları atölyenin borçlarını ve birikmiş işlerini çözmek için kısa süreli ortaklık kursun. Birinin hız, diğerinin özen beklentisi günlük işlerde çatışma doğursun. Aile geçmişini uzun açıklamalar yerine aletlere, alışkanlıklara ve müşteri karşılaşmalarına dağıt. Sonuçta birlikte kalmak da ayrılmak da gerçek bir seçim olarak ağırlık taşısın.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-42",
+      "category": "hikaye",
+      "label": "Bir kasabanın eski sinemasını kurtarmaya çalışan gençler, aynı gelecek için farklı hayaller kursun.",
+      "brief": "Gençler kapanacak sinemada bir etkinlik düzenleyerek destek toplamaya çalışsın. Birinin kasabadan gitmek, diğerinin burada kalmak istemesi ortak projeyi zorlasın. Mekânı gizli geçitler veya geçmiş sırlarla değil, yaşayan emek ve hatıralarla anlamlı kıl. Projenin sonucu kadar, birbirlerinin geleceğine saygı duymayı öğrenmeleri de önem taşısın.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-43",
+      "category": "hikaye",
+      "label": "Bir posta dağıtıcısının emeklilik haftası, mahallenin birbirine bağlı hayatlarını görünür kılsın.",
+      "brief": "Bir dağıtıcı son çalışma haftasında güzergâhındaki insanlarla alışılmış karşılaşmalarını yaşasın. Yerine başlayacak kişi farklı bir hizmet düzeni önerdiğinde, eski alışkanlıkların değeri tartışılsın. Her kapıyı yeni bir gizem yapma; küçük ihtiyaçları ortak bir olay çevresinde bağla. Emeklilik duygusunu sentimental bir vedadan çok, ilişkilerin yeni biçimde sürmesi üzerinden anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-44",
+      "category": "hikaye",
+      "label": "Bir düğün hazırlığında, iki aile geleneklerini yarıştırmak yerine ortak bir dil arasın.",
+      "brief": "Evlenecek çift, ailelerin farklı kutlama beklentilerini uzlaştırmaya çalışsın. Bütçe ve küçük ritüeller üzerinden büyüyen gerilim, karakterlerin sınır koyma biçimlerini ortaya çıkarsın. Kültürleri karikatürleştirmeden, her geleneğin kişisel anlamını göster. Mizah ve duyguyu, çiftin gerçekten kendilerine ait bir gün kurma çabasında buluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-45",
+      "category": "hikaye",
+      "label": "Bir gezgin değil, her gün aynı mahallede çalışan bir kurye unutulmaz bir macera yaşasın.",
+      "brief": "Kuryenin sıradan rotasında üstlendiği ek bir sorumluluk, günün bütün planını değiştirsin. Engeller şehir altyapısı, zaman baskısı ve başkalarına verilen sözlerden doğsun. Tesadüfleri sınırlı tut; her yeni durumu önceki kararın anlaşılır sonucu yap. Maceranın sonunda karakterin yaşadığı şehre bakışı ve bir ilişkisi kalıcı biçimde değişsin.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-46",
+      "category": "hikaye",
+      "label": "Bir seramik ustasının son çırağı, ustanın yöntemlerini sürdürmek yerine kendi izini arasın.",
+      "brief": "Usta ile çırak birlikte yetiştirmeleri gereken bir sipariş üzerinde çalışsın. Çırağın önerdiği teknik, ustanın hem deneyimini hem kimlik duygusunu zorlasın. Malzemenin gerçek sınırları, denemeleri ve hataları olay örgüsünün parçası olsun. İlişkiyi ustanın tamamen yanılmasıyla değil, iki tarafın birbirinden öğrenmesiyle derinleştir.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-47",
+      "category": "hikaye",
+      "label": "Bir aile, miras kalan küçük dükkânı kapatıp kapatmama kararında birbirini yeniden tanısın.",
+      "brief": "Aile üyeleri aynı dükkânı geçim, hatıra ve yük olarak farklı biçimlerde görsün. Birlikte yapılan son envanter, gündelik eşyalara bağlı küçük çatışmaları açığa çıkarsın. Saklı belge veya beklenmedik servetle çözüm üretme. Kararı herkesin vazgeçtiği ve koruduğu şeylerin görünür olduğu, içten bir aile hikâyesine dönüştür.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-48",
+      "category": "hikaye",
+      "label": "Bir sahil festivalinde, birbirini sevmeyen iki gönüllü aynı görevi paylaşsın.",
+      "brief": "İki gönüllü festivalin erişilebilirlik düzenini birlikte kurmakla görevlendirilsin. Başlangıçtaki önyargıları, ziyaretçilerin gerçek ihtiyaçlarıyla karşılaştıkça sınansın. Yakınlıkları bir anda değil, işe yarayan küçük yardımlarla gelişsin. Festivalin canlılığı içinde, gösterişsiz emeğin ve karşılıklı güvenin güçlü bir hikâyesini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-49",
+      "category": "hikaye",
+      "label": "Yıllar sonra üniversiteye başlayan bir ebeveyn, ailesiyle yeni bir denge kursun.",
+      "brief": "Ebeveyn derslere başladığında evdeki görevlerin ve zamanın yeniden paylaşılması gereksin. Yakınları destek olmak istese de alışkanlıklarını değiştirmekte zorlanabilsin. Öğrenme sürecini sürekli başarı gösterisine dönüştürmeden, yorgunluk ve merakı birlikte anlat. Karakterin kendi hayaliyle başkalarına bakım verme arasında kurduğu yeni dengeyi izle.",
+      "counterfactual": false
+    },
+    {
+      "id": "hikaye-50",
+      "category": "hikaye",
+      "label": "Bir radyo programının iki sunucusu, dinleyicilerle birlikte değişen bir şehrin sesini toplasın.",
+      "brief": "İki sunucu kapanmak üzere olan yerel radyoda son bir seri hazırlasın. Hangi seslerin yayınlanacağına dair görüş ayrılıkları, temsil ve kişisel sadakat sorunlarını açığa çıkarsın. Şehri yalnızca nostaljik geçmişle değil, yeni gelenlerin gündelik deneyimleriyle de kur. Son programı her şeyi çözen konuşma yerine, ilişkilerde gerçek bir kararın sonucu yap.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-01",
+      "category": "calisma-kitabi",
+      "label": "Zaman yolculuğu gerçekten mümkün mü; fizik nerede biter, hayal nerede başlar?",
+      "brief": "Zaman yolculuğunu geleceğe ve geçmişe gitme iddialarını ayırarak ele al. Zamanın göreli akışını anlaşılır örneklerle açıklarken gözlem, kuram ve varsayım arasındaki farkı koru. Çelişkileri ve düşünce deneylerini kesinleşmiş teknoloji gibi sunma. Seçilen öğrenme düzeyine uygun sorularla, okurun bir iddiayı hangi kanıtın desteklediğini tartmasını sağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-02",
+      "category": "calisma-kitabi",
+      "label": "İzafiyet nedir; aynı olay neden farklı gözlemcilere farklı görünebilir?",
+      "brief": "Özel ve genel göreliliği önce temel soruları üzerinden birbirinden ayır. Hız, zaman ölçümü ve kütleçekim ilişkilerini gündelik benzetmelerle kur, benzetmelerin sınırlarını da belirt. Formüllerin miktarını kullanıcının seviyesine göre ayarla ve gerekli sembolleri açıkla. Okurun hangi koşulda hangi yaklaşımın işe yaradığını kavrayacağı bir öğrenme akışı tasarla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-03",
+      "category": "calisma-kitabi",
+      "label": "Kuantum bilgisayarlar neden henüz gündelik bir ev aleti değil?",
+      "brief": "Klasik hesaplama ile kuantum hesaplamanın temel farkını sade bir çerçevede kur. Kübit, hata düzeltme ve uygun problem türlerini anlaşılır örneklerle ele al. Güncel kullanım durumu ve teknik sınırlamalar için doğrulanmış, tarihli kaynaklara dayan. Daha güçlü bilgisayar ile her işi daha hızlı yapan bilgisayarın aynı şey olmadığını sorgulatan bir kitap hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-04",
+      "category": "calisma-kitabi",
+      "label": "Işınlanma bulunabilir mi; kuantum ışınlanmasıyla insan taşımak aynı şey mi?",
+      "brief": "Bilimkurgudaki madde taşıma fikriyle kuantum durum aktarımını açıkça ayır. Bir deneyin gerçekten neyi aktardığını ve neyi aktarmadığını adım adım açıkla. Bilgi, enerji ve iletişimle ilgili sınırları abartılı vaatler olmadan ele al. Son bölümde okurun bir haber başlığını bilimsel anlamıyla karşılaştırabileceği değerlendirmeler oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-05",
+      "category": "calisma-kitabi",
+      "label": "Fotosentez nasıl çalışır; bir yaprak ekosistemi nasıl etkiler?",
+      "brief": "Fotosentezi ışık, su, karbondioksit ve canlıların madde alışverişi üzerinden açıkla. Yaprağın yapısıyla sürecin görevlerini seçilen düzeye uygun görsellerle ilişkilendir. Besin ağları ve karbon döngüsü bağlantısını tek nedenli açıklamalara kaçmadan kur. Güvenli gözlemler ve anlamlı örneklerle, küçük bir yaprağın geniş bir sistemdeki yerini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-06",
+      "category": "calisma-kitabi",
+      "label": "Bir ekosistemde tek bir türün azalması neden bütün dengeyi değiştirebilir?",
+      "brief": "Ekosistemi birbirine bağlı canlılar ve cansız koşullar üzerinden tanıt. Birkaç farklı besin ağıyla değişimin doğrudan ve dolaylı etkilerini karşılaştır. Her azalışın aynı sonucu doğuracağını varsayma; yerel koşulları ve belirsizliği görünür tut. Okurun ilişki çizgileri kurarak neden zincirini değerlendirebileceği bir çalışma kitabı tasarla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-07",
+      "category": "calisma-kitabi",
+      "label": "Bir orman yalnızca ağaçlardan mı oluşur?",
+      "brief": "Ormanın toprağını, mikroorganizmalarını, mantarlarını, hayvanlarını ve su ilişkilerini birlikte ele al. Gözle görünen katmanlarla görünmeyen süreçleri anlaşılır bir yapı içinde bağla. Mantar ağlarıyla ilgili iddialarda bilinen bulgularla popüler abartıları ayır. Seçilen seviyeye uygun gözlem sorularıyla, ormanı bir nesne toplamından çok ilişkiler sistemi olarak incelet.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-08",
+      "category": "calisma-kitabi",
+      "label": "Su döngüsü neden yalnızca yağmurdan ibaret değildir?",
+      "brief": "Buharlaşma, yoğunlaşma, yağış ve suyun toprakta hareketini bağlantılı biçimde açıkla. Bir şehir ve doğal bir alan üzerinden suyun izlediği yolları karşılaştır. Su miktarıyla temiz suya erişimin farklı meseleler olduğunu göster. Basit çizimler ve yerel gözlem önerileriyle, okurun bulunduğu yerdeki döngüyü düşünmesini sağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-09",
+      "category": "calisma-kitabi",
+      "label": "Toprak nasıl oluşur; verimli bir toprak neden kolayca geri gelmez?",
+      "brief": "Toprağın oluşumunu kayaçlar, canlılar, iklim ve zaman arasındaki ilişkilerle anlat. Farklı toprakların su tutma ve bitki destekleme özelliklerini karşılaştır. Oluşum hızlarıyla ilgili sayıları koşulları ve kaynaklarıyla sun. Erozyon ve bakım örnekleri üzerinden, toprağın korunmasına dair gerekçeli kararlar ürettiren bir kitap hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-10",
+      "category": "calisma-kitabi",
+      "label": "Arılar azalırsa soframızda neler değişir?",
+      "brief": "Tozlaşmayı, farklı tozlaştırıcıları ve bitkilerin çoğalma yollarını sade biçimde açıkla. Tarımsal ürünler üzerindeki etkileri tür ve bölge farklarını koruyarak değerlendir. Bütün gıdaların aynı ölçüde arılara bağlı olduğu gibi genellemelerden kaçın. Güvenli çevre gözlemleriyle, beslenme ve biyolojik çeşitlilik arasındaki bağı görünür kıl.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-11",
+      "category": "calisma-kitabi",
+      "label": "Bir hücrenin içinde, gözle göremediğimiz nasıl bir düzen vardır?",
+      "brief": "Hücreyi tek bir fabrika benzetmesine hapsetmeden temel yapı ve süreçleri tanıt. Bitki ve hayvan hücrelerinin ortak yanlarıyla farklarını seçilen düzeyde karşılaştır. Görsel ölçekleri ve temsilî renkleri gerçekmiş gibi sunma. Okurun yapı ile işlev arasında bağlantı kurabileceği örnekler ve küçük sorular hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-12",
+      "category": "calisma-kitabi",
+      "label": "DNA neden bir kader değildir?",
+      "brief": "Genetik bilginin nasıl aktarıldığını temel kavramlardan başlayarak açıkla. Kalıtım, çevre ve gen ifadesi arasındaki ilişkileri tek nedenli sonuçlardan kaçınarak ele al. Genetik olasılıkları bireyin geleceği hakkında kesin hükümlere dönüştürme. Kullanıcının seviyesine uygun örneklerle, genetik bir iddianın sınırlarını anlamaya yönelik bir öğrenme akışı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-13",
+      "category": "calisma-kitabi",
+      "label": "Bağışıklık sistemi kendini nasıl savunur?",
+      "brief": "Doğuştan gelen ve edinilmiş savunma süreçlerini temel işlevleriyle ayır. Mikroplar, savunma hücreleri ve bağışıklık belleği arasında anlaşılır bir ilişki kur. Tedavi önerisi vermeden, sağlıkla ilgili açıklamaları güvenilir ve güncel kaynaklara dayandır. Okurun abartılı bağışıklık güçlendirme iddialarını sorgulayabileceği kavramsal bir çalışma kitabı hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-14",
+      "category": "calisma-kitabi",
+      "label": "Mikroorganizmalar yalnızca hastalık mı yapar?",
+      "brief": "Bakteri, mantar ve diğer mikroorganizmaları tek bir kategoriye indirgemeden tanıt. Besin üretimi, ayrıştırma ve canlılarla birlikte yaşam gibi işlevleri karşılaştır. Evde tehlikeli kültür üretimi önermek yerine güvenli gözlem ve kaynak inceleme yolları kullan. Fayda ve riskin bağlama göre değiştiğini anlamaya yardımcı olan açık örnekler kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-15",
+      "category": "calisma-kitabi",
+      "label": "Beyin bir anıyı nasıl oluşturur ve neden bazen yanlış hatırlarız?",
+      "brief": "Belleğin tek bir kayıt cihazı gibi çalışmadığını anlaşılır bir çerçevede açıkla. Dikkat, öğrenme, hatırlama ve yeniden yorumlama arasındaki ilişkileri ele al. Kişisel deneylerden tanı veya kesin nörolojik sonuç çıkarmayı teşvik etme. Basit ve zararsız düşünce örnekleriyle, hatırlamanın güçlü yanlarını ve sınırlarını göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-16",
+      "category": "calisma-kitabi",
+      "label": "Uyku sırasında beden ve zihin ne yapar?",
+      "brief": "Uyku evrelerini ve temel işlevlerini seçilen seviyeye göre tanıt. Öğrenme, dinlenme ve biyolojik ritimler arasındaki ilişkileri kaynaklı biçimde açıkla. Yaşa ve kişiye bağlı farkları koruyarak tıbbi öneri veya tek doğru süre iddiasından kaçın. Okurun uyku hakkında yaygın iddiaları değerlendirmesine yardımcı olan bir çalışma kitabı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-17",
+      "category": "calisma-kitabi",
+      "label": "Bir virüs neden canlı sayılma tartışmalarının merkezindedir?",
+      "brief": "Canlılık ölçütlerini önce açık ve karşılaştırılabilir biçimde tanımla. Virüslerin yapısı ve çoğalmasını hücreli canlılarla benzerlik ve farklar üzerinden ele al. Bilimsel sınıflama tartışmasını kesin tek cümlelik hükme indirgeme. Kavramların hangi amaçla kullanıldığını sorgulatan kısa karşılaştırmalar ve örnekler oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-18",
+      "category": "calisma-kitabi",
+      "label": "Evrim bir canlıda mı, kuşaklar boyunca bir toplulukta mı gerçekleşir?",
+      "brief": "Evrimi kalıtsal çeşitlilik ve kuşaklar boyunca değişim üzerinden açıkla. Doğal seçilimle diğer değişim süreçlerini seçilen seviyeye uygun biçimde ayır. İhtiyaç duyduğu için özellik kazanan birey gibi yanıltıcı anlatımları düzelt. Kanıt türlerini ve süreçleri karşılaştıran, kişisel görüşten bilimsel açıklamayı ayıran bir öğrenme akışı hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-19",
+      "category": "calisma-kitabi",
+      "label": "İklim ile hava durumu arasındaki fark neden önemlidir?",
+      "brief": "Günlük hava olaylarıyla uzun süreli iklim örüntülerini ölçüm ölçekleri üzerinden ayır. Değişkenlik, eğilim ve belirsizlik kavramlarını sade grafiklerle göster. İklimle ilgili güncel verileri kaynak ve tarih bilgileriyle kullan. Okurun tek bir sıcak veya soğuk günden geniş sonuç çıkarmamasını sağlayacak karşılaştırmalar oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-20",
+      "category": "calisma-kitabi",
+      "label": "Karbon ayak izi nasıl hesaplanır ve neleri dışarıda bırakabilir?",
+      "brief": "Karbon ayak izinin kapsamını, ölçü birimlerini ve kullanılan varsayımları tanıt. Bireysel ürün örneklerini üretimden kullanım sonuna kadar aşamalara ayır. Farklı hesapların neden farklı sonuç verebileceğini açıkla ve sahte kesinlikten kaçın. Okura yalnız sayı değil, hesaplamanın sınırlarını da değerlendirebileceği bir düşünme yöntemi ver.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-21",
+      "category": "calisma-kitabi",
+      "label": "Yenilenebilir enerji her koşulda aynı çözümü sunar mı?",
+      "brief": "Güneş, rüzgâr ve diğer kaynakları üretim koşulları ile depolama ihtiyaçları üzerinden karşılaştır. Verim, maliyet ve çevresel etkilerde yer ve zaman farklarını görünür kıl. Güncel sayıları kaynaklı kullan ve tek teknolojiyi bütün sorunların çözümü olarak sunma. Küçük yerleşim senaryolarıyla, gerekçeli enerji tercihleri yapmayı sağlayan bir kitap tasarla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-22",
+      "category": "calisma-kitabi",
+      "label": "Bir pil elektriği nasıl saklar?",
+      "brief": "Elektrik akımı, kimyasal tepkime ve enerji dönüşümü arasındaki bağı düzeye uygun biçimde kur. Farklı pil türlerinin temel farklarını gündelik kullanım örnekleriyle açıkla. Pil açma veya riskli elektrik deneyleri yerine güvenli modeller kullan. Okurun kapasite, kullanım ömrü ve geri dönüşüm kavramlarını birbirinden ayırmasını sağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-23",
+      "category": "calisma-kitabi",
+      "label": "Elektrik nedir; bir devrede aslında ne hareket eder?",
+      "brief": "Yük, akım, gerilim ve direnç kavramlarını aşamalı olarak tanıt. Yaygın su benzetmesinin işe yaradığı ve yanıltabileceği noktaları belirt. Yalnız düşük riskli, seviyeye uygun devre modelleriyle örnekler ver. Kavramları ezberlemek yerine aralarındaki ilişkiyi okuyabilmeye yönelik bir çalışma kitabı oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-24",
+      "category": "calisma-kitabi",
+      "label": "Işık hem dalga hem parçacık olabilir mi?",
+      "brief": "Işığın farklı deneylerde nasıl betimlendiğini tarihsel ve kavramsal bir sıra içinde açıkla. Dalga ve parçacık kelimelerinin gündelik nesnelerle birebir aynı anlam taşımadığını göster. Kuantum açıklamalarını gizemli güç veya bilinç iddiasına dönüştürme. Deney sonucu, model ve yorum arasındaki ayrımı koruyan düşünce soruları hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-25",
+      "category": "calisma-kitabi",
+      "label": "Ses neden boşlukta duyulmaz?",
+      "brief": "Sesin bir ortamda yayılan titreşim olarak temel özelliklerini kur. Farklı ortamlarda yayılma ve hız ilişkilerini koşulları belirterek karşılaştır. Ses yüksekliğiyle frekansı birbirine karıştırmadan anlaşılır örnekler ver. Güvenli dinleme sınırlarını koruyarak, basit gözlemlerle kavramları somutlaştıran bir kitap yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-26",
+      "category": "calisma-kitabi",
+      "label": "Kara delikler her şeyi içine çeken kozmik süpürgeler midir?",
+      "brief": "Kara delikleri kütleçekim, yörünge ve olay ufku kavramları üzerinden tanıt. Uzak bir cisim üzerindeki etkiyle çok yakındaki koşulları ayrı değerlendir. Gözlemlerle matematiksel öngörüleri ve açık soruları birbirine karıştırma. Popüler benzetmelerin sınırlarını gösteren, kaynaklı ve merak uyandıran bir öğrenme akışı oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-27",
+      "category": "calisma-kitabi",
+      "label": "Bir yıldızın doğumu ve ölümü neden aynı hikâyeyi izlemez?",
+      "brief": "Yıldızların oluşumunu madde, kütleçekim ve enerji süreçleriyle açıkla. Farklı başlangıç kütlelerinin farklı yaşam yolları oluşturduğunu karşılaştır. Her yıldızın aynı sonuca ulaşacağı gibi genellemeleri düzelt. Ölçekleri anlaşılır görsellerle vererek, okurun bir yıldızın geçmişini kanıtlardan düşünmesini sağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-28",
+      "category": "calisma-kitabi",
+      "label": "Evrenin genişlemesi, galaksilerin bir boşlukta koşması mı demektir?",
+      "brief": "Genişleme kavramını kozmolojik ölçekte kullanılan model çerçevesinde açıklığa kavuştur. Gündelik benzetmeleri yardımcı olarak kullan, fakat benzetmeden fiziksel sonuç çıkarmama sınırını belirt. Gözlemsel kanıtları ve henüz açık kalan soruları ayrı bölümlerde ele al. Okurun genişleme, hareket ve mesafe arasındaki farkı kurabileceği bir çalışma kitabı hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-29",
+      "category": "calisma-kitabi",
+      "label": "Depremler neden olur; bir fayda biriken gerilim nasıl anlaşılır?",
+      "brief": "Levha hareketlerini, fayları ve deprem oluşumunu temel ilişkileriyle anlat. Tehlike, risk ve tahmin kavramlarını birbirinden ayır. Kesin tarih veren iddiaları destekleme; güvenlik bilgilerini resmî ve güncel kaynaklara dayandır. Harita ve örneklerle, bilimsel bilginin hangi kararları destekleyebildiğini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-30",
+      "category": "calisma-kitabi",
+      "label": "Bir volkanın tehlikesi yalnızca lavdan mı ibarettir?",
+      "brief": "Volkan oluşumunu yer içi süreçlerle ilişkilendir ve farklı püskürme türlerini karşılaştır. Kül, gaz ve diğer etkileri görsel olarak anlaşılır fakat abartısız anlat. Bölgesel risk ve güvenlik bilgilerini doğrulanmış kaynaklara dayandır. Okurun tek bir görüntüden bütün volkanlar hakkında sonuç çıkarmamasını sağlayan karşılaştırmalar kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-31",
+      "category": "calisma-kitabi",
+      "label": "Okyanus akıntıları iklimi ve yaşamı nasıl etkiler?",
+      "brief": "Yüzey ve derin okyanus hareketlerini farklı etkenleriyle tanıt. Sıcaklık, tuzluluk ve rüzgâr bağlantılarını bir neden zinciri içinde göster. Akıntılarla iklim arasındaki ilişkiyi tek etkenli ve kesin gelecek senaryolarına indirgeme. Haritalar ve basit örneklerle, yerel olayların büyük sistemlerle nasıl bağlandığını incelet.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-32",
+      "category": "calisma-kitabi",
+      "label": "Mikroplastikler nereden gelir ve etkileri hakkında ne biliyoruz?",
+      "brief": "Mikroplastiklerin farklı kaynaklarını ve çevrede hareket etme yollarını açıkla. Ölçülmüş bulgularla henüz araştırılan sağlık ve ekoloji etkilerini net biçimde ayır. Güncel çalışmaların kapsamını, yöntemini ve belirsizliklerini koru. Korkutucu genellemeler yerine, okurun bir araştırma sonucunu değerlendirebileceği bir çerçeve kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-33",
+      "category": "calisma-kitabi",
+      "label": "Bir algoritma karar verirken hangi kuralları izler?",
+      "brief": "Algoritmayı bir sorunu çözmek için izlenen açık adımlar olarak tanıt. Gündelik bir tarifle bilgisayardaki işlem arasında hem ortaklık hem fark kur. Girdi, çıktı, koşul ve tekrar kavramlarını seviyeye uygun küçük örneklerle göster. Okurun yöntemin ne zaman işe yaradığını ve ne zaman hata verdiğini sınayabileceği bir kitap hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-34",
+      "category": "calisma-kitabi",
+      "label": "Yapay zekâ bir şeyi anlamış gibi göründüğünde, bunu nasıl sınarız?",
+      "brief": "Modelin çıktı üretmesiyle bir iddianın doğru olması arasındaki farkı açıkla. Veri, öğrenme ve değerlendirme süreçlerini seçilen seviyeye uygun örneklerle ele al. Güncel sistemlerin özelliklerini doğrula ve insana özgü niyetleri model davranışına kanıtsız yükleme. Okura doğruluk, önyargı ve belirsizliği değerlendirebileceği somut sorular sun.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-35",
+      "category": "calisma-kitabi",
+      "label": "Bir şifreyi güvenli yapan şey karmaşık görünmesi mi?",
+      "brief": "Şifre uzunluğu, tahmin edilebilirlik ve tekrar kullanımını temel tehdit modelleriyle açıkla. Güvenlik kurallarını güncel resmî kaynaklarla destekle ve kişisel bilgileri toplama. Gerçek hesaplara müdahale etmek yerine örnek senaryolar üzerinde çalış. Okurun güvenli görünen alışkanlıklarla gerçekten riski azaltan davranışları ayırmasını sağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-36",
+      "category": "calisma-kitabi",
+      "label": "Bir olasılık yüzde elliyse, neden sonuçlar sırayla gelmez?",
+      "brief": "Olasılığı tek olay ve çok sayıda tekrar açısından ayrı ayrı ele al. Bağımsız olaylarla birbirini etkileyen olayları anlaşılır deney modelleriyle karşılaştır. Rastgele örüntülere anlam yükleme ve kumarbaz yanılgısını somut örneklerle açıkla. Okurun hesapla sezgi arasındaki farkı görebileceği kısa uygulamalar hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-37",
+      "category": "calisma-kitabi",
+      "label": "Bir grafik doğru verilerle bile nasıl yanıltabilir?",
+      "brief": "Eksen, ölçek, seçilen zaman aralığı ve karşılaştırma tabanının anlamı nasıl değiştirdiğini göster. Aynı veri kümesini farklı grafiklerle sunup okurun farkları incelemesini sağla. Yanıltmayı her zaman bilinçli kötülük gibi sunmadan, tasarım hatalarına da yer ver. Kaynak ve bağlam aramayı öğreten anlaşılır bir veri okuryazarlığı kitabı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-38",
+      "category": "calisma-kitabi",
+      "label": "Ortalama, bir topluluğun gerçek hayatını ne kadar anlatır?",
+      "brief": "Aritmetik ortalama, ortanca ve dağılım kavramlarını gündelik veri örnekleriyle karşılaştır. Aykırı değerlerin sonucu nasıl etkilediğini açık biçimde göster. Topluluk ortalamasından her birey için hüküm çıkarma hatasını incelet. Kullanıcının seviyesine göre hesap veya yorum ağırlığını ayarlayarak, sayıların arkasındaki çeşitliliği görünür kıl.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-39",
+      "category": "calisma-kitabi",
+      "label": "Sonsuzluk gerçekten çok büyük bir sayı mıdır?",
+      "brief": "Sonsuzluğu gündelik büyüklükten farklı bir matematiksel kavram olarak tanıt. Sayma, diziler ve uygun düzeyde kümeler üzerinden adım adım örnekler kur. Şaşırtıcı sonuçları gizemli paradoks gösterisine dönüştürmeden kullanılan tanımları açıkla. Okurun kendi varsayımlarını sınayacağı kısa düşünce denemeleriyle ilerle.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-40",
+      "category": "calisma-kitabi",
+      "label": "Fraktallar doğada neden karşımıza çıkar?",
+      "brief": "Ölçek, tekrar ve kendine benzerlik kavramlarını basit şekillerden başlayarak açıkla. Matematiksel fraktallarla doğadaki yaklaşık örüntüleri birbirinden ayır. Her karmaşık biçimi fraktal ilan etmekten kaçın ve gözlem ölçeğini belirt. Çizim ve karşılaştırma etkinlikleriyle, örüntüleri nasıl tanıyacağımızı inceleyen bir kitap oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-41",
+      "category": "calisma-kitabi",
+      "label": "Sıfırın icadı düşünme biçimimizi nasıl değiştirdi?",
+      "brief": "Sıfırın sayı, yer tutucu ve işlem aracı olarak farklı rollerini tanıt. Tarihsel gelişimi tek bir kişi veya kültüre indirmeden güvenilir kaynaklarla ele al. Basamak değeri üzerinden sıfırın hesaplamadaki etkisini somutlaştır. Matematikle tarih arasında bağ kuran, seviyeye uygun bir öğrenme yolculuğu tasarla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-42",
+      "category": "calisma-kitabi",
+      "label": "Paranın tarihi, insanların birbirine güvenme biçimini nasıl değiştirdi?",
+      "brief": "Para türlerini, ödeme sistemlerini ve değer aktarımını tarihsel örneklerle karşılaştır. Tek ve düz bir takastan paraya ilerleme öyküsü yerine farklı toplumların yollarını göster. Ekonomik kavramları yatırım tavsiyesine dönüştürmeden açıkla. Okurun kurum, güven ve gündelik alışveriş arasındaki bağı değerlendireceği sorular kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-43",
+      "category": "calisma-kitabi",
+      "label": "Bir şehir neden bazı insanlara kolay, bazılarına zor gelir?",
+      "brief": "Şehirde ulaşım, kamusal alan ve hizmetlere erişimi farklı kullanıcı ihtiyaçlarıyla incele. Erişilebilirliği yalnız engellerin kaldırılması değil, tasarım ve kullanım meselesi olarak ele al. Gerçek örnekleri bağlamlarıyla karşılaştır ve tek biçimli ideal şehir varsayımından kaçın. Okurun kendi çevresini gerekçeli biçimde değerlendirebileceği güvenli gözlem görevleri oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-44",
+      "category": "calisma-kitabi",
+      "label": "Dil düşünceyi nasıl etkiler; söylediklerimiz gördüklerimizi değiştirir mi?",
+      "brief": "Dil ve düşünce ilişkisini farklı araştırma soruları üzerinden tanıt. Güçlü iddialarla sınırlı deney bulgularını açıkça birbirinden ayır. Diller arasında üstünlük sıralaması yapmadan, ifade ve dikkat örnekleri kullan. Okurun kendi deneyimini kesin kanıt saymadan gözlemleyebileceği düşünce soruları hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-45",
+      "category": "calisma-kitabi",
+      "label": "Bir tarihî kaynağın güvenilirliğini nasıl değerlendiririz?",
+      "brief": "Kaynağın yazarı, zamanı, amacı ve ulaştığı kitleyi birlikte sorgulayan bir yöntem kur. Aynı olayla ilgili iki farklı anlatıyı düzeye uygun biçimde karşılaştır. Çelişkili bilgiyi hemen yalan ilan etmek yerine bağlam ve kanıt aramayı göster. Okurun iddia ile çıkarımı ayırabileceği uygulamalı bir kaynak okuma kitabı hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-46",
+      "category": "calisma-kitabi",
+      "label": "Arkeologlar bir çömlek parçasından geçmişi nasıl yorumlar?",
+      "brief": "Arkeolojik bulgunun malzeme, konum ve ilişkili verilerle nasıl anlam kazandığını açıkla. Bir nesnenin görüntüsünden kesin yaşam öyküsü çıkarma sınırını göster. Tarihlendirme ve yorumlama yöntemlerini seviyeye uygun örneklerle tanıt. Kanıt, hipotez ve belirsizliği görünür tutan bir geçmiş araştırması kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-47",
+      "category": "calisma-kitabi",
+      "label": "Müzikte ritim ve matematik nerede buluşur?",
+      "brief": "Ritim, süre ve tekrar ilişkilerini basit müzik örnekleri üzerinden incele. Kesirleri ve örüntüleri sesle ilişkilendirirken bütün müziği matematik hesabına indirgeme. Farklı müzik geleneklerine yer ver ve dinleme görevlerini güvenli ses düzeyinde tut. Okurun hem duyarak hem çizerek deneyebileceği bir çalışma kitabı tasarla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-48",
+      "category": "calisma-kitabi",
+      "label": "Bir tasarımın iyi olması, yalnızca güzel görünmesi midir?",
+      "brief": "İşlev, kullanım kolaylığı, bakım ve estetik arasındaki ilişkiyi gündelik nesnelerle kur. Aynı nesneyi farklı ihtiyaçları olan kullanıcıların gözünden değerlendirt. Tek doğru çözüm yerine gerekçeli tasarım tercihlerini karşılaştır. Küçük gözlem ve yeniden düşünme görevleriyle, kararların arkasındaki ihtiyaçları görünür kıl.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-49",
+      "category": "calisma-kitabi",
+      "label": "Bilimsel bir deneyde kontrol grubu neden önemlidir?",
+      "brief": "Değişken, karşılaştırma ve ölçüm kavramlarını güvenli ve basit bir örnekle tanıt. Sonucun tek bir nedene bağlanabilmesi için nelerin sabit tutulması gerektiğini göster. Rastgelelik, örnek büyüklüğü ve tekrarlanabilirliği düzeye göre aşamalı biçimde ekle. Okurun bir deney önerisini değerlendirip daha iyi hâle getireceği sorular hazırla.",
+      "counterfactual": false
+    },
+    {
+      "id": "calisma-kitabi-50",
+      "category": "calisma-kitabi",
+      "label": "Bir iddiayı duyduğumuzda, doğru bilgiye nasıl ulaşırız?",
+      "brief": "İddia, kanıt, kaynak ve yorum arasındaki ayrımı gündelik örneklerle kur. İlk izlenim, doğrulama yanlılığı ve seçilmiş verinin etkilerini anlaşılır biçimde göster. Farklı görüşleri otomatik olarak eşit kanıt gücünde saymadan değerlendirme yöntemi öğret. Okurun belirsizlik karşısında kesin hüküm vermek yerine gerekçeli bir sonuca varmasını sağlayan bir kitap yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-01",
+      "category": "yabanci-dil-hikaye",
+      "label": "Yeni bir şehirde ilk arkadaşlığını kuran birinin küçük cesaretleri anlatılsın.",
+      "brief": "Yeni taşınan bir karakter, sevdiği bir etkinliğe katılmak için ilk adımı atsın. Basit bir yanlış anlaşılma onu uzaklaşmaya değil, yeniden denemeye yöneltsin. Tanışma ve gündelik ihtiyaçlarla ilgili ifadeler olaylar içinde doğal biçimde tekrar edilsin. Hikâyeyi seçilen hedef dil ve seviyede, yetişkin okuru çocuklaştırmadan yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-02",
+      "category": "yabanci-dil-hikaye",
+      "label": "Yanlış adrese teslim edilen bir paket, iki komşunun hayatını değiştirsin.",
+      "brief": "Bir kişi komşusuna ait paketi geri götürürken beklenmedik bir ortak ihtiyaç fark etsin. Paketin içinde büyük sır yerine sıradan ama kişisel anlamı olan bir eşya bulunsun. Adres, zaman ve yardım isteme ifadeleri çatışmanın gerçek parçaları olsun. Seçilen dil seviyesinde akıcı bir yakınlaşma kur ve sonu birlikte verilen küçük bir kararla tamamla.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-03",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir kafede başlayan küçük bir gönüllülük işi, aidiyet duygusuna dönüşsün.",
+      "brief": "Yeni bir müşteri, kapanış hazırlığında küçük bir yardım teklif etsin. Teklif düzenli bir ortak işe dönüşürken karakterin çekingenliği ve işletmenin ihtiyaçları çatışsın. Yiyecek, rica ve görev paylaşımıyla ilgili dil doğal diyaloglarda gelişsin. Kullanıcının seçtiği seviyeyi koruyarak, bir yere ait olmanın emekle oluştuğunu anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-04",
+      "category": "yabanci-dil-hikaye",
+      "label": "İki arkadaş, birbirine hiç benzemeyen tatil planlarını uzlaştırmaya çalışsın.",
+      "brief": "Biri sakin bir yerde kalmak, diğeri sürekli hareket etmek isteyen iki arkadaş ortak yolculuk planlasın. Bütçe ve zaman kısıtları ikisini de somut tercihler yapmaya zorlasın. Karşılaştırma, öneri ve tercih bildirme ifadeleri hikâyenin doğal akışında yer alsın. Çözüm birinin tamamen boyun eğmesi değil, birbirini daha iyi tanıması olsun.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-05",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir öğrenci, herkesin önünde konuşmaktan çekinirken kendi anlatma yolunu bulsun.",
+      "brief": "Bir kurs katılımcısı kısa bir sunum hazırlamakla görevlendirilsin. Arkadaşının önerdiği yöntem ona uymayınca kendi deneyimini anlatmayı denesin. Hazırlık, rica ve duygulara dair sözcükleri bağlamla anlaşılır kıl. Seviye gerektirdiği ölçüde sadeleştir, fakat karakterin korkusunu ve kararını gerçek bir duygusal çizgide tut.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-06",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir tamirci ile müşterisi, aynı eşyanın değerini farklı biçimde görsün.",
+      "brief": "Müşteri eski bir radyoyu tamir ettirmek isterken usta yenisini almanın daha kolay olduğunu söylesin. Radyo üzerindeki gündelik konuşmalar eşyanın bir aile bağını taşıdığını ortaya çıkarsın. Fiyat, süre ve seçenek soruları olay örgüsüne gerçekten etki etsin. Seçilen hedef dilde, içten ve gösterişsiz bir anlaşmaya varan hikâye yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-07",
+      "category": "yabanci-dil-hikaye",
+      "label": "İlk iş gününde yapılan küçük bir hata, dürüstlüğü ve güveni sınasın.",
+      "brief": "Yeni çalışan bir kişi verdiği yanlış bilgiyi saklamakla düzeltmek arasında kalsın. Hatanın sonucu küçük ama başkasının planını etkileyen bir sorun olsun. Açıklama, özür ve çözüm önerileri metnin içinde doğal biçimde kullanılsın. İş ortamını seçilen yaşa uygun kur ve dil seviyesini düşürürken olayların nedenlerini basitleştirme.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-08",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir sokak müzisyeni, duymaya alıştığı alkıştan başka bir karşılık bulsun.",
+      "brief": "Müzisyen her gün aynı yerde çalarken sessizce dinleyen birini fark etsin. Birlikte küçük bir mahalle etkinliğine hazırlanmaları iletişim biçimlerini değiştirsin. Duyma, tercih ve plan yapmayla ilgili sözcükler anlaşılır karşılaşmalarda tekrar etsin. Yakınlığı tek bir romantik varsayıma bağlamadan, seçilen alt türde özgün bir ilişki geliştir.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-09",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir aile, yeni bir evde ilk akşam yemeğini hazırlarken alışkanlıklarını yeniden paylaşsın.",
+      "brief": "Taşınmanın ardından aile üyeleri eksik malzemelerle birlikte yemek hazırlamaya çalışsın. Herkesin alıştığı görevlerin değişmesi küçük ve anlamlı bir gerilim doğursun. Eşya, yer ve görev ifadeleri sahneler içinde tekrar edilsin. Hedef dildeki seviyeye uygun doğal diyaloglarla, yeni evin nasıl tanıdık hâle geldiğini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-10",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir kitap kulübünde, aynı hikâyeyi farklı anlayan iki kişi birbirini dinlesin.",
+      "brief": "İki katılımcı aynı karakterin kararını tamamen farklı yorumlasın. Tartışma sırasında kendi deneyimlerinin görüşlerini nasıl etkilediğini fark etsinler. Görüş belirtme ve nazikçe karşı çıkma ifadeleri olayın parçası olsun. Metni ders notuna dönüştürmeden, konuşma sonunda değişen küçük bir ilişkiyi merkeze al.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-11",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir bisiklet yolculuğunda, hızlı gitmek isteyen biri yavaşlığın başka değerlerini keşfetsin.",
+      "brief": "İki arkadaş kısa bir rotada farklı hızlarda ilerlemek istesin. Acele eden karakter, birlikte yola çıkmanın yalnız varıştan ibaret olmadığını küçük karşılaşmalarla fark etsin. Yön, mesafe ve mola isteme ifadeleri somut ihtiyaçlardan doğsun. Seçilen seviyede okunabilir, hareketli ama tutarlı bir yolculuk hikâyesi kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-12",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir komşuluk bahçesinde, farklı alışkanlıklar ortak emeği zorlasın.",
+      "brief": "Yeni katılan kişi bahçede işleri hızlı bitirmek isterken deneyimli komşu daha dikkatli davranmayı önersin. Yanlış yapılan küçük bir iş, yardım istemeye ve yöntemleri paylaşmaya yol açsın. Doğa, sıra ve birlikte çalışma ifadelerini olaylar içinde anlaşılır kıl. Başarıyı büyük hasat yerine, oluşan güven ve değişen alışkanlıklarla göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-13",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir hayvan barınağındaki ilk gönüllülük günü, sabır üzerine bir hikâye olsun.",
+      "brief": "Gönüllü, çekingen bir hayvanın hemen yakınlaşmasını beklesin. Deneyimli bir çalışan, beklemenin ve gözlemlemenin önemini hazır öğüt yerine davranışıyla göstersin. İhtiyaç, izin ve bakım ifadeleri görevlerin doğal parçası olsun. Hayvan davranışlarını romantikleştirmeden, seçilen dil seviyesinde güvenin yavaş kurulmasını anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-14",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir fotoğraf kursunda, güzel görüntüyle doğru temsil arasındaki fark keşfedilsin.",
+      "brief": "Katılımcı, bir mahalleyi fotoğraflarken yalnızca dikkat çekici görüntüleri seçsin. Fotoğraflanan bir kişinin itirazı, niyetini ve yöntemini düşünmeye yöneltsin. İzin isteme ve betimleme dili somut karşılaşmalarda yer alsın. Seçilen yaş ve seviyede, insanları görüntüden ibaret görmeyen özgün bir anlatı kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-15",
+      "category": "yabanci-dil-hikaye",
+      "label": "Birinin doğum günü için hazırlanan sürpriz, aslında ne istediğini dinleme fırsatına dönüşsün.",
+      "brief": "Arkadaşlar büyük bir kutlama hazırlarken doğum günü sahibinin sakinlik istediğini fark etsin. Planlarını savunmakla onu dinlemek arasında küçük bir anlaşmazlık doğsun. Davet, tercih ve değişen planlarla ilgili ifadeler doğal biçimde tekrar edilsin. Mizahı mahcubiyetten değil, hazırlıkların beklenmedik biçimde değişmesinden üret.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-16",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir aşçı çırağı, kaybettiği tarifi ezberlemek yerine yemeğin mantığını anlamaya çalışsın.",
+      "brief": "Çırak, önemli bir hazırlık gününde tarif notunu bulamayınca paniklesin. Ustasından bütün cevabı almak yerine tat, sıra ve malzeme ilişkilerini düşünerek ilerlesin. Miktar ve işlem sırası ifadelerini seçilen seviyeye uygun biçimde kullan. Sonuç kusursuz yemek değil, hata yaparken de öğrenebildiğini fark eden bir karakter olsun.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-17",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir otobüs yolculuğunda, birbirine yabancı üç kişinin küçük ihtiyaçları kesişsin.",
+      "brief": "Üç yolcu aynı güzergâhta ayrı amaçlarla ilerlerken bir gecikmeyle karşılaşsın. Birinin bilgisi, diğerinin zamanı ve üçüncünün yardım isteği ortak çözüm oluştursun. Saat, varış ve yön soruları gerçek işlevleriyle metne girsin. Karakterleri rastgele sırlarla bağlamak yerine, ortak koşulda verdikleri seçimlerle birbirine yaklaştır.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-18",
+      "category": "yabanci-dil-hikaye",
+      "label": "Küçük bir kasabada geçici işe başlayan biri, ilk izlenimlerinin sınırını görsün.",
+      "brief": "Karakter yeni işyerindeki bir kişiyi ilk karşılaşmada soğuk ve ilgisiz bulsun. Birlikte üstlendikleri görev, bu davranışın farklı bir nedenini anlamasını sağlasın. İş, duygu ve açıklama ifadelerini sahnelerle destekle. Hedef dildeki seviyeyi koruyarak, önyargının tek konuşmada değil deneyimle değişmesini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-19",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir tiyatro provasında unutulan replik, ekibin birlikte düşünmesini gerektirsin.",
+      "brief": "Küçük bir ekip gösteriye hazırlanırken bir oyuncu sözlerini unutmakta zorlansın. Diğerlerinin farklı yardım önerileri prova düzenini değiştirsin. Hatırlama, tekrar ve cesaret verme ifadelerini metne ders arası eklemeden kullan. Sonu kusursuz gösteriye değil, birlikte çalışmanın getirdiği rahatlamaya bağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-20",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir kütüphane çalışanı, ilk kez gelen birinin aradığı kitabı bulmasına yardım etsin.",
+      "brief": "Ziyaretçi kitabın adını hatırlayamasın, ama onda sevdiği duyguyu anlatabilsin. Çalışan, hazır tahminler yerine sorular sorarak ihtiyacı anlamaya çalışsın. Betimleme, beğeni ve öneri dili olayın doğal motoru olsun. Seçilen seviyede, aranan kitap kadar kurulan temasın da önem taşıdığı bir hikâye yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-21",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir kamp gezisinde, plan yapan kişi yardım kabul etmeyi öğrensin.",
+      "brief": "Her işi üstlenmek isteyen karakter kamp hazırlığında giderek yorulsun. Küçük bir aksilikten sonra arkadaşlarının farklı becerilerine ihtiyaç duysun. Görev paylaşımı ve öneri ifadeleri somut işler içinde yer alsın. Güvenli bir doğa ortamında, kontrolü paylaşmanın yakınlığı nasıl değiştirdiğini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-22",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir seramik kursunda, eğri yapılan bir kâse yeni bir fikir doğursun.",
+      "brief": "Katılımcı ilk ürününün istediği biçimde olmamasına üzülerek onu bırakmak istesin. Başka biri kâsenin farklı kullanımını önerince birlikte yeni bir tasarım denesinler. Biçim, malzeme ve olasılık anlatımları hedef dil seviyesine uyarlansın. Hatanın her zaman gizli mükemmellik olmadığını koruyarak, öğrenmenin neşesini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-23",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir gönüllü tercüman, yalnız kelimeleri değil insanların ihtiyaçlarını da anlamaya çalışsın.",
+      "brief": "Karakter ortak bir etkinlikte iki kişinin birbirini yanlış anlamasına yardım etsin. Sorun bir kelime karşılığından çok, bekledikleri davranışların farklı olmasından doğsun. Açıklama isteme ve yeniden ifade etme dili diyaloglarda doğal biçimde kullanılsın. Kitabın anlatımını tek hedef dilde tutarken, kültürler arası karşılaşmayı saygılı ve somut biçimde kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-24",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir mahalle yarışında, bitiş çizgisinden önce verilen bir karar önem kazansın.",
+      "brief": "Yarışa hazırlanan karakter kişisel hedefiyle arkadaşına yardım etmek arasında kalsın. Seçimin iki tarafında da gerçek bir istek ve bedel bulunsun. Hareket, süre ve teşvik ifadeleri olaylar içinde tekrar edilsin. Sonucu kolay bir ahlak dersine dönüştürmeden, seçilen alt tür ve seviyede anlamlı bir karakter değişimi anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-25",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir gezgin, turistik yerler yerine bir mahallenin gündelik hayatında beklenmedik bir bağ kursun.",
+      "brief": "Karakter kısa ziyareti sırasında planındaki bir etkinliği kaçırınca yerel bir işe yardım etsin. İş sırasında karşılaştığı kişi şehri farklı biçimde tanımasına aracılık etsin. Yer sorma, alışveriş ve ortak plan ifadeleri bağlama yerleşsin. Mahalle insanlarını gezginin gelişimi için kullanılan dekorlara indirgemeden, karşılıklı bir ilişki kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-26",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir çırak fırıncı, ilk kendi ekmeğini yaparken ustasından farklı bir yöntem denesin.",
+      "brief": "Çırak, öğrendiği temel adımları koruyup küçük bir değişiklik yapmak istesin. Ustasının çekincesiyle kendi merakı arasında ölçülü bir çatışma oluşsun. Sıra, miktar ve sonuç anlatımları hedef dile uygun doğal ifadelerle kurulsun. Hikâyeyi kusursuz başarıdan çok, denemeye izin veren ilişkinin değişimiyle tamamla.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-27",
+      "category": "yabanci-dil-hikaye",
+      "label": "İki ev arkadaşı, aynı alanı farklı ihtiyaçlarla kullanmayı öğrensin.",
+      "brief": "Biri sessiz çalışmak, diğeri arkadaşlarını ağırlamak isteyen iki kişi ortak evde anlaşmazlık yaşasın. Hazır bir takvim her sorunu çözmesin; birbirlerinin ihtiyaçlarını daha açık anlatmaları gereksin. Rica, sınır koyma ve anlaşma ifadeleri diyalogların temelini oluştursun. Seçilen yaş ve dil seviyesinde, gündelik ama duygusal açıdan gerçek bir hikâye yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-28",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir gezici kitapçı, yol üzerinde beklemediği bir ortaklık kursun.",
+      "brief": "Kitapçı küçük bir yerleşimde satış yapmak isterken yerel bir üreticinin başka bir fikriyle karşılaşsın. Birlikte etkinlik düzenleme düşüncesi, zaman ve gelir beklentilerini uzlaştırmalarını gerektirsin. Alışveriş, teklif ve gelecek planı dili sahnelerde doğal biçimde kullanılsın. Karakterlerin birbirinden öğrenmesi, satışın sonucundan daha derin bir değişim yaratsın.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-29",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir tamir atölyesine gelen eski bir sandalye, iki kuşağın farklı bakışını buluştursun.",
+      "brief": "Genç tamirci sandalyeyi tamamen yenilemek, sahibi ise belirli izlerini korumak istesin. İşin ilerlemesi, hangi izlerin hasar hangilerinin anlam taşıdığını tartışmalarına bağlı olsun. Karşılaştırma ve gerekçe ifadelerini seçilen hedef dilde anlaşılır kullan. Geçmişe bağlılıkla yeni ihtiyacı aynı anda taşıyan, sakin ama canlı bir hikâye kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-30",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir müze ziyaretinde, rehberin bilmediği bir ayrıntı yeni bir sohbet başlatsın.",
+      "brief": "Rehber bir soruya hemen cevap veremediğinde otoritesini kaybetmekten çekinsin. Ziyaretçilerden birinin deneyimi araştırmayı birlikte sürdürmelerine katkı sağlasın. Soru sorma, emin olmama ve olasılık dili metnin içine doğal biçimde yerleşsin. Kesin cevap üretme zorunluluğu yerine, birlikte öğrenmenin değerini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-31",
+      "category": "yabanci-dil-hikaye",
+      "label": "Paranın olmadığı bir dünyada, iki arkadaş ortak bir hediye hazırlasın.",
+      "brief": "İhtiyaçların ortak emekle karşılandığı bir toplumda iki kişi arkadaşlarına hediye yapmak istesin. Zamanlarını ve becerilerini nasıl paylaşacakları üzerine küçük bir anlaşmazlık yaşasınlar. Rica ve tercih ifadeleri seçilen seviyede olayın içine yerleşsin. Dünyanın farklı kuralını uzun açıklamalar yerine hazırlık sürecinin somut ayrıntılarıyla göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-32",
+      "category": "yabanci-dil-hikaye",
+      "label": "Yol tariflerinin melodilerle verildiği bir şehirde, yeni gelen biri adresini bulmaya çalışsın.",
+      "brief": "Şehirde yönlerin kısa melodilerle aktarıldığı tutarlı bir fantastik düzen kur. Yeni gelen karakter aynı melodinin ritim farkını kaçırınca yanlış yere gitsin. Yer, sıra ve yardım isteme ifadeleri doğal diyaloglarda yer alsın. Çözümü özel yetenekle değil, dinlemeyi ve soru sormayı öğrenmesiyle oluştur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-33",
+      "category": "yabanci-dil-hikaye",
+      "label": "Her evin haftada bir yer değiştirdiği bir kasabada, iki komşu arkadaşlıklarını sürdürsün.",
+      "brief": "Evlerin belirli kurallarla yer değiştirdiği bir kasaba tasarla. Komşular aynı yerde buluşma alışkanlıklarını yeni düzene uyarlamak zorunda kalsın. Konum ve plan değişikliği ifadelerini bağlamla anlaşılır hâle getir. Hedef dil ve seviyede, yakınlığın fiziksel mesafeden başka dayanaklarını keşfeden bir hikâye yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-34",
+      "category": "yabanci-dil-hikaye",
+      "label": "Gölgelerin kişiden farklı hobiler seçtiği bir dünyada, ortak zaman nasıl bulunurdu?",
+      "brief": "Karakterin gölgesi dans etmek isterken kendisi sessizce okumayı tercih etsin. Aynı bedenle ilişkili olmalarının getirdiği kuralları açık ve basit tut. Tercih, izin ve öneri ifadeleri uzlaşma çabasında doğal biçimde kullanılsın. Oyuncu görüntülerin altında iki farklı ihtiyacın saygıyla karşılandığı bir ilişki kur.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-35",
+      "category": "yabanci-dil-hikaye",
+      "label": "Yalnızca birlikte çalışınca görülebilen bir köprü, iki yabancıyı aynı hedefte buluştursun.",
+      "brief": "Bir köprünün ancak iki kişi aynı amaçla yürüdüğünde görüldüğü fantastik kuralı kur. Farklı nedenlerle karşıya geçmek isteyen kişiler ortak hareket etmeyi denesin. Anlaşma, yön ve cesaret verme ifadeleri hedef dil seviyesine uyarlansın. Köprüyü rastgele büyüyle açma; çözüm iki kişinin somut biçimde birbirine güvenmesine dayansın.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-36",
+      "category": "yabanci-dil-hikaye",
+      "label": "İsimlerin her mevsim değiştiği bir yerde, eski bir arkadaş nasıl tanınırdı?",
+      "brief": "İsim değiştirmenin sıradan olduğu bir toplulukta biri eski arkadaşını bulmak istesin. Onu tanımak için yalnız adını değil, birlikte yaptıkları işleri ve alışkanlıklarını hatırlasın. Geçmiş olayları anlatma dili seviyenin izin verdiği biçimde sadeleştirilsin. Arayışı gizli kimlik gerilimine çevirmeden, arkadaşlığın kalıcı izlerini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-37",
+      "category": "yabanci-dil-hikaye",
+      "label": "Zamanın çiçeklerle ölçüldüğü bir kasabada, önemli bir buluşmaya yetişmek zorlaşsın.",
+      "brief": "Saat yerine belirli çiçeklerin açışıyla zamanı düzenleyen fantastik bir kasaba kur. Bir karakter hava koşulları değişince söz verdiği buluşmaya yetişmenin yolunu arasın. Önce, sonra ve bekleme gibi zaman ifadeleri olay akışında görünür olsun. Dünyanın kuralını tutarlı koruyarak, karşılıklı anlayışla tamamlanan özgün bir hikâye yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-38",
+      "category": "yabanci-dil-hikaye",
+      "label": "İnsanların uçabildiği ama ağır yük taşıyamadığı bir dünyada, taşınma nasıl yapılırdı?",
+      "brief": "Uçmanın sınırları açık olan bir dünyada bir aile yeni eve taşınmak istesin. Hafif hareket etmekle anlamlı eşyaları götürmek arasında seçim yapmak zorunda kalsınlar. Eşya ve ihtiyaç ifadelerini seçilen hedef dilde bağlamla anlaşılır kullan. Çözümü sınırları ortadan kaldırarak değil, ortak plan ve yardımla geliştirsinler.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-39",
+      "category": "yabanci-dil-hikaye",
+      "label": "Şehirdeki bütün kapılar farklı sorular sorsaydı, eve dönmek nasıl bir deneyim olurdu?",
+      "brief": "Kapıların yalnız basit sorulara cevap verilince açıldığı fantastik bir düzen kur. Yorucu bir günün ardından eve dönmek isteyen karakter, kendi kapısının ihtiyacını anlamaya çalışsın. Soru ve cevap yapıları hikâyenin gerçek diyalogları olsun. Tekrarlanan soruları ders alıştırmasına çevirmeden, beklenmedik ve sıcak bir ilişki geliştir.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-40",
+      "category": "yabanci-dil-hikaye",
+      "label": "Herkesin yalnızca bir bitkiyi büyütebildiği bir dünyada, ortak bir bahçe nasıl kurulurdu?",
+      "brief": "Her insanın belirli bir bitkiye bakabildiği fantastik bir toplum oluştur. İki kişi aynı bahçeyi kurmak isteyince becerilerini ve alanı paylaşmayı öğrenmek zorunda kalsın. Sahiplik, ihtiyaç ve miktar ifadelerini hedef dil seviyesine uygun kullan. Birinin tek başına her şeyi yapmasına izin vermeden, karşılıklı bağımlılığın neşesini anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-41",
+      "category": "yabanci-dil-hikaye",
+      "label": "Konuşulan sözlerin renklere dönüştüğü bir dünyada, yanlış anlama nasıl görünürdü?",
+      "brief": "Sözlerin belirli renk izleri bıraktığı bir dünyanın basit ve tutarlı kuralını kur. İki arkadaş aynı rengi farklı yorumladığında aralarında küçük bir uzaklaşma doğsun. Duygu ve açıklama ifadeleri gerçek bir anlaşılma ihtiyacından gelsin. Renklerin tek evrensel anlamı olduğunu varsaymadan, birbirini tanımanın önemini göster.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-42",
+      "category": "yabanci-dil-hikaye",
+      "label": "Rüzgârın mektupları taşıdığı bir dünyada, cevabı bekleyen biri ne yapardı?",
+      "brief": "Mektupların belirli rüzgâr yollarıyla taşındığı fantastik bir iletişim düzeni oluştur. Cevap gecikince karakter unutulduğunu düşünmekle başka nedenleri değerlendirmek arasında kalsın. Bekleme ve olasılık ifadeleri hedef dilde doğal biçimde kullanılsın. Hikâyeyi sürpriz sırla değil, sabır ve açıklıkla değişen bir dostluk üzerinden tamamla.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-43",
+      "category": "yabanci-dil-hikaye",
+      "label": "Şehirler yalnızca insanların ortak hayallerine göre büyüseydi, iki komşu ne isterdi?",
+      "brief": "Şehirde yeni alanların ortak hayaller belirli koşullarda birleşince oluştuğu bir düzen kur. Biri oyun alanı, diğeri sessiz bahçe isteyen iki komşu birlikte karar vermeye çalışsın. İstek, gerekçe ve öneri ifadeleri seçilen dil seviyesine uyarlansın. Dünya fikrini gösterişli değişimlerden çok, birbirinin ihtiyacını anlamaya yarayan somut sahnelerle anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-44",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir ay boyunca kimsenin acele edemediği bir dünyada, sözler nasıl tutulurdu?",
+      "brief": "Hareket ve iş temposunun geçici olarak yavaşladığı fantastik bir kasaba tasarla. Bir karakter aynı gün verdiği fazla sözü yerine getiremeyeceğini fark etsin. Plan değiştirme ve yardım isteme dili olayların içinde doğal biçimde tekrar etsin. Sonuç hızın geri gelmesine değil, daha dürüst ve paylaşılmış sorumluluklara bağlı olsun.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-45",
+      "category": "yabanci-dil-hikaye",
+      "label": "Evlerin anıları resimlere dönüşseydi, yeni kiracı hangi izleri korurdu?",
+      "brief": "Duvarların önceki yaşamları temsilî resimlerle gösterdiği fantastik bir ev kur. Yeni kiracı kendi alanını açarken eski sakinin hatıralarına nasıl yaklaşacağını düşünsün. Yer ve değişim ifadeleri hedef dilde anlaşılır küçük sahnelerle kullanılsın. Gerilim gizli suça değil, geçmişe saygıyla yeni hayat kurma arasındaki dengeye dayansın.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-46",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir arkadaş grubu, herkesin katılabileceği bir gezi planlamaya çalışsın.",
+      "brief": "Arkadaşların bütçe, hareket ve dinlenme ihtiyaçları farklı olsun. İlk planın bazılarını dışarıda bıraktığını fark etmeleri gerçek bir konuşma başlatsın. Öneri ve karşılaştırma dili, planı birlikte değiştirmek için kullanılsın. Seçilen seviyede, iyi niyetin dikkat ve somut düzenleme gerektirdiğini gösteren canlı bir hikâye yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-47",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir yerel festivalin hazırlığında, sessiz çalışan kişinin emeği görünür olsun.",
+      "brief": "Karakter afiş ve düzen hazırlarken sahnede görünen kişilerden daha az takdir edildiğini hissetsin. Ekip içinde görevleri ve beklentileri konuşmak zorunda kalsınlar. Emek, rica ve takdir ifadeleri olayın doğal diyaloglarına yerleşsin. Çözümü tek bir büyük övgüye değil, çalışma düzenindeki gerçek bir değişime bağla.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-48",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir gencin ilk kendi bütçesi, istediği şeylerle ihtiyaçlarını ayırmasına yardımcı olsun.",
+      "brief": "Karakter sınırlı bir bütçeyle hem bir etkinliğe katılmak hem yakınını sevindirmek istesin. Seçenekler arasında karar verirken arkadaşından yardım isteyip kendi önceliklerini fark etsin. Fiyat, miktar ve tercih ifadeleri hedef dil seviyesinde doğal tekrarlarla kullanılsın. Hikâyeyi tasarruf öğüdüne dönüştürmeden, seçimin duygusal anlamını anlat.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-49",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir yetişkin yeniden yüzme öğrenirken, cesaretin her yaşta farklı göründüğünü fark etsin.",
+      "brief": "Karakter güvenli bir kursa başlayıp ilerlemesini başkalarıyla kıyaslasın. Eğitmeni ve kurs arkadaşının farklı destekleri, kendisine uygun küçük hedefler koymasına yardım etsin. Duygu, hareket ve zaman ifadeleri anlatının gerçek sahnelerinde yer alsın. Başlangıç dil seviyesini çocuklukla eşitlemeden, sabırlı ve yaşa uygun bir dönüşüm hikâyesi yaz.",
+      "counterfactual": false
+    },
+    {
+      "id": "yabanci-dil-hikaye-50",
+      "category": "yabanci-dil-hikaye",
+      "label": "Bir çömlek pazarı gününde, satış yapamayan bir usta yeni bir dinleyici bulsun.",
+      "brief": "Usta pazarda insanların ürünlerinden neden uzak durduğunu anlamaya çalışsın. Bir ziyaretçinin sorduğu gündelik kullanım sorusu, tasarımına farklı bakmasını sağlasın. Betimleme ve ihtiyaç ifadelerini seçilen hedef dilin doğal yapılarıyla kullan. Sonu büyük ticari başarı yerine, kendi işiyle kurduğu ilişkinin değişmesine dayandır.",
+      "counterfactual": false
+    }
+  ]
+}

@@ -1,13 +1,17 @@
+import { setCompanionHidden } from '../utils/companionActivity';
+import DialogCloseButton from './DialogCloseButton';
+import ImagePreviewDialog from './ImagePreviewDialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
-import { NativeBookReader, type NativeReaderTheme, type NativeBookPage } from '../utils/nativeBookReader';
+import { ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { companionReaderOptions, NativeBookReader, type NativeReaderTheme, type NativeBookPage } from '../utils/nativeBookReader';
 import { createNativeReaderMediaSession } from '../utils/nativeReaderMedia';
 import { useUiI18n } from '../i18n/uiI18n';
 import type { CourseData } from '../types';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { useBookReading } from '../hooks/useBookReading';
 import { showReadingStats } from '../utils/readingStatsDialog';
+import { showCompanionAvatarPicker } from '../utils/companionAvatarDialog';
 import ReaderCompanion from './ReaderCompanion';
 import FaviconSpinner from './FaviconSpinner';
 import { readerHeading } from '../utils/readerHeading';
@@ -36,6 +40,7 @@ const palettes: Record<NativeReaderTheme, { background: string; ink: string; lab
 };
 
 export default function FairyTaleBookReader(props: Props) {
+  const [previewImage, setPreviewImage] = useState<{src: string; title: string} | null>(null);
   const { t } = useUiI18n();
   const native = Capacitor.getPlatform() === 'ios';
   const reading = useBookReading(props.course,native ? 'native' : 'web');
@@ -99,18 +104,20 @@ export default function FairyTaleBookReader(props: Props) {
         listener=await NativeBookReader.addListener('readingProgress',position=>{if(active && position.sessionId===sessionId) reading.observe(position);});
         if(!active) {await listener.remove();return;}
         opened = true;
-        const result = await NativeBookReader.openBook({ title: current.title, bookType: 'fairy_tale', pages,
+        const result = await NativeBookReader.openBook({ ...companionReaderOptions(t), title: current.title, bookType: 'fairy_tale', pages,
           sessionId, initialPageIndex: nativeRequest.index, theme: themeRef.current, fontScale:scaleRef.current,
           ...(nativeRequest.token===0 && reading.initial ? {initialSourceIndex:reading.initial.sourceIndex,initialContentOffset:reading.initial.contentStartOffset,
             ...(reading.initial.theme ? {theme:reading.initial.theme as NativeReaderTheme} : {}),...(reading.initial.fontScale ? {fontScale:reading.initial.fontScale} : {})} : {}), autoPlay: nativeRequest.autoPlay,
           backgroundAudioSrc: current.backgroundAudioSrc });
         opened = false;
         if (!active) return;
+        if (typeof result.companionHidden === 'boolean') setCompanionHidden(result.companionHidden);
         if (result.theme) setTheme(result.theme);
         if (result.fontScale) {scaleRef.current=result.fontScale;setFontScale(result.fontScale);}
         setPageIndex(result.lastPageIndex);
-        if(result.action==='readingStats') {
-          await showReadingStats();
+        if(result.action==='readingStats' || result.action==='changeAvatar') {
+          if(result.action==='changeAvatar') await showCompanionAvatarPicker();
+          else await showReadingStats();
           if(active) setNativeRequest(value=>({token:value.token+1,index:result.lastPageIndex,autoPlay:false}));
         } else if (result.action === 'prepareNarration') {
           const ready = await prepareNarration(result.lastPageIndex);
@@ -230,7 +237,7 @@ export default function FairyTaleBookReader(props: Props) {
   if (!page) return <div className="fairy-reader-native-wait"><p>{t('Kitabınız yükleniyor')}</p><button onClick={props.onBack}>{t('Geri')}</button></div>;
   return <section className="fairy-book-reader" data-theme={theme} style={{ '--fairy-paper': palette.background, '--fairy-ink': palette.ink, '--fairy-font-scale': fontScale } as React.CSSProperties}>
     <header className="fairy-reader-chrome">
-      <button aria-label={t('Kapat')} onClick={() => { pause(); props.onBack(); }}><X size={20} /></button>
+      <DialogCloseButton aria-label={t('Kapat')} onClick={() => { pause(); props.onBack(); }}/>
       <strong>{props.title}</strong>
       <button aria-label={t('Yazıyı küçült')} onClick={() => setFontScale(value => Math.max(.8, value - .1))}>A−</button>
       <button aria-label={t('Yazıyı büyüt')} onClick={() => setFontScale(value => Math.min(1.5, value + .1))}>A+</button>
@@ -244,7 +251,9 @@ export default function FairyTaleBookReader(props: Props) {
       onPointerDown={event => { pointer.current = { x: event.clientX, y: event.clientY }; }}
       onPointerUp={event => { const start = pointer.current; pointer.current = null; if (!start) return; const dx = event.clientX - start.x, dy = event.clientY - start.y; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) turnTo(pageIndex + (dx < 0 ? 1 : -1)); }}
       onPointerCancel={() => { pointer.current = null; }}>
-      {page.imageUrl && <img src={page.imageUrl} alt={page.title} />}
+      {page.imageUrl && <img src={page.imageUrl} alt={page.title} role="button" tabIndex={0} title={t('Tam ekran aç')}
+        onClick={() => { pause(); setPreviewImage({src: page.imageUrl!, title: page.title}); }}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pause(); setPreviewImage({src: page.imageUrl!, title: page.title}); } }}/>}
       {readerHeading(page.title) && <h2>{readerHeading(page.title)}</h2>}<div className="fairy-reader-text">{page.text}</div>
     </article>
     <footer className="fairy-reader-chrome fairy-reader-footer">
@@ -258,5 +267,6 @@ export default function FairyTaleBookReader(props: Props) {
     {error && <p className="fairy-reader-error" role="alert">{error}</p>}
     <audio ref={audio} preload="auto" onEnded={ended} onError={() => { if (intent.current) { pause(); setError(t('Ses yüklenemedi')); } }} />
     <audio ref={nextAudio} preload="auto" /><audio ref={background} src={props.backgroundAudioSrc} loop preload="none" />
+    <ImagePreviewDialog image={previewImage} onClose={() => setPreviewImage(null)}/>
   </section>;
 }

@@ -8,6 +8,8 @@ public class BookPageViewController: UIViewController {
         didSet { applyTheme() }
     }
     public var fontScale: CGFloat = 1.0
+    var onImagePreview: ((UIImage, String) -> Void)?
+    private var imageLoaded = false
     private let preserveNarratedPage: Bool
 
     private let contentStack = UIStackView()
@@ -46,9 +48,9 @@ public class BookPageViewController: UIViewController {
         super.viewDidLayoutSubviews()
         guard preserveNarratedPage else { return }
         let available = max(120, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - BookPageLayout.contentTopInset - BookPageLayout.contentBottomInset)
-        let width = max(120, view.bounds.width - BookPageLayout.horizontalInset * 2)
+        let width = BookPageLayout.textWidth(for: view.bounds.width)
         let ratio = imageView.image.map { $0.size.height / max(1, $0.size.width) } ?? (2.0 / 3.0)
-        imageHeightConstraint?.constant = min(width * ratio, min(320, available * 0.44))
+        imageHeightConstraint?.constant = min(width * ratio, min(view.bounds.width >= 700 ? 480 : 320, available * 0.44))
     }
 
     private func setupViews() {
@@ -71,6 +73,9 @@ public class BookPageViewController: UIViewController {
         imageView.contentMode = .scaleAspectFit
         imageView.clipsToBounds = true
         imageView.isAccessibilityElement = true
+        imageView.isUserInteractionEnabled = true
+        imageView.accessibilityTraits = .button
+        imageView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(previewImage)))
         contentStack.addArrangedSubview(imageView)
 
         imageActivityIndicator.translatesAutoresizingMaskIntoConstraints = false
@@ -96,17 +101,22 @@ public class BookPageViewController: UIViewController {
         contentStack.addArrangedSubview(bodyTextView)
 
         let safeArea = view.safeAreaLayoutGuide
+        let preferredWidth = contentStack.widthAnchor.constraint(equalTo: view.widthAnchor, constant: -BookPageLayout.horizontalInset * 2)
+        preferredWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
+            preferredWidth,
+            contentStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            contentStack.widthAnchor.constraint(lessThanOrEqualToConstant: BookPageLayout.maximumTextWidth),
             contentStack.topAnchor.constraint(
                 equalTo: safeArea.topAnchor,
                 constant: BookPageLayout.contentTopInset
             ),
             contentStack.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                greaterThanOrEqualTo: view.leadingAnchor,
                 constant: BookPageLayout.horizontalInset
             ),
             contentStack.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
+                lessThanOrEqualTo: view.trailingAnchor,
                 constant: -BookPageLayout.horizontalInset
             ),
             contentStack.bottomAnchor.constraint(
@@ -159,6 +169,7 @@ public class BookPageViewController: UIViewController {
     }
 
     private func configureImage() {
+        imageLoaded = false
         guard let source = pageData.imageSrc?.trimmingCharacters(in: .whitespacesAndNewlines),
               !source.isEmpty else {
             imageView.isHidden = true
@@ -172,7 +183,7 @@ public class BookPageViewController: UIViewController {
         imageHeightConstraint?.isActive = false
         imageHeightConstraint = imageView.heightAnchor.constraint(
             equalToConstant: BookPageLayout.imageHeight(
-                for: max(120, view.bounds.width - (BookPageLayout.horizontalInset * 2))
+                for: BookPageLayout.textWidth(for: view.bounds.width)
             )
         )
         imageHeightConstraint?.isActive = true
@@ -258,6 +269,7 @@ public class BookPageViewController: UIViewController {
     }
 
     private func showImage(_ image: UIImage, source: String) {
+        imageLoaded = true
         imageActivityIndicator.stopAnimating()
         imageView.contentMode = .scaleAspectFit
         imageView.image = image
@@ -266,8 +278,14 @@ public class BookPageViewController: UIViewController {
     }
 
     private func showImageFailure() {
+        imageLoaded = false
         imageActivityIndicator.stopAnimating()
         imageView.contentMode = .center
         imageView.image = UIImage(systemName: "photo")
+    }
+
+    @objc private func previewImage() {
+        guard imageLoaded, let image = imageView.image else { return }
+        onImagePreview?(image, pageData.imageAlt ?? pageData.title ?? "Fortale")
     }
 }

@@ -1,10 +1,12 @@
+import DialogCloseButton from './DialogCloseButton';
+import ImagePreviewDialog from './ImagePreviewDialog';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { createPortal } from 'react-dom';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { Download, X } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { downloadFile } from '../utils/fileDownload';
 import { extractStandaloneMarkdownImages, normalizeMarkdownNarrativeLayout } from '../utils/markdownLayout';
 import { useUiI18n } from '../i18n/uiI18n';
@@ -17,6 +19,7 @@ interface StyledMarkdownProps {
   variant?: 'card' | 'inline';
   quoteFirstParagraph?: boolean;
   enableImageLightbox?: boolean;
+  imagePreviewMode?: 'lightbox' | 'sheet';
   preserveImageAspectRatio?: boolean;
   readerMode?: 'default' | 'fairytale-fullscreen' | 'paged-fullscreen';
   fullscreenFontScale?: number;
@@ -578,6 +581,7 @@ export default function StyledMarkdown({
   variant = 'card',
   quoteFirstParagraph = false,
   enableImageLightbox = true,
+  imagePreviewMode = 'lightbox',
   preserveImageAspectRatio = false,
   readerMode = 'default',
   fullscreenFontScale = 1,
@@ -806,7 +810,7 @@ export default function StyledMarkdown({
   },[isPagedReader,pagedSectionIndex,pagedPageIndex,activePagedPages,pagedViewportWidth,pagedViewportHeight,readerScale]);
 
   useEffect(() => {
-    if (!lightboxImage) return;
+    if (!lightboxImage || imagePreviewMode === 'sheet') return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setLightboxImage(null);
     };
@@ -820,7 +824,7 @@ export default function StyledMarkdown({
       document.body.style.touchAction = previousTouchAction;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [lightboxImage]);
+  }, [lightboxImage, imagePreviewMode]);
 
   useEffect(() => {
     if (!lightboxImage) {
@@ -1429,7 +1433,8 @@ export default function StyledMarkdown({
       }}
     >
       {markdownContent}
-      {enableImageLightbox && lightboxImage && typeof document !== 'undefined' && createPortal(
+      {enableImageLightbox && imagePreviewMode === 'sheet' && <ImagePreviewDialog image={lightboxImage ? {src: lightboxImage.src, title: lightboxImage.alt} : null} onClose={() => setLightboxImage(null)} />}
+      {enableImageLightbox && imagePreviewMode === 'lightbox' && lightboxImage && typeof document !== 'undefined' && createPortal(
         <div
           className="fortale-cosmos-lightbox fixed inset-0 z-[1200] backdrop-blur-xl flex items-center justify-center p-2 sm:p-4"
           onClick={() => setLightboxImage(null)}
@@ -1462,15 +1467,13 @@ export default function StyledMarkdown({
                 >
                   <Download size={17} />
                 </button>
-                <button
+                <DialogCloseButton
                   type="button"
                   onClick={() => setLightboxImage(null)}
                   className="fortale-chrome-icon-button h-9 w-9 rounded-full text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.28)] inline-flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
                   aria-label="Kapat"
                   title="Kapat"
-                >
-                  <X size={17} />
-                </button>
+                />
               </div>
             </div>
           </div>

@@ -20,6 +20,7 @@ import GlobalHeader from './components/GlobalHeader';
 import AppLanguageSetupModal from './components/AppLanguageSetupModal';
 import FaviconSpinner from './components/FaviconSpinner';
 import ReadingStatsDialog from './components/ReadingStatsDialog';
+import CompanionAvatarDialog from './components/CompanionAvatarDialog';
 import { clearReadingCache, pauseReadingWritesForDeletion } from './utils/readingProgress';
 import FortaleCompanion from './components/FortaleCompanion';
 import ModalCompanion from './components/ModalCompanion';
@@ -8370,7 +8371,8 @@ export default function App() {
             <FortaleCompanion reading={currentView === 'COURSE_FLOW'}
               hidden={isReaderFullscreen || isSettingsOpen || isCreditPaywallOpen || isLoginPromptOpen || isAppLanguageSetupOpen || currentView === 'PRIVACY' || currentView === 'TERMS'} />
             <ModalCompanion />
-            <ReadingStatsDialog onOpenChange={setIsReadingStatsOpen} />
+            <ReadingStatsDialog books={savedCourses} onOpenChange={setIsReadingStatsOpen} />
+            <CompanionAvatarDialog />
 
             {!isReaderFullscreen && !isReadingStatsOpen && (
               <BottomNav

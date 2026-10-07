@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import ComposerCompanion from './ComposerCompanion';
-import { getCompanionActivity, setCompanionActivity, subscribeCompanionActivity } from '../utils/companionActivity';
+import { exciteCompanion, getCompanionActivity, setCompanionActivity, subscribeCompanionActivity } from '../utils/companionActivity';
 
 // One companion follows the frontmost app dialog, including nested sheets.
 // Only element geometry and edit events are read; form contents are never read.
@@ -21,9 +21,12 @@ export default function ModalCompanion() {
     const findSurface = () => {
       frame = 0;
       let front: HTMLElement | null = null, layer = -1;
-      const statisticsOpen = Boolean(document.querySelector('.reading-stats-overlay'));
-      document.querySelectorAll<HTMLElement>(surfaces).forEach(element => {
-        if (element.closest('[hidden], [inert], [aria-hidden="true"], [data-companion-exclude]')) return;
+      const statisticsOpen = Boolean(document.querySelector('.reading-stats-overlay, .companion-avatar-dialog'));
+      document.querySelectorAll<HTMLElement>(surfaces).forEach(dialogElement => {
+        // The dialog includes the inspiration rows; the character still peeks from the composer itself.
+        const element = dialogElement.classList.contains('fortale-production-composer-stack')
+          ? dialogElement.querySelector<HTMLElement>('.fortale-production-composer') || dialogElement : dialogElement;
+        if (element.closest('[hidden], [inert], [aria-hidden="true"], [data-companion-exclude], .companion-avatar-dialog')) return;
         const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
         if (!rect.width || !rect.height || style.visibility === 'hidden' || style.display === 'none') return;
         let current: HTMLElement | null = element, z = 0;
@@ -44,7 +47,10 @@ export default function ModalCompanion() {
     observer.observe(document.body, { childList: true, subtree: true, attributes: true,
       attributeFilter: ['aria-hidden', 'inert', 'hidden', 'class', 'style'] });
     const reactToEdit = (event: Event) => {
-      if (event.target instanceof Node && panel.current?.contains(event.target)) setReaction(value => value + 1);
+      if (event.target instanceof Node && panel.current?.contains(event.target)) {
+        setReaction(value => value + 1);
+        if (panel.current.classList.contains('fortale-production-composer')) exciteCompanion();
+      }
     };
     document.addEventListener('input', reactToEdit, true);
     document.addEventListener('focusin', reactToEdit, true);
@@ -60,8 +66,9 @@ export default function ModalCompanion() {
   }, []);
 
   if (!surface) return null;
-  return createPortal(<div ref={root} className="fortale-modal-companion-root" style={{ zIndex: surface.layer + 1 }} aria-hidden="true">
+  return createPortal(<div ref={root} className="fortale-modal-companion-root" style={{ zIndex: surface.layer + 1 }}>
     <ComposerCompanion key={surface.key} dialog={panel} root={root}
+      production={surface.element.classList.contains('fortale-production-composer')}
       busy={surface.element.classList.contains('fortale-production-composer') && activity.planning} reaction={reaction} />
   </div>, document.body);
 }

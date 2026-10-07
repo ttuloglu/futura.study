@@ -46,3 +46,10 @@ export function canonicalBookClassification(bookType: IntakeBookType, genreValue
 export function classificationFromDraft(draft: BookCreationDraft): BookClassification {
   return canonicalBookClassification(draft.creativeBrief.bookType, draft.creativeBrief.workbookCategory, draft.creativeBrief.subGenre);
 }
+
+// Both synchronous and queued production must receive a deliberate classification.
+export function hasRequiredBookClassification(brief: { bookType: string; subGenre?: string; workbookCategory?: string }): boolean {
+  if (!['novel', 'fairy_tale', 'story'].includes(brief.bookType)) return true;
+  if (!brief.subGenre?.trim() || brief.subGenre === '__fortale__') return false;
+  return brief.bookType !== 'story' || Boolean(brief.workbookCategory?.trim() && brief.workbookCategory !== '__fortale__');
+}

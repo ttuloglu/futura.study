@@ -6,6 +6,16 @@ import ts from 'typescript';
 import JSZip from 'jszip';
 
 // Exercise the actual production functions with provider/storage boundaries mocked.
+const directionSource = fs.readFileSync(new URL('../functions/src/bookCreativeDirection.ts', import.meta.url), 'utf8');
+const directionCompiled = ts.transpileModule(directionSource, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+}).outputText;
+const { createBookCreativeDirection } = await import(`data:text/javascript;base64,${Buffer.from(directionCompiled).toString('base64')}`);
+const languageSource = fs.readFileSync(new URL('../functions/src/languageLearning.ts', import.meta.url), 'utf8');
+const languageCompiled = ts.transpileModule(languageSource, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+}).outputText;
+const { normalizeLanguageLearning } = await import(`data:text/javascript;base64,${Buffer.from(languageCompiled).toString('base64')}`);
 const source = fs.readFileSync(new URL('../functions/src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
 const names = [
@@ -16,7 +26,7 @@ const names = [
   'resolveNarrativeSectionVisualPlan', 'getNarrativeLectureImageCount',
   'buildVisualStoryPageImagePrompt', 'generateVisualStoryImage',
   'generateValidatedVisualStoryImage', 'runBookAssetsStage',
-  'rewriteMarkdownImageAssetsForBundle', 'buildAndPublishBookBundle'
+  'rewriteMarkdownImageAssetsForBundle', 'buildAndPublishBookBundle', 'isRecord'
 ];
 const functions = ast.statements.filter(n => ts.isFunctionDeclaration(n) && names.includes(n.name?.text));
 assert.equal(functions.length, names.length);
@@ -29,7 +39,7 @@ const cost = { estimatedCostUsd: 0.01, quality: 'low', size: '1024x1536' };
 const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, inputTextTokens: 1, inputImageTokens: 0 };
 function runtime(extra = {}) {
   const env = {
-    console, Buffer, logger, HttpsError, JSZip,
+    console, Buffer, logger, HttpsError, JSZip, createBookCreativeDirection, normalizeLanguageLearning,
     FAIRY_TALE_TOTAL_IMAGE_COUNT: 4, STORY_TOTAL_IMAGE_COUNT: 2, NOVEL_TOTAL_IMAGE_COUNT: 6,
     STORY_CHAPTER_COUNT: 5, VISUAL_FAIRY_TALE_PAGE_COUNT: 8,
     OPENAI_IMAGE_MODEL: 'gpt-image-2.5-sunburst', OPENAI_COVER_MODEL: 'gpt-image-2.5-sunburst',

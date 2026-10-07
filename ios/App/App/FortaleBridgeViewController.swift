@@ -2,6 +2,13 @@ import Capacitor
 import WebKit
 
 final class FortaleBridgeViewController: CAPBridgeViewController {
+    private let floatIslandPlugin = NativeFloatIslandPlugin()
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        floatIslandPlugin.updateLayout()
+    }
+
     override func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
         let configuration = super.webViewConfiguration(for: instanceConfiguration)
         configuration.userContentController.addUserScript(WKUserScript(
@@ -34,6 +41,6 @@ final class FortaleBridgeViewController: CAPBridgeViewController {
         webView.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         webView.scrollView.contentInset = .zero
         webView.scrollView.scrollIndicatorInsets = .zero
-        bridge?.registerPluginInstance(NativeFloatIslandPlugin())
+        bridge?.registerPluginInstance(floatIslandPlugin)
     }
 }

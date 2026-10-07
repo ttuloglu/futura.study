@@ -216,10 +216,10 @@ const LoginChainLink = () => (
   >
     {[0, 1].map((side) => (
       <div key={side} className="flex flex-col items-center gap-0.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[rgba(155,199,255,0.5)]" />
-        <span className="h-[13px] w-2 rounded-full border-[1.6px] border-solid border-[rgba(155,199,255,0.4)]" />
-        <span className="h-[13px] w-2 rounded-full border-[1.6px] border-solid border-[rgba(155,199,255,0.4)]" />
-        <span className="h-1.5 w-1.5 rounded-full bg-[rgba(155,199,255,0.5)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[rgba(218,211,198,0.35)]" />
+        <span className="h-[13px] w-2 rounded-full border-[1.6px] border-solid border-[rgba(218,211,198,0.3)]" />
+        <span className="h-[13px] w-2 rounded-full border-[1.6px] border-solid border-[rgba(218,211,198,0.3)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[rgba(218,211,198,0.35)]" />
       </div>
     ))}
   </div>
@@ -470,21 +470,21 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
   };
 
   const inputStyle: React.CSSProperties = {
-    borderColor: 'rgba(139,187,244,0.46)',
-    background: 'rgba(8,36,70,0.82)',
-    boxShadow: 'inset 0 0 0 1px rgba(139,187,244,0.18)'
+    borderColor: 'rgba(218,211,198,0.26)',
+    background: '#202429',
+    boxShadow: 'inset 0 1px 0 rgba(218,211,198,0.04)'
   };
 
   const secondaryStyle: React.CSSProperties = {
-    background: 'rgba(8,28,55,0.72)',
-    borderColor: 'rgba(139,187,244,0.3)',
-    boxShadow: 'inset 0 0 0 1px rgba(139,187,244,0.14)'
+    background: '#22272d',
+    borderColor: 'rgba(218,211,198,0.18)',
+    boxShadow: 'none'
   };
 
   return (
     <div className="fortale-login-view fixed inset-0 overflow-hidden text-white">
       <div
-        className="pointer-events-none absolute left-1/2 z-[2] h-[160px] w-[300px] -translate-x-1/2"
+        className="fortale-login-covers pointer-events-none absolute left-1/2 z-[2] h-[160px] w-[300px] -translate-x-1/2"
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 86px)' }}
       >
         {topCovers.map((cover, index) => {
@@ -492,7 +492,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
           return (
             <div
               key={`top-cover-${cover}-${index}`}
-              className="absolute left-1/2 top-1 h-[122px] w-[86px] overflow-hidden rounded-[8px] border border-slate-300/35 shadow-[0_16px_26px_rgba(0,0,0,0.45)]"
+              className="absolute left-1/2 top-1 h-[122px] w-[86px] overflow-hidden rounded-[8px] border border-[#dad3c6]/25 shadow-[0_16px_26px_rgba(0,0,0,0.45)]"
               style={{ transform: `translateX(calc(-50% + ${layout.offsetX}px)) rotate(${layout.rotate}deg)` }}
             >
               <img
@@ -508,9 +508,9 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
         })}
       </div>
 
-      <div className="app-content-width flex h-full flex-col px-6 md:px-8">
-        <div className="relative min-h-0 flex-1 overflow-y-auto">
-          <div className="flex min-h-full items-start justify-center pb-8 pt-[calc(env(safe-area-inset-top,0px)+258px)]">
+      <div className="app-content-width fortale-login-content flex h-full flex-col px-6 md:px-8">
+        <div className="fortale-login-scroll relative min-h-0 flex-1 overflow-y-auto">
+          <div className="fortale-login-form-layout flex min-h-full items-start justify-center pb-8 pt-[calc(env(safe-area-inset-top,0px)+258px)]">
             <div className="fortale-login-card relative z-10 w-full max-w-[440px] mx-auto space-y-5">
             <div className="flex w-full items-center justify-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center">
@@ -525,7 +525,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
             <form onSubmit={authStep === 'email' ? handleSendCode : handleVerifyCode} className="relative">
               <div className="space-y-2">
                 <label className="block text-[12px] font-semibold tracking-wide text-white ml-1">{t('E-posta')}</label>
-                <div className="flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all" style={inputStyle}>
+                <div className="fortale-login-field flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all" style={inputStyle}>
                   <Mail size={15} className="text-white" />
                   <input
                     type="email"
@@ -549,7 +549,7 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
               {authStep === 'code' && (
                 <div className="mt-4 space-y-2">
                   <label className="block text-[12px] font-semibold tracking-wide text-white ml-1">{t('Giriş kodu')}</label>
-                  <div className="flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all" style={inputStyle}>
+                  <div className="fortale-login-field flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all" style={inputStyle}>
                     <KeyRound size={15} className="text-white" />
                     <input
                       type="text"
@@ -575,11 +575,12 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
               <button
                 type="submit"
                 disabled={isBusy || (authStep === 'code' && formData.code.trim().length < 6)}
-                className="w-full rounded-xl border flex items-center justify-center gap-2 px-3 py-2.5 text-center transition-all disabled:opacity-55 disabled:cursor-not-allowed"
+                className="fortale-login-submit w-full rounded-xl border flex items-center justify-center gap-2 px-3 py-2.5 text-center transition-all disabled:opacity-55 disabled:cursor-not-allowed"
                 style={{
-                  borderColor: 'rgba(139,187,244,0.46)',
-                  background: '#0b2342',
-                  boxShadow: 'inset 0 0 0 1px rgba(190,220,255,0.2), 0 0 14px rgba(96,151,214,0.18)'
+                  borderColor: '#e5ded2',
+                  background: '#dad3c6',
+                  color: '#22272d',
+                  boxShadow: '0 3px 8px rgba(0,0,0,0.18)'
                 }}
               >
                 {isEmailBusy || isCodeBusy ? (
@@ -629,9 +630,9 @@ export default function LoginView({ onContinueWithoutLogin, onNavigate }: LoginV
             </form>
 
             <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px bg-[rgba(139,187,244,0.24)]" />
+              <div className="flex-1 h-px bg-[rgba(218,211,198,0.18)]" />
               <span className="text-[11px] font-semibold tracking-wide text-white">{t('Veya')}</span>
-              <div className="flex-1 h-px bg-[rgba(139,187,244,0.24)]" />
+              <div className="flex-1 h-px bg-[rgba(218,211,198,0.18)]" />
             </div>
 
             <div>

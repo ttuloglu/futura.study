@@ -1,0 +1,100 @@
+.fortale-production-composer-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 430px);
+  max-height: 100%;
+  min-height: 0;
+  gap: 48px;
+  outline: none;
+}
+.fortale-production-composer-stack > .fortale-production-composer {
+  width: 100%;
+  flex: 0 1 auto;
+  transform: none;
+}
+.fortale-book-inspirations {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  padding-inline: 12px;
+  color: #eee9df;
+}
+.fortale-inspirations-all {
+  display: block;
+  padding: 4px 0 8px;
+  color: #eee9df;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  text-align: start;
+  text-shadow: 0 1px 5px rgba(0,0,0,.45);
+}
+.fortale-inspiration-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(240px, 32dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.fortale-inspiration-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 0;
+  color: #eee9df;
+  font-size: 12.5px;
+  font-weight: 450;
+  line-height: 1.5;
+  text-align: start;
+  border-radius: 7px;
+  text-shadow: 0 1px 5px rgba(0,0,0,.4);
+}
+.fortale-inspiration-dot {
+  display: block;
+  flex: 0 0 5px;
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--fortale-brand-accent, #c04235);
+}
+.fortale-inspirations-all:disabled,
+.fortale-inspiration-row:disabled { opacity: .45; cursor: default; }
+.fortale-inspirations-all:focus-visible,
+.fortale-inspiration-row:focus-visible,
+.fortale-inspirations-retry:focus-visible { outline: 2px solid var(--fortale-brand-accent); outline-offset: 3px; }
+@media (hover: hover) {
+  .fortale-inspiration-row:not(:disabled):hover { color: white; background: rgba(255,255,255,.05); }
+  .fortale-inspirations-all:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
+}
+.fortale-inspiration-skeleton { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; }
+.fortale-inspiration-skeleton > span:last-child { width: 90%; height: 24px; background: rgba(255,255,255,.09); border-radius: 5px; }
+.fortale-inspirations-retry { padding: 10px 0; font-size: 12px; color: #eee9df; text-align: start; }
+.fortale-inspirations-list { padding: 10px 18px 18px; overscroll-behavior: contain; }
+.fortale-inspirations-list .fortale-inspiration-row { padding: 14px 0; border-radius: 0; border-bottom: 1px solid rgba(255,255,255,.1); font-size: 13px; text-shadow: none; }
+.fortale-inspirations-list .fortale-inspiration-row:last-child { border-bottom: 0; }
+.fortale-production-composer-root[data-keyboard="true"] .fortale-production-composer-stack { gap: 10px; }
+.fortale-production-composer-root[data-keyboard="true"] .fortale-inspiration-suggestions { max-height: 100px; }
+@media (min-width: 768px) {
+  .fortale-production-composer-stack { width: min(100%, 640px); gap: 52px; }
+  .fortale-book-inspirations { padding-inline: 22px; }
+  .fortale-inspirations-all { font-size: 13px; padding-bottom: 10px; }
+  .fortale-inspiration-row { font-size: 14px; padding-block: 8px; }
+  .fortale-inspiration-dot { width: 6px; height: 6px; flex-basis: 6px; margin-top: 8px; }
+  .fortale-inspirations-list { padding: 12px 24px 24px; }
+  .fortale-inspirations-list .fortale-inspiration-row { font-size: 14px; }
+}
+@media (max-height: 560px) {
+  .fortale-production-composer-stack { gap: 10px; }
+  .fortale-inspiration-suggestions { max-height: 112px; }
+}
+
+.fortale-composer-companion[data-inspiration-peek="true"] .fortale-composer-companion-puppet {
+  transform: scale(.65);
+  transform-origin: bottom center;
+}
